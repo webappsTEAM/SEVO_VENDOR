@@ -87,15 +87,23 @@ export default function QuotationBuilderModal({
   // "working" instead of showing a stale figure as if it were final.
   const [pricingIndexes, setPricingIndexes] = useState([]);
 
+  const serviceCategoryStr = String(job?.service_category || job?.service_category_name || '').toLowerCase();
+  const serviceTitleStr = String(job?.service_name || job?.service_title || job?.issue_title || job?.title || '').toLowerCase();
+
   const isPainting =
-    job?.service_category?.toLowerCase().includes('painting') ||
-    job?.issue_title?.toLowerCase().includes('painting');
+    serviceCategoryStr.includes('painting') ||
+    serviceCategoryStr.includes('paint') ||
+    serviceTitleStr.includes('painting') ||
+    serviceTitleStr.includes('paint');
 
   const isMason =
-    job?.service_category?.toLowerCase().includes('mason') ||
-    job?.issue_title?.toLowerCase().includes('mason') ||
-    job?.issue_title?.toLowerCase().includes('brick') ||
-    job?.issue_title?.toLowerCase().includes('plaster');
+    serviceCategoryStr.includes('mason') ||
+    serviceCategoryStr.includes('construction') ||
+    serviceCategoryStr.includes('brick') ||
+    serviceTitleStr.includes('mason') ||
+    serviceTitleStr.includes('construction') ||
+    serviceTitleStr.includes('brick') ||
+    serviceTitleStr.includes('plaster');
 
   // Load existing quote or initialize from job
   useEffect(() => {

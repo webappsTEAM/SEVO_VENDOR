@@ -369,11 +369,23 @@ export function EmployeeRuntimeProvider({ children }) {
     }
   }, []);
 
+  const liveLocationRef = useRef(liveLocation);
+  useEffect(() => {
+    liveLocationRef.current = liveLocation;
+  }, [liveLocation]);
+
   const handleLocationError = useCallback((err) => {
     console.warn('[EmployeeRuntime] Location tracker warning:', err);
-    // If location fails, we remain online but location is pending
-    setPresenceState((prev) => (prev === 'OFFLINE' ? 'OFFLINE' : 'ONLINE_LOCATION_PENDING'));
-    setLocationError(err?.message || 'Unable to access your location. Please check your device location settings.');
+    if (err?.code === 'PERMISSION_DENIED') {
+      setPresenceState('ONLINE_LOCATION_DENIED');
+      setLocationError(err?.message || 'Location permission is required to receive nearby jobs.');
+    } else {
+      // Transient timeout or background retry: keep live position active and only alert if no coordinates exist
+      if (!liveLocationRef.current) {
+        setPresenceState((prev) => (prev === 'OFFLINE' ? 'OFFLINE' : 'ONLINE_LOCATION_PENDING'));
+        setLocationError(err?.message || 'Searching for GPS location...');
+      }
+    }
   }, []);
 
   // Mount single continuous GPS watcher for online authenticated technician

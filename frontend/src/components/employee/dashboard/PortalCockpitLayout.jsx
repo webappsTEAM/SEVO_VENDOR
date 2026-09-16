@@ -20,6 +20,7 @@ import {
   Briefcase,
   Wrench,
   Banknote,
+  Calculator,
   X,
 } from 'lucide-react';
 import { TechnicianNavigationView } from '../navigation/TechnicianNavigationView.jsx';
@@ -94,6 +95,9 @@ export function PortalCockpitLayout({
   onOpenCancelModal,
   onOpenProofModal,
   onOpenCashModal,
+  onOpenQuotationModal,
+  error = '',
+  successMsg = '',
   preServiceState = {},
   otpInput = '',
   setOtpInput,
@@ -120,10 +124,39 @@ export function PortalCockpitLayout({
   const isBreak = timeTracking?.shift_status === 'on_break';
 
   // Authoritative Primary Active Job and Incoming Offer Resolution
-  const offer = incomingOffers && incomingOffers.length > 0 ? incomingOffers[0] : null;
-  const activeJob = activeAssignedJob || (activeJobs && activeJobs.length > 0 ? activeJobs[0] : null);
+  const isJobAnOffer = (j) => {
+    if (!j) return false;
+    const s = String(j.status || j.job_status || '').toLowerCase();
+    return s === 'unassigned' || s === 'offered' || j.is_offer === true || Boolean(j.active_offer);
+  };
+
+  const offer = (incomingOffers && incomingOffers.length > 0 ? incomingOffers[0] : null) ||
+    (activeJobs && activeJobs.find(isJobAnOffer)) ||
+    null;
+
+  const activeJob = activeAssignedJob ||
+    (activeJobs && activeJobs.find((j) => !isJobAnOffer(j))) ||
+    null;
+
   const isOffer = Boolean(offer && !activeJob);
   const job = activeJob || offer || null;
+
+  const isEstimationJob = Boolean(
+    job?.is_estimation ||
+    job?.pricing_mode === 'QUOTATION' ||
+    job?.job_type === 'ESTIMATION' ||
+    job?.service_type === 'ESTIMATION' ||
+    job?.active_quote_number ||
+    job?.active_quote_id ||
+    job?.quote_id ||
+    (job?.service_category_name || '').toLowerCase().includes('mason') ||
+    (job?.service_category_name || '').toLowerCase().includes('paint') ||
+    (job?.service_name || job?.service_title || job?.title || '').toLowerCase().includes('consultation') ||
+    (job?.service_name || job?.service_title || job?.title || '').toLowerCase().includes('masonry') ||
+    (job?.service_name || job?.service_title || job?.title || '').toLowerCase().includes('painting') ||
+    (job?.service_name || job?.service_title || job?.title || '').toLowerCase().includes('estimation') ||
+    (job?.service_name || job?.service_title || job?.title || '').toLowerCase().includes('inspection')
+  );
 
   const status = (activeJob?.status || activeJob?.job_status || (offer ? 'OFFERED' : 'STANDBY')).toUpperCase();
 
@@ -283,6 +316,20 @@ export function PortalCockpitLayout({
                 <RotateCw className="w-3.5 h-3.5" />
               </button>
             </div>
+
+            {/* ── REALTIME ERROR / SUCCESS NOTIFICATION BANNERS ── */}
+            {error && (
+              <div className="p-3.5 bg-red-50 border border-red-200 text-red-900 rounded-xl text-xs font-semibold flex items-start gap-2.5 shadow-2xs">
+                <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                <span className="leading-relaxed">{error}</span>
+              </div>
+            )}
+            {successMsg && (
+              <div className="p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl text-xs font-semibold flex items-start gap-2.5 shadow-2xs">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                <span className="leading-relaxed">{successMsg}</span>
+              </div>
+            )}
 
             {/* ════════════════════════════════════════════════════════════════════════════
                 CASE A: NO ACTIVE JOB AND NO INCOMING OFFER (STANDBY / DISPATCH READY MODE)
@@ -514,6 +561,47 @@ export function PortalCockpitLayout({
                   </div>
                 )}
 
+                {/* ── COMMERCIAL ESTIMATION & QUOTATION WORKFLOW CARD ── */}
+                {isEstimationJob && !isOffer && (
+                  <div className="p-4 bg-indigo-50/90 border border-indigo-200 rounded-xl space-y-3 shadow-2xs">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex items-start gap-2.5">
+                        <div className="p-2 rounded-lg bg-indigo-600 text-white shrink-0 mt-0.5 shadow-sm">
+                          <Calculator className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="text-xs font-bold text-indigo-950">
+                              Commercial Quotation Workflow
+                            </h4>
+                            {activeJob?.active_quote_number && (
+                              <span className="text-[10px] font-mono font-black bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded border border-indigo-200">
+                                {activeJob.active_quote_number}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-indigo-800 mt-0.5 font-medium leading-relaxed">
+                            {isInProgress || isAllPrerequisitesDone
+                              ? 'Site inspection active. Record measurements, select rate-card items, and draft/send formal quotation to customer.'
+                              : 'Complete Step 1 Arrival and Step 2 Pre-Service Verification to unlock full quotation builder.'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => onOpenQuotationModal && onOpenQuotationModal(activeJob)}
+                        className="px-4 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 shadow-sm shrink-0 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white cursor-pointer hover:shadow-indigo-500/20"
+                      >
+                        <Calculator className="w-3.5 h-3.5" />
+                        <span>
+                          {activeJob?.active_quote_number ? 'Open Quotation Builder' : 'Create / Draft Quotation'}
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {/* ── CASH PAYMENT CONFIRMATION SECTION (When proof is submitted & cash is pending) ── */}
                 {isCashPending && (
                   <div className="pt-2 space-y-3">
@@ -543,8 +631,9 @@ export function PortalCockpitLayout({
                       <form
                         onSubmit={(e) => {
                           e.preventDefault();
+                          const cleanOtp = String(paymentOtpInput || '').replace(/\s+/g, '').trim();
                           if (handleVerifyPaymentOtpSubmit && job) {
-                            handleVerifyPaymentOtpSubmit(job.id, paymentOtpInput);
+                            handleVerifyPaymentOtpSubmit(job.id, cleanOtp);
                           }
                         }}
                         className="space-y-2.5"
@@ -554,14 +643,17 @@ export function PortalCockpitLayout({
                             type="text"
                             maxLength={6}
                             value={paymentOtpInput || ''}
-                            onChange={(e) => setPaymentOtpInput && setPaymentOtpInput(e.target.value)}
+                            onChange={(e) => {
+                              const val = e.target.value.replace(/\D/g, '').slice(0, 6);
+                              if (setPaymentOtpInput) setPaymentOtpInput(val);
+                            }}
                             placeholder="• • • • • •"
                             className="flex-1 px-4 py-2.5 bg-white border border-amber-300 rounded-xl font-mono text-base font-black text-slate-900 tracking-[0.3em] text-center outline-none focus:border-amber-600 shadow-2xs"
                             required
                           />
                           <button
                             type="submit"
-                            disabled={isVerifyingPaymentOtp || !paymentOtpInput || paymentOtpInput.trim().length !== 6}
+                            disabled={isVerifyingPaymentOtp || !paymentOtpInput || paymentOtpInput.replace(/\D/g, '').length !== 6}
                             className="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
                           >
                             {isVerifyingPaymentOtp ? (
@@ -569,7 +661,7 @@ export function PortalCockpitLayout({
                             ) : (
                               <CheckCircle2 className="w-3.5 h-3.5" />
                             )}
-                            <span>Verify &amp; Complete</span>
+                            <span>{isVerifyingPaymentOtp ? 'Verifying...' : 'Verify & Complete'}</span>
                           </button>
                         </div>
                       </form>
@@ -745,17 +837,23 @@ export function PortalCockpitLayout({
                 isCashPending ? (
                   <button
                     type="button"
+                    disabled={isVerifyingPaymentOtp}
                     onClick={() => {
-                      if (paymentOtpInput && paymentOtpInput.trim().length === 6 && handleVerifyPaymentOtpSubmit) {
-                        handleVerifyPaymentOtpSubmit(activeJob.id, paymentOtpInput);
+                      const cleanOtp = String(paymentOtpInput || '').replace(/\D/g, '').trim();
+                      if (cleanOtp.length === 6 && handleVerifyPaymentOtpSubmit) {
+                        handleVerifyPaymentOtpSubmit(activeJob.id, cleanOtp);
                       } else if (onOpenCashModal) {
                         onOpenCashModal(activeJob);
                       }
                     }}
-                    className="w-full py-3.5 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white shadow-md cursor-pointer"
+                    className="w-full py-3.5 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-700 active:bg-amber-800 disabled:opacity-60 text-white shadow-md cursor-pointer"
                   >
-                    <ShieldCheck className="w-4 h-4" />
-                    <span>Confirm Customer Cash Payment (₹{payoutAmount})</span>
+                    {isVerifyingPaymentOtp ? (
+                      <RotateCw className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <ShieldCheck className="w-4 h-4" />
+                    )}
+                    <span>{isVerifyingPaymentOtp ? 'Verifying Payment OTP...' : `Confirm Customer Cash Payment (₹${payoutAmount})`}</span>
                   </button>
                 ) : isCashJob && !isPaid ? (
                   <button
@@ -767,21 +865,38 @@ export function PortalCockpitLayout({
                     <span>Collect Cash Payment (₹{payoutAmount})</span>
                   </button>
                 ) : (
-                  <div className="w-full py-3.5 rounded-xl font-bold text-xs bg-indigo-50 text-indigo-800 border border-indigo-200 flex items-center justify-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-indigo-600" />
-                    <span>Service Proof Submitted • Under Review</span>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleJobAction && handleJobAction(activeJob.id, 'COMPLETED')}
+                    disabled={actionLoading}
+                    className="w-full py-3.5 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 bg-[#2d6a4f] hover:bg-[#1b4332] active:bg-[#153427] text-white shadow-md cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    <span>Complete &amp; Close Job</span>
+                  </button>
                 )
               ) : isInProgress ? (
-                <button
-                  type="button"
-                  onClick={() => onOpenProofModal && onOpenProofModal(activeJob)}
-                  disabled={actionLoading}
-                  className="w-full py-3.5 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 bg-[#2d6a4f] hover:bg-[#1b4332] active:bg-[#153427] text-white shadow-md cursor-pointer"
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Complete Service &amp; Submit Proof</span>
-                </button>
+                <div className="space-y-2">
+                  {isEstimationJob && onOpenQuotationModal && (
+                    <button
+                      type="button"
+                      onClick={() => onOpenQuotationModal(activeJob)}
+                      className="w-full py-3.5 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white shadow-md cursor-pointer"
+                    >
+                      <Calculator className="w-4 h-4" />
+                      <span>{activeJob?.active_quote_number ? 'Open / Edit Quotation Builder' : 'Create / Draft Quotation for this Job'}</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => onOpenProofModal && onOpenProofModal(activeJob)}
+                    disabled={actionLoading}
+                    className="w-full py-3.5 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 bg-[#2d6a4f] hover:bg-[#1b4332] active:bg-[#153427] text-white shadow-md cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Complete Service &amp; Submit Proof</span>
+                  </button>
+                </div>
               ) : (
                 <button
                   type="button"

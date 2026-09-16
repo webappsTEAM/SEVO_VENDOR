@@ -37,9 +37,9 @@ ALLOWED_TRANSITIONS = {
     "confirmed": ["offering", "dispatching", "assigned", "unassigned", "accepted", "cancelled"],
     "assigned": ["received", "accepted", "reassigned", "redispatching", "cancelled"],
     "received": ["accepted", "reassigned", "redispatching", "cancelled"],
-    "accepted": ["on_the_way", "en_route", "arrived", "redispatching", "cancelled", "unable_to_complete"],
-    "on_the_way": ["arrived", "redispatching", "cancelled", "unable_to_complete"],
-    "en_route": ["arrived", "redispatching", "cancelled", "unable_to_complete"],
+    "accepted": ["on_the_way", "en_route", "arrived", "service_started", "in_progress", "redispatching", "cancelled", "unable_to_complete"],
+    "on_the_way": ["arrived", "service_started", "in_progress", "redispatching", "cancelled", "unable_to_complete"],
+    "en_route": ["arrived", "service_started", "in_progress", "redispatching", "cancelled", "unable_to_complete"],
     "arrived": ["service_started", "in_progress", "cancelled", "unable_to_complete"],
     "service_started": ["in_progress", "cancelled", "unable_to_complete"],
     "in_progress": ["on_hold", "proof_submitted", "cancelled", "unable_to_complete", "follow_up_required"],
@@ -193,6 +193,13 @@ def apply_transition(service_request, target_status: str, actor=None) -> str:
                     "earnings were NOT credited. Needs manual settlement: %s",
                     service_request.pk, _settlement_err,
                 )
+
+            # Auto-generate customer tax invoice for completed job
+            try:
+                from workforce_api.services.invoice_service import generate_invoice_for_job
+                generate_invoice_for_job(service_request, actor=actor)
+            except Exception as _inv_err:
+                logger.warning("Could not auto-generate invoice on job completion for Job #%s: %s", service_request.pk, _inv_err)
                 # Bug found: this used to only log -- the job stayed COMPLETED,
                 # the technician saw no earnings, and nothing pointed anyone
                 # at why. Surface it as an admin notification (mirroring the
