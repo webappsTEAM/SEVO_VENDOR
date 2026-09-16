@@ -453,6 +453,9 @@ class PaymentCollectionEventSerializer(serializers.ModelSerializer):
 
 class WorkforceJobSerializer(serializers.ModelSerializer):
     customer_display_name = serializers.SerializerMethodField()
+    phone = serializers.SerializerMethodField()
+    email = serializers.SerializerMethodField()
+    address = serializers.SerializerMethodField()
     service_title = serializers.SerializerMethodField()
     job_status = serializers.SerializerMethodField()
     payment = serializers.SerializerMethodField()
@@ -724,11 +727,62 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
             return None
 
     def get_customer_display_name(self, obj):
-        if obj.customer_name:
+        if obj.customer_name and not str(obj.customer_name).startswith("cust_"):
             return obj.customer_name
         if obj.customer:
-            return f"{obj.customer.first_name} {obj.customer.last_name}".strip() or obj.customer.username
-        return "Valued Customer"
+            cust = obj.customer
+            full = f"{cust.first_name or ''} {cust.last_name or ''}".strip()
+            if full and not full.startswith("cust_"):
+                return full
+            if getattr(cust, "name", None) and not str(cust.name).startswith("cust_"):
+                return cust.name
+            try:
+                addr = cust.saved_addresses.filter(receiver_name__isnull=False).exclude(receiver_name="").first()
+                if addr and addr.receiver_name:
+                    return addr.receiver_name
+            except Exception:
+                pass
+            if cust.phone:
+                return f"Customer ({str(cust.phone)[-4:]})"
+            if cust.username and not str(cust.username).startswith("cust_"):
+                return cust.username
+        if obj.phone:
+            return f"Customer ({str(obj.phone)[-4:]})"
+        return obj.customer_name or "Valued Customer"
+
+    def get_phone(self, obj):
+        if obj.phone:
+            return str(obj.phone)
+        if obj.customer:
+            cust = obj.customer
+            if getattr(cust, "phone", None):
+                return str(cust.phone)
+            if getattr(cust, "mobile_number", None):
+                return str(cust.mobile_number)
+            if cust.username and cust.username.isdigit():
+                return cust.username
+            if cust.username and cust.username.startswith("cust_") and cust.username[5:].isdigit():
+                return cust.username[5:]
+        return ""
+
+    def get_email(self, obj):
+        if obj.email:
+            return obj.email
+        if obj.customer and getattr(obj.customer, "email", None):
+            return obj.customer.email
+        return ""
+
+    def get_address(self, obj):
+        if obj.address:
+            return obj.address
+        if obj.customer:
+            try:
+                addr = obj.customer.saved_addresses.first()
+                if addr and getattr(addr, "address_line1", None):
+                    return addr.formatted_address or addr.address_line1
+            except Exception:
+                pass
+        return ""
 
     def get_service_title(self, obj):
         return obj.issue_title or obj.service_category

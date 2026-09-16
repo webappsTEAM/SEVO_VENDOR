@@ -365,6 +365,13 @@ export async function apiTriggerAutoDispatch(jobId) {
   });
 }
 
+export async function apiAdminCancelJob(jobId, reason = '') {
+  return await apiRequest(`/workforce/jobs/${jobId}/admin-cancel/`, {
+    method: 'POST',
+    json: { reason },
+  });
+}
+
 // ── Work Extensions & Scope Approvals ─────────────────────────────────────────
 
 export async function apiGetCustomerOTP(jobId) {

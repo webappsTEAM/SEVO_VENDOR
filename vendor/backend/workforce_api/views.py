@@ -2173,19 +2173,20 @@ class WorkforceJobListView(APIView):
                 jobs_qs = ServiceRequest.objects.all()
             elif company:
                 if company.id == 1 or getattr(company, "slug", "") in ("calservices", "caldim-engineering-pvt-ltd", "caldim-platform", "caldim-services"):
-                    jobs_qs = ServiceRequest.objects.filter(Q(company=company) | Q(company__isnull=True) | Q(company_id=1))
+                    jobs_qs = ServiceRequest.objects.all()
                 else:
                     jobs_qs = ServiceRequest.objects.filter(
                         Q(company=company) |
                         Q(vendor_id=str(company.id)) |
                         Q(assigned_employee__company=company) |
                         Q(job_offers__employee__company=company) |
-                        ((Q(company_id=1) | Q(company__isnull=True)) & Q(status__in=["confirmed", "unassigned", "pending", "requested", "searching", "redispatching", "draft", "new_request"]))
+                        Q(status__in=["confirmed", "unassigned", "pending", "requested", "searching", "redispatching", "draft", "new_request"])
                     ).distinct()
             else:
-                jobs_qs = ServiceRequest.objects.filter(Q(company_id=1) | Q(company__isnull=True))
+                jobs_qs = ServiceRequest.objects.all()
 
-            status_filter = str(request.query_params.get("status", "all")).lower().strip()
+            params = getattr(request, "query_params", request.GET)
+            status_filter = str(params.get("status", "all")).lower().strip()
             if status_filter == "completed":
                 jobs_qs = jobs_qs.filter(status="completed")
             elif status_filter == "active":
@@ -2259,7 +2260,8 @@ class WorkforceJobListView(APIView):
                 id__in=emp_job_sr_ids_qs
             )
 
-            status_filter = str(request.query_params.get("status", "active")).lower().strip()
+            params = getattr(request, "query_params", request.GET)
+            status_filter = str(params.get("status", "active")).lower().strip()
 
             if status_filter == "completed":
                 qs = ServiceRequest.objects.filter(
@@ -2277,9 +2279,10 @@ class WorkforceJobListView(APIView):
 
             if emp.company:
                 if emp.company.id == 1 or getattr(emp.company, "slug", "") in ("calservices", "caldim-engineering-pvt-ltd", "caldim-platform", "caldim-services"):
-                    qs = qs.filter(Q(company=emp.company) | Q(company__isnull=True) | Q(company_id=1))
+                    # Platform technicians can service jobs from any partner company
+                    pass
                 else:
-                    qs = qs.filter(Q(company=emp.company) | Q(company_id=1) | Q(company__isnull=True))
+                    qs = qs.filter(Q(company=emp.company) | Q(assigned_employee=emp) | Q(id__in=offered_job_ids_qs) | Q(company__isnull=True))
 
             qs = qs.select_related("customer", "assigned_employee", "assigned_employee__user", "company")
             qs = qs.distinct().order_by("-updated_at", "-created_at")
@@ -4317,6 +4320,68 @@ class WorkforceJobCustomerCancelSyncView(APIView):
             "message": f"Job #{job.id} cancelled (customer-initiated) and technician released.",
             "job_id": job.id,
             "status": new_status,
+        }, status=status.HTTP_200_OK)
+
+
+class WorkforceJobAdminCancelView(APIView):
+    """
+    Vendor Admin cancellation endpoint: allows authorized workforce admins/operators
+    to cancel a booking, release assigned technician, mark EmployeeJob/JobOffer cancelled,
+    and record lifecycle audit event.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        user = request.user
+        if not is_admin_role(user):
+            return Response({"error": "Only workforce admins can cancel jobs directly."}, status=status.HTTP_403_FORBIDDEN)
+
+        job = ServiceRequest.objects.filter(pk=pk).first()
+        if not job:
+            return Response({"error": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if job.status == "cancelled":
+            return Response({"message": "Job already cancelled.", "status": job.status}, status=status.HTTP_200_OK)
+
+        if job.status == "completed":
+            return Response({"error": "Completed jobs cannot be cancelled."}, status=status.HTTP_400_BAD_REQUEST)
+
+        reason = request.data.get("reason") or request.data.get("cancellation_reason") or "Cancelled by workforce administrator"
+
+        from service_requests.state_machine import apply_transition
+        from workforce_api.models import WorkforceJobLifecycleEvent, WorkforceJobOffer
+        from service_requests.models import EmployeeJob
+
+        try:
+            new_status = apply_transition(job, "cancelled", actor=user)
+        except Exception:
+            job.status = "cancelled"
+            job.cancellation_reason = reason
+            job.save(update_fields=["status", "cancellation_reason", "updated_at"])
+            new_status = "cancelled"
+
+        WorkforceJobOffer.objects.filter(job=job, status="PENDING").update(status="CANCELLED")
+        EmployeeJob.objects.filter(service_request=job).exclude(status__in=["COMPLETED", "CANCELLED"]).update(status="CANCELLED")
+
+        if job.assigned_employee:
+            from workforce_api.services.workload import reconcile_employee_availability
+            reconcile_employee_availability(job.assigned_employee)
+
+        try:
+            WorkforceJobLifecycleEvent.objects.create(
+                job=job,
+                event_type="CANCELLED_BY_ADMIN",
+                actor_id=user.id,
+                details={"reason": reason, "cancelled_by": user.email or user.username}
+            )
+        except Exception:
+            pass
+
+        return Response({
+            "message": f"Job #{job.id} cancelled successfully by administrator.",
+            "job_id": job.id,
+            "status": new_status,
+            "reason": reason
         }, status=status.HTTP_200_OK)
 
 
@@ -6382,6 +6447,7 @@ class WorkforceJobLiveTrackingView(APIView):
       4. Internal server-to-server callers from the Customer platform
     """
     permission_classes = [permissions.IsAuthenticated | IsInternalWorkforceCaller]
+    throttle_classes = []
 
     def get(self, request, pk):
         user = request.user
