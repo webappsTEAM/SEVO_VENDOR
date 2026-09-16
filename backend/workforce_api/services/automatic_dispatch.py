@@ -56,18 +56,18 @@ DEFAULT_OFFER_DURATION_MINUTES = 5
 # rationale. Promote this to a DB-backed config table if/when it needs to
 # vary per company or per zone rather than globally.
 DEFAULT_OFFER_WINDOW_MINUTES_BY_PRIORITY = {
-    "urgent": 2,
-    "high": 3,
-    "normal": 5,
-    "low": 8,
+    "urgent": 10,
+    "high": 15,
+    "normal": 20,
+    "low": 30,
 }
 THIN_POOL_CANDIDATE_THRESHOLD = 2   # this many eligible candidates or fewer counts as "thin"
 DEEP_POOL_CANDIDATE_THRESHOLD = 8   # this many or more counts as "deep"
-THIN_POOL_WINDOW_BONUS_MINUTES = 3
+THIN_POOL_WINDOW_BONUS_MINUTES = 5
 DEEP_POOL_WINDOW_PENALTY_MINUTES = 2
-SPARSE_SERVICE_CATEGORY_WINDOW_BONUS_MINUTES = 3
-MIN_OFFER_WINDOW_MINUTES = 2
-MAX_OFFER_WINDOW_MINUTES = 15
+SPARSE_SERVICE_CATEGORY_WINDOW_BONUS_MINUTES = 5
+MIN_OFFER_WINDOW_MINUTES = 10
+MAX_OFFER_WINDOW_MINUTES = 45
 
 # Service categories known to have a historically thin technician pool --
 # these get the sparse-category bonus above regardless of how today's live
@@ -158,14 +158,14 @@ def canonical_service_match(requested_service: str, approved_services: List[str]
     if not requested_service:
         return True, "EMPTY_SERVICE_BYPASS", ""
 
-    req_clean = requested_service.lower().replace("—", " ").replace("-", " ").strip()
+    req_clean = requested_service.lower().replace("—", " ").replace("-", " ").replace("_", " ").strip()
     req_words = set(w for w in req_clean.split() if len(w) >= 2)
 
     # 1. Check exact or direct match against approved employee services
     for it in approved_services:
         if not it:
             continue
-        it_clean = it.lower().replace("—", " ").replace("-", " ").strip()
+        it_clean = it.lower().replace("—", " ").replace("-", " ").replace("_", " ").strip()
         if req_clean == it_clean or req_clean in it_clean or it_clean in req_clean:
             return True, "EXACT_OR_SUBSTRING_SERVICE", it
 
@@ -173,7 +173,7 @@ def canonical_service_match(requested_service: str, approved_services: List[str]
     for sk in verified_skills:
         if not sk:
             continue
-        sk_clean = sk.lower().replace("—", " ").replace("-", " ").strip()
+        sk_clean = sk.lower().replace("—", " ").replace("-", " ").replace("_", " ").strip()
         if req_clean == sk_clean or req_clean in sk_clean or sk_clean in req_clean:
             return True, "VERIFIED_SKILL_MATCH", sk
 
@@ -183,11 +183,11 @@ def canonical_service_match(requested_service: str, approved_services: List[str]
         if req_clean == alias_key or req_clean in alias_group or any(req_word in alias_group for req_word in req_words):
             # Check if employee has any matching service in that alias group
             for it in approved_services:
-                it_clean = it.lower().replace("—", " ").replace("-", " ").strip()
+                it_clean = it.lower().replace("—", " ").replace("-", " ").replace("_", " ").strip()
                 if it_clean in alias_group or any(w in alias_group for w in it_clean.split() if len(w) >= 2):
                     return True, "EXPLICIT_ALIAS_SERVICE", it
             for sk in verified_skills:
-                sk_clean = sk.lower().replace("—", " ").replace("-", " ").strip()
+                sk_clean = sk.lower().replace("—", " ").replace("-", " ").replace("_", " ").strip()
                 if sk_clean in alias_group or any(w in alias_group for w in sk_clean.split() if len(w) >= 2):
                     return True, "EXPLICIT_ALIAS_SKILL", sk
 

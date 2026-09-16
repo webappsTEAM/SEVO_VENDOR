@@ -1231,6 +1231,13 @@ export function EmployeeDashboardPage() {
             onOpenCancelModal={handleOpenCancelModal}
             onOpenProofModal={(j) => setProofModalJob(j || activeAssignedJob || selectedJob)}
             onOpenCashModal={(j) => setCashModalJob(j || activeAssignedJob || selectedJob)}
+            onOpenQuotationModal={(j) => {
+              const target = j || activeAssignedJob || selectedJob;
+              setSelectedJob(target);
+              setIsQuotationModalOpen(true);
+            }}
+            error={error}
+            successMsg={successMsg}
             preServiceState={preServiceState}
             otpInput={otpInput}
             setOtpInput={setOtpInput}
@@ -1264,10 +1271,10 @@ export function EmployeeDashboardPage() {
           />
 
           {/* Estimation & Commercial Quotation Builder Modal */}
-          {isQuotationModalOpen && selectedJob && (
+          {isQuotationModalOpen && (selectedJob || activeAssignedJob) && (
             <QuotationBuilderModal
-              job={selectedJob}
-              quoteId={selectedJob.active_quote_id}
+              job={selectedJob || activeAssignedJob}
+              quoteId={(selectedJob || activeAssignedJob)?.active_quote_id}
               isOpen={isQuotationModalOpen}
               onClose={() => setIsQuotationModalOpen(false)}
               onQuoteSaved={() => {

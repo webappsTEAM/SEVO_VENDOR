@@ -2175,10 +2175,9 @@ class WorkforceJobListView(APIView):
             ) & (
                 Q(assigned_employee=emp) | Q(technician_id=user.id)
             )
-            completed_qs = Q(
-                assigned_employee=emp,
-                status__in=["completed", "cancelled"]
-            )
+            completed_qs = (
+                Q(assigned_employee=emp) | Q(technician_id=user.id) | Q(id__in=EmployeeJob.objects.filter(employee=emp).values("service_request_id"))
+            ) & Q(status__in=["completed", "cancelled"])
             offered_qs = Q(
                 id__in=offered_job_ids_qs
             )

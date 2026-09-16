@@ -267,14 +267,28 @@ export function useLocationTracker(active, onPositionChange, onError, adapter = 
     [onError],
   );
 
-  // Force-poll on interval in case watcher is idle
+  // Force-poll on interval in case watcher is idle with fallback
   const forcePoll = useCallback(() => {
     if (!getAccessToken()) return;
-    adapter.getCurrentPosition(handlePosition, handleError, {
-      enableHighAccuracy: true,
-      timeout: 10_000,
-      maximumAge: MAX_POSITION_AGE_MS,
-    });
+    const tryGetPosition = (enableHighAccuracy, isFallback = false) => {
+      adapter.getCurrentPosition(
+        (pos) => handlePosition(pos),
+        (err) => {
+          if (!isFallback && (err.code === 3 || err.code === 2 || err.code === err.TIMEOUT || err.code === err.POSITION_UNAVAILABLE)) {
+            // Fallback to standard WiFi/IP triangulation on devices without dedicated GNSS
+            tryGetPosition(false, true);
+            return;
+          }
+          handleError(err);
+        },
+        {
+          enableHighAccuracy,
+          timeout: enableHighAccuracy ? 8_000 : 15_000,
+          maximumAge: enableHighAccuracy ? MAX_POSITION_AGE_MS : 120_000,
+        }
+      );
+    };
+    tryGetPosition(true, false);
   }, [handlePosition, handleError, adapter]);
 
   useEffect(() => {
@@ -309,11 +323,15 @@ export function useLocationTracker(active, onPositionChange, onError, adapter = 
     }
 
     // Start single continuous watch when active and authenticated
-    watchIdRef.current = adapter.watch(handlePosition, handleError, {
-      enableHighAccuracy: true,
-      timeout: 10_000,
-      maximumAge: MAX_POSITION_AGE_MS,
-    });
+    try {
+      watchIdRef.current = adapter.watch(handlePosition, handleError, {
+        enableHighAccuracy: false,
+        timeout: 15_000,
+        maximumAge: MAX_POSITION_AGE_MS,
+      });
+    } catch (_) {
+      // Fallback to polling if watchPosition unsupported
+    }
 
     // Periodic force-poll as backup
     intervalRef.current = setInterval(forcePoll, POLL_INTERVAL_MS);

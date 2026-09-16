@@ -54,6 +54,10 @@ export function TechnicianNavigationView({
       );
 
     case 'arrived':
+    case 'in_progress':
+    case 'completed':
+    case 'cancelled':
+    default:
       return (
         <TechnicianArrivalView
           job={job}
@@ -61,11 +65,6 @@ export function TechnicianNavigationView({
           geofenceRadius={geofenceRadius}
         />
       );
-
-    case 'in_progress':
-    case 'completed':
-    case 'cancelled':
-    default:
-      return null;
   }
 }
+

@@ -76,6 +76,26 @@ export function TechnicianStandbyMapView({
       });
 
       mapRef.current = map;
+
+      // Handle flex/grid layout resizing dynamically
+      const ro = new ResizeObserver(() => {
+        if (mapRef.current && window.google?.maps) {
+          google.maps.event.trigger(mapRef.current, 'resize');
+          mapRef.current.setCenter({ lat: techLat, lng: techLon });
+        }
+      });
+      ro.observe(mapContainerRef.current);
+
+      setTimeout(() => {
+        if (mapRef.current && window.google?.maps) {
+          google.maps.event.trigger(mapRef.current, 'resize');
+          mapRef.current.setCenter({ lat: techLat, lng: techLon });
+        }
+      }, 200);
+
+      return () => {
+        ro.disconnect();
+      };
     } catch (err) {
       console.error('[STANDBY_MAP_INIT_ERROR]', err);
     }

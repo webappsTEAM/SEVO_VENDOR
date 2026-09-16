@@ -40,6 +40,16 @@ import {
   Eye,
   Check,
   Copy,
+  Hammer,
+  Paintbrush,
+  Building2,
+  FileText,
+  CreditCard,
+  Info,
+  Clock3,
+  Tag,
+  Truck,
+  Mail,
 } from 'lucide-react';
 
 /**
@@ -48,14 +58,51 @@ import {
 function getServiceCategoryMeta(categoryName = '', title = '') {
   const text = `${categoryName} ${title}`.toLowerCase();
 
-  // 1. Electrical & Power
+  // 1. Masonry, Construction, Tiling, Civil Work
+  if (
+    text.includes('mason') ||
+    text.includes('tile') ||
+    text.includes('brick') ||
+    text.includes('cement') ||
+    text.includes('plaster') ||
+    text.includes('construction') ||
+    text.includes('civil') ||
+    text.includes('concrete')
+  ) {
+    return {
+      id: 'mason',
+      icon: Hammer,
+      label: 'Masonry',
+      tagColor: 'bg-amber-600/10 text-amber-900 border-amber-300',
+      iconBg: 'bg-amber-100 text-amber-800',
+    };
+  }
+
+  // 2. Painting & Wall Treatment
+  if (
+    text.includes('paint') ||
+    text.includes('whitewash') ||
+    text.includes('primer') ||
+    text.includes('distemper') ||
+    text.includes('stain')
+  ) {
+    return {
+      id: 'painting',
+      icon: Paintbrush,
+      label: 'Painting',
+      tagColor: 'bg-purple-500/10 text-purple-800 border-purple-200',
+      iconBg: 'bg-purple-100 text-purple-700',
+    };
+  }
+
+  // 3. Electrical & Power
   if (
     text.includes('electr') ||
-    text.includes('socket') ||
+    text.includes('wire') ||
+    text.includes('power') ||
     text.includes('switch') ||
-    text.includes('wiring') ||
-    text.includes('fan') ||
     text.includes('light') ||
+    text.includes('fan') ||
     text.includes('inverter') ||
     text.includes('mcb') ||
     text.includes('fuse')
@@ -69,7 +116,7 @@ function getServiceCategoryMeta(categoryName = '', title = '') {
     };
   }
 
-  // 2. AC & Appliances
+  // 4. AC & Appliances
   if (
     text.includes('ac') ||
     text.includes('air') ||
@@ -89,7 +136,7 @@ function getServiceCategoryMeta(categoryName = '', title = '') {
     };
   }
 
-  // 3. Plumbing & Water
+  // 5. Plumbing & Water
   if (
     text.includes('plumb') ||
     text.includes('pipe') ||
@@ -109,7 +156,7 @@ function getServiceCategoryMeta(categoryName = '', title = '') {
     };
   }
 
-  // 4. Carpentry, Locks & Doors
+  // 6. Carpentry, Locks & Doors
   if (
     text.includes('lock') ||
     text.includes('mortise') ||
@@ -128,7 +175,7 @@ function getServiceCategoryMeta(categoryName = '', title = '') {
     };
   }
 
-  // 5. Cleaning & Disinfection
+  // 7. Cleaning & Disinfection
   if (text.includes('clean') || text.includes('pest') || text.includes('deep') || text.includes('disinfect')) {
     return {
       id: 'cleaning',
@@ -185,10 +232,16 @@ function getStatusTag(status = '') {
       badgeClass: 'bg-emerald-600 text-white font-bold',
     };
   }
-  if (['COMPLETED', 'WORK_COMPLETED', 'WAITING_FOR_PAYMENT'].includes(st)) {
+  if (['COMPLETED', 'WORK_COMPLETED'].includes(st)) {
     return {
       label: 'Completed',
       badgeClass: 'bg-teal-600 text-white font-bold',
+    };
+  }
+  if (['WAITING_FOR_PAYMENT', 'PAYMENT_PENDING'].includes(st)) {
+    return {
+      label: 'Payment Pending',
+      badgeClass: 'bg-amber-600 text-white font-bold',
     };
   }
   if (['CANCELLED', 'REJECTED'].includes(st)) {
@@ -339,13 +392,16 @@ export function EmployeeJobsPage() {
   // Tab counts
   const counts = useMemo(() => {
     const offers = jobs.filter((j) =>
-      ['OFFERED', 'PENDING', 'UNASSIGNED', 'DISPATCHING', 'REDISPATCHING'].includes((j.status || '').toUpperCase())
+      ['OFFERED', 'PENDING', 'UNASSIGNED', 'DISPATCHING', 'REDISPATCHING', 'WAITING_FOR_PAYMENT'].includes((j.status || '').toUpperCase())
     ).length;
     const active = jobs.filter((j) =>
       ['ASSIGNED', 'ACCEPTED', 'ON_THE_WAY', 'EN_ROUTE', 'ARRIVED', 'IN_PROGRESS', 'IN_SERVICE', 'INSPECTION', 'PROOF_SUBMITTED'].includes((j.status || '').toUpperCase())
     ).length;
     const completed = jobs.filter((j) =>
-      ['COMPLETED', 'WORK_COMPLETED', 'WAITING_FOR_PAYMENT'].includes((j.status || '').toUpperCase())
+      ['COMPLETED', 'WORK_COMPLETED'].includes((j.status || '').toUpperCase())
+    ).length;
+    const cancelled = jobs.filter((j) =>
+      ['CANCELLED', 'REJECTED'].includes((j.status || '').toUpperCase())
     ).length;
 
     return {
@@ -353,6 +409,7 @@ export function EmployeeJobsPage() {
       OFFERS: offers,
       ACTIVE: active,
       COMPLETED: completed,
+      CANCELLED: cancelled,
     };
   }, [jobs]);
 
@@ -362,14 +419,18 @@ export function EmployeeJobsPage() {
       const status = (job.status || '').toUpperCase();
       const term = searchTerm.toLowerCase().trim();
       const meta = getServiceCategoryMeta(job.service_category, job.service_title);
+      const statusTag = getStatusTag(job.status);
 
-      if (activeTab === 'OFFERS' && !['OFFERED', 'PENDING', 'UNASSIGNED', 'DISPATCHING', 'REDISPATCHING'].includes(status)) {
+      if (activeTab === 'OFFERS' && !['OFFERED', 'PENDING', 'UNASSIGNED', 'DISPATCHING', 'REDISPATCHING', 'WAITING_FOR_PAYMENT'].includes(status)) {
         return false;
       }
       if (activeTab === 'ACTIVE' && !['ASSIGNED', 'ACCEPTED', 'ON_THE_WAY', 'EN_ROUTE', 'ARRIVED', 'IN_PROGRESS', 'IN_SERVICE', 'INSPECTION', 'PROOF_SUBMITTED'].includes(status)) {
         return false;
       }
-      if (activeTab === 'COMPLETED' && !['COMPLETED', 'WORK_COMPLETED', 'WAITING_FOR_PAYMENT'].includes(status)) {
+      if (activeTab === 'COMPLETED' && !['COMPLETED', 'WORK_COMPLETED'].includes(status)) {
+        return false;
+      }
+      if (activeTab === 'CANCELLED' && !['CANCELLED', 'REJECTED'].includes(status)) {
         return false;
       }
 
@@ -380,9 +441,12 @@ export function EmployeeJobsPage() {
       if (term) {
         const matches =
           (job.service_title || job.service_category || '').toLowerCase().includes(term) ||
-          (job.customer_display_name || '').toLowerCase().includes(term) ||
+          (job.customer_display_name || job.customer_name || '').toLowerCase().includes(term) ||
           (job.address || '').toLowerCase().includes(term) ||
-          String(job.request_id || job.id).toLowerCase().includes(term);
+          (job.phone || job.customer_phone || '').toLowerCase().includes(term) ||
+          (job.payment?.payment_status || job.payment_status || '').toLowerCase().includes(term) ||
+          (statusTag?.label || '').toLowerCase().includes(term) ||
+          String(job.request_id || job.id || '').toLowerCase().includes(term);
         if (!matches) return false;
       }
 
@@ -418,7 +482,7 @@ export function EmployeeJobsPage() {
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search job or location..."
+                placeholder="Search job, client, #id, site..."
                 className="w-full pl-9 pr-8 py-2 bg-slate-100/90 border border-transparent hover:border-slate-300 focus:bg-white focus:border-slate-400 rounded-xl text-xs font-medium text-slate-900 outline-none transition-all"
               />
               {searchTerm && (
@@ -451,6 +515,7 @@ export function EmployeeJobsPage() {
             { id: 'OFFERS', label: '⚡ New Offers', count: counts.OFFERS, isOffer: true },
             { id: 'ACTIVE', label: '▶️ In Progress', count: counts.ACTIVE },
             { id: 'COMPLETED', label: '✅ Completed', count: counts.COMPLETED },
+            { id: 'CANCELLED', label: '❌ Cancelled', count: counts.CANCELLED },
           ].map((tab) => {
             const isActive = activeTab === tab.id;
             return (
@@ -487,6 +552,8 @@ export function EmployeeJobsPage() {
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
           {[
             { id: 'ALL', label: 'All Categories' },
+            { id: 'mason', label: '🧱 Masonry' },
+            { id: 'painting', label: '🎨 Painting' },
             { id: 'electrical', label: '⚡ Electrical' },
             { id: 'ac', label: '❄️ AC & Appliances' },
             { id: 'plumbing', label: '💧 Plumbing' },
@@ -544,12 +611,12 @@ export function EmployeeJobsPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {filteredJobs.map((job) => {
               const status = (job.status || '').toUpperCase();
-              const isOffer = status === 'OFFERED' || status === 'PENDING' || status === 'UNASSIGNED' || status === 'DISPATCHING' || status === 'REDISPATCHING';
+              const isOffer = status === 'OFFERED' || status === 'PENDING' || status === 'UNASSIGNED' || status === 'DISPATCHING' || status === 'REDISPATCHING' || status === 'WAITING_FOR_PAYMENT';
               const isAssigned = status === 'ASSIGNED' || status === 'ACCEPTED';
               const isOnTheWay = status === 'ON_THE_WAY' || status === 'EN_ROUTE';
               const isArrived = status === 'ARRIVED';
               const isInProgress = status === 'IN_PROGRESS' || status === 'IN_SERVICE' || status === 'INSPECTION' || status === 'PROOF_SUBMITTED';
-              const isCompleted = status === 'COMPLETED' || status === 'WORK_COMPLETED' || status === 'WAITING_FOR_PAYMENT';
+              const isCompleted = status === 'COMPLETED' || status === 'WORK_COMPLETED';
 
               const catMeta = getServiceCategoryMeta(job.service_category, job.service_title);
               const statusTag = getStatusTag(job.status);
@@ -804,102 +871,300 @@ export function EmployeeJobsPage() {
           </div>
         )}
 
-        {/* ── JOB DETAILS MODAL ── */}
-        {selectedJobForDetails && (
-          <Modal
-            isOpen={Boolean(selectedJobForDetails)}
-            onClose={() => setSelectedJobForDetails(null)}
-            title={`Booking #${selectedJobForDetails.request_id || selectedJobForDetails.id}`}
-            maxWidth="max-w-xl"
-          >
-            <div className="space-y-4 text-xs font-sans">
-              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200">
-                <div>
-                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">
-                    Service
-                  </span>
-                  <span className="font-black text-slate-900 text-sm">
-                    {selectedJobForDetails.service_title || selectedJobForDetails.service_category || 'Service Request'}
-                  </span>
-                </div>
-                <div className="text-right">
-                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">
-                    Payout Amount
-                  </span>
-                  <span className="text-base font-black text-slate-900 font-mono">
-                    ₹{Number(selectedJobForDetails.payment?.amount_due || selectedJobForDetails.total_amount || 0).toLocaleString('en-IN')}
-                  </span>
-                </div>
-              </div>
+        {/* ── COMPREHENSIVE JOB DETAILS MODAL ── */}
+        {selectedJobForDetails && (() => {
+          const category = getServiceCategoryMeta(
+            selectedJobForDetails.service_category,
+            selectedJobForDetails.service_title || selectedJobForDetails.issue_title || ''
+          );
+          const CategoryIcon = category?.icon || Wrench;
+          const statusTag = getStatusTag(selectedJobForDetails.status);
+          const rawAmount = selectedJobForDetails.payment?.amount_due ?? selectedJobForDetails.final_amount ?? selectedJobForDetails.total_amount ?? 0;
+          const isPaid = (selectedJobForDetails.payment?.payment_status || selectedJobForDetails.payment_status || '').toUpperCase() === 'PAID';
+          const rawPaymentMethod = selectedJobForDetails.payment?.payment_method || selectedJobForDetails.payment_method || 'CASH_ON_SERVICE';
+          const paymentMethodText = typeof rawPaymentMethod === 'string' ? rawPaymentMethod.replace(/_/g, ' ') : 'Cash on Service';
+          const isCancelled = ['CANCELLED', 'REJECTED'].includes((selectedJobForDetails.status || '').toUpperCase());
+          const isActive = ['ON_THE_WAY', 'EN_ROUTE', 'ARRIVED', 'IN_PROGRESS', 'IN_SERVICE', 'PROOF_SUBMITTED', 'ASSIGNED', 'ACCEPTED'].includes((selectedJobForDetails.status || '').toUpperCase());
+          const isOffer = ['OFFERED', 'PENDING', 'UNASSIGNED', 'DISPATCHING'].includes((selectedJobForDetails.status || '').toUpperCase());
 
-              {/* Customer Info */}
-              <div className="p-4 bg-white border border-slate-200 rounded-xl space-y-2">
-                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1">
-                  <User className="w-3.5 h-3.5 text-slate-500" />
-                  <span>Customer</span>
-                </span>
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-slate-900 text-sm">
-                    {selectedJobForDetails.customer_display_name || 'Customer'}
-                  </span>
-                  {(selectedJobForDetails.phone || selectedJobForDetails.customer_phone) && (
-                    <a
-                      href={`tel:${selectedJobForDetails.phone || selectedJobForDetails.customer_phone}`}
-                      className="px-3 py-1 bg-emerald-600 text-white font-bold text-xs rounded-lg inline-flex items-center gap-1.5"
+          const customerNameStr = String(selectedJobForDetails.customer_display_name || selectedJobForDetails.customer_name || 'Customer');
+          const customerInitial = (customerNameStr.trim()[0] || 'C').toUpperCase();
+
+          const formatDateStr = (val) => {
+            if (!val) return null;
+            try {
+              const d = new Date(val);
+              return isNaN(d.getTime()) ? String(val) : d.toLocaleDateString();
+            } catch (_) {
+              return String(val);
+            }
+          };
+
+          const formatTimeStr = (val) => {
+            if (!val) return null;
+            try {
+              const d = new Date(val);
+              return isNaN(d.getTime()) ? String(val) : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            } catch (_) {
+              return String(val);
+            }
+          };
+
+          return (
+            <Modal
+              isOpen={Boolean(selectedJobForDetails)}
+              onClose={() => setSelectedJobForDetails(null)}
+              title={`Booking Details #${selectedJobForDetails.request_id || selectedJobForDetails.id}`}
+              maxWidth="max-w-2xl"
+            >
+              <div className="space-y-4 text-xs font-sans max-h-[75vh] overflow-y-auto pr-1">
+                {/* ── Header Badges ── */}
+                <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-slate-900 text-white rounded-2xl">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-xl bg-white/10 flex items-center justify-center text-white shrink-0">
+                      <CategoryIcon className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">
+                        Category & Service
+                      </span>
+                      <span className="font-bold text-slate-100 text-xs">
+                        {category?.label || 'General Service'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold shadow-xs ${statusTag.badgeClass}`}>
+                      {statusTag.label}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(e) => handleCopyId(selectedJobForDetails.request_id || selectedJobForDetails.id, e)}
+                      title="Copy Reference ID"
+                      className="px-2 py-1 bg-white/15 hover:bg-white/25 text-white font-mono text-[11px] rounded-lg transition-all flex items-center gap-1 cursor-pointer"
                     >
-                      <Phone className="w-3 h-3" />
-                      <span>Call Client</span>
-                    </a>
+                      {copiedId === (selectedJobForDetails.request_id || selectedJobForDetails.id) ? (
+                        <>
+                          <Check className="w-3 h-3 text-emerald-400" />
+                          <span className="text-emerald-300 font-bold">Copied</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3 h-3" />
+                          <span>#{selectedJobForDetails.request_id || selectedJobForDetails.id}</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* ── Service & Payout Card ── */}
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/80 pb-3">
+                    <div className="space-y-0.5">
+                      <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">
+                        Service Requested
+                      </span>
+                      <h3 className="font-black text-slate-900 text-sm sm:text-base leading-tight">
+                        {selectedJobForDetails.service_title || selectedJobForDetails.issue_title || selectedJobForDetails.service_category || 'Service Request'}
+                      </h3>
+                    </div>
+                    <div className="text-left sm:text-right bg-white sm:bg-transparent p-2 sm:p-0 rounded-xl border sm:border-0 border-slate-200">
+                      <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">
+                        Estimated Payout / Total
+                      </span>
+                      <span className="text-lg font-black text-slate-900 font-mono">
+                        ₹{Number(rawAmount).toLocaleString('en-IN')}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
+                    <div className="p-2.5 bg-white rounded-xl border border-slate-200/80 space-y-0.5">
+                      <span className="text-[10px] text-slate-400 font-semibold block uppercase">Payment Status</span>
+                      <div className="flex items-center gap-1.5 font-bold">
+                        <span className={`w-2 h-2 rounded-full ${isPaid ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                        <span className={isPaid ? 'text-emerald-700' : 'text-amber-700'}>
+                          {isPaid ? 'Paid & Settled' : 'Payment Pending'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="p-2.5 bg-white rounded-xl border border-slate-200/80 space-y-0.5">
+                      <span className="text-[10px] text-slate-400 font-semibold block uppercase">Payment Mode</span>
+                      <span className="font-bold text-slate-800">
+                        {paymentMethodText}
+                      </span>
+                    </div>
+                    <div className="p-2.5 bg-white rounded-xl border border-slate-200/80 space-y-0.5 col-span-2 sm:col-span-1">
+                      <span className="text-[10px] text-slate-400 font-semibold block uppercase">Scheduled Date</span>
+                      <span className="font-bold text-slate-800">
+                        {selectedJobForDetails.preferred_date || selectedJobForDetails.scheduled_date || 'Immediate Dispatch'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── Customer Information Card ── */}
+                <div className="p-4 bg-white border border-slate-200 rounded-2xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                      <User className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>Customer & Contact</span>
+                    </span>
+                    {selectedJobForDetails.customer_code && (
+                      <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md">
+                        {selectedJobForDetails.customer_code}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-indigo-600/10 text-indigo-700 font-black text-sm flex items-center justify-center shrink-0">
+                        {customerInitial}
+                      </div>
+                      <div>
+                        <span className="font-bold text-slate-900 text-sm block">
+                          {customerNameStr}
+                        </span>
+                        {(selectedJobForDetails.phone || selectedJobForDetails.customer_phone) && (
+                          <span className="text-slate-500 font-mono text-xs">
+                            {selectedJobForDetails.phone || selectedJobForDetails.customer_phone}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    {(selectedJobForDetails.phone || selectedJobForDetails.customer_phone) && (
+                      <a
+                        href={`tel:${selectedJobForDetails.phone || selectedJobForDetails.customer_phone}`}
+                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl inline-flex items-center justify-center gap-2 shadow-xs transition-all shrink-0"
+                      >
+                        <Phone className="w-3.5 h-3.5" />
+                        <span>Call Customer</span>
+                      </a>
+                    )}
+                  </div>
+                </div>
+
+                {/* ── Location & Site Address Card ── */}
+                <div className="p-4 bg-white border border-slate-200 rounded-2xl space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                      <MapPin className="w-3.5 h-3.5 text-rose-500" />
+                      <span>Service Site Location</span>
+                    </span>
+                    {selectedJobForDetails.distance_km && (
+                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                        {Number(selectedJobForDetails.distance_km).toFixed(1)} km away
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-slate-800 font-medium text-xs sm:text-sm leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-100">
+                    {selectedJobForDetails.address || 'Address provided upon dispatch.'}
+                  </p>
+                  {selectedJobForDetails.address && (
+                    <div className="pt-1 flex items-center gap-3">
+                      <a
+                        href={`https://maps.google.com/?q=${encodeURIComponent(selectedJobForDetails.address)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 rounded-xl font-bold text-xs transition-all"
+                      >
+                        <Navigation className="w-3.5 h-3.5 text-sky-600" />
+                        <span>Open in Google Maps</span>
+                        <ExternalLink className="w-3 h-3 text-sky-400" />
+                      </a>
+                    </div>
+                  )}
+                </div>
+
+                {/* ── Problem Description / Notes ── */}
+                {(selectedJobForDetails.description || selectedJobForDetails.issue_title) && (
+                  <div className="p-4 bg-white border border-slate-200 rounded-2xl space-y-2">
+                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                      <Info className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Issue Details & Scope</span>
+                    </span>
+                    <p className="text-slate-700 leading-relaxed text-xs bg-slate-50 p-3 rounded-xl border border-slate-100 font-normal whitespace-pre-line">
+                      {selectedJobForDetails.description || selectedJobForDetails.issue_title}
+                    </p>
+                  </div>
+                )}
+
+                {/* ── Cancellation Notice (if cancelled) ── */}
+                {isCancelled && (
+                  <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl text-rose-900 space-y-1.5">
+                    <div className="flex items-center gap-1.5 font-bold text-rose-800">
+                      <AlertCircle className="w-4 h-4 text-rose-600" />
+                      <span>Job Cancellation Details</span>
+                    </div>
+                    {selectedJobForDetails.cancellation_reason && (
+                      <p className="text-xs font-semibold">
+                        Reason: <span className="font-normal">{selectedJobForDetails.cancellation_reason}</span>
+                      </p>
+                    )}
+                    {selectedJobForDetails.cancellation_note && (
+                      <p className="text-xs text-rose-700 bg-white/60 p-2 rounded-lg border border-rose-100">
+                        {selectedJobForDetails.cancellation_note}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* ── Timestamps Summary ── */}
+                {(selectedJobForDetails.created_at || selectedJobForDetails.started_at || selectedJobForDetails.completed_at) && (
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex flex-wrap items-center justify-between gap-2 text-[10px] text-slate-500 font-mono">
+                    {selectedJobForDetails.created_at && (
+                      <span>Created: {formatDateStr(selectedJobForDetails.created_at)}</span>
+                    )}
+                    {selectedJobForDetails.started_at && (
+                      <span>Started: {formatTimeStr(selectedJobForDetails.started_at)}</span>
+                    )}
+                    {selectedJobForDetails.completed_at && (
+                      <span>Completed: {formatTimeStr(selectedJobForDetails.completed_at)}</span>
+                    )}
+                  </div>
+                )}
+
+                {/* ── Modal Footer Controls ── */}
+                <div className="pt-3 border-t border-slate-200 flex flex-wrap items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedJobForDetails(null)}
+                    className="px-4 py-2 border border-slate-300 text-slate-700 font-bold rounded-xl hover:bg-slate-50 transition-all cursor-pointer"
+                  >
+                    Close
+                  </button>
+
+                  {isOffer && (
+                    <button
+                      type="button"
+                      onClick={(e) => handleAcceptOffer(selectedJobForDetails.id, e)}
+                      disabled={actionLoadingId === selectedJobForDetails.id}
+                      className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-xs"
+                    >
+                      <Zap className="w-4 h-4 fill-current" />
+                      <span>Accept Job</span>
+                    </button>
+                  )}
+
+                  {isActive && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedJobForDetails(null);
+                        navigate(`/workforce/employee/dashboard?job_id=${selectedJobForDetails.id}&nav=1`);
+                      }}
+                      className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-xs"
+                    >
+                      <Navigation className="w-4 h-4 text-emerald-400" />
+                      <span>Open Live Cockpit</span>
+                    </button>
                   )}
                 </div>
               </div>
-
-              {/* Address */}
-              <div className="p-4 bg-white border border-slate-200 rounded-xl space-y-2">
-                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1">
-                  <MapPin className="w-3.5 h-3.5 text-rose-500" />
-                  <span>Location</span>
-                </span>
-                <p className="text-slate-800 font-medium leading-relaxed">
-                  {selectedJobForDetails.address || 'Address provided upon dispatch.'}
-                </p>
-                {selectedJobForDetails.address && (
-                  <a
-                    href={`https://maps.google.com/?q=${encodeURIComponent(selectedJobForDetails.address)}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-sky-700 font-bold hover:underline pt-1"
-                  >
-                    <Navigation className="w-3.5 h-3.5" />
-                    <span>Open in Google Maps</span>
-                  </a>
-                )}
-              </div>
-
-              {/* Modal Footer */}
-              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setSelectedJobForDetails(null)}
-                  className="px-4 py-2 border border-slate-300 text-slate-700 font-bold rounded-xl hover:bg-slate-50 transition-all cursor-pointer"
-                >
-                  Close
-                </button>
-                {(selectedJobForDetails.status === 'OFFERED' || selectedJobForDetails.status === 'PENDING' || selectedJobForDetails.status === 'UNASSIGNED') && (
-                  <button
-                    type="button"
-                    onClick={(e) => handleAcceptOffer(selectedJobForDetails.id, e)}
-                    disabled={actionLoadingId === selectedJobForDetails.id}
-                    className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
-                  >
-                    <Zap className="w-4 h-4 fill-current" />
-                    <span>Accept Job</span>
-                  </button>
-                )}
-              </div>
-            </div>
-          </Modal>
-        )}
+            </Modal>
+          );
+        })()}
 
         {/* ── START OTP VERIFICATION MODAL ── */}
         {otpModalJob && (
