@@ -1530,3 +1530,38 @@ export const workforceService = {
   getPublicStoreDetail: apiGetPublicStoreDetail,
 };
 
+// ── Invoices & Customer Billing ──────────────────────────────────────────────
+
+export async function apiGetInvoices(params = {}) {
+  const query = new URLSearchParams();
+  if (params.status) query.append('status', params.status);
+  if (params.job_id) query.append('job_id', params.job_id);
+  if (params.quote_id) query.append('quote_id', params.quote_id);
+  if (params.search) query.append('search', params.search);
+  const qStr = query.toString() ? `?${query.toString()}` : '';
+  return await apiRequest(`/workforce/invoices/${qStr}`);
+}
+
+export async function apiGetInvoiceDetail(invoiceId) {
+  return await apiRequest(`/workforce/invoices/${invoiceId}/`);
+}
+
+/**
+ * Record a customer payment. `reference` makes this idempotent: replaying a
+ * gateway callback with the same reference returns the original payment rather
+ * than charging again.
+ */
+export async function apiRecordInvoicePayment(invoiceId, { amount, method = 'ONLINE', reference = '', gateway = '', notes = '' }) {
+  return await apiRequest(`/workforce/invoices/${invoiceId}/payments/`, {
+    method: 'POST',
+    json: { amount, method, reference, gateway, notes },
+  });
+}
+
+export async function apiCancelInvoice(invoiceId, reason = '') {
+  return await apiRequest(`/workforce/invoices/${invoiceId}/cancel/`, {
+    method: 'POST',
+    json: { reason },
+  });
+}
+
