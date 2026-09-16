@@ -1125,6 +1125,26 @@ def _dispatch_job_locked(job_id, max_gps_age_seconds, exclude_employee_ids):
             return False, f"Job #{job_id} is already accepted and in progress with Employee #{job_obj.assigned_employee_id}."
 
         now = timezone.now()
+        today = timezone.localdate()
+
+        # Hard Safety Gate: Refuse past-dated bookings
+        if job_obj.preferred_date and job_obj.preferred_date < today:
+            logger.warning(
+                f"[DISPATCH_SCHEDULE_EXPIRED] Job #{job_id} scheduled date {job_obj.preferred_date} is in the past. "
+                f"Today is {today}. Refusing dispatch."
+            )
+            return False, "SCHEDULE_DATE_EXPIRED"
+
+        if not job_obj.preferred_date:
+            created_dt = getattr(job_obj, "created_at", None)
+            if created_dt:
+                created_date = timezone.localtime(created_dt).date()
+                if created_date < today:
+                    logger.warning(
+                        f"[DISPATCH_SCHEDULE_EXPIRED] Immediate Job #{job_id} created on {created_date} is stale. "
+                        f"Today is {today}. Refusing dispatch."
+                    )
+                    return False, "SCHEDULE_DATE_EXPIRED"
 
         # Gate: Scheduled Job Hold (Safety Gate against premature dispatch)
         is_future, scheduled_dt, window_open = get_scheduled_dispatch_window(job_obj, now=now)
@@ -1360,7 +1380,18 @@ def _dispatch_job_locked(job_id, max_gps_age_seconds, exclude_employee_ids):
         WorkforceEventLog.objects.create(
             user=top_emp.user,
             event_type="OFFER_CREATED",
-            payload={"job_id": job_obj.id, "offer_id": offer.id, "employee_id": top_emp.id, "distance_km": round(top_dist_km, 2)}
+            payload={
+                "id": job_obj.id,
+                "job_id": job_obj.id,
+                "request_id": job_obj.request_id or f"#{job_obj.id}",
+                "offer_id": offer.id,
+                "employee_id": top_emp.id,
+                "service_title": job_obj.issue_title or job_obj.service_category or "Service Request",
+                "service_category": job_obj.service_category or "",
+                "distance_km": round(top_dist_km, 2),
+                "address": job_obj.address or "",
+                "expires_at": expires_at.isoformat(),
+            }
         )
 
         loc_str = f" at {job_obj.address}" if job_obj.address else ""
@@ -1400,10 +1431,14 @@ def expire_and_reassign_offers() -> int:
     Returns the count of expired offers handled.
     """
     now = timezone.now()
+    today = timezone.localdate()
     expired_offers = list(
         WorkforceJobOffer.objects.filter(
             status=WorkforceJobOffer.Status.OFFERED,
-            expires_at__lte=now,
+        ).filter(
+            Q(expires_at__lte=now) |
+            Q(job__preferred_date__lt=today) |
+            Q(job__preferred_date__isnull=True, job__created_at__date__lt=today)
         ).select_related("job")
     )
 
@@ -1416,10 +1451,24 @@ def expire_and_reassign_offers() -> int:
             off_locked.status = WorkforceJobOffer.Status.EXPIRED
             off_locked.save(update_fields=["status"])
             count += 1
-            logger.info(f"[DISPATCH_OFFER_EXPIRED] Offer #{offer.id} for Job #{offer.job_id} expired. Triggering fallback dispatch.")
+            logger.info(f"[DISPATCH_OFFER_EXPIRED] Offer #{offer.id} for Job #{offer.job_id} marked EXPIRED.")
 
-        # Re-dispatch job outside the offer lock transaction
-        dispatch_next_candidate(offer.job_id)
+        # Check if job is past-dated
+        job = offer.job
+        is_past_dated = False
+        if job:
+            if job.preferred_date and job.preferred_date < today:
+                is_past_dated = True
+            elif not job.preferred_date and getattr(job, "created_at", None):
+                if timezone.localtime(job.created_at).date() < today:
+                    is_past_dated = True
+
+        # Re-dispatch current-day jobs ONLY; NEVER re-dispatch past-dated jobs
+        if not is_past_dated:
+            logger.info(f"[DISPATCH_REDISPATCH] Triggering fallback dispatch for current-day Job #{offer.job_id}.")
+            dispatch_next_candidate(offer.job_id)
+        else:
+            logger.info(f"[DISPATCH_EXPIRED_NO_REDISPATCH] Job #{offer.job_id} scheduled date is in the past; skipping fallback dispatch.")
 
     return count
 
@@ -1436,11 +1485,15 @@ def dispatch_pending_jobs(company_id=None, limit: int = 50) -> Dict[str, Any]:
     expired_count = expire_and_reassign_offers()
 
     now = timezone.now()
+    today = timezone.localdate()
     qs = ServiceRequest.objects.filter(
         status__in=DISPATCHABLE_STATUSES,
         assigned_employee__isnull=True,
         latitude__isnull=False,
         longitude__isnull=False,
+    ).filter(
+        Q(preferred_date=today) |
+        Q(preferred_date__isnull=True, created_at__date=today)
     )
     if company_id:
         qs = qs.filter(company_id=company_id)
@@ -1490,6 +1543,7 @@ def reconsider_jobs_for_employee(employee_or_id) -> int:
         return 0
 
     now = timezone.now()
+    today = timezone.localdate()
     if emp.company_id and emp.company_id > 1:
         company_filter = Q(company_id=emp.company_id)
     else:
@@ -1501,6 +1555,9 @@ def reconsider_jobs_for_employee(employee_or_id) -> int:
         assigned_employee__isnull=True,
         latitude__isnull=False,
         longitude__isnull=False,
+    ).filter(
+        Q(preferred_date=today) |
+        Q(preferred_date__isnull=True, created_at__date=today)
     ).exclude(
         job_offers__status=WorkforceJobOffer.Status.OFFERED,
         job_offers__expires_at__gt=now,

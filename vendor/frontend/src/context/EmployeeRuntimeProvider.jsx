@@ -29,7 +29,7 @@ import { useLocationTracker, getGPSPosition } from '../hooks/useGPSPosition.js';
 import { useRealtimeStream } from '../hooks/useRealtimeStream.js';
 
 export function EmployeeRuntimeProvider({ children }) {
-  const { user, isEmployee, registrationStatus, togglePresence: authTogglePresence, logout, isAuthenticated, refreshProfile } = useAuth();
+  const { user, employee, isEmployee, registrationStatus, togglePresence: authTogglePresence, logout, isAuthenticated, refreshProfile } = useAuth();
 
   const isApprovedEmployee = Boolean(user && isEmployee && registrationStatus === 'approved');
   const isOnlineAuth = Boolean(user?.isOnline);
@@ -106,43 +106,49 @@ const CACHED_COMPLETED_JOBS_KEY = 'calservice_workforce_cached_completed_jobs';
     selectedJobRef.current = selectedJob;
   }, [selectedJob]);
 
-  // Derived active workload state
+  // Derived active workload state: ONLY genuinely assigned jobs in an active status, NOT offers
   const activeAssignedJob = useMemo(() => {
     return (
       activeJobs.find((j) => {
         const st = (j.status || j.job_status || '').toLowerCase();
-        const isAssigned = Boolean(
-          j.is_assigned_to_current_employee ||
-          j.assigned_employee === user?.id ||
-          j.assigned_employee?.id === user?.id ||
-          j.assigned_employee_id === user?.id ||
-          !j.is_offer
+        const isAssignedToMe = Boolean(
+          j.is_assigned_to_current_employee === true ||
+          (employee?.id && (
+            j.assigned_employee_id === employee.id ||
+            j.assigned_employee?.id === employee.id ||
+            j.assigned_employee === employee.id
+          ))
         );
-        return isAssigned && ACTIVE_QUEUE_STATUSES.includes(st);
+        const isAnOffer = Boolean(j.is_offer === true || j.active_offer?.status === 'OFFERED');
+        return isAssignedToMe && !isAnOffer && ACTIVE_QUEUE_STATUSES.includes(st);
       }) || null
     );
-  }, [activeJobs, user?.id]);
+  }, [activeJobs, employee?.id]);
 
   const hasActiveJob = useMemo(() => {
     return Boolean(activeAssignedJob);
   }, [activeAssignedJob]);
 
-  const incomingOffer = useMemo(() => {
-    return (
-      activeJobs.find(
-        (j) =>
-          (j.is_offer === true || j.active_offer?.status === 'OFFERED') &&
-          !j.active_offer?.is_expired &&
-          !j.is_assigned_to_current_employee
-      ) || null
+  const incomingOffers = useMemo(() => {
+    return activeJobs.filter(
+      (j) =>
+        (j.is_offer === true || j.active_offer?.status === 'OFFERED') &&
+        !j.active_offer?.is_expired &&
+        !j.is_assigned_to_current_employee
     );
   }, [activeJobs]);
+
+  const incomingOffer = useMemo(() => {
+    return incomingOffers[0] || null;
+  }, [incomingOffers]);
 
   // ── 3. Notification Deduplication ──────────────────────────────────────────
   const knownOfferIdsRef = useRef(new Set());
   const isInitialOffersLoadedRef = useRef(false);
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
+
+  const [jobsRevision, setJobsRevision] = useState(0);
 
   // Request browser notification permission once when online
   useEffect(() => {
@@ -153,7 +159,7 @@ const CACHED_COMPLETED_JOBS_KEY = 'calservice_workforce_cached_completed_jobs';
 
   const triggerOfferBrowserNotification = useCallback((offeredJob) => {
     if (!offeredJob) return;
-    const offerId = offeredJob.active_offer?.id || offeredJob.offer_id || `job_${offeredJob.id}`;
+    const offerId = offeredJob.active_offer?.id || offeredJob.offer_id || `job_${offeredJob.id || offeredJob.job_id}`;
 
     // Deduplication check: only notify if this offer ID has never been notified
     if (knownOfferIdsRef.current.has(offerId)) {
@@ -164,14 +170,24 @@ const CACHED_COMPLETED_JOBS_KEY = 'calservice_workforce_cached_completed_jobs';
     if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
       try {
         const title = '⚡ New Exclusive Job Offer!';
-        const body = `Job #${offeredJob.request_id || offeredJob.id}: ${
-          offeredJob.service_title || offeredJob.service_category || 'Service Request'
-        }. Tap to review and accept.`;
-        new Notification(title, {
+        const reqIdentifier =
+          offeredJob.request_id ||
+          (offeredJob.job_id ? `${offeredJob.job_id}` : (offeredJob.id ? `${offeredJob.id}` : ''));
+        const prefix = reqIdentifier ? `Job #${reqIdentifier}` : 'Job Offer';
+        const serviceLabel =
+          offeredJob.service_title || offeredJob.service_category || 'Service Request';
+        const body = `${prefix}: ${serviceLabel}. Tap to review and accept.`;
+        const notif = new Notification(title, {
           body,
           icon: '/favicon.ico',
           tag: `offer_${offerId}`, // Browser-level tag deduplication
         });
+        notif.onclick = () => {
+          try {
+            window.focus?.();
+            window.location.href = '/workforce/employee/jobs?tab=offers';
+          } catch (_) {}
+        };
       } catch (_) {}
     }
   }, []);
@@ -237,11 +253,25 @@ const CACHED_COMPLETED_JOBS_KEY = 'calservice_workforce_cached_completed_jobs';
             // Smart reconciliation of selectedJob without resetting selection
             setSelectedJob((prev) => {
               if (!prev) {
+                // If there is an active assigned job, prefer selecting that
+                const active = jobsData.find((j) => {
+                  const st = (j.status || j.job_status || '').toLowerCase();
+                  const isAssignedToMe = Boolean(
+                    j.is_assigned_to_current_employee === true ||
+                    (employee?.id && (
+                      j.assigned_employee_id === employee.id ||
+                      j.assigned_employee?.id === employee.id ||
+                      j.assigned_employee === employee.id
+                    ))
+                  );
+                  const isAnOffer = Boolean(j.is_offer === true || j.active_offer?.status === 'OFFERED');
+                  return isAssignedToMe && !isAnOffer && ACTIVE_QUEUE_STATUSES.includes(st);
+                });
+                if (active) return active;
+                // If there is an active incoming offer, select that
                 if (currentOffer) return currentOffer;
-                const active = jobsData.find((j) =>
-                  ACTIVE_QUEUE_STATUSES.includes((j.status || j.job_status || '').toLowerCase())
-                );
-                return active || jobsData[0] || null;
+                // Otherwise null — never arbitrarily select unassigned jobs as active
+                return null;
               }
               const updated = jobsData.find((j) => j.id === prev.id);
               return updated || prev;
@@ -463,9 +493,10 @@ const CACHED_COMPLETED_JOBS_KEY = 'calservice_workforce_cached_completed_jobs';
 
       if (type === 'OFFER_CREATED' || type === 'JOB_OFFER') {
         const payload = eventData.payload || {};
-        if (payload.offer_id || payload.id) {
+        if (payload.offer_id || payload.id || payload.job_id) {
           triggerOfferBrowserNotification(payload);
         }
+        setJobsRevision((prev) => prev + 1);
         scheduleCoalescedRefresh(150);
       } else if (
         [
@@ -476,8 +507,10 @@ const CACHED_COMPLETED_JOBS_KEY = 'calservice_workforce_cached_completed_jobs';
           'STATUS_CHANGE',
           'EXTENSION_DECIDED',
           'PAYMENT_COLLECTED',
+          'JOB_OFFER_CLOSED',
         ].includes(type)
       ) {
+        setJobsRevision((prev) => prev + 1);
         scheduleCoalescedRefresh(300);
         // A job ending flips the technician's availability back to available
         // server-side, but that flag lives on the auth profile, which a jobs
@@ -494,6 +527,7 @@ const CACHED_COMPLETED_JOBS_KEY = 'calservice_workforce_cached_completed_jobs';
   );
 
   const handleRealtimeReconcile = useCallback(() => {
+    setJobsRevision((prev) => prev + 1);
     scheduleCoalescedRefresh(100);
     syncNotifications();
   }, [scheduleCoalescedRefresh, syncNotifications]);
@@ -596,6 +630,7 @@ const CACHED_COMPLETED_JOBS_KEY = 'calservice_workforce_cached_completed_jobs';
       selectedJob,
       setSelectedJob,
       incomingOffer,
+      incomingOffers,
       activeAssignedJob,
       hasActiveJob,
       isJobsLoading,
@@ -628,12 +663,14 @@ const CACHED_COMPLETED_JOBS_KEY = 'calservice_workforce_cached_completed_jobs';
 
       // Realtime State
       realtimeConnectionState,
+      jobsRevision,
     }),
     [
       activeJobs,
       completedJobs,
       selectedJob,
       incomingOffer,
+      incomingOffers,
       activeAssignedJob,
       hasActiveJob,
       isJobsLoading,
@@ -657,6 +694,7 @@ const CACHED_COMPLETED_JOBS_KEY = 'calservice_workforce_cached_completed_jobs';
       markNotificationAsRead,
       clearAllNotifications,
       realtimeConnectionState,
+      jobsRevision,
     ]
   );
 
