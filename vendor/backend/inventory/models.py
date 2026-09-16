@@ -26,7 +26,7 @@ class InventoryItem(models.Model):
         PART = 'part', 'Spare Part'
         MATERIAL = 'material', 'Raw Material'
 
-    org = models.ForeignKey("companies.Company", on_delete=models.CASCADE, related_name='inventory_items', db_column="org_id")
+    org = models.ForeignKey("companies.Company", on_delete=models.CASCADE, related_name='mirror_inventory_items', db_column="org_id")
     name = models.CharField(max_length=255)
     category = models.CharField(max_length=50, choices=Category.choices)
     sku = models.CharField(max_length=100, blank=True)
