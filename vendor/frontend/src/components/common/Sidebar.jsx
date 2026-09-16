@@ -34,6 +34,7 @@ import {
   Crown,
   UserCheck,
   Wind,
+  Carrot,
 } from 'lucide-react';
 
 export function Sidebar({ onCloseMobile = () => {} }) {
@@ -182,6 +183,7 @@ export function Sidebar({ onCloseMobile = () => {} }) {
                 {renderNavLink('/workforce/admin/dispatch', Send, 'Dispatch Radar')}
                 {renderNavLink('/workforce/admin/skills', Award, 'Skills Master')}
                 {renderNavLink('/workforce/admin/pricing', Calculator, 'Pricing & Approvals')}
+                {renderNavLink('/workforce/admin/stock', Carrot, 'Stock Management')}
                 {renderNavLink('/workforce/admin/scorecards', Award, 'Scorecards')}
                 {renderNavLink('/workforce/admin/social-security', Landmark, 'Social Security')}
               </div>

@@ -888,8 +888,9 @@ class WorkforceOnboardingMeView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
+        from workforce_api.services.registration import get_or_create_employee_profile
         user = request.user
-        emp = getattr(user, "employee_profile", None)
+        emp = get_or_create_employee_profile(user)
         if not emp:
             return Response({"error": "No employee profile found for user."}, status=status.HTTP_404_NOT_FOUND)
 
@@ -902,11 +903,12 @@ class WorkforceOnboardingMeView(APIView):
 
 
 class WorkforceOnboardingDraftView(APIView):
-    permission_classes = [IsWorkforceEmployee]
+    permission_classes = [permissions.IsAuthenticated]
 
     def patch(self, request):
+        from workforce_api.services.registration import get_or_create_employee_profile
         user = request.user
-        emp = getattr(user, "employee_profile", None)
+        emp = get_or_create_employee_profile(user)
         if not emp:
             return Response({"error": "Employee record not found."}, status=status.HTTP_404_NOT_FOUND)
 
@@ -2210,10 +2212,11 @@ class WorkforceJobListView(APIView):
             ).values("service_request_id")
 
             # Canonical query definitions using subqueries to avoid extra roundtrips
+            # NOTE: technician_id is a CharField snapshot on ServiceRequest — it cannot
+            # be used as a Django ORM lookup field. Use the assigned_employee FK instead.
             assigned_active_qs = Q(
-                status__in=ACTIVE_QUEUE_STATUSES
-            ) & (
-                Q(assigned_employee=emp) | Q(technician_id=user.id)
+                status__in=ACTIVE_QUEUE_STATUSES,
+                assigned_employee=emp,
             )
             completed_qs = Q(
                 assigned_employee=emp,
@@ -2256,6 +2259,8 @@ class WorkforceJobListView(APIView):
             extensions_map = {}
             active_extensions_map = {}
             payments_map = {}
+            quotes_map = {}
+            psvs_map = {}
 
             if job_ids:
                 # 1. Bulk fetch employee job offers
