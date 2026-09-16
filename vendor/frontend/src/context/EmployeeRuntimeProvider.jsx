@@ -378,6 +378,20 @@ const CACHED_COMPLETED_JOBS_KEY = 'calservice_workforce_cached_completed_jobs';
     }
   }, [isAuthenticated, isApprovedEmployee, refreshActiveJobs, syncNotifications]);
 
+  // ── SSE Fallback: 30-second background safety-net polling ─────────────────
+  // Guarantees job offers appear within ≤30s even when SSE is disconnected
+  // (mobile network drops, reconnecting). Silent refresh = no loading spinner.
+  // Only active when the employee is online and approved.
+  useEffect(() => {
+    if (!isAuthenticated || !isApprovedEmployee || !isOnline) return;
+    const POLL_INTERVAL_MS = 30_000;
+    const id = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      refreshActiveJobs({ silent: true });
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [isAuthenticated, isApprovedEmployee, isOnline, refreshActiveJobs]);
+
   // ── 7. Single Authoritative Live GPS Watcher (Correction 1 & 3) ────────────
   const [liveLocation, setLiveLocation] = useState(() => {
     const loc = user?.last_known_location;
