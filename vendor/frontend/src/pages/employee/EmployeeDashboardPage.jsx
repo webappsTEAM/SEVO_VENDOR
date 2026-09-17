@@ -176,9 +176,26 @@ export function EmployeeDashboardPage() {
   const pathname = location.pathname;
   const hash = location.hash;
 
+  const CACHED_PROFILE_KEY = 'calservice_workforce_cached_profile';
+  const CACHED_TIMETRACKING_KEY = 'calservice_workforce_cached_timetracking';
+
   const [jobQueueTab, setJobQueueTab] = useState('active'); // 'active' | 'completed' | 'all'
-  const [profile, setProfile] = useState(null);
-  const [timeTracking, setTimeTracking] = useState(null);
+  const [profile, setProfile] = useState(() => {
+    try {
+      const saved = localStorage.getItem(CACHED_PROFILE_KEY);
+      return saved ? JSON.parse(saved) : (employee || null);
+    } catch {
+      return employee || null;
+    }
+  });
+  const [timeTracking, setTimeTracking] = useState(() => {
+    try {
+      const saved = localStorage.getItem(CACHED_TIMETRACKING_KEY);
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
   const [skills, setSkills] = useState([]);
   const [selectedServiceIds, setSelectedServiceIds] = useState([]);
 
@@ -235,7 +252,13 @@ export function EmployeeDashboardPage() {
   );
   const [gpsErrorState, setGpsErrorState] = useState(null);
 
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => {
+    try {
+      return !(localStorage.getItem(CACHED_PROFILE_KEY) || employee);
+    } catch {
+      return true;
+    }
+  });
   const [actionLoading, setActionLoading] = useState(null);
   const [isTogglingOnline, setIsTogglingOnline] = useState(false);
   const [error, setError] = useState('');
@@ -459,7 +482,7 @@ export function EmployeeDashboardPage() {
   ]);
 
   const handleVerifyOtpSubmit = async (jobOverride = null) => {
-    const targetJob = jobOverride || activeAssignedJob || selectedJob;
+    const targetJob = jobOverride || activeAssignedJob;
     if (!targetJob || !otpInput.trim()) return;
     try {
       setActionLoading(targetJob.id);
@@ -482,7 +505,7 @@ export function EmployeeDashboardPage() {
   };
 
   const handleResendOtp = async (jobOverride = null) => {
-    const targetJob = jobOverride || activeAssignedJob || selectedJob;
+    const targetJob = jobOverride || activeAssignedJob;
     if (!targetJob) return;
     try {
       setActionLoading(targetJob.id);
@@ -497,7 +520,7 @@ export function EmployeeDashboardPage() {
   };
 
   const handlePhotoUploadSubmit = async (photoType, file, jobOverride = null) => {
-    const targetJob = jobOverride || activeAssignedJob || selectedJob;
+    const targetJob = jobOverride || activeAssignedJob;
     if (!targetJob || !file) return;
     try {
       setActionLoading(targetJob.id);
@@ -530,7 +553,7 @@ export function EmployeeDashboardPage() {
 
   const isClockingInRef = useRef(false);
   const handleDirectJobClockIn = async (jobOverride = null) => {
-    const jobToClockIn = jobOverride || activeAssignedJob || selectedJob;
+    const jobToClockIn = jobOverride || activeAssignedJob;
     if (!jobToClockIn || isClockingInRef.current) return;
     isClockingInRef.current = true;
     setActionLoading(jobToClockIn.id);
@@ -631,7 +654,7 @@ export function EmployeeDashboardPage() {
   };
 
   const handleManualVerifyArrival = async (jobOverride = null) => {
-    const targetJob = jobOverride || activeAssignedJob || selectedJob;
+    const targetJob = jobOverride || activeAssignedJob;
     if (!targetJob?.id) return;
     try {
       setActionLoading(targetJob.id);
@@ -708,7 +731,8 @@ export function EmployeeDashboardPage() {
   const [serviceActionLoading, setServiceActionLoading] = useState(null);
 
   const loadDashboard = useCallback(async (options = {}) => {
-    const isSilent = options?.silent === true;
+    const hasCachedData = Boolean(localStorage.getItem(CACHED_PROFILE_KEY) || employee);
+    const isSilent = options?.silent === true || hasCachedData;
     try {
       if (!isSilent) setIsLoading(true);
       const [timeData, profileData] = await Promise.all([
@@ -716,13 +740,19 @@ export function EmployeeDashboardPage() {
         apiGetOnboardingProfile().catch(() => null),
         refreshActiveJobs(options),
       ]);
-      if (profileData) setProfile(profileData);
-      if (timeData) setTimeTracking(timeData);
+      if (profileData) {
+        setProfile(profileData);
+        try { localStorage.setItem(CACHED_PROFILE_KEY, JSON.stringify(profileData)); } catch (_) {}
+      }
+      if (timeData) {
+        setTimeTracking(timeData);
+        try { localStorage.setItem(CACHED_TIMETRACKING_KEY, JSON.stringify(timeData)); } catch (_) {}
+      }
     } catch (_) {
     } finally {
-      if (!isSilent) setIsLoading(false);
+      setIsLoading(false);
     }
-  }, [refreshActiveJobs]);
+  }, [refreshActiveJobs, employee]);
 
   // Initial dashboard load on mount
   useEffect(() => {
@@ -897,7 +927,7 @@ export function EmployeeDashboardPage() {
 
     const handleProofSubmit = async (e) => {
       e.preventDefault();
-      const candidateJob = proofModalJob || activeAssignedJob || selectedJob;
+      const candidateJob = proofModalJob || activeAssignedJob;
       if (!candidateJob) return;
 
       const targetJob = (activeJobs && activeJobs.find(j => j.id === candidateJob.id)) || candidateJob;
@@ -959,7 +989,7 @@ export function EmployeeDashboardPage() {
     };
 
     const handleDirectCashCollect = async (jobToCollect, customAmount = null) => {
-      const candidateJob = jobToCollect || cashModalJob || activeAssignedJob || selectedJob;
+      const candidateJob = jobToCollect || cashModalJob || activeAssignedJob;
       if (!candidateJob) return;
 
       const targetJob = (activeJobs && activeJobs.find(j => j.id === candidateJob.id)) || candidateJob;
@@ -1088,8 +1118,23 @@ export function EmployeeDashboardPage() {
     };
 
     const handleOpenCancelModal = (job) => {
+      const target = job || activeAssignedJob;
+      if (!target) return;
+      const isAssigned = Boolean(
+        target.is_assigned_to_current_employee === true ||
+        target.is_accepted_by_current_employee === true ||
+        (employee?.id && (
+          target.assigned_employee_id === employee.id ||
+          target.assigned_employee?.id === employee.id ||
+          target.assigned_employee === employee.id
+        ))
+      );
+      if (!isAssigned) {
+        setError('You cannot cancel a job that is not assigned to you.');
+        return;
+      }
       setError('');
-      setCancelModalJob(job || selectedJob);
+      setCancelModalJob(target);
       setSelectedCancelReason('VEHICLE_ISSUE');
       setCustomCancelReason('');
     };
@@ -1097,6 +1142,19 @@ export function EmployeeDashboardPage() {
     const handleConfirmCancelAssignment = async (e) => {
       if (e) e.preventDefault();
       if (!cancelModalJob) return;
+      const isAssigned = Boolean(
+        cancelModalJob.is_assigned_to_current_employee === true ||
+        cancelModalJob.is_accepted_by_current_employee === true ||
+        (employee?.id && (
+          cancelModalJob.assigned_employee_id === employee.id ||
+          cancelModalJob.assigned_employee?.id === employee.id ||
+          cancelModalJob.assigned_employee === employee.id
+        ))
+      );
+      if (!isAssigned) {
+        setError('Unauthorized: You are not assigned to this job.');
+        return;
+      }
       const cancellingId = cancelModalJob.id;
 
       if (selectedCancelReason === 'OTHER' && !customCancelReason.trim()) {
@@ -1125,12 +1183,15 @@ export function EmployeeDashboardPage() {
         await loadDashboard({ force: true });
         setTimeout(() => setSuccessMsg(''), 4000);
       } catch (err) {
-        if (err.code === 'CANCELLATION_LOCKED_AFTER_OTP' || err.status === 409) {
-          setError('Cancellation is locked once Customer OTP is verified.');
-        } else if (err.code === 'CANCELLATION_NOT_ALLOWED_IN_CURRENT_STATE') {
-          setError('Cancellation is not allowed in the current state.');
+        const errorCode = err.code || err.data?.code || (err.response && err.response.data && err.response.data.code);
+        if (errorCode === 'CANCELLATION_LOCKED_AFTER_OTP') {
+          setError('Cancellation is locked because customer OTP has been verified.');
+        } else if (errorCode === 'CANCELLATION_WINDOW_EXPIRED') {
+          setError('The 5-minute cancellation window for this job has expired. Please contact dispatch support.');
+        } else if (errorCode === 'CANCELLATION_NOT_ALLOWED_IN_CURRENT_STATE') {
+          setError('Cancellation is not permitted in the current job state.');
         } else {
-          setError(err.message || 'Failed to cancel job assignment.');
+          setError(err.message || err.error || 'Failed to cancel job assignment.');
         }
       } finally {
         setIsCancellingJob(false);
@@ -1248,8 +1309,8 @@ export function EmployeeDashboardPage() {
             completedJobs={completedJobs}
             allJobs={allJobs}
             incomingOffers={incomingOffers}
-            activeAssignedJob={activeAssignedJob || selectedJob}
-            hasActiveJob={hasActiveJob || Boolean(selectedJob)}
+            activeAssignedJob={activeAssignedJob}
+            hasActiveJob={hasActiveJob}
             liveLocation={liveLocation}
             locationError={locationError}
             actionLoading={actionLoading}
@@ -1259,8 +1320,8 @@ export function EmployeeDashboardPage() {
             handleManualVerifyArrival={handleManualVerifyArrival}
             handleDirectJobClockIn={handleDirectJobClockIn}
             onOpenCancelModal={handleOpenCancelModal}
-            onOpenProofModal={(j) => setProofModalJob(j || activeAssignedJob || selectedJob)}
-            onOpenCashModal={(j) => setCashModalJob(j || activeAssignedJob || selectedJob)}
+            onOpenProofModal={(j) => setProofModalJob(j || activeAssignedJob)}
+            onOpenCashModal={(j) => setCashModalJob(j || activeAssignedJob)}
             preServiceState={preServiceState}
             otpInput={otpInput}
             setOtpInput={setOtpInput}

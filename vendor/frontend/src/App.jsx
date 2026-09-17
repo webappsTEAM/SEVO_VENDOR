@@ -30,6 +30,7 @@ import { EmployeePerformancePage } from './pages/employee/EmployeePerformancePag
 import { EmployeeEarningsPage } from './pages/employee/EmployeeEarningsPage.jsx';
 import { EmployeeLocationPage } from './pages/employee/EmployeeLocationPage.jsx';
 import EmployeeEstimatesPage from './pages/employee/estimates/EmployeeEstimatesPage.jsx';
+import VendorEstimationsPage from './pages/vendor/estimations/VendorEstimationsPage.jsx';
 import { MyVendorNetworkPage } from './pages/employee/MyVendorNetworkPage.jsx';
 import { TechnicianInvitationsPage } from './pages/employee/TechnicianInvitationsPage.jsx';
 
@@ -50,11 +51,11 @@ import { VendorTechnicianNetworkPage } from './pages/admin/VendorTechnicianNetwo
 import { VendorInvitationsPage } from './pages/admin/VendorInvitationsPage.jsx';
 import { PlatformVendorsPage } from './pages/platform/PlatformVendorsPage.jsx';
 import { PlatformWorkforcePage } from './pages/platform/PlatformWorkforcePage.jsx';
-import VendorEstimationsPage from './pages/vendor/estimations/VendorEstimationsPage.jsx';
 import { CustomerTrackingPage } from './pages/customer/CustomerTrackingPage.jsx';
 import { CustomerQuotationDecisionPage } from './pages/customer/CustomerQuotationDecisionPage.jsx';
 import { AdminQuotationApprovalsPage } from './pages/admin/AdminQuotationApprovalsPage.jsx';
 import { AdminPricingPolicyPage } from './pages/admin/AdminPricingPolicyPage.jsx';
+import { AdminStockManagementPage } from './pages/admin/AdminStockManagementPage.jsx';
 import { InvoicesPage } from './pages/admin/InvoicesPage.jsx';
 import { SuperadminRoute } from './components/common/SuperadminRoute.jsx';
 import { WalletDashboardPage } from './pages/admin/wallet/WalletDashboardPage.jsx';
@@ -65,6 +66,11 @@ import { EmployeeWalletDashboardPage } from './pages/employee/wallet/EmployeeWal
 import { EmployeeWalletTransactionsPage } from './pages/employee/wallet/EmployeeWalletTransactionsPage.jsx';
 import { EmployeeWalletWithdrawalsPage } from './pages/employee/wallet/EmployeeWalletWithdrawalsPage.jsx';
 import { EmployeePayoutAccountsPage } from './pages/employee/wallet/EmployeePayoutAccountsPage.jsx';
+import AdminInventoryPage from './pages/admin/AdminInventoryPage.jsx';
+import AdminStoreProfilePage from './pages/admin/AdminStoreProfilePage.jsx';
+import AdminPromotionsPage from './pages/admin/AdminPromotionsPage.jsx';
+import AdminGroceryOrdersPage from './pages/admin/AdminGroceryOrdersPage.jsx';
+import AdminGrocerySettlementsPage from './pages/admin/AdminGrocerySettlementsPage.jsx';
 
 
 function EmployeeWorkspaceLayout() {
@@ -298,6 +304,14 @@ export function App() {
               }
             />
             <Route
+              path="/workforce/admin/stock"
+              element={
+                <AdminRoute>
+                  <AdminStockManagementPage />
+                </AdminRoute>
+              }
+            />
+            <Route
               path="/workforce/admin/invoices"
               element={
                 <AdminRoute>
@@ -510,6 +524,46 @@ export function App() {
             element={
               <AdminRoute>
                 <AdminReportsPage />
+              </AdminRoute>
+            }
+          />
+          <Route
+            path="/workforce/admin/inventory"
+            element={
+              <AdminRoute>
+                <AdminInventoryPage />
+              </AdminRoute>
+            }
+          />
+          <Route
+            path="/workforce/admin/store-profile"
+            element={
+              <AdminRoute>
+                <AdminStoreProfilePage />
+              </AdminRoute>
+            }
+          />
+          <Route
+            path="/workforce/admin/promotions"
+            element={
+              <AdminRoute>
+                <AdminPromotionsPage />
+              </AdminRoute>
+            }
+          />
+          <Route
+            path="/workforce/admin/grocery-orders"
+            element={
+              <AdminRoute>
+                <AdminGroceryOrdersPage />
+              </AdminRoute>
+            }
+          />
+          <Route
+            path="/workforce/admin/grocery-settlements"
+            element={
+              <AdminRoute>
+                <AdminGrocerySettlementsPage />
               </AdminRoute>
             }
           />
