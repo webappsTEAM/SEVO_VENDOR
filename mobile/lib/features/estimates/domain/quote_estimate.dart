@@ -23,6 +23,9 @@ class QuoteEstimate {
     this.createdAt,
     this.expiresAt,
     this.itemsCount = 0,
+    this.technicianName,
+    this.technicianPhone,
+    this.technicianEmail,
   });
 
   factory QuoteEstimate.fromJson(Map<String, dynamic> json) {
@@ -32,6 +35,31 @@ class QuoteEstimate {
     final acDetails = json['ac_details'] is Map<String, dynamic>
         ? json['ac_details'] as Map<String, dynamic>
         : <String, dynamic>{};
+
+    final techJson = json['technician'] is Map<String, dynamic>
+        ? json['technician'] as Map<String, dynamic>
+        : (json['inspection'] is Map<String, dynamic>
+            ? json['inspection'] as Map<String, dynamic>
+            : (json['assigned_technician'] is Map<String, dynamic>
+                ? json['assigned_technician'] as Map<String, dynamic>
+                : null));
+
+    final parsedTechName = parseString(json['technician_name']) ??
+        (techJson != null
+            ? (parseString(techJson['technician_name']) ??
+                parseString(techJson['name']) ??
+                parseString(techJson['full_name']))
+            : null);
+
+    final parsedTechPhone = parseString(json['technician_phone']) ??
+        (techJson != null
+            ? (parseString(techJson['technician_phone']) ??
+                parseString(techJson['phone']) ??
+                parseString(techJson['mobile_number']))
+            : null);
+
+    final parsedTechEmail = parseString(json['technician_email']) ??
+        (techJson != null ? parseString(techJson['email']) : null);
 
     return QuoteEstimate(
       id: parseInt(json['id']) ?? 0,
@@ -85,6 +113,9 @@ class QuoteEstimate {
       expiresAt: parseDateTime(json['expires_at']),
       itemsCount: parseInt(json['items_count']) ??
           (json['items'] is List ? (json['items'] as List).length : 0),
+      technicianName: parsedTechName,
+      technicianPhone: parsedTechPhone,
+      technicianEmail: parsedTechEmail,
     );
   }
 
@@ -104,6 +135,9 @@ class QuoteEstimate {
   final DateTime? createdAt;
   final DateTime? expiresAt;
   final int itemsCount;
+  final String? technicianName;
+  final String? technicianPhone;
+  final String? technicianEmail;
 
   bool get isDraft =>
       status == 'DRAFT' ||

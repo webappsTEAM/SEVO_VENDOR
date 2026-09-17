@@ -1155,6 +1155,76 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                               ],
                             ),
                           ),
+                          if (selectedJob != null &&
+                              selectedJob.technicianName != null &&
+                              selectedJob.technicianName!.isNotEmpty) ...[
+                            const SizedBox(height: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 9, vertical: 5),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF0FDF4),
+                                borderRadius: BorderRadius.circular(6),
+                                border:
+                                    Border.all(color: const Color(0xFFBBF7D0)),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.badge_outlined,
+                                    size: 14,
+                                    color: Color(0xFF16A34A),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text.rich(
+                                      TextSpan(
+                                        text: 'Assigned: ',
+                                        style: const TextStyle(
+                                          fontSize: 11.5,
+                                          fontWeight: FontWeight.w600,
+                                          color: Color(0xFF166534),
+                                        ),
+                                        children: [
+                                          TextSpan(
+                                            text: selectedJob.technicianName!,
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w800,
+                                              color: Color(0xFF0F172A),
+                                            ),
+                                          ),
+                                          if (selectedJob.technicianPhone !=
+                                                  null &&
+                                              selectedJob
+                                                  .technicianPhone!.isNotEmpty)
+                                            TextSpan(
+                                              text:
+                                                  ' • ${selectedJob.technicianPhone!}',
+                                              style: const TextStyle(
+                                                fontFamily: 'monospace',
+                                                color: Color(0xFF166534),
+                                              ),
+                                            ),
+                                          if (selectedJob.technicianEmail !=
+                                                  null &&
+                                              selectedJob
+                                                  .technicianEmail!.isNotEmpty)
+                                            TextSpan(
+                                              text:
+                                                  ' • ${selectedJob.technicianEmail!}',
+                                              style: const TextStyle(
+                                                fontFamily: 'monospace',
+                                                color: Color(0xFF166534),
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -2089,7 +2159,11 @@ class _DispatchJobItemCard extends StatelessWidget {
     String dispatchMode = 'Auto-Dispatch Active';
     Color dispatchModeBg = const Color(0xFFEFF6FF);
     Color dispatchModeFg = const Color(0xFF1E40AF);
-    if (job.isOffer || (job.activeOffer != null && !job.activeOffer!.isExpired)) {
+    if (job.technicianName != null && job.technicianName!.isNotEmpty) {
+      dispatchMode = 'Assigned: ${job.technicianName}';
+      dispatchModeBg = const Color(0xFFECFDF5);
+      dispatchModeFg = const Color(0xFF065F46);
+    } else if (job.isOffer || (job.activeOffer != null && !job.activeOffer!.isExpired)) {
       dispatchMode = 'Offer Active (Awaiting Acceptance)';
       dispatchModeBg = const Color(0xFFFEF3C7);
       dispatchModeFg = const Color(0xFFB45309);
@@ -2217,6 +2291,35 @@ class _DispatchJobItemCard extends StatelessWidget {
                       style: const TextStyle(
                         fontSize: 11.5,
                         color: Color(0xFF64748B),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            if (job.technicianName != null && job.technicianName!.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.only(top: 1),
+                    child: Icon(
+                      Icons.badge_outlined,
+                      size: 13,
+                      color: Color(0xFF059669),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      'Technician: ${job.technicianName!}${job.technicianPhone != null && job.technicianPhone!.isNotEmpty ? " • ${job.technicianPhone!}" : ""}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF059669),
                       ),
                     ),
                   ),
