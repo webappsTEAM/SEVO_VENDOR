@@ -88,7 +88,7 @@ class MoreScreen extends ConsumerWidget {
             AppSpacing.xxl,
           ),
           children: [
-            // ── 1. Peacock Gradient Employee Profile Header ────────────────
+            // ── 1. Classic Navy Employee Profile Header ────────────────────
             Container(
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
@@ -96,38 +96,27 @@ class MoreScreen extends ConsumerWidget {
                   end: Alignment.bottomRight,
                   colors: [
                     Color(0xFF0A2540), // Deep Navy
-                    Color(0xFF004E89), // Peacock Blue
-                    Color(0xFF065F46), // Emerald
+                    Color(0xFF004E89), // Royal Navy Blue
                   ],
                 ),
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
+                borderRadius: BorderRadius.circular(AppRadius.cardStandard),
+                border: Border.all(
+                  color: const Color(0xFF1E3A8A).withValues(alpha: 0.4),
+                  width: 1,
+                ),
+                boxShadow: const [
                   BoxShadow(
-                    color: const Color(0xFF004E89).withValues(alpha: 0.25),
-                    blurRadius: 16,
-                    offset: const Offset(0, 6),
+                    color: Color(0x1A0A2540),
+                    blurRadius: 10,
+                    offset: Offset(0, 3),
                   ),
                 ],
               ),
-              child: Stack(
-                children: [
-                  Positioned(
-                    right: -20,
-                    top: -20,
-                    child: Container(
-                      width: 110,
-                      height: 110,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.white.withValues(alpha: 0.05),
-                      ),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.all(AppSpacing.lg),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpacing.lg),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -361,8 +350,6 @@ class MoreScreen extends ConsumerWidget {
                       ],
                     ),
                   ),
-                ],
-              ),
             ),
             const SizedBox(height: AppSpacing.lg),
 

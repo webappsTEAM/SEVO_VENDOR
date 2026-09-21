@@ -95,24 +95,24 @@ class AppColors {
   static Color get surfaceMuted => _isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9);
 
   static Color get background =>
-      _isDark ? const Color(0xFF0B1220) : const Color(0xFFF8FAFC);
+      _isDark ? const Color(0xFF0B1220) : const Color(0xFFF7F9FC);
 
   static Color get surface => _isDark ? const Color(0xFF151E2E) : Colors.white;
 
   static Color get border {
     if (_isDark) return _highContrast ? Colors.white54 : const Color(0xFF243044);
-    return _highContrast ? Colors.black54 : const Color(0xFFE2E8F0);
+    return _highContrast ? Colors.black54 : const Color(0xFFE5E7EB);
   }
 
   static Color get textPrimary {
     if (_isDark) return _highContrast ? Colors.white : const Color(0xFFF1F5F9);
-    return _highContrast ? Colors.black : const Color(0xFF0F172A);
+    return _highContrast ? Colors.black : const Color(0xFF172033);
   }
 
   static Color get textSecondary =>
-      _isDark ? const Color(0xFFCBD5E1) : const Color(0xFF475569);
+      _isDark ? const Color(0xFFCBD5E1) : const Color(0xFF6B7280);
 
-  static Color get textMuted => _isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
+  static Color get textMuted => _isDark ? const Color(0xFF94A3B8) : const Color(0xFF6B7280);
 }
 
 /// A small, consistent spacing scale used across every screen so padding

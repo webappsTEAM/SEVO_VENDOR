@@ -111,6 +111,16 @@ class Job {
     this.technicianPhone,
     this.technicianEmail,
     this.technicianId,
+      
+    this.isLogistics = false,
+    this.dropAddress,
+    this.dropLatitude,
+    this.dropLongitude,
+    this.dropContactName,
+    this.dropContactPhone,
+    this.logisticsLeg,
+    this.logisticsLegUpdatedAt,
+    this.tripStopCount = 0,
   });
 
   factory Job.fromJson(Map<String, dynamic> json) {
@@ -213,10 +223,21 @@ class Job {
       cancellationDeadline: parseDateTime(json['cancellation_deadline']),
       offerExpiresAt: parseDateTime(json['offer_expires_at']),
       canCancel: parseBool(json['can_cancel']),
-      technicianName: parsedTechName,
+           technicianName: parsedTechName,
       technicianPhone: parsedTechPhone,
       technicianEmail: parsedTechEmail,
       technicianId: parsedTechId,
+
+      // Goods & Transport
+      isLogistics: parseBool(json['is_logistics']),
+      dropAddress: parseString(json['drop_address']),
+      dropLatitude: parseDouble(json['drop_latitude']),
+      dropLongitude: parseDouble(json['drop_longitude']),
+      dropContactName: parseString(json['drop_contact_name']),
+      dropContactPhone: parseString(json['drop_contact_phone']),
+      logisticsLeg: parseString(json['logistics_leg']),
+      logisticsLegUpdatedAt: parseDateTime(json['logistics_leg_updated_at']),
+      tripStopCount: parseInt(json['trip_stop_count']) ?? 0,
     );
   }
 
