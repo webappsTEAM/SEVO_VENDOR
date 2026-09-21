@@ -369,6 +369,13 @@ function matchesCategory(jobCategoryId, targetCategoryId) {
 
 function isOfferJobPastDated(job, todayStr) {
   if (!isOfferJob(job)) return false;
+  // Active unexpired offers are protected and must never be filtered out as past-dated
+  if (job?.active_offer && !job.active_offer.is_expired) {
+    return false;
+  }
+  if (job?.is_offer === true && job?.offer_status === 'OFFERED') {
+    return false;
+  }
   if (job?.preferred_date) {
     return job.preferred_date < todayStr;
   }

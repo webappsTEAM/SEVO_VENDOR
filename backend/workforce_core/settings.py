@@ -68,7 +68,6 @@ INSTALLED_APPS = [
     "workforce_api",
     "time_tracking",
     "vendor_wallet",
-    "inventory",
 ]
 
 MIDDLEWARE = [
@@ -105,30 +104,11 @@ WSGI_APPLICATION = "workforce_core.wsgi.application"
 ASGI_APPLICATION = "workforce_core.asgi.application"
 
 # ─── Database Configuration (Shared Supabase PostgreSQL) ──────────────────────
-#
-# `manage.py test` used to force SQLite unconditionally. That's wrong for
-# this project specifically: several tables this backend queries in tests
-# (accounts_user, companies_company, employees_employee, and everything
-# service_requests mirrors) are `managed=False` -- owned and migrated by
-# Customer/backend against the one shared Postgres database, never created
-# by this project's own `migrate`. On SQLite those tables simply never
-# exist, so any test touching them (which is most of them -- they all
-# create a User/Company first) fails with "no such table", independent of
-# whatever the test is actually trying to verify.
-#
-# Postgres is now the default test backend too, using the exact same
-# connection this process already has configured (DB_HOST/DB_NAME/etc) --
-# `manage.py test` wraps it in a throwaway `test_<DB_NAME>` database it
-# creates and tears down itself, same as Django does for any Postgres
-# project. Set DJANGO_TEST_SQLITE=1 to force the old SQLite-only behavior
-# back (e.g. for a quick syntax/logic check of code that never touches a
-# managed=False table) -- but that's the exception now, not the default.
 
 IS_TESTING = "test" in sys.argv or os.getenv("DJANGO_TEST_SQLITE") == "1"
 USE_POSTGRES = bool(os.getenv("DB_NAME") or os.getenv("DB_HOST"))
-FORCE_SQLITE_TESTS = os.getenv("DJANGO_TEST_SQLITE") == "1"
 
-if IS_TESTING and (FORCE_SQLITE_TESTS or not USE_POSTGRES):
+if IS_TESTING:
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
@@ -175,18 +155,29 @@ else:
         }
     }
 
-_cache_backend = "django.core.cache.backends.locmem.LocMemCache"
-try:
-    import redis  # noqa: F401
-    _cache_backend = "django.core.cache.backends.redis.RedisCache"
-except ImportError:
-    pass
+REDIS_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
 
-_cache_url = os.getenv("CACHE_URL", "redis://127.0.0.1:6379/1")
+_cache_backend = "django.core.cache.backends.locmem.LocMemCache"
+_cache_location = "workforce-local-cache"
+_cache_url = os.getenv("CACHE_URL") or (os.getenv("REDIS_URL") if not DEBUG else None)
+
+if _cache_url and ("redis://" in _cache_url or "rediss://" in _cache_url):
+    try:
+        import redis
+        # Quick liveness probe (0.2s timeout) to ensure Redis is actually online and accepting connections
+        _probe_client = redis.from_url(_cache_url, socket_timeout=0.2, socket_connect_timeout=0.2)
+        _probe_client.ping()
+        _cache_backend = "django.core.cache.backends.redis.RedisCache"
+        _cache_location = _cache_url
+    except Exception:
+        # Redis offline or unreachable; safely fallback to LocMemCache so throttling and caching do not fail
+        _cache_backend = "django.core.cache.backends.locmem.LocMemCache"
+        _cache_location = "workforce-local-cache"
+
 CACHES = {
     "default": {
         "BACKEND": _cache_backend,
-        "LOCATION": _cache_url if "redis" in _cache_backend else "workforce-local-cache",
+        "LOCATION": _cache_location,
         "TIMEOUT": 300,
         "KEY_PREFIX": "workforce",
     }
