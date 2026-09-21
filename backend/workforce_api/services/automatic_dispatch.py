@@ -30,6 +30,10 @@ from workforce_api.models import (
     WorkforceEmployeeSchedule,
     WorkforceDispatchState,
     WorkforceEventLog,
+    WorkforceRequiredDocument,
+    WorkforceEmployeeDocument,
+    WorkforceComplianceRequirement,
+    Vehicle,
 )
 from time_tracking.geo import haversine_distance
 from workforce_api.services.workload import get_employee_active_job, ACTIVE_WORKLOAD_STATUSES
@@ -491,8 +495,9 @@ def check_candidate_eligibility(
 
     # ── Gate 3: Required Documents Approved ───────────────────────────────────
     if emp and getattr(emp, "company_id", None):
-        from workforce_api.models import WorkforceRequiredDocument, WorkforceEmployeeDocument
-        mandatory_doc_reqs = WorkforceRequiredDocument.objects.filter(company_id=emp.company_id, is_mandatory=True)
+        mandatory_doc_reqs = kwargs.get("preloaded_doc_reqs")
+        if mandatory_doc_reqs is None:
+            mandatory_doc_reqs = list(WorkforceRequiredDocument.objects.filter(company_id=emp.company_id, is_mandatory=True))
         # GT-A-02: a requirement with a non-empty applies_to_categories only
         # gates jobs in one of those categories (e.g. Driving Licence should
         # not block a technician from taking an AC-repair job). A requirement
@@ -533,7 +538,6 @@ def check_candidate_eligibility(
         # only once dispatch actually routes a logistics job their way --
         # non-logistics dispatch is entirely unaffected.
         if service_name_clean in LOGISTICS_SERVICE_CATEGORIES:
-            from workforce_api.models import Vehicle
             vehicles = list(Vehicle.objects.filter(employee=emp, is_active=True))
             if not vehicles:
                 gate_results["G3"] = False
@@ -557,11 +561,15 @@ def check_candidate_eligibility(
 
     # ── Gate 4: Mandatory Compliance Valid ────────────────────────────────────
     if emp and getattr(emp, "company_id", None):
-        from workforce_api.models import WorkforceComplianceRequirement
-        mandatory_comp_reqs = WorkforceComplianceRequirement.objects.filter(company_id=emp.company_id, is_mandatory=True)
-        if mandatory_comp_reqs.exists():
+        mandatory_comp_reqs = kwargs.get("preloaded_comp_reqs")
+        if mandatory_comp_reqs is None:
+            mandatory_comp_reqs = list(WorkforceComplianceRequirement.objects.filter(company_id=emp.company_id, is_mandatory=True))
+        if mandatory_comp_reqs:
             today = timezone.now().date()
-            emp_comp_records = list(WorkforceEmployeeCompliance.objects.filter(employee=emp, requirement__in=mandatory_comp_reqs))
+            if hasattr(emp, "prefetched_compliance_records"):
+                emp_comp_records = emp.prefetched_compliance_records
+            else:
+                emp_comp_records = list(WorkforceEmployeeCompliance.objects.filter(employee=emp, requirement__in=mandatory_comp_reqs))
             emp_comp_map = {c.requirement_id: c for c in emp_comp_records}
             for comp_req in mandatory_comp_reqs:
                 c_rec = emp_comp_map.get(comp_req.id)
@@ -574,35 +582,34 @@ def check_candidate_eligibility(
                     gate_results["G4"] = False
                     return False, f"Gate 4: Mandatory compliance '{comp_req.title}' expired on {c_rec.expiry_date}.", gate_results
         else:
-            if hasattr(emp, "prefetched_invalid_compliance"):
-                if emp.prefetched_invalid_compliance:
-                    gate_results["G4"] = False
-                    logger.debug(f"[9GATE_REJECT_GATE4_COMPLIANCE_INVALID] Employee #{emp.id} has invalid compliance.")
-                    return False, "Gate 4: Technician has expired or rejected mandatory compliance document.", gate_results
+            if hasattr(emp, "prefetched_compliance_records"):
+                mandatory_comp = next((c for c in emp.prefetched_compliance_records if getattr(c.requirement, "is_mandatory", False) and c.status in ["EXPIRED", "REJECTED"]), None)
+            elif hasattr(emp, "prefetched_invalid_compliance"):
+                mandatory_comp = emp.prefetched_invalid_compliance[0] if emp.prefetched_invalid_compliance else None
             else:
                 mandatory_comp = WorkforceEmployeeCompliance.objects.filter(
                     employee=emp,
                     requirement__is_mandatory=True,
                     status__in=["EXPIRED", "REJECTED"],
                 ).first()
-                if mandatory_comp:
-                    gate_results["G4"] = False
-                    logger.debug(f"[9GATE_REJECT_GATE4_COMPLIANCE_INVALID] Employee #{emp.id} compliance '{mandatory_comp.requirement.title}' is {mandatory_comp.status}.")
-                    return False, f"Gate 4: Technician has expired or rejected mandatory compliance document: '{mandatory_comp.requirement.title}'.", gate_results
-    else:
-        if hasattr(emp, "prefetched_invalid_compliance"):
-            if emp.prefetched_invalid_compliance:
+            if mandatory_comp:
                 gate_results["G4"] = False
-                return False, "Gate 4: Technician has expired or rejected mandatory compliance document.", gate_results
+                logger.debug(f"[9GATE_REJECT_GATE4_COMPLIANCE_INVALID] Employee #{emp.id} compliance '{mandatory_comp.requirement.title}' is {mandatory_comp.status}.")
+                return False, f"Gate 4: Technician has expired or rejected mandatory compliance document: '{mandatory_comp.requirement.title}'.", gate_results
+    else:
+        if hasattr(emp, "prefetched_compliance_records"):
+            mandatory_comp = next((c for c in emp.prefetched_compliance_records if getattr(c.requirement, "is_mandatory", False) and c.status in ["EXPIRED", "REJECTED"]), None)
+        elif hasattr(emp, "prefetched_invalid_compliance"):
+            mandatory_comp = emp.prefetched_invalid_compliance[0] if emp.prefetched_invalid_compliance else None
         else:
             mandatory_comp = WorkforceEmployeeCompliance.objects.filter(
                 employee=emp,
                 requirement__is_mandatory=True,
                 status__in=["EXPIRED", "REJECTED"],
             ).first()
-            if mandatory_comp:
-                gate_results["G4"] = False
-                return False, f"Gate 4: Technician has expired or rejected mandatory compliance document: '{mandatory_comp.requirement.title}'.", gate_results
+        if mandatory_comp:
+            gate_results["G4"] = False
+            return False, f"Gate 4: Technician has expired or rejected mandatory compliance document: '{mandatory_comp.requirement.title}'.", gate_results
 
     # ── Gate 5: Working Schedule ──────────────────────────────────────────────
     if hasattr(emp, "prefetched_today_schedules"):
@@ -715,10 +722,13 @@ def check_candidate_eligibility(
         job_is_cash = str(getattr(job, "payment_method", "") or "").upper() in ("COD", "CASH", "CASH_ON_SERVICE")
     if job_is_cash and cash_ceiling is not None and cash_ceiling > 0:
         try:
-            from workforce_api.services.cash_reconciliation import compute_outstanding_cash
+            if "preloaded_outstanding_cash" in kwargs and kwargs["preloaded_outstanding_cash"] is not None:
+                outstanding = kwargs["preloaded_outstanding_cash"]
+            else:
+                from workforce_api.services.cash_reconciliation import compute_outstanding_cash
 
-            outstanding, _qs = compute_outstanding_cash(emp)
-            if outstanding is not None and Decimal(outstanding) > Decimal(str(cash_ceiling)):
+                outstanding, _qs = compute_outstanding_cash(emp)
+            if outstanding is not None and Decimal(str(outstanding)) > Decimal(str(cash_ceiling)):
                 gate_results["G10"] = False
                 logger.info(
                     f"[DISPATCH_REJECT] employee={emp.id} reason=CASH_FLOAT_CEILING_EXCEEDED "
@@ -876,11 +886,13 @@ def get_eligible_candidates(job_id_or_obj, max_gps_age_seconds: int = MAX_GPS_AG
         .prefetch_related(
             Prefetch(
                 "compliance_records",
-                queryset=WorkforceEmployeeCompliance.objects.filter(
-                    requirement__is_mandatory=True,
-                    status__in=["EXPIRED", "REJECTED"],
-                ),
-                to_attr="prefetched_invalid_compliance",
+                queryset=WorkforceEmployeeCompliance.objects.all().select_related("requirement"),
+                to_attr="prefetched_compliance_records",
+            ),
+            Prefetch(
+                "documents",
+                queryset=WorkforceEmployeeDocument.objects.all().select_related("requirement"),
+                to_attr="prefetched_employee_documents",
             ),
             Prefetch(
                 "schedules",
@@ -911,6 +923,18 @@ def get_eligible_candidates(job_id_or_obj, max_gps_age_seconds: int = MAX_GPS_AG
         previous_offers.update(exclude_employee_ids)
 
     # Permanent historical exclusion: an employee who declined/rejected this job is never eligible
+    declined_emp_ids_for_job = set(
+        WorkforceJobOffer.objects.filter(
+            job=job_obj,
+            status__in=[WorkforceJobOffer.Status.REJECTED, WorkforceJobOffer.Status.DECLINED],
+        ).values_list("employee_id", flat=True)
+    ) | set(
+        WorkforceJobLifecycleEvent.objects.filter(
+            job=job_obj,
+            event_type="EMPLOYEE_JOB_DECLINED",
+        ).values_list("employee_id", flat=True)
+    )
+
     declined_history_subquery = WorkforceJobOffer.objects.filter(
         job=job_obj,
         employee=OuterRef("pk"),
@@ -929,6 +953,29 @@ def get_eligible_candidates(job_id_or_obj, max_gps_age_seconds: int = MAX_GPS_AG
     if previous_offers:
         candidates_qs = candidates_qs.exclude(pk__in=previous_offers)
 
+    # Preload mandatory requirements once across all companies to eliminate per-candidate queries
+    all_mandatory_doc_reqs = list(WorkforceRequiredDocument.objects.filter(is_mandatory=True))
+    doc_reqs_by_company = {}
+    for dr in all_mandatory_doc_reqs:
+        doc_reqs_by_company.setdefault(dr.company_id, []).append(dr)
+
+    all_mandatory_comp_reqs = list(WorkforceComplianceRequirement.objects.filter(is_mandatory=True))
+    comp_reqs_by_company = {}
+    for cr in all_mandatory_comp_reqs:
+        comp_reqs_by_company.setdefault(cr.company_id, []).append(cr)
+
+    # Preload outstanding cash for cash float ceiling check (Gate 10)
+    from workforce_api.models import JobPayment
+    unreconciled_cash_payments = JobPayment.objects.filter(
+        payment_method=JobPayment.PaymentMethod.CASH_ON_SERVICE,
+        payment_status=JobPayment.PaymentStatus.PAID,
+        reconciled=False,
+    )
+    outstanding_cash_by_emp = {}
+    for p in unreconciled_cash_payments:
+        amt = (p.amount_received if p.amount_received is not None else p.amount_paid) or Decimal("0.00")
+        outstanding_cash_by_emp[p.employee_id] = outstanding_cash_by_emp.get(p.employee_id, Decimal("0.00")) + amt
+
     ranked_candidates = []
     now = timezone.now()
     # Technicians already holding a live offer for some OTHER job -- see
@@ -939,16 +986,7 @@ def get_eligible_candidates(job_id_or_obj, max_gps_age_seconds: int = MAX_GPS_AG
         # Invariant: Technician who previously rejected or declined this job must NEVER receive it again
         is_declined = (
             emp.id in previous_offers
-            or WorkforceJobOffer.objects.filter(
-                job=job_obj,
-                employee=emp,
-                status__in=[WorkforceJobOffer.Status.REJECTED, WorkforceJobOffer.Status.DECLINED]
-            ).exists()
-            or WorkforceJobLifecycleEvent.objects.filter(
-                job=job_obj,
-                employee=emp,
-                event_type="EMPLOYEE_JOB_DECLINED"
-            ).exists()
+            or emp.id in declined_emp_ids_for_job
         )
         if is_declined:
             logger.info(f"[DISPATCH_REJECT] job={job_obj.id} employee={emp.id} reason=ALREADY_DECLINED")
@@ -993,12 +1031,27 @@ def get_eligible_candidates(job_id_or_obj, max_gps_age_seconds: int = MAX_GPS_AG
         )
 
         # Check eligibility against service_category, then issue_title for offer reception
+        emp_doc_reqs = doc_reqs_by_company.get(emp.company_id, [])
+        emp_comp_reqs = comp_reqs_by_company.get(emp.company_id, [])
+        emp_cash = outstanding_cash_by_emp.get(emp.id, Decimal("0.00"))
         is_eligible, reason, gate_results = check_candidate_eligibility(
-            emp, job_obj.service_category, job=job_obj, purpose="offer_reception"
+            emp,
+            job_obj.service_category,
+            job=job_obj,
+            purpose="offer_reception",
+            preloaded_doc_reqs=emp_doc_reqs,
+            preloaded_comp_reqs=emp_comp_reqs,
+            preloaded_outstanding_cash=emp_cash,
         )
         if not is_eligible and job_obj.issue_title:
             is_eligible, reason, gate_results = check_candidate_eligibility(
-                emp, job_obj.issue_title, job=job_obj, purpose="offer_reception"
+                emp,
+                job_obj.issue_title,
+                job=job_obj,
+                purpose="offer_reception",
+                preloaded_doc_reqs=emp_doc_reqs,
+                preloaded_comp_reqs=emp_comp_reqs,
+                preloaded_outstanding_cash=emp_cash,
             )
 
         g_str = " ".join(f"{k}={'PASS' if v else 'FAIL'}" for k, v in gate_results.items())
