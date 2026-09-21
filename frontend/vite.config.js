@@ -15,6 +15,16 @@ export default defineConfig(({ mode }) => {
           target: apiUrl,
           changeOrigin: true,
           secure: false,
+          configure: (proxy) => {
+            proxy.on('error', (err, _req, res) => {
+              if (res && !res.headersSent && typeof res.writeHead === 'function') {
+                try {
+                  res.writeHead(503, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify({ error: 'Backend server is temporarily unavailable or restarting.', code: 'BACKEND_OFFLINE' }));
+                } catch {}
+              }
+            });
+          },
         },
         '/media': {
           target: apiUrl,

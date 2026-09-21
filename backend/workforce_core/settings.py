@@ -155,18 +155,29 @@ else:
         }
     }
 
-_cache_backend = "django.core.cache.backends.locmem.LocMemCache"
-try:
-    import redis  # noqa: F401
-    _cache_backend = "django.core.cache.backends.redis.RedisCache"
-except ImportError:
-    pass
+REDIS_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
 
-_cache_url = os.getenv("CACHE_URL", "redis://127.0.0.1:6379/1")
+_cache_backend = "django.core.cache.backends.locmem.LocMemCache"
+_cache_location = "workforce-local-cache"
+_cache_url = os.getenv("CACHE_URL") or (os.getenv("REDIS_URL") if not DEBUG else None)
+
+if _cache_url and ("redis://" in _cache_url or "rediss://" in _cache_url):
+    try:
+        import redis
+        # Quick liveness probe (0.2s timeout) to ensure Redis is actually online and accepting connections
+        _probe_client = redis.from_url(_cache_url, socket_timeout=0.2, socket_connect_timeout=0.2)
+        _probe_client.ping()
+        _cache_backend = "django.core.cache.backends.redis.RedisCache"
+        _cache_location = _cache_url
+    except Exception:
+        # Redis offline or unreachable; safely fallback to LocMemCache so throttling and caching do not fail
+        _cache_backend = "django.core.cache.backends.locmem.LocMemCache"
+        _cache_location = "workforce-local-cache"
+
 CACHES = {
     "default": {
         "BACKEND": _cache_backend,
-        "LOCATION": _cache_url if "redis" in _cache_backend else "workforce-local-cache",
+        "LOCATION": _cache_location,
         "TIMEOUT": 300,
         "KEY_PREFIX": "workforce",
     }
