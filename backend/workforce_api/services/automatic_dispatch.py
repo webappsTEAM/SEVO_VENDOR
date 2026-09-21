@@ -1557,7 +1557,7 @@ def _dispatch_job_two_phase(job_id, max_gps_age_seconds: int = MAX_GPS_AGE_SECON
             declined_emp_ids.update(
                 WorkforceJobOffer.objects.filter(
                     job_id=job_id,
-                    status__in=[WorkforceJobOffer.Status.REJECTED, WorkforceJobOffer.Status.DECLINED],
+                    status__in=[WorkforceJobOffer.Status.REJECTED, WorkforceJobOffer.Status.DECLINED, WorkforceJobOffer.Status.EXPIRED],
                 ).values_list("employee_id", flat=True)
             )
             declined_lifecycle_emp_ids = set(
@@ -1851,6 +1851,10 @@ def expire_and_reassign_offers() -> int:
                 continue
             off_locked.status = WorkforceJobOffer.Status.EXPIRED
             off_locked.save(update_fields=["status"])
+            WorkforceDispatchState.objects.filter(job_id=offer.job_id).update(
+                dispatch_status=WorkforceDispatchState.DispatchStatus.NEVER_ATTEMPTED,
+                locked_at=None,
+            )
             count += 1
             logger.info(f"[DISPATCH_OFFER_EXPIRED] Offer #{offer.id} for Job #{offer.job_id} marked EXPIRED.")
 

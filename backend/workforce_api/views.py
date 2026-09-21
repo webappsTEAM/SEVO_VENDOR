@@ -4946,6 +4946,12 @@ class WorkforceJobRejectOfferView(APIView):
             offer.rejection_reason = reason
             offer.save(update_fields=["status", "rejection_reason"])
 
+            from workforce_api.models import WorkforceDispatchState
+            WorkforceDispatchState.objects.filter(job_id=job_obj.id).update(
+                dispatch_status=WorkforceDispatchState.DispatchStatus.NEVER_ATTEMPTED,
+                locked_at=None,
+            )
+
             if job_obj.assigned_employee == emp:
                 job_obj.assigned_employee = None
                 job_obj.save(update_fields=["assigned_employee"])
