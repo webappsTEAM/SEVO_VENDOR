@@ -1332,6 +1332,7 @@ class JobPayment(models.Model):
         blank=True,
         related_name="reconciled_payments",
     )
+    is_mock = models.BooleanField(default=False)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

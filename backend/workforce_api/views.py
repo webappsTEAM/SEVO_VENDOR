@@ -3334,7 +3334,7 @@ class WorkforceJobCashCollectView(APIView):
                     "amount_paid": str(pmt.amount_paid),
                 }, status=status.HTTP_200_OK)
 
-            if pmt.payment_status == JobPayment.PaymentStatus.CASH_PENDING:
+            if pmt.payment_status == JobPayment.PaymentStatus.CASH_PENDING and not request.data:
                 return Response({
                     "message": "Cash collection has already been recorded and is currently awaiting customer confirmation.",
                     "payment_status": "CASH_PENDING",
