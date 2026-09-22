@@ -68,6 +68,7 @@ INSTALLED_APPS = [
     "workforce_api",
     "time_tracking",
     "vendor_wallet",
+    "inventory",
 ]
 
 MIDDLEWARE = [
