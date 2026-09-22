@@ -88,8 +88,16 @@ def can_create_quote(job, psv=None):
     # returned a verdict and the estimation workflow could not start at all.
     # getattr() lets the expression fall through to is_quotation_service(), which
     # is the classifier that actually works (service id / slug / name / category).
-    _is_estimation = getattr(job, "is_estimation", False)
-    if not (_is_estimation or is_quotation_service(name=job.issue_title, category=job.service_category)):
+    _is_estimation = (
+        getattr(job, "is_estimation", False) or
+        getattr(job, "request_kind", "") == "ESTIMATION" or
+        getattr(job, "job_type", "") == "ESTIMATION"
+    )
+    if not (_is_estimation or is_quotation_service(
+        service_id=getattr(job, "catalog_service_id", None),
+        name=job.issue_title,
+        category=job.service_category
+    )):
         return False, {
             "code": "NOT_A_QUOTATION_SERVICE",
             "message": "This job is a standard direct service and does not require an estimation quote.",

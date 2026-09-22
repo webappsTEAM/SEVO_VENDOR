@@ -1344,6 +1344,10 @@ export function EmployeeDashboardPage() {
             onClockOut={handleClockOutAction}
             onStartBreak={handleStartBreakAction}
             onEndBreak={handleEndBreakAction}
+            onOpenQuotationModal={(jobToQuote) => {
+              setSelectedJob(jobToQuote || activeAssignedJob);
+              setIsQuotationModalOpen(true);
+            }}
           />
 
           {/* Real-Time Live Camera Viewfinder & Snapshot Modal */}
@@ -1361,10 +1365,10 @@ export function EmployeeDashboardPage() {
           />
 
           {/* Estimation & Commercial Quotation Builder Modal */}
-          {isQuotationModalOpen && selectedJob && (
+          {isQuotationModalOpen && (selectedJob || activeAssignedJob) && (
             <QuotationBuilderModal
-              job={selectedJob}
-              quoteId={selectedJob.active_quote_id}
+              job={selectedJob || activeAssignedJob}
+              quoteId={(selectedJob || activeAssignedJob)?.active_quote_id}
               isOpen={isQuotationModalOpen}
               onClose={() => setIsQuotationModalOpen(false)}
               onQuoteSaved={() => {
@@ -4418,10 +4422,10 @@ export function EmployeeDashboardPage() {
         />
 
         {/* Estimation & Commercial Quotation Builder Modal */}
-        {isQuotationModalOpen && selectedJob && (
+        {isQuotationModalOpen && (selectedJob || activeAssignedJob) && (
           <QuotationBuilderModal
-            job={selectedJob}
-            quoteId={selectedJob.active_quote_id}
+            job={selectedJob || activeAssignedJob}
+            quoteId={(selectedJob || activeAssignedJob)?.active_quote_id}
             isOpen={isQuotationModalOpen}
             onClose={() => setIsQuotationModalOpen(false)}
             onQuoteSaved={() => {

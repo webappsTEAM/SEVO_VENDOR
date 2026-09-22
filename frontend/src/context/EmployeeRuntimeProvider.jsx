@@ -106,24 +106,31 @@ const CACHED_COMPLETED_JOBS_KEY = 'calservice_workforce_cached_completed_jobs';
     selectedJobRef.current = selectedJob;
   }, [selectedJob]);
 
-  // Derived active workload state: ONLY genuinely assigned jobs in an active status, NOT offers
+  // Derived active workload state (Strict: ONLY jobs genuinely assigned to this employee and in an active queue status)
   const activeAssignedJob = useMemo(() => {
     return (
       activeJobs.find((j) => {
         const st = (j.status || j.job_status || '').toLowerCase();
+        if (j.is_offer || st === 'unassigned') return false;
         const isAssignedToMe = Boolean(
           j.is_assigned_to_current_employee === true ||
+          j.is_accepted_by_current_employee === true ||
           (employee?.id && (
-            j.assigned_employee_id === employee.id ||
+            j.assigned_employee === employee.id ||
             j.assigned_employee?.id === employee.id ||
-            j.assigned_employee === employee.id
+            j.assigned_employee_id === employee.id
+          )) ||
+          (user?.id && (
+            j.assigned_employee === user.id ||
+            j.assigned_employee?.id === user.id ||
+            j.assigned_employee_id === user.id
           ))
         );
         const isAnOffer = Boolean(j.is_offer === true || j.active_offer?.status === 'OFFERED');
         return isAssignedToMe && !isAnOffer && ACTIVE_QUEUE_STATUSES.includes(st);
       }) || null
     );
-  }, [activeJobs, employee?.id]);
+  }, [activeJobs, user?.id, employee?.id]);
 
   const hasActiveJob = useMemo(() => {
     return Boolean(activeAssignedJob);
@@ -252,31 +259,36 @@ const CACHED_COMPLETED_JOBS_KEY = 'calservice_workforce_cached_completed_jobs';
               });
             }
 
-            // Smart reconciliation of selectedJob without resetting selection
             setSelectedJob((prev) => {
-              if (!prev) {
-                // If there is an active assigned job, prefer selecting that
-                const active = jobsData.find((j) => {
-                  const st = (j.status || j.job_status || '').toLowerCase();
-                  const isAssignedToMe = Boolean(
-                    j.is_assigned_to_current_employee === true ||
-                    (employee?.id && (
-                      j.assigned_employee_id === employee.id ||
-                      j.assigned_employee?.id === employee.id ||
-                      j.assigned_employee === employee.id
-                    ))
-                  );
-                  const isAnOffer = Boolean(j.is_offer === true || j.active_offer?.status === 'OFFERED');
-                  return isAssignedToMe && !isAnOffer && ACTIVE_QUEUE_STATUSES.includes(st);
-                });
-                if (active) return active;
-                // If there is an active incoming offer, select that
-                if (currentOffers && currentOffers.length > 0) return currentOffers[0];
-                // Otherwise null — never arbitrarily select unassigned jobs as active
-                return null;
+              if (prev) {
+                const updated = jobsData.find((j) => j.id === prev.id);
+                if (updated) return updated;
               }
-              const updated = jobsData.find((j) => j.id === prev.id);
-              return updated || prev;
+              // If there is an active assigned job, prefer selecting that
+              const active = jobsData.find((j) => {
+                const st = (j.status || j.job_status || '').toLowerCase();
+                if (j.is_offer || st === 'unassigned') return false;
+                const isAssignedToMe = Boolean(
+                  j.is_assigned_to_current_employee === true ||
+                  j.is_accepted_by_current_employee === true ||
+                  (employee?.id && (
+                    j.assigned_employee === employee.id ||
+                    j.assigned_employee?.id === employee.id ||
+                    j.assigned_employee_id === employee.id
+                  )) ||
+                  (user?.id && (
+                    j.assigned_employee === user.id ||
+                    j.assigned_employee?.id === user.id ||
+                    j.assigned_employee_id === user.id
+                  ))
+                );
+                const isAnOffer = Boolean(j.is_offer === true || j.active_offer?.status === 'OFFERED');
+                return isAssignedToMe && !isAnOffer && ACTIVE_QUEUE_STATUSES.includes(st);
+              });
+              if (active) return active;
+              // If there is an active incoming offer, select that
+              if (currentOffers && currentOffers.length > 0) return currentOffers[0];
+              return null;
             });
             return jobsData;
           }
@@ -395,6 +407,20 @@ const CACHED_COMPLETED_JOBS_KEY = 'calservice_workforce_cached_completed_jobs';
       syncNotifications();
     }
   }, [isAuthenticated, isApprovedEmployee, refreshActiveJobs, syncNotifications]);
+
+  // ── SSE Fallback: 30-second background safety-net polling ─────────────────
+  // Guarantees job offers appear within ≤30s even when SSE is disconnected
+  // (mobile network drops, reconnecting). Silent refresh = no loading spinner.
+  // Only active when the employee is online and approved.
+  useEffect(() => {
+    if (!isAuthenticated || !isApprovedEmployee || !isOnline) return;
+    const POLL_INTERVAL_MS = 30_000;
+    const id = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      refreshActiveJobs({ silent: true });
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [isAuthenticated, isApprovedEmployee, isOnline, refreshActiveJobs]);
 
   // ── 7. Single Authoritative Live GPS Watcher (Correction 1 & 3) ────────────
   const [liveLocation, setLiveLocation] = useState(() => {
@@ -652,6 +678,28 @@ const CACHED_COMPLETED_JOBS_KEY = 'calservice_workforce_cached_completed_jobs';
       jobsError,
       refreshActiveJobs,
       refreshCompletedJobs,
+      reconcileJobAccepted: (jobId, updatedJob) => {
+        setActiveJobs((prev) =>
+          prev.map((j) =>
+            j.id === jobId
+              ? { ...j, ...(updatedJob || {}), status: 'accepted', is_offer: false, is_assigned_to_current_employee: true }
+              : j
+          )
+        );
+        setSelectedJob((prev) =>
+          prev?.id === jobId
+            ? { ...prev, ...(updatedJob || {}), status: 'accepted', is_offer: false, is_assigned_to_current_employee: true }
+            : prev
+        );
+      },
+      reconcileJobCompleted: (jobId) => {
+        setActiveJobs((prev) => prev.filter((j) => j.id !== jobId));
+        setSelectedJob((prev) => (prev?.id === jobId ? null : prev));
+      },
+      reconcileOfferRemoved: (jobId) => {
+        setActiveJobs((prev) => prev.filter((j) => j.id !== jobId));
+        setSelectedJob((prev) => (prev?.id === jobId ? null : prev));
+      },
 
       // Location & Presence State Machine
       presenceState,

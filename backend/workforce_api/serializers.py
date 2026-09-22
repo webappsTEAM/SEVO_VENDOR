@@ -512,6 +512,8 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
     can_create_quote = serializers.SerializerMethodField()
     active_quote_id = serializers.SerializerMethodField()
     active_quote_number = serializers.SerializerMethodField()
+    active_quote_status = serializers.SerializerMethodField()
+    active_quote_version = serializers.SerializerMethodField()
     # GT: the logistics half of a job. Without these the driver app can see
     # where to collect from but not where to deliver to, and has no idea
     # which leg of the trip it is on -- the leg/stop endpoints existed but
@@ -577,6 +579,8 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
             "can_create_quote",
             "active_quote_id",
             "active_quote_number",
+            "active_quote_status",
+            "active_quote_version",
             # Goods & Transport
             "is_logistics",
             "drop_address",
@@ -1018,8 +1022,22 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
             "remaining_seconds": remaining_seconds,
         }
 
+    def _is_estimation_job(self, obj):
+        if getattr(obj, "is_estimation", False):
+            return True
+        if getattr(obj, "request_kind", "") == "ESTIMATION":
+            return True
+        if getattr(obj, "job_type", "") == "ESTIMATION":
+            return True
+        from service_requests.models import is_quotation_service
+        return is_quotation_service(
+            service_id=getattr(obj, "catalog_service_id", None),
+            name=getattr(obj, "issue_title", ""),
+            category=getattr(obj, "service_category", "")
+        )
+
     def _get_active_quote(self, obj):
-        if not getattr(obj, "is_estimation", False):
+        if not self._is_estimation_job(obj):
             return None
         quotes_map = self.context.get("quotes_map")
         if quotes_map is not None:
@@ -1035,10 +1053,13 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
         return obj._cached_active_quote
 
     def get_is_estimation(self, obj):
-        return bool(getattr(obj, "is_estimation", False))
+        return self._is_estimation_job(obj)
 
     def get_pricing_mode(self, obj):
-        return getattr(obj, "pricing_mode", "FIXED")
+        mode = getattr(obj, "pricing_mode", None)
+        if mode:
+            return mode
+        return "QUOTATION" if self._is_estimation_job(obj) else "FIXED"
 
     def get_active_quote_id(self, obj):
         q = self._get_active_quote(obj)
@@ -1048,8 +1069,16 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
         q = self._get_active_quote(obj)
         return q.quote_number if q else None
 
+    def get_active_quote_status(self, obj):
+        q = self._get_active_quote(obj)
+        return q.status if q else None
+
+    def get_active_quote_version(self, obj):
+        q = self._get_active_quote(obj)
+        return q.quote_version if q else None
+
     def get_can_create_quote(self, obj):
-        if not getattr(obj, "is_estimation", False):
+        if not self._is_estimation_job(obj):
             return False
         psvs_map = self.context.get("psvs_map")
         psv = psvs_map.get(obj.id) if psvs_map is not None else None

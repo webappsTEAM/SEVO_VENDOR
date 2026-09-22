@@ -68,18 +68,55 @@ QUOTATION_SERVICE_SLUGS = {
 def is_quotation_service(service_id=None, slug=None, name=None, category=None):
     """
     Authoritative backend check whether a service operates in QUOTATION mode.
+
+    Priority:
+    1. Canonical service ID  — most reliable, used when Customer app sends catalog_service_id
+    2. Canonical slug        — reliable when slug is available
+    3. Exact service name match against the known quotation catalog
+    4. 'Site Consultation' discriminator in the job title
+       The Customer app appends '(Site Consultation)' to estimation bookings even
+       when catalog_service_id is missing. This is the only safe fallback.
+
+    DO NOT classify by category alone.
+    Both direct fixed-price jobs AND estimation/consultation jobs share the same
+    categories (paintings, mason, etc). Category-level matching causes every direct
+    painting or masonry job to be misclassified as an estimation job — showing the
+    Quotation Workflow UI and hiding the standard completion button for jobs that
+    should go through the normal Start -> In-Progress -> Complete flow.
     """
-    if service_id and int(service_id) in QUOTATION_SERVICE_IDS:
-        return True
-    if slug and str(slug).lower().strip() in QUOTATION_SERVICE_SLUGS:
-        return True
+    # 1. Canonical service ID (highest confidence)
+    if service_id:
+        try:
+            if int(service_id) in QUOTATION_SERVICE_IDS:
+                return True
+        except (ValueError, TypeError):
+            pass
+
+    # 2. Canonical slug
+    if slug:
+        clean_slug = str(slug).lower().strip()
+        if clean_slug in QUOTATION_SERVICE_SLUGS:
+            return True
+        for q_slug in QUOTATION_SERVICE_SLUGS:
+            if q_slug in clean_slug:
+                return True
+
+    # 3. Exact service name match against the known quotation catalog (equality only, no substring)
     if name:
         clean_name = str(name).lower().strip()
         for q_name in QUOTATION_SERVICE_IDS.values():
             if clean_name == q_name.lower():
                 return True
-    if category and str(category).lower().strip() in ["painting", "mason", "masonry", "painting & waterproofing", "masonry & civil"]:
-        return True
+
+        # 4. 'Site Consultation' discriminator in the job title.
+        #    The Customer app appends this suffix specifically for estimation bookings.
+        #    Do NOT add broad keywords like 'painting', 'waterproof', 'masonry' here —
+        #    those appear in direct fixed-price job titles too and cause false positives.
+        for marker in ["site consultation", "(site consultation)", "site-consultation"]:
+            if marker in clean_name:
+                return True
+
+    # NOTE: category matching intentionally removed — see docstring above.
     return False
 
 
@@ -1115,3 +1152,46 @@ class SettingsHubInvoice(models.Model):
 
     def __str__(self):
         return f"Invoice {self.invoice_number} - ₹{self.amount} ({self.status})"
+
+
+class PackageStatus(models.TextChoices):
+    DRAFT    = "DRAFT",    "Draft"
+    ACTIVE   = "ACTIVE",   "Active"
+    INACTIVE = "INACTIVE", "Inactive"
+    ARCHIVED = "ARCHIVED", "Archived"
+
+
+class Package(models.Model):
+    """
+    Vendor-facing mirror of Customer/backend/service_requests/models.py's
+    Package -- unmanaged, same shared table. Only carries the fields the
+    Vendor Stock Management feature needs (price, stock linkage); Customer
+    backend remains the owner of every other Package field (reviews, faqs,
+    includes/excludes, customization, etc.) and this app never migrates
+    this table.
+    """
+    service = models.ForeignKey(Service, on_delete=models.CASCADE, related_name="packages", db_column="service_id")
+    name = models.CharField(max_length=200)
+    slug = models.SlugField(unique=True)
+    base_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    offer_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    duration = models.CharField(max_length=50, blank=True)
+    image = models.CharField(max_length=500, blank=True)
+    tag = models.CharField(max_length=50, blank=True)
+    status = models.CharField(max_length=20, choices=PackageStatus.choices, default=PackageStatus.DRAFT)
+    sort_order = models.PositiveIntegerField(default=0)
+    stock_item = models.OneToOneField(
+        "inventory.InventoryItem",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="vendor_vegetable_package",
+        db_column="stock_item_id",
+    )
+
+    class Meta:
+        managed = False
+        db_table = "service_requests_package"
+        ordering = ["sort_order", "id"]
+
+    def __str__(self):
+        return self.name
