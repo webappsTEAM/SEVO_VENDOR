@@ -1,0 +1,768 @@
+/**
+ * EmployeeRuntimeProvider.jsx
+ *
+ * Single persistent session runtime for the CalTrack Workforce employee application.
+ * Incorporates all Six Architecture Corrections:
+ * 1. ONE Authoritative GPS Implementation (session-level useLocationTracker)
+ * 2. Separate Presence State from GPS State (OFFLINE -> CONNECTING -> ONLINE_LOCATION_PENDING -> ONLINE_GPS_LIVE)
+ * 3. Provider Ownership as the Primary GPS/Realtime Guard
+ * 4. Zero Customer Impact & Preserved API Contracts
+ * 5. Workforce-Side Shared DB Testing
+ * 6. Stale-While-Revalidate Active Job Cache + Out-of-Order Generation Protection
+ */
+
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useAuth } from './AuthProvider.jsx';
+import { EmployeeRuntimeContext,
+  ACTIVE_QUEUE_STATUSES } from './EmployeeRuntimeContext.jsx';
+import {
+  apiGetWorkforceJobs,
+  apiGetNotifications,
+  apiMarkNotificationRead,
+  apiClearNotifications,
+  apiUpdateLocationFull,
+  apiTransitionJob,
+  apiGetPreServiceStatus,
+} from '../api/workforceService.js';
+import { useLocationTracker, getGPSPosition } from '../hooks/useGPSPosition.js';
+import { useRealtimeStream } from '../hooks/useRealtimeStream.js';
+
+export function EmployeeRuntimeProvider({ children }) {
+  const { user, employee, isEmployee, registrationStatus, togglePresence: authTogglePresence, logout, isAuthenticated, refreshProfile } = useAuth();
+
+  const isApprovedEmployee = Boolean(user && isEmployee && registrationStatus === 'approved');
+  const isOnlineAuth = Boolean(user?.isOnline);
+
+  // ── 1. Presence & GPS State Machine (Correction 2) ──────────────────────────
+  // States: 'OFFLINE' | 'CONNECTING' | 'ONLINE_LOCATION_PENDING' | 'ONLINE_GPS_LIVE'
+  const [presenceState, setPresenceState] = useState(() => {
+    if (!isOnlineAuth) return 'OFFLINE';
+    const loc = user?.last_known_location;
+    if (loc?.latitude && loc?.longitude) return 'ONLINE_GPS_LIVE';
+    return 'ONLINE_LOCATION_PENDING';
+  });
+
+  const isOnline = presenceState !== 'OFFLINE' && presenceState !== 'CONNECTING';
+  // Mirrors of presence state for use inside async callbacks, where the closed-
+  // over value can be stale by the time a request resolves.
+  const presenceStateRef = useRef(presenceState);
+  const presenceTogglePendingRef = useRef(false);
+  const isGpsLive = presenceState === 'ONLINE_GPS_LIVE';
+  useEffect(() => {
+    presenceStateRef.current = presenceState;
+  }, [presenceState]);
+  const isLocationPending = presenceState === 'ONLINE_LOCATION_PENDING';
+
+  useEffect(() => {
+    if (!isOnlineAuth) {
+      setPresenceState('OFFLINE');
+    } else {
+      setPresenceState((prev) => (prev === 'OFFLINE' ? 'ONLINE_LOCATION_PENDING' : prev));
+    }
+  }, [isOnlineAuth]);
+
+const CACHED_ACTIVE_JOBS_KEY = 'calservice_workforce_cached_active_jobs';
+const CACHED_COMPLETED_JOBS_KEY = 'calservice_workforce_cached_completed_jobs';
+
+  // ── 2. Jobs State & Cache (Correction 6: Stale-While-Revalidate) ─────────────
+  const [activeJobs, setActiveJobs] = useState(() => {
+    try {
+      const saved = localStorage.getItem(CACHED_ACTIVE_JOBS_KEY);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [completedJobs, setCompletedJobs] = useState(() => {
+    try {
+      const saved = localStorage.getItem(CACHED_COMPLETED_JOBS_KEY);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [selectedJob, setSelectedJob] = useState(null);
+  const [isJobsLoading, setIsJobsLoading] = useState(false);
+  const [isCompletedLoading, setIsCompletedLoading] = useState(false);
+  const [jobsError, setJobsError] = useState(null);
+
+  // Sequence versioning to prevent out-of-order stale responses
+  const fetchGenerationRef = useRef(0);
+  const inFlightActiveJobsPromiseRef = useRef(null);
+    // In-flight deduplication: prevents React StrictMode double-mount from firing
+    // two concurrent /notifications/ requests (same pattern as inFlightActiveJobsPromiseRef).
+    const inFlightNotificationsPromiseRef = useRef(null);
+  const inFlightCompletedJobsPromiseRef = useRef(null);
+  const activeJobsRef = useRef([]);
+  const selectedJobRef = useRef(null);
+  const debounceTimerRef = useRef(null);
+
+  useEffect(() => {
+    activeJobsRef.current = activeJobs;
+  }, [activeJobs]);
+
+  useEffect(() => {
+    selectedJobRef.current = selectedJob;
+  }, [selectedJob]);
+
+  // Derived active workload state (Strict: ONLY jobs genuinely assigned to this employee and in an active queue status)
+  const activeAssignedJob = useMemo(() => {
+    return (
+      activeJobs.find((j) => {
+        const st = (j.status || j.job_status || '').toLowerCase();
+        if (j.is_offer || st === 'unassigned') return false;
+        const isAssignedToMe = Boolean(
+          j.is_assigned_to_current_employee === true ||
+          j.is_accepted_by_current_employee === true ||
+          (employee?.id && (
+            j.assigned_employee === employee.id ||
+            j.assigned_employee?.id === employee.id ||
+            j.assigned_employee_id === employee.id
+          )) ||
+          (user?.id && (
+            j.assigned_employee === user.id ||
+            j.assigned_employee?.id === user.id ||
+            j.assigned_employee_id === user.id
+          ))
+        );
+        const isAnOffer = Boolean(j.is_offer === true || j.active_offer?.status === 'OFFERED');
+        return isAssignedToMe && !isAnOffer && ACTIVE_QUEUE_STATUSES.includes(st);
+      }) || null
+    );
+  }, [activeJobs, user?.id, employee?.id]);
+
+  const hasActiveJob = useMemo(() => {
+    return Boolean(activeAssignedJob);
+  }, [activeAssignedJob]);
+
+  const incomingOffers = useMemo(() => {
+    return activeJobs.filter(
+      (j) =>
+        (j.is_offer === true || j.active_offer?.status === 'OFFERED') &&
+        j.active_offer?.status !== 'REJECTED' &&
+        j.active_offer?.status !== 'DECLINED' &&
+        (j.offer_status || '').toUpperCase() !== 'REJECTED' &&
+        (j.offer_status || '').toUpperCase() !== 'DECLINED' &&
+        !j.active_offer?.is_expired &&
+        !j.is_assigned_to_current_employee
+    );
+  }, [activeJobs]);
+
+  const incomingOffer = useMemo(() => {
+    return incomingOffers[0] || null;
+  }, [incomingOffers]);
+
+  // ── 3. Notification Deduplication ──────────────────────────────────────────
+  const knownOfferIdsRef = useRef(new Set());
+  const isInitialOffersLoadedRef = useRef(false);
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  const [jobsRevision, setJobsRevision] = useState(0);
+
+  // Request browser notification permission once when online
+  useEffect(() => {
+    if (isOnline && typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => {});
+    }
+  }, [isOnline]);
+
+  const triggerOfferBrowserNotification = useCallback((offeredJob) => {
+    if (!offeredJob) return;
+    const offerId = offeredJob.active_offer?.id || offeredJob.offer_id || `job_${offeredJob.id || offeredJob.job_id}`;
+
+    // Deduplication check: only notify if this offer ID has never been notified
+    if (knownOfferIdsRef.current.has(offerId)) {
+      return;
+    }
+    knownOfferIdsRef.current.add(offerId);
+
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+      try {
+        const title = '⚡ New Exclusive Job Offer!';
+        const reqIdentifier =
+          offeredJob.request_id ||
+          (offeredJob.job_id ? `${offeredJob.job_id}` : (offeredJob.id ? `${offeredJob.id}` : ''));
+        const prefix = reqIdentifier ? `Job #${reqIdentifier}` : 'Job Offer';
+        const serviceLabel =
+          offeredJob.service_title || offeredJob.service_category || 'Service Request';
+        const body = `${prefix}: ${serviceLabel}. Tap to review and accept.`;
+        const notif = new Notification(title, {
+          body,
+          icon: '/favicon.ico',
+          tag: `offer_${offerId}`, // Browser-level tag deduplication
+        });
+        notif.onclick = () => {
+          try {
+            window.focus?.();
+            window.location.href = '/workforce/employee/jobs?tab=offers';
+          } catch (_) {}
+        };
+      } catch (_) {}
+    }
+  }, []);
+
+  // ── 4. Single-Flight Stale-While-Revalidate Active Jobs Refresh ──────────────
+  const refreshActiveJobs = useCallback(
+    async (options = {}) => {
+      const isSilent = options?.silent === true;
+      const force = options?.force === true;
+
+      // Request Coalescing: Return existing in-flight Promise if one is running
+      if (inFlightActiveJobsPromiseRef.current && !force) {
+        return inFlightActiveJobsPromiseRef.current;
+      }
+
+      if (!isSilent && activeJobsRef.current.length === 0) {
+        setIsJobsLoading(true);
+      }
+      setJobsError(null);
+
+      // Track request generation sequence
+      const currentGen = ++fetchGenerationRef.current;
+
+      const fetchPromise = (async () => {
+        try {
+          // Query active jobs from backend
+          const jobsData = await apiGetWorkforceJobs('active');
+
+          // Out-of-order response check: discard if a newer fetch was initiated
+          if (currentGen < fetchGenerationRef.current) {
+            console.info(`[EmployeeRuntime] Discarding stale active jobs response (gen #${currentGen} < #${fetchGenerationRef.current})`);
+            return activeJobsRef.current;
+          }
+
+          if (Array.isArray(jobsData)) {
+            setActiveJobs(jobsData);
+            try {
+              localStorage.setItem(CACHED_ACTIVE_JOBS_KEY, JSON.stringify(jobsData));
+            } catch (_) {}
+
+            // Seed initial offer IDs so historical offers do not trigger browser alerts
+            const currentOffers = jobsData.filter(
+              (j) =>
+                (j.is_offer === true || j.active_offer?.status === 'OFFERED') &&
+                !j.active_offer?.is_expired &&
+                !j.is_assigned_to_current_employee
+            );
+
+            if (!isInitialOffersLoadedRef.current) {
+              currentOffers.forEach((off) => {
+                const offerId = off.active_offer?.id || off.offer_id || `job_${off.id}`;
+                knownOfferIdsRef.current.add(offerId);
+              });
+              isInitialOffersLoadedRef.current = true;
+            } else {
+              currentOffers.forEach((off) => {
+                triggerOfferBrowserNotification(off);
+              });
+            }
+
+            setSelectedJob((prev) => {
+              if (prev) {
+                const updated = jobsData.find((j) => j.id === prev.id);
+                if (updated) return updated;
+              }
+              // If there is an active assigned job, prefer selecting that
+              const active = jobsData.find((j) => {
+                const st = (j.status || j.job_status || '').toLowerCase();
+                if (j.is_offer || st === 'unassigned') return false;
+                const isAssignedToMe = Boolean(
+                  j.is_assigned_to_current_employee === true ||
+                  j.is_accepted_by_current_employee === true ||
+                  (employee?.id && (
+                    j.assigned_employee === employee.id ||
+                    j.assigned_employee?.id === employee.id ||
+                    j.assigned_employee_id === employee.id
+                  )) ||
+                  (user?.id && (
+                    j.assigned_employee === user.id ||
+                    j.assigned_employee?.id === user.id ||
+                    j.assigned_employee_id === user.id
+                  ))
+                );
+                const isAnOffer = Boolean(j.is_offer === true || j.active_offer?.status === 'OFFERED');
+                return isAssignedToMe && !isAnOffer && ACTIVE_QUEUE_STATUSES.includes(st);
+              });
+              if (active) return active;
+              // If there is an active incoming offer, select that
+              if (currentOffers && currentOffers.length > 0) return currentOffers[0];
+              return null;
+            });
+            return jobsData;
+          }
+          return activeJobsRef.current;
+        } catch (err) {
+          // CRITICAL: On transient failure, preserve last known valid state. Never set to []!
+          console.warn('[EmployeeRuntime] Background active jobs refresh error:', err);
+          setJobsError(err.message || 'Unable to update jobs.');
+          return activeJobsRef.current;
+        } finally {
+          setIsJobsLoading(false);
+          inFlightActiveJobsPromiseRef.current = null;
+        }
+      })();
+
+      inFlightActiveJobsPromiseRef.current = fetchPromise;
+      return fetchPromise;
+    },
+    [triggerOfferBrowserNotification]
+  );
+
+  // ── 5. Lazy Completed Jobs Fetch ───────────────────────────────────────────
+  const refreshCompletedJobs = useCallback(async (options = {}) => {
+    const isSilent = options?.silent === true;
+    if (inFlightCompletedJobsPromiseRef.current) {
+      return inFlightCompletedJobsPromiseRef.current;
+    }
+
+    if (!isSilent) setIsCompletedLoading(true);
+
+    const fetchPromise = (async () => {
+      try {
+        const completedData = await apiGetWorkforceJobs('completed');
+        if (Array.isArray(completedData)) {
+          setCompletedJobs(completedData);
+          try {
+            localStorage.setItem(CACHED_COMPLETED_JOBS_KEY, JSON.stringify(completedData));
+          } catch (_) {}
+          return completedData;
+        }
+        return [];
+      } catch (err) {
+        console.warn('[EmployeeRuntime] Completed jobs fetch error:', err);
+        return [];
+      } finally {
+        setIsCompletedLoading(false);
+        inFlightCompletedJobsPromiseRef.current = null;
+      }
+    })();
+
+    inFlightCompletedJobsPromiseRef.current = fetchPromise;
+    return fetchPromise;
+  }, []);
+
+  // Debounced coalesced active jobs refresh helper
+  const scheduleCoalescedRefresh = useCallback(
+    (delayMs = 400) => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+      debounceTimerRef.current = setTimeout(() => {
+        refreshActiveJobs({ silent: true });
+      }, delayMs);
+    },
+    [refreshActiveJobs]
+  );
+
+  // Optimistic decline handler: instantly removes offer from state without waiting for network
+  const declineOfferOptimistic = useCallback((jobId) => {
+    setActiveJobs((prev) => {
+      const updated = prev.filter((j) => (j.id !== jobId && j.job_id !== jobId));
+      try {
+        localStorage.setItem(CACHED_ACTIVE_JOBS_KEY, JSON.stringify(updated));
+      } catch (_) {}
+      return updated;
+    });
+    setJobsRevision((prev) => prev + 1);
+  }, []);
+
+  // ── 6. Centralized Notification Synchronization ────────────────────────────
+  const syncNotifications = useCallback(async () => {
+    if (!isAuthenticated) return;
+    try {
+      const res = await apiGetNotifications();
+      if (res) {
+        setNotifications(res.notifications || []);
+        setUnreadCount(res.unread_count || 0);
+      }
+    } catch (_) {}
+  }, [isAuthenticated]);
+
+  const markNotificationAsRead = useCallback(
+    async (notificationId = null) => {
+      try {
+        await apiMarkNotificationRead(notificationId);
+        await syncNotifications();
+      } catch (_) {}
+    },
+    [syncNotifications]
+  );
+
+  const clearAllNotifications = useCallback(
+    async (notificationIds = []) => {
+      try {
+        await apiClearNotifications(notificationIds);
+        await syncNotifications();
+      } catch (_) {}
+    },
+    [syncNotifications]
+  );
+
+  // Initial load on authentication
+  useEffect(() => {
+    if (isAuthenticated && isApprovedEmployee) {
+      refreshActiveJobs();
+      syncNotifications();
+    }
+  }, [isAuthenticated, isApprovedEmployee, refreshActiveJobs, syncNotifications]);
+
+  // ── SSE Fallback: 30-second background safety-net polling ─────────────────
+  // Guarantees job offers appear within ≤30s even when SSE is disconnected
+  // (mobile network drops, reconnecting). Silent refresh = no loading spinner.
+  // Only active when the employee is online and approved.
+  useEffect(() => {
+    if (!isAuthenticated || !isApprovedEmployee || !isOnline) return;
+    const POLL_INTERVAL_MS = 30_000;
+    const id = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      refreshActiveJobs({ silent: true });
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [isAuthenticated, isApprovedEmployee, isOnline, refreshActiveJobs]);
+
+  // ── 7. Single Authoritative Live GPS Watcher (Correction 1 & 3) ────────────
+  const [liveLocation, setLiveLocation] = useState(() => {
+    const loc = user?.last_known_location;
+    if (loc?.latitude && loc?.longitude) {
+      return {
+        latitude: Number(loc.latitude),
+        longitude: Number(loc.longitude),
+        accuracy: loc.accuracy || null,
+        timestamp: Date.now(),
+      };
+    }
+    return null;
+  });
+
+  const isUpdatingLocationRef = useRef(false);
+
+  // Bug found: useLocationTracker's onError callback already carries a
+  // real, user-facing message per GeolocationPositionError code (see
+  // handleLocationError below and useGPSPosition.js's handleError), but
+  // nothing kept it -- it was only console.warn'd, so a technician whose
+  // browser denied location permission just saw the cockpit silently sit
+  // in ONLINE_LOCATION_PENDING forever with no indication why. Surfaced
+  // via context so PortalCockpitLayout can render it.
+  const [locationError, setLocationError] = useState(null);
+
+  const handlePositionChange = useCallback(async (payload) => {
+    const newLoc = {
+      latitude: payload.latitude,
+      longitude: payload.longitude,
+      accuracy: payload.accuracy,
+      timestamp: Date.now(),
+    };
+    setLiveLocation(newLoc);
+    setPresenceState('ONLINE_GPS_LIVE');
+    setLocationError(null);
+
+    // Transmit authoritative telemetry to backend (with in-flight deduplication)
+    if (isUpdatingLocationRef.current) return;
+    isUpdatingLocationRef.current = true;
+    try {
+      await apiUpdateLocationFull(
+        payload.latitude,
+        payload.longitude,
+        payload.accuracy,
+        payload.speed,
+        payload.heading,
+        payload.captured_at
+      );
+      // Notify map views
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('workforce:location-updated', {
+            detail: { ...payload, source: 'session_watcher' },
+          })
+        );
+      }
+    } catch (_) {
+    } finally {
+      isUpdatingLocationRef.current = false;
+    }
+  }, []);
+
+  const handleLocationError = useCallback((err) => {
+    console.warn('[EmployeeRuntime] Location tracker warning:', err);
+    // If location fails, we remain online but location is pending
+    setPresenceState((prev) => (prev === 'OFFLINE' ? 'OFFLINE' : 'ONLINE_LOCATION_PENDING'));
+    setLocationError(err?.message || 'Unable to access your location. Please check your device location settings.');
+  }, []);
+
+  // Mount single continuous GPS watcher for online authenticated technician
+  useLocationTracker(
+    Boolean(isAuthenticated && isApprovedEmployee && isOnline),
+    handlePositionChange,
+    handleLocationError
+  );
+
+  const scanCurrentLocation = useCallback(async () => {
+    try {
+      const pos = await getGPSPosition(true);
+      const { latitude, longitude, accuracy, speed, heading } = pos.coords;
+      const captured_at = new Date(pos.timestamp || Date.now()).toISOString();
+      await apiUpdateLocationFull(latitude, longitude, accuracy, speed, heading, captured_at);
+      const newLoc = {
+        latitude,
+        longitude,
+        accuracy,
+        timestamp: pos.timestamp || Date.now(),
+      };
+      setLiveLocation(newLoc);
+      setPresenceState('ONLINE_GPS_LIVE');
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('workforce:location-updated', {
+            detail: { ...newLoc, speed, heading, captured_at, source: 'manual_scan' },
+          })
+        );
+      }
+      return newLoc;
+    } catch (err) {
+      throw err;
+    }
+  }, []);
+
+  // ── 8. Single Realtime Event Stream Connection (SSE) ───────────────────────
+  const handleRealtimeEvent = useCallback(
+    (eventData) => {
+      const type = eventData.event_type;
+      console.info(`[EmployeeRuntime SSE Event] ${type}`, eventData);
+
+      if (type === 'OFFER_CREATED' || type === 'JOB_OFFER') {
+        const payload = eventData.payload || {};
+        if (payload.offer_id || payload.id || payload.job_id) {
+          triggerOfferBrowserNotification(payload);
+        }
+        setJobsRevision((prev) => prev + 1);
+        scheduleCoalescedRefresh(150);
+      } else if (
+        [
+          'JOB_ASSIGNED',
+          'EMPLOYEE_JOB_ACCEPTED',
+          'EMPLOYEE_JOB_CANCELLED',
+          'OFFER_REJECTED',
+          'ARRIVAL_DETECTED',
+          'JOB_COMPLETED',
+          'JOB_LOCATION_UPDATE',
+          'STATUS_CHANGE',
+          'EXTENSION_DECIDED',
+          'PAYMENT_COLLECTED',
+          'JOB_OFFER_CLOSED',
+        ].includes(type)
+      ) {
+        setJobsRevision((prev) => prev + 1);
+        scheduleCoalescedRefresh(type === 'OFFER_REJECTED' ? 100 : 300);
+        // A job ending or status change flips technician availability server-side
+        if (['JOB_COMPLETED', 'STATUS_CHANGE', 'JOB_ASSIGNED', 'EMPLOYEE_JOB_CANCELLED', 'OFFER_REJECTED'].includes(type) && typeof refreshProfile === 'function') {
+          refreshProfile().catch(() => {});
+        }
+      } else if (type === 'NOTIFICATION_CREATED') {
+        syncNotifications();
+      }
+    },
+    [triggerOfferBrowserNotification, scheduleCoalescedRefresh, syncNotifications, refreshProfile]
+  );
+
+  const handleRealtimeReconcile = useCallback(() => {
+    setJobsRevision((prev) => prev + 1);
+    scheduleCoalescedRefresh(100);
+    syncNotifications();
+  }, [scheduleCoalescedRefresh, syncNotifications]);
+
+  const handleRealtimeAuthFailure = useCallback(() => {
+    console.warn('[Realtime] Auth failure encountered on SSE channel. Realtime disconnected.');
+  }, []);
+
+  const { connectionState: realtimeConnectionState } = useRealtimeStream({
+    enabled: Boolean(isAuthenticated && isApprovedEmployee && isOnline),
+    onEvent: handleRealtimeEvent,
+    onReconcile: handleRealtimeReconcile,
+    onAuthFailure: handleRealtimeAuthFailure,
+  });
+
+  // ── 9. Fast Presence Toggle Controller (Correction 2) ──────────────────────
+  const togglePresenceFast = useCallback(
+    async (desiredState = null) => {
+      // Ignore repeat clicks while a toggle is already in flight, so rapid
+      // tapping cannot interleave two requests and land on the wrong state.
+      if (presenceTogglePendingRef.current) return null;
+      presenceTogglePendingRef.current = true;
+
+      const previousState = presenceStateRef.current;
+      const goingOnline = desiredState === null ? !isOnline : Boolean(desiredState);
+
+      // Show the intended state immediately. This used to sit in CONNECTING for
+      // the whole round trip, and isOnline treats CONNECTING as offline, so
+      // going online looked like the tap had done nothing until the server
+      // replied. On failure we roll straight back below, so the UI never claims
+      // a state the backend rejected.
+      setPresenceState(goingOnline ? 'ONLINE_LOCATION_PENDING' : 'OFFLINE');
+
+      try {
+        const res = await authTogglePresence(desiredState);
+        if (res.is_online) {
+          setPresenceState('ONLINE_LOCATION_PENDING');
+          // Start background GPS resolution without blocking presence completion
+          getGPSPosition(false)
+            .then((pos) => {
+              handlePositionChange({
+                latitude: pos.coords.latitude,
+                longitude: pos.coords.longitude,
+                accuracy: pos.coords.accuracy,
+                speed: pos.coords.speed,
+                heading: pos.coords.heading,
+                captured_at: new Date(pos.timestamp || Date.now()).toISOString(),
+              });
+            })
+            .catch(() => {});
+          refreshActiveJobs({ silent: true });
+        } else {
+          setPresenceState('OFFLINE');
+        }
+        return res;
+      } catch (err) {
+        setPresenceState(previousState);
+        throw err;
+      } finally {
+        presenceTogglePendingRef.current = false;
+      }
+    },
+    [authTogglePresence, isOnline, handlePositionChange, refreshActiveJobs]
+  );
+
+  // ── 9b. Job Start / Clock-In Controller ────────────────────────────────────
+  // The dashboard has always called autoClockIn() / getClockInReadiness() once
+  // all four pre-service gates were satisfied, but neither was ever implemented
+  // on this context -- so every call threw "autoClockIn is not a function"
+  // before it reached the network, and the job silently never started. The
+  // backend now clocks the technician in and transitions the job atomically
+  // inside the IN_PROGRESS transition, so these stay thin wrappers over it
+  // rather than a second, competing clock-in implementation.
+  const getClockInReadiness = useCallback(async (jobId) => {
+    if (!jobId) return null;
+    try {
+      return await apiGetPreServiceStatus(jobId);
+    } catch (err) {
+      console.warn('[EmployeeRuntime] Pre-service readiness fetch failed:', err);
+      return null;
+    }
+  }, []);
+
+  const autoClockIn = useCallback(
+    async (jobId) => {
+      if (!jobId) throw new Error('No job selected to start.');
+      const res = await apiTransitionJob(jobId, 'IN_PROGRESS');
+      await refreshActiveJobs({ silent: true });
+      return res;
+    },
+    [refreshActiveJobs]
+  );
+
+  // ── 10. Context Value Assembly ─────────────────────────────────────────────
+  const value = useMemo(
+    () => ({
+      // Jobs State
+      activeJobs,
+      completedJobs,
+      selectedJob,
+      setSelectedJob,
+      incomingOffer,
+      incomingOffers,
+      activeAssignedJob,
+      hasActiveJob,
+      isJobsLoading,
+      isCompletedLoading,
+      jobsError,
+      refreshActiveJobs,
+      refreshCompletedJobs,
+      reconcileJobAccepted: (jobId, updatedJob) => {
+        setActiveJobs((prev) =>
+          prev.map((j) =>
+            j.id === jobId
+              ? { ...j, ...(updatedJob || {}), status: 'accepted', is_offer: false, is_assigned_to_current_employee: true }
+              : j
+          )
+        );
+        setSelectedJob((prev) =>
+          prev?.id === jobId
+            ? { ...prev, ...(updatedJob || {}), status: 'accepted', is_offer: false, is_assigned_to_current_employee: true }
+            : prev
+        );
+      },
+      reconcileJobCompleted: (jobId) => {
+        setActiveJobs((prev) => prev.filter((j) => j.id !== jobId));
+        setSelectedJob((prev) => (prev?.id === jobId ? null : prev));
+      },
+      reconcileOfferRemoved: (jobId) => {
+        setActiveJobs((prev) => prev.filter((j) => j.id !== jobId));
+        setSelectedJob((prev) => (prev?.id === jobId ? null : prev));
+      },
+
+      // Location & Presence State Machine
+      presenceState,
+      isOnline,
+      isGpsLive,
+      isLocationPending,
+      liveLocation,
+      locationState: isGpsLive ? 'live' : isLocationPending ? 'locating' : 'idle',
+      locationError,
+      scanCurrentLocation,
+      togglePresence: togglePresenceFast,
+
+      // Job Start / Clock-In
+      autoClockIn,
+      getClockInReadiness,
+
+      // Notifications
+      notifications,
+      unreadCount,
+      syncNotifications,
+      markNotificationAsRead,
+      clearAllNotifications,
+
+      // Realtime State
+      realtimeConnectionState,
+      jobsRevision,
+
+      // Offer helpers
+      declineOfferOptimistic,
+    }),
+    [
+      activeJobs,
+      completedJobs,
+      selectedJob,
+      incomingOffer,
+      incomingOffers,
+      activeAssignedJob,
+      hasActiveJob,
+      isJobsLoading,
+      isCompletedLoading,
+      jobsError,
+      refreshActiveJobs,
+      refreshCompletedJobs,
+      presenceState,
+      isOnline,
+      isGpsLive,
+      isLocationPending,
+      liveLocation,
+      locationError,
+      scanCurrentLocation,
+      togglePresenceFast,
+      autoClockIn,
+      getClockInReadiness,
+      notifications,
+      unreadCount,
+      syncNotifications,
+      markNotificationAsRead,
+      clearAllNotifications,
+      realtimeConnectionState,
+      jobsRevision,
+      declineOfferOptimistic,
+    ]
+  );
+
+  return <EmployeeRuntimeContext.Provider value={value}>{children}</EmployeeRuntimeContext.Provider>;
+}
