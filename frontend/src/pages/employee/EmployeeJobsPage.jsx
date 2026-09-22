@@ -46,6 +46,7 @@ import {
   Check,
   Copy,
   Lock,
+  Camera,
 } from 'lucide-react';
 
 /**
