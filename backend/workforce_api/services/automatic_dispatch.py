@@ -46,39 +46,38 @@ MAX_GPS_AGE_SECONDS = int(getattr(settings, "DISPATCH_MAX_GPS_AGE_SECONDS", 3600
 # Maximum geographic dispatch radius (50 km) before any widening kicks in.
 MAX_DISPATCH_RADIUS_KM = 50.0
 
-# Default job offer duration before auto-expiry and fallback -- kept as the
-# fallback value used by compute_offer_window_minutes() below for any
-# priority it doesn't recognize, and by any caller that still imports this
-# constant directly.
-DEFAULT_OFFER_DURATION_MINUTES = 5
+# ── Bounded Adaptive Offer Waves & 2-Minute Expiry (CalTrack Dispatch) ──────
+OFFER_TTL_SECONDS = 120  # 2 Minutes exact maximum lifetime per offer wave
+DEFAULT_OFFER_DURATION_MINUTES = 2
+INITIAL_WAVE_SIZE = 5     # Wave 1: Ranks 1 to 5
+SECOND_WAVE_SIZE = 10     # Wave 2: Ranks 6 to 15
+THIRD_WAVE_SIZE = 20      # Wave 3: Ranks 16 to 35
+SUBSEQUENT_WAVE_SIZE = 20 # Wave 4+: Ranks 36+ in batches of 20
 
-# ── Variable offer window (Booking Dispatch Framework, section 4) ───────────
-# The offer window is no longer one fixed number everywhere. It's a base
-# value by booking priority, adjusted by how many eligible candidates were
-# actually found for this job (a thin pool gets more time since burning the
-# one good option on a timeout is expensive; a deep pool gets less since a
-# strong next candidate is always a moment away), with a small extra bump
-# for service categories known to have few qualified technicians. All of
-# this is read through django.conf.settings with these as the defaults, so
-# it can be retuned in an environment's settings without a code change --
-# see the SEVO Booking Dispatch Framework doc, section 4, for the full
-# rationale. Promote this to a DB-backed config table if/when it needs to
-# vary per company or per zone rather than globally.
+def get_wave_size(wave_number: int) -> int:
+    """Returns the configured bounded wave size for a given dispatch wave number."""
+    if wave_number <= 1:
+        return getattr(settings, "DISPATCH_INITIAL_WAVE_SIZE", INITIAL_WAVE_SIZE)
+    elif wave_number == 2:
+        return getattr(settings, "DISPATCH_SECOND_WAVE_SIZE", SECOND_WAVE_SIZE)
+    elif wave_number == 3:
+        return getattr(settings, "DISPATCH_THIRD_WAVE_SIZE", THIRD_WAVE_SIZE)
+    else:
+        return getattr(settings, "DISPATCH_SUBSEQUENT_WAVE_SIZE", SUBSEQUENT_WAVE_SIZE)
+
+
+# ── Variable offer window (Booking Dispatch Framework) ──────────────────────
 DEFAULT_OFFER_WINDOW_MINUTES_BY_PRIORITY = {
     "urgent": 2,
-    "high": 3,
-    "normal": 5,
-    "low": 8,
+    "high": 2,
+    "normal": 2,
+    "low": 2,
 }
-THIN_POOL_CANDIDATE_THRESHOLD = 2   # this many eligible candidates or fewer counts as "thin"
-DEEP_POOL_CANDIDATE_THRESHOLD = 8   # this many or more counts as "deep"
-THIN_POOL_WINDOW_BONUS_MINUTES = 3
-DEEP_POOL_WINDOW_PENALTY_MINUTES = 2
-SPARSE_SERVICE_CATEGORY_WINDOW_BONUS_MINUTES = 3
-# GT-C-02: maximum unsettled cash a technician may hold before they stop
-# being offered further CASH-collecting work (Gate 10). Rupees. Set to 0 or
-# None to disable the ceiling entirely. Override per deployment with
-# settings.DISPATCH_CASH_FLOAT_CEILING.
+THIN_POOL_CANDIDATE_THRESHOLD = 2
+DEEP_POOL_CANDIDATE_THRESHOLD = 8
+THIN_POOL_WINDOW_BONUS_MINUTES = 0
+DEEP_POOL_WINDOW_PENALTY_MINUTES = 0
+SPARSE_SERVICE_CATEGORY_WINDOW_BONUS_MINUTES = 0
 CASH_FLOAT_CEILING = Decimal("10000.00")
 
 
@@ -1459,19 +1458,23 @@ def _dispatch_job_two_phase(job_id, max_gps_age_seconds: int = MAX_GPS_AGE_SECON
             return False, f"Scheduled job offer window closed: service was at {scheduled_dt.strftime('%Y-%m-%d %H:%M') if scheduled_dt else 'past date'}."
 
         # Active unexpired offer check
-        active_offer = WorkforceJobOffer.objects.select_for_update().filter(
+        active_offers = list(WorkforceJobOffer.objects.select_for_update().filter(
             job_id=job_id,
             status=WorkforceJobOffer.Status.OFFERED,
             expires_at__gt=now,
-        ).first()
-        if active_offer:
-            logger.info(f"[DISPATCH_OFFER_EXISTS] Job #{job_id} already has active offer #{active_offer.id} for Employee #{active_offer.employee_id}.")
+        ))
+        if active_offers:
+            first_off = active_offers[0]
+            logger.info(
+                f"[DISPATCH_OFFER_EXISTS] Job #{job_id} already has {len(active_offers)} active offer(s) "
+                f"in Wave #{first_off.wave_number}."
+            )
             WorkforceDispatchState.objects.filter(job_id=job_id).update(
                 dispatch_status=WorkforceDispatchState.DispatchStatus.OFFER_ACTIVE,
                 retry_at=None,
                 locked_at=None,
             )
-            return True, f"Active offer already pending for Employee #{active_offer.employee_id}."
+            return True, f"Active offer wave #{first_off.wave_number} already pending with {len(active_offers)} technician(s)."
 
         if job_obj.latitude is None or job_obj.longitude is None:
             if job_obj.status != "unassigned":
@@ -1502,8 +1505,8 @@ def _dispatch_job_two_phase(job_id, max_gps_age_seconds: int = MAX_GPS_AGE_SECON
             logger.warning(f"[DISPATCH_CLAIM_RECOVERED] Recovered stale claim for Job #{job_id} (locked at {state.locked_at}).")
 
         if state.dispatch_status == WorkforceDispatchState.DispatchStatus.OFFER_ACTIVE:
-            if active_offer:
-                return True, f"Active offer already pending for Job #{job_id}."
+            if active_offers:
+                return True, f"Active offer wave already pending for Job #{job_id}."
 
         if state.dispatch_status in [
             WorkforceDispatchState.DispatchStatus.ASSIGNED,
@@ -1551,15 +1554,16 @@ def _dispatch_job_two_phase(job_id, max_gps_age_seconds: int = MAX_GPS_AGE_SECON
         failed_cycle_count = _count_failed_offer_cycles(job_obj)
         effective_radius_km = get_effective_radius_km(failed_cycle_count)
 
-        # Explicitly aggregate all technicians who previously declined or rejected this job
+        # Explicitly aggregate all technicians who previously received offers or declined/rejected this job
         declined_emp_ids = set()
+        past_offers = list(WorkforceJobOffer.objects.filter(job_id=job_id))
+        max_prev_wave = 0
+        for o in past_offers:
+            declined_emp_ids.add(o.employee_id)
+            if o.wave_number and o.wave_number > max_prev_wave:
+                max_prev_wave = o.wave_number
+
         try:
-            declined_emp_ids.update(
-                WorkforceJobOffer.objects.filter(
-                    job_id=job_id,
-                    status__in=[WorkforceJobOffer.Status.REJECTED, WorkforceJobOffer.Status.DECLINED, WorkforceJobOffer.Status.EXPIRED],
-                ).values_list("employee_id", flat=True)
-            )
             declined_lifecycle_emp_ids = set(
                 WorkforceJobLifecycleEvent.objects.filter(
                     job_id=job_id,
@@ -1572,6 +1576,9 @@ def _dispatch_job_two_phase(job_id, max_gps_age_seconds: int = MAX_GPS_AGE_SECON
             pass
         if exclude_employee_ids:
             declined_emp_ids.update(exclude_employee_ids)
+
+        current_wave_number = min(6, max_prev_wave + 1)
+        wave_size = get_wave_size(current_wave_number)
 
         candidates = get_eligible_candidates(
             job_obj,
@@ -1605,23 +1612,13 @@ def _dispatch_job_two_phase(job_id, max_gps_age_seconds: int = MAX_GPS_AGE_SECON
                 "job_id": job_obj.id,
                 "eligible_count": len(candidates),
                 "attempt": attempt_num,
+                "wave_number": current_wave_number,
+                "wave_size": wave_size,
                 "eligible_candidates_snapshot": eligible_candidates_snapshot,
             }
         )
 
-        top_candidate = None
-        top_emp = None
-        top_dist_km = None
-        top_score = None
-        _skipped = []
-
-        for _candidate in candidates:
-            _emp = _candidate["employee"]
-            top_candidate = _candidate
-            top_emp = _emp
-            top_dist_km = _candidate["distance_km"]
-            top_score = _candidate["score"]
-            break
+        wave_candidates = candidates[:wave_size]
 
     except Exception as eval_err:
         logger.exception(f"[DISPATCH_EVAL_ERROR] Error evaluating candidates for Job #{job_id}: {eval_err}")
@@ -1638,6 +1635,10 @@ def _dispatch_job_two_phase(job_id, max_gps_age_seconds: int = MAX_GPS_AGE_SECON
         raise
 
     # ── Phase 3: Short Atomic State Finalization ──
+    created_offers = []
+    wave_id = None
+    expires_at = None
+
     with transaction.atomic():
         state = WorkforceDispatchState.objects.select_for_update().get(job_id=job_id)
         locked_job = ServiceRequest.objects.select_for_update().get(id=job_id)
@@ -1656,7 +1657,7 @@ def _dispatch_job_two_phase(job_id, max_gps_age_seconds: int = MAX_GPS_AGE_SECON
             state.save(update_fields=["dispatch_status", "retry_at", "locked_at", "updated_at"])
             return False, f"Job #{job_id} was assigned during evaluation."
 
-        if not candidates or top_emp is None:
+        if not wave_candidates:
             if locked_job.status != "unassigned" or locked_job.assigned_employee is not None:
                 locked_job.status = "unassigned"
                 locked_job.assigned_employee = None
@@ -1710,50 +1711,60 @@ def _dispatch_job_two_phase(job_id, max_gps_age_seconds: int = MAX_GPS_AGE_SECON
             _maybe_signal_customer_delay(locked_job, failed_cycle_count)
             return False, f"No eligible technicians available for automatic dispatch. Scheduled retry in {delay_seconds}s (attempt {state.attempt_count}). {reason_message}"
 
-        # Candidate employee row lock
-        locked_emp = Employee.objects.select_for_update().filter(pk=top_emp.pk).first()
-        if not locked_emp:
-            delay_seconds = compute_dispatch_retry_delay(state.attempt_count)
-            state.dispatch_status = WorkforceDispatchState.DispatchStatus.RETRY_SCHEDULED
-            state.retry_at = timezone.now() + timedelta(seconds=delay_seconds)
-            state.locked_at = None
-        # Ensure candidate does not already have an active offer for THIS same job
-        existing_offer_this_job = WorkforceJobOffer.objects.filter(
-            employee_id=getattr(locked_emp, "id", None),
+        # Clean up any stale unexpired OFFERED offers for this job before creating the new wave
+        WorkforceJobOffer.objects.filter(
             job_id=getattr(locked_job, "id", None),
-            status=WorkforceJobOffer.Status.OFFERED,
-            expires_at__gt=timezone.now(),
-        ).first()
-        if existing_offer_this_job:
-            state.dispatch_status = WorkforceDispatchState.DispatchStatus.OFFER_ACTIVE
-            state.retry_at = None
-            state.locked_at = None
-            state.save(update_fields=["dispatch_status", "retry_at", "locked_at", "updated_at"])
-            return True, f"Active offer already pending for Job #{job_id} on Employee #{locked_emp.id}."
+            status=WorkforceJobOffer.Status.OFFERED
+        ).update(status=WorkforceJobOffer.Status.EXPIRED)
 
-        WorkforceJobOffer.objects.filter(job_id=getattr(locked_job, "id", None), status=WorkforceJobOffer.Status.OFFERED).update(status=WorkforceJobOffer.Status.EXPIRED)
-
+        import uuid
+        wave_id = uuid.uuid4()
         offer_window_seconds = compute_offer_window_seconds(
             locked_job, len(candidates), failed_cycles=failed_cycle_count
         )
         expires_at = timezone.now() + timedelta(seconds=offer_window_seconds)
 
-        try:
-            offer = WorkforceJobOffer.objects.create(
-                job=locked_job,
-                employee=locked_emp,
+        for c in wave_candidates:
+            c_emp = c["employee"]
+            locked_emp = Employee.objects.select_for_update().filter(pk=c_emp.pk).first()
+            if not locked_emp:
+                continue
+
+            # Ensure candidate does not already hold an active unexpired offer for this job
+            existing_offer = WorkforceJobOffer.objects.filter(
+                employee_id=locked_emp.id,
+                job_id=locked_job.id,
                 status=WorkforceJobOffer.Status.OFFERED,
-                rank_score=top_score,
-                expires_at=expires_at,
-            )
-        except IntegrityError:
+                expires_at__gt=timezone.now(),
+            ).first()
+            if existing_offer:
+                continue
+
+            c_dist = c.get("distance_km", 0.0) or 0.0
+            c_score = c.get("score", 0.0) or 0.0
+
+            try:
+                offer = WorkforceJobOffer.objects.create(
+                    job=locked_job,
+                    employee=locked_emp,
+                    status=WorkforceJobOffer.Status.OFFERED,
+                    rank_score=c_score,
+                    wave_id=wave_id,
+                    wave_number=current_wave_number,
+                    expires_at=expires_at,
+                )
+                created_offers.append((offer, locked_emp, c_dist, c_score))
+            except IntegrityError:
+                logger.warning(f"[DISPATCH_CONCURRENCY_SKIPPED] Employee #{locked_emp.id} skipped due to unique active offer constraint.")
+                continue
+
+        if not created_offers:
+            delay_seconds = compute_dispatch_retry_delay(state.attempt_count)
             state.dispatch_status = WorkforceDispatchState.DispatchStatus.RETRY_SCHEDULED
-            state.retry_at = timezone.now() + timedelta(seconds=5)
+            state.retry_at = timezone.now() + timedelta(seconds=delay_seconds)
             state.locked_at = None
             state.save(update_fields=["dispatch_status", "retry_at", "locked_at", "updated_at"])
-            raise DispatchRaceLost(
-                f"Technician #{locked_emp.id} was offered another job concurrently."
-            )
+            return False, f"Could not create wave offers due to concurrent active assignments. Retry in {delay_seconds}s."
 
         state.dispatch_status = WorkforceDispatchState.DispatchStatus.OFFER_ACTIVE
         state.retry_at = None
@@ -1763,54 +1774,58 @@ def _dispatch_job_two_phase(job_id, max_gps_age_seconds: int = MAX_GPS_AGE_SECON
         if locked_job.status in ["draft", "new_request", "confirmed"]:
             apply_transition(locked_job, "unassigned")
 
-    # Outside transaction: webhooks and notifications
-    try:
-        from workforce_api.services.customer_webhook import notify_customer_app
-        notify_customer_app(
-            "technician.assigned",
-            locked_job,
-            technician_id=str(locked_emp.id),
-            vendor_name=getattr(locked_job.company, "company_name", "") if getattr(locked_job, "company", None) else "",
-        )
-    except Exception as webhook_err:
-        logger.info(f"Could not notify Customer app of offer for Job #{locked_job.id}: {webhook_err}")
-
-    WorkforceEventLog.objects.create(
-        user=locked_emp.user,
-        event_type="OFFER_CREATED",
-        payload={
-            "id": locked_job.id,
-            "job_id": locked_job.id,
-            "request_id": locked_job.request_id or f"#{locked_job.id}",
-            "offer_id": offer.id,
-            "employee_id": locked_emp.id,
-            "service_title": locked_job.issue_title or locked_job.service_category or "Service Request",
-            "service_category": locked_job.service_category or "",
-            "distance_km": round(top_dist_km, 2),
-            "address": locked_job.address or "",
-            "expires_at": expires_at.isoformat(),
-        }
-    )
+    # Outside transaction: webhooks and notifications for all wave offers
+    if attempt_num == 1:
+        try:
+            from workforce_api.services.customer_webhook import notify_customer_app
+            notify_customer_app(
+                "technician.searching",
+                locked_job,
+                vendor_name=getattr(locked_job.company, "company_name", "") if getattr(locked_job, "company", None) else "",
+            )
+        except Exception as webhook_err:
+            logger.info(f"Could not notify Customer app of search for Job #{locked_job.id}: {webhook_err}")
 
     loc_str = f" at {locked_job.address}" if locked_job.address else ""
     req_id_str = f" ({locked_job.request_id})" if locked_job.request_id else f" #{locked_job.id}"
     service_label = locked_job.issue_title or locked_job.service_category or "Service Request"
-    expiry_str = expires_at.strftime("%H:%M:%S UTC")
+    expiry_str = expires_at.strftime("%H:%M:%S UTC") if expires_at else ""
 
-    WorkforceNotification.objects.create(
-        recipient=locked_emp.user,
-        title="New Job Offer Available!",
-        message=f"You have a new exclusive job offer for '{service_label}'{req_id_str}{loc_str} ({top_dist_km:.1f} km away). Expiry: {expiry_str}. Open your dashboard to Accept or Decline.",
-        notification_type="JOB_OFFER",
-        company=locked_job.company,
-        related_object_id=str(locked_job.id),
-    )
+    for offer, locked_emp, dist_km, score in created_offers:
+        WorkforceEventLog.objects.create(
+            user=locked_emp.user,
+            event_type="OFFER_CREATED",
+            payload={
+                "id": locked_job.id,
+                "job_id": locked_job.id,
+                "request_id": locked_job.request_id or f"#{locked_job.id}",
+                "offer_id": offer.id,
+                "employee_id": locked_emp.id,
+                "wave_number": current_wave_number,
+                "wave_id": str(wave_id),
+                "service_title": service_label,
+                "service_category": locked_job.service_category or "",
+                "distance_km": round(float(dist_km), 2) if dist_km is not None else None,
+                "address": locked_job.address or "",
+                "expires_at": expires_at.isoformat() if expires_at else None,
+            }
+        )
 
-    logger.info(
-        f"[DISPATCH_DECISION] job={locked_job.id} employee={locked_emp.id} "
-        f"distance_km={top_dist_km:.2f} score={top_score:.1f} status=OFFER_CREATED"
-    )
-    return True, f"Job #{locked_job.id} offered to {locked_emp.user.get_full_name() or locked_emp.user.username} ({top_dist_km:.1f}km away, Score: {top_score:.1f})."
+        WorkforceNotification.objects.create(
+            recipient=locked_emp.user,
+            title="New Job Offer Available!",
+            message=f"You have a new job offer for '{service_label}'{req_id_str}{loc_str} ({dist_km:.1f} km away). Expiry: {expiry_str}. Open your dashboard to Accept or Decline.",
+            notification_type="JOB_OFFER",
+            company=locked_job.company,
+            related_object_id=str(locked_job.id),
+        )
+
+        logger.info(
+            f"[DISPATCH_DECISION] job={locked_job.id} employee={locked_emp.id} wave={current_wave_number} "
+            f"distance_km={dist_km:.2f} score={score:.1f} status=OFFER_CREATED"
+        )
+
+    return True, f"Job #{locked_job.id} dispatched in Wave #{current_wave_number} to {len(created_offers)} technician(s)."
 
 
 _dispatch_job_locked = _dispatch_job_two_phase
@@ -1818,17 +1833,17 @@ _dispatch_job_locked = _dispatch_job_two_phase
 
 def dispatch_next_candidate(job_id_or_obj) -> Tuple[bool, str]:
     """
-    Triggered when an offer is declined or expired:
-    Recalculates eligibility and dispatches to the next nearest candidate.
+    Triggered when an offer wave is declined or expired:
+    Recalculates eligibility and dispatches the next wave of candidates.
     """
-    logger.info(f"[DISPATCH_FALLBACK] Triggering fallback dispatch for Job #{job_id_or_obj}.")
+    logger.info(f"[DISPATCH_FALLBACK] Triggering fallback/next-wave dispatch for Job #{job_id_or_obj}.")
     return dispatch_job(job_id_or_obj)
 
 
 def expire_and_reassign_offers() -> int:
     """
     Scans for expired job offers in OFFERED state, marks them EXPIRED,
-    and automatically triggers fallback dispatch for each affected job.
+    and automatically triggers next wave dispatch for each affected job whose wave expired.
     Returns the count of expired offers handled.
     """
     now = timezone.now()
@@ -1844,6 +1859,8 @@ def expire_and_reassign_offers() -> int:
     )
 
     count = 0
+    jobs_to_redispatch = {}
+
     for offer in expired_offers:
         with transaction.atomic():
             off_locked = WorkforceJobOffer.objects.select_for_update().filter(pk=offer.pk, status=WorkforceJobOffer.Status.OFFERED).first()
@@ -1851,15 +1868,24 @@ def expire_and_reassign_offers() -> int:
                 continue
             off_locked.status = WorkforceJobOffer.Status.EXPIRED
             off_locked.save(update_fields=["status"])
-            WorkforceDispatchState.objects.filter(job_id=offer.job_id).update(
-                dispatch_status=WorkforceDispatchState.DispatchStatus.NEVER_ATTEMPTED,
-                locked_at=None,
-            )
             count += 1
-            logger.info(f"[DISPATCH_OFFER_EXPIRED] Offer #{offer.id} for Job #{offer.job_id} marked EXPIRED.")
+            logger.info(f"[DISPATCH_OFFER_EXPIRED] Offer #{offer.id} (Wave #{offer.wave_number}) for Job #{offer.job_id} marked EXPIRED.")
 
-        # Check if job is past-dated
-        job = offer.job
+            # Check if this job has any remaining active unexpired offers in this wave
+            remaining_active = WorkforceJobOffer.objects.filter(
+                job_id=offer.job_id,
+                status=WorkforceJobOffer.Status.OFFERED,
+                expires_at__gt=now,
+            ).exists()
+
+            if not remaining_active:
+                WorkforceDispatchState.objects.filter(job_id=offer.job_id).update(
+                    dispatch_status=WorkforceDispatchState.DispatchStatus.NEVER_ATTEMPTED,
+                    locked_at=None,
+                )
+                jobs_to_redispatch[offer.job_id] = offer.job
+
+    for job_id, job in jobs_to_redispatch.items():
         is_past_dated = False
         if job:
             if job.preferred_date and job.preferred_date < today:
@@ -1868,12 +1894,11 @@ def expire_and_reassign_offers() -> int:
                 if timezone.localtime(job.created_at).date() < today:
                     is_past_dated = True
 
-        # Re-dispatch current-day jobs ONLY; NEVER re-dispatch past-dated jobs
         if not is_past_dated:
-            logger.info(f"[DISPATCH_REDISPATCH] Triggering fallback dispatch for current-day Job #{offer.job_id}.")
-            dispatch_next_candidate(offer.job_id)
+            logger.info(f"[DISPATCH_REDISPATCH] Triggering next wave dispatch for current-day Job #{job_id}.")
+            dispatch_next_candidate(job_id)
         else:
-            logger.info(f"[DISPATCH_EXPIRED_NO_REDISPATCH] Job #{offer.job_id} scheduled date is in the past; skipping fallback dispatch.")
+            logger.info(f"[DISPATCH_EXPIRED_NO_REDISPATCH] Job #{job_id} scheduled date is in the past; skipping next wave dispatch.")
 
     return count
 

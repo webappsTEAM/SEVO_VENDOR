@@ -4946,11 +4946,25 @@ class WorkforceJobRejectOfferView(APIView):
             offer.rejection_reason = reason
             offer.save(update_fields=["status", "rejection_reason"])
 
+            # Check if other active unexpired offers remain in the current wave
+            remaining_active_offers_count = WorkforceJobOffer.objects.filter(
+                job_id=job_obj.id,
+                status=WorkforceJobOffer.Status.OFFERED,
+                expires_at__gt=now,
+            ).count()
+
             from workforce_api.models import WorkforceDispatchState
-            WorkforceDispatchState.objects.filter(job_id=job_obj.id).update(
-                dispatch_status=WorkforceDispatchState.DispatchStatus.NEVER_ATTEMPTED,
-                locked_at=None,
-            )
+            if remaining_active_offers_count == 0:
+                # All active offers in this wave have finished; reset dispatch state and trigger next wave
+                WorkforceDispatchState.objects.filter(job_id=job_obj.id).update(
+                    dispatch_status=WorkforceDispatchState.DispatchStatus.NEVER_ATTEMPTED,
+                    locked_at=None,
+                )
+            else:
+                logger.info(
+                    f"[DISPATCH_WAVE_DECLINE] Employee #{emp.id} declined Job #{job_obj.id}. "
+                    f"{remaining_active_offers_count} active offer(s) remaining in wave."
+                )
 
             if job_obj.assigned_employee == emp:
                 job_obj.assigned_employee = None
@@ -5000,15 +5014,17 @@ class WorkforceJobRejectOfferView(APIView):
             job_id_val = job_obj.id
             emp_id_val = emp.id
 
-            # Section 7: Trigger next candidate dispatch after decline transaction commits
-            transaction.on_commit(
-                lambda: run_automatic_dispatch(job_id_val, excluded_employee_ids=[emp_id_val])
-            )
+            # If all offers in the wave have been declined/expired, trigger immediate next wave dispatch
+            if remaining_active_offers_count == 0:
+                transaction.on_commit(
+                    lambda: run_automatic_dispatch(job_id_val, excluded_employee_ids=[emp_id_val], force=True)
+                )
 
             return Response({
                 "message": "Job offer declined.",
                 "job_id": job_obj.id,
                 "status": job_obj.status,
+                "remaining_wave_offers": remaining_active_offers_count,
             }, status=status.HTTP_200_OK)
 
 
@@ -10353,20 +10369,31 @@ class WorkforceDispatchRadarView(APIView):
             live_offers = getattr(j, "prefetched_live_offers", [])
             live_offer = live_offers[0] if live_offers else None
 
-            # Formulate current active offer info with unambiguous employee identity
+            # Formulate current active wave and offer info with unambiguous employee identity
             current_offer_info = None
-            if live_offer:
-                rem_seconds = max(0, int((live_offer.expires_at - now).total_seconds()))
-                raw_emp_name = live_offer.employee.user.get_full_name() or live_offer.employee.user.username if live_offer.employee and live_offer.employee.user else f"Technician #{live_offer.employee_id}"
-                emp_name_formatted = f"{raw_emp_name} · EMP #{live_offer.employee_id}"
+            current_wave_summary = None
+            if live_offers:
+                first_live = live_offers[0]
+                rem_seconds = max(0, int((first_live.expires_at - now).total_seconds()))
+                current_wave_summary = {
+                    "wave_number": first_live.wave_number,
+                    "wave_id": str(first_live.wave_id) if first_live.wave_id else None,
+                    "count": len(live_offers),
+                    "remaining_seconds": rem_seconds,
+                    "expires_at": first_live.expires_at.isoformat() if first_live.expires_at else None,
+                }
+                raw_emp_name = first_live.employee.user.get_full_name() or first_live.employee.user.username if first_live.employee and first_live.employee.user else f"Technician #{first_live.employee_id}"
+                emp_name_formatted = f"{raw_emp_name} · EMP #{first_live.employee_id}"
                 current_offer_info = {
-                    "offer_id": live_offer.id,
-                    "employee_id": live_offer.employee_id,
+                    "offer_id": first_live.id,
+                    "employee_id": first_live.employee_id,
                     "employee_name": emp_name_formatted,
                     "raw_employee_name": raw_emp_name,
-                    "score": round(float(live_offer.rank_score), 1),
-                    "offered_at": live_offer.offered_at.isoformat() if live_offer.offered_at else None,
-                    "expires_at": live_offer.expires_at.isoformat() if live_offer.expires_at else None,
+                    "score": round(float(first_live.rank_score), 1),
+                    "wave_number": first_live.wave_number,
+                    "wave_id": str(first_live.wave_id) if first_live.wave_id else None,
+                    "offered_at": first_live.offered_at.isoformat() if first_live.offered_at else None,
+                    "expires_at": first_live.expires_at.isoformat() if first_live.expires_at else None,
                     "remaining_seconds": rem_seconds,
                     "status": "OFFERED",
                 }
@@ -10396,6 +10423,7 @@ class WorkforceDispatchRadarView(APIView):
                 "unassigned_reason_message": d_state.unassigned_reason_message if d_state else "",
                 "assigned_technician_id": j.assigned_employee_id,
                 "assigned_technician_name": assigned_tech_name,
+                "current_wave": current_wave_summary,
                 "current_offer": current_offer_info,
             })
 
@@ -10714,8 +10742,22 @@ class WorkforceDispatchRadarView(APIView):
                 # Sort timeline strictly by timestamp ascending
                 timeline.sort(key=lambda x: x["timestamp"])
 
-                # Find current active offer if any
-                current_active_offer = next((o for o in offers_list if o["is_active"]), None)
+                # Find current active wave and offers
+                active_wave_offers = [o for o in offers_list if o["is_active"]]
+                current_active_offer = active_wave_offers[0] if active_wave_offers else None
+                current_wave_detail = None
+                if active_wave_offers:
+                    current_wave_detail = {
+                        "wave_number": active_wave_offers[0].get("wave_number", 1),
+                        "wave_id": active_wave_offers[0].get("wave_id"),
+                        "count": len(active_wave_offers),
+                        "remaining_seconds": active_wave_offers[0].get("remaining_seconds", 0),
+                        "expires_at": active_wave_offers[0].get("expires_at"),
+                        "offers": active_wave_offers,
+                    }
+
+                # Distinguish waiting candidates (not yet offered in any wave)
+                waiting_candidates = [c for c in candidate_snapshots if c.get("result") == "NOT OFFERED"]
 
                 sel_d_state = getattr(sel_job, "dispatch_state", None)
                 assigned_tech_name = None
@@ -10743,10 +10785,12 @@ class WorkforceDispatchRadarView(APIView):
                     "unassigned_reason_message": sel_d_state.unassigned_reason_message if sel_d_state else "",
                     "assigned_technician_id": sel_job.assigned_employee_id,
                     "assigned_technician_name": assigned_tech_name,
+                    "current_wave": current_wave_detail,
                     "current_offer": current_active_offer,
                     "offers_history": offers_list,
                     "attempts": attempts_data,
                     "candidate_evaluations": candidate_snapshots,
+                    "waiting_candidates": waiting_candidates,
                     "timeline": timeline,
                 }
 
