@@ -574,6 +574,48 @@ class WorkforceJobLifecycleEvent(models.Model):
         return f"{self.event_type} for Job #{self.job_id} by {self.actor_user_id} at {self.created_at}"
 
 
+class WorkforceOutboundWebhook(models.Model):
+    """
+    Durable Outbox for cross-application webhook events sent to the Customer app.
+    Guarantees at-least-once delivery for critical lifecycle state changes:
+    employee_accepted, employee_on_the_way, employee_arrived, service_started,
+    service_completed, technician.cancelled, technician.searching, payment.collected.
+    """
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "Pending"
+        DELIVERED = "DELIVERED", "Delivered"
+        FAILED = "FAILED", "Failed"
+
+    event_id = models.CharField(max_length=64, unique=True, db_index=True)
+    event_type = models.CharField(max_length=100, db_index=True)
+    booking_id = models.CharField(max_length=100, db_index=True)
+    payload = models.JSONField(default=dict, blank=True)
+    sequence = models.BigIntegerField(default=0)
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+    )
+    attempts = models.IntegerField(default=0)
+    last_attempt_at = models.DateTimeField(null=True, blank=True)
+    next_retry_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    last_error = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "workforce_outbound_webhook"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["status", "next_retry_at"], name="wf_outbound_wh_st_retry_idx"),
+            models.Index(fields=["booking_id", "status"], name="wf_outbound_wh_bk_st_idx"),
+        ]
+
+    def __str__(self):
+        return f"Webhook {self.event_type} [{self.status}] for {self.booking_id} (attempts: {self.attempts})"
+
+
 class PreServiceVerification(models.Model):
     job = models.OneToOneField(
         "service_requests.ServiceRequest",
@@ -1033,6 +1075,18 @@ class WorkforceEventLog(models.Model):
 
     def __str__(self):
         return f"{self.event_type} at {self.created_at}"
+
+    def save(self, *args, **kwargs):
+        is_new = self.pk is None
+        super().save(*args, **kwargs)
+        if is_new and self.id:
+            try:
+                from workforce_api.services.redis_dispatch import get_redis_client
+                client = get_redis_client()
+                if client:
+                    client.publish("workforce:realtime:events", str(self.id))
+            except Exception:
+                pass
 
 
 class EmployeeSavedLocation(models.Model):
@@ -1706,6 +1760,7 @@ class WalletLedgerEntry(models.Model):
     )
 
     notes = models.CharField(max_length=255, blank=True, default="")
+    is_mock = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:
@@ -2377,6 +2432,7 @@ class WorkforceQuote(models.Model):
         db_index=True,
     )
     valid_until = models.DateTimeField(null=True, blank=True, db_index=True)
+    estimated_duration_days = models.IntegerField(default=1, null=True, blank=True)
 
     # Cryptographic decision token for customer verification
     decision_token = models.CharField(max_length=64, unique=True, null=True, blank=True, db_index=True)

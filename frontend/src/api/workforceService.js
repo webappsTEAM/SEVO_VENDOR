@@ -558,10 +558,11 @@ export async function apiGetEligibleTechnicians(jobId = '', serviceName = '') {
   return await apiRequest(`/workforce/dispatch/eligible-technicians/?${params.toString()}`);
 }
 
-export async function apiDispatchAssign(jobId, employeeId) {
-  return await apiRequest('/workforce/dispatch/assign/', {
+export async function apiDispatchAssign(jobId, employeeId = null) {
+  // Converges into authoritative automatic dispatch engine
+  return await apiRequest(`/workforce/dispatch/auto-dispatch/${jobId}/`, {
     method: 'POST',
-    json: { job_id: jobId, employee_id: employeeId },
+    json: employeeId ? { employee_id: employeeId } : {},
   });
 }
 

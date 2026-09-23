@@ -4087,7 +4087,8 @@ class WorkforceJobAcceptOfferView(APIView):
 
             # Authoritative Safety Gate: Future-scheduled bookings cannot be accepted before their lead window opens
             from workforce_api.services.automatic_dispatch import get_scheduled_dispatch_window
-            is_future, scheduled_dt, window_open = get_scheduled_dispatch_window(job_obj)
+            win = get_scheduled_dispatch_window(job_obj)
+            is_future, scheduled_dt, window_open = win
             if is_future:
                 msg = "This job is scheduled for a future date and cannot be accepted yet."
                 if scheduled_dt and window_open:
@@ -4100,6 +4101,16 @@ class WorkforceJobAcceptOfferView(APIView):
                     "code": "SCHEDULED_JOB_NOT_YET_ACCEPTABLE",
                     "scheduled_start": scheduled_dt.isoformat() if scheduled_dt else None,
                     "window_open": window_open.isoformat() if window_open else None,
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            if getattr(win, "is_closed", False):
+                msg = "Cannot accept job: Scheduled slot has passed and offer window is closed."
+                if scheduled_dt:
+                    msg = f"Cannot accept job: Scheduled slot ({scheduled_dt.strftime('%d %b %Y at %I:%M %p')}) has passed."
+                return Response({
+                    "error": msg,
+                    "code": "SCHEDULE_WINDOW_EXPIRED",
+                    "scheduled_start": scheduled_dt.isoformat() if scheduled_dt else None,
                 }, status=status.HTTP_400_BAD_REQUEST)
 
             from service_requests.models import EmployeeJob
@@ -7850,8 +7861,22 @@ class WorkforceRealtimeStreamView(APIView):
         def event_stream():
             last_id = initial_last_id
             heartbeat_interval_seconds = 15
-            last_heartbeat_time = time.time()
-            last_reconcile_time = time.time()
+            max_stream_duration_seconds = 55
+            stream_start_time = time.time()
+            last_heartbeat_time = stream_start_time
+            has_pending_events = True  # Initial catch-up on connect / reconnect
+
+            from workforce_api.services.redis_dispatch import get_redis_client
+            redis_client = get_redis_client()
+            pubsub = None
+            if redis_client:
+                try:
+                    pubsub = redis_client.pubsub()
+                    pubsub.subscribe("workforce:realtime:events")
+                    logger.debug("[Realtime SSE] Subscribed to Redis channel 'workforce:realtime:events' for user_id=%s.", user_id_val)
+                except Exception as ps_err:
+                    logger.debug("[Realtime SSE PUBSUB_SUB_ERR] %s", ps_err)
+                    pubsub = None
 
             logger.info("[Realtime SSE START] Stream generator running for user_id=%s, start_id=%s.", user_id_val, last_id)
             # Initial connection confirmation event
@@ -7860,70 +7885,90 @@ class WorkforceRealtimeStreamView(APIView):
             try:
                 while True:
                     loop_now = time.time()
-                    events = []
+                    if loop_now - stream_start_time >= max_stream_duration_seconds:
+                        logger.info("[Realtime SSE ROTATION] Stream reaching %ds duration limit; closing cleanly for client reconnect.", max_stream_duration_seconds)
+                        break
 
-                    # Periodic Heartbeat (keep stream open, prevent proxy / browser timeout)
+                    # Periodic Heartbeat (keep stream open, prevent proxy / browser timeout - NO DB query)
                     if loop_now - last_heartbeat_time >= heartbeat_interval_seconds:
                         last_heartbeat_time = loop_now
                         logger.debug("[Realtime SSE HEARTBEAT] Sending keepalive ping to user_id=%s.", user_id_val)
                         yield f": heartbeat\n\n"
 
-
-                    # Fetch newly emitted events using pure dictionary projection
-                    try:
-                        logger.debug("[Realtime SSE DB QUERY] Polling events > %s", last_id)
-                        events = list(
-                            WorkforceEventLog.objects.filter(id__gt=last_id)
-                            .values("id", "event_type", "payload", "created_at", "user_id")
-                            .order_by("id")[:20]
-                        )
-                    except (OperationalError, DatabaseError) as db_err:
-                        logger.error("[Realtime DB] CONNECTION_POOL_EXHAUSTED polling events: %s. Terminating stream for client backoff.", str(db_err))
-                        connection.close()
-                        # Exit the loop immediately so server does not hammer PostgreSQL every 1s
-                        break
-                    except Exception as q_err:
-                        logger.warning("[Realtime SSE EXCEPTION] Unexpected query exception: %s", str(q_err))
-                    finally:
-                        # CRITICAL: Always release the database connection immediately after the query!
-                        connection.close()
-
-                    for ev in events:
-                        ev_id = ev["id"]
-                        ev_user_id = ev["user_id"]
-                        ev_payload = ev["payload"]
-                        last_id = max(last_id, ev_id)
-
-                        if ev_user_id == user_id_val:
-                            is_authorized = True
-                        elif is_admin:
-                            is_authorized = (ev_user_id is None) or is_superuser_val
-                            if not is_authorized and isinstance(ev_payload, dict):
-                                ev_comp = ev_payload.get("company_id")
-                                is_authorized = (ev_comp is None or ev_comp == user_company_id)
-                        elif ev_user_id is None:
-                            ev_company_id = ev_payload.get("company_id") if isinstance(ev_payload, dict) else None
-                            is_authorized = (ev_company_id is None or ev_company_id == user_company_id)
+                    # Event-driven wake-up
+                    should_query_db = has_pending_events
+                    if not should_query_db:
+                        if pubsub:
+                            try:
+                                msg = pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+                                if msg and msg.get("type") == "message":
+                                    should_query_db = True
+                            except Exception as ps_read_err:
+                                logger.debug("[Realtime SSE PUBSUB_READ_ERR] %s", ps_read_err)
+                                pubsub = None
+                                time.sleep(1)
                         else:
-                            is_authorized = False
+                            time.sleep(1)
 
-                        if is_authorized:
-                            event_data = {
-                                "id": ev_id,
-                                "event_type": ev["event_type"],
-                                "payload": ev_payload,
-                                "timestamp": ev["created_at"].isoformat() if hasattr(ev["created_at"], "isoformat") else str(ev["created_at"]),
-                            }
-                            logger.info("[Realtime SSE EVENT] Delivering event #%s (%s) to user_id=%s", ev_id, ev["event_type"], user_id_val)
-                            yield f"id: {ev_id}\nevent: workforce_event\ndata: {json.dumps(event_data)}\n\n"
+                    if should_query_db:
+                        has_pending_events = False
+                        events = []
+                        try:
+                            logger.debug("[Realtime SSE DB QUERY] Fetching events > %s", last_id)
+                            events = list(
+                                WorkforceEventLog.objects.filter(id__gt=last_id)
+                                .values("id", "event_type", "payload", "created_at", "user_id")
+                                .order_by("id")[:50]
+                            )
+                        except (OperationalError, DatabaseError) as db_err:
+                            logger.error("[Realtime DB] CONNECTION_POOL_EXHAUSTED fetching events: %s. Terminating stream for client backoff.", str(db_err))
+                            connection.close()
+                            break
+                        except Exception as q_err:
+                            logger.warning("[Realtime SSE EXCEPTION] Unexpected query exception: %s", str(q_err))
+                        finally:
+                            connection.close()
 
-                    time.sleep(1)
-            except GeneratorExit:
-                logger.info("[Realtime SSE END] Client disconnected (GeneratorExit) for user_id=%s.", user_id_val)
+                        for ev in events:
+                            ev_id = ev["id"]
+                            ev_user_id = ev["user_id"]
+                            ev_payload = ev["payload"]
+                            last_id = max(last_id, ev_id)
+
+                            if ev_user_id == user_id_val:
+                                is_authorized = True
+                            elif is_admin:
+                                is_authorized = (ev_user_id is None) or is_superuser_val
+                                if not is_authorized and isinstance(ev_payload, dict):
+                                    ev_comp = ev_payload.get("company_id")
+                                    is_authorized = (ev_comp is None or ev_comp == user_company_id)
+                            elif ev_user_id is None:
+                                ev_company_id = ev_payload.get("company_id") if isinstance(ev_payload, dict) else None
+                                is_authorized = (ev_company_id is None or ev_company_id == user_company_id)
+                            else:
+                                is_authorized = False
+
+                            if is_authorized:
+                                event_data = {
+                                    "id": ev_id,
+                                    "event_type": ev["event_type"],
+                                    "payload": ev_payload,
+                                    "timestamp": ev["created_at"].isoformat() if hasattr(ev["created_at"], "isoformat") else str(ev["created_at"]),
+                                }
+                                logger.info("[Realtime SSE EVENT] Delivering event #%s (%s) to user_id=%s", ev_id, ev["event_type"], user_id_val)
+                                yield f"id: {ev_id}\nevent: workforce_event\ndata: {json.dumps(event_data)}\n\n"
+            except (GeneratorExit, ConnectionResetError, BrokenPipeError):
+                logger.info("[Realtime SSE END] Client disconnected for user_id=%s.", user_id_val)
             except Exception as stream_err:
                 logger.warning("[Realtime SSE EXCEPTION] Stream loop exception for user_id=%s: %s", user_id_val, str(stream_err))
             finally:
-                logger.info("[Realtime SSE END] Stream ended for user_id=%s. Releasing any active DB connection.", user_id_val)
+                logger.info("[Realtime SSE END] Stream ended for user_id=%s. Cleaning up resources.", user_id_val)
+                if pubsub:
+                    try:
+                        pubsub.unsubscribe()
+                        pubsub.close()
+                    except Exception:
+                        pass
                 connection.close()
 
         response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
@@ -8458,11 +8503,11 @@ class WorkforceJobArriveView(APIView):
 
         verification, _ = PreServiceVerification.objects.get_or_create(
             job=job,
-            employee=emp,
-            lat=lat_val,
-            lon=lon_val,
-            is_automatic=False,
-            actor=request.user
+            defaults={
+                "employee": emp,
+                "arrival_lat": lat_val,
+                "arrival_lon": lon_val,
+            }
         )
 
         # ── Authoritative Single OTP Resolution ──────────────────────────────

@@ -19,6 +19,10 @@ from .vendor_views import (
     VendorEstimationQuotationView,
     VendorEstimationQuotationSendView,
     VendorEstimationQuotationReviseView,
+    VendorEstimationQuotationSubmitForReviewView,
+    VendorEstimationAdminReviewView,
+    VendorEstimationInspectionSaveView,
+    VendorEstimationRepairProgressView,
     VendorEstimationFeeCollectView,
     VendorEstimationFeeWaiveView,
     VendorEstimationCustomerDecideView,
@@ -38,15 +42,22 @@ urlpatterns = [
     path("estimations/<int:pk>/arrived/", VendorEstimationArrivedView.as_view(), name="vendor-estimation-arrived"),
     path("estimations/<int:pk>/verify-otp/", VendorEstimationVerifyOtpView.as_view(), name="vendor-estimation-verify-otp"),
 
-    # Inspection Findings & Photos
+    # Inspection Findings & Photos & Save
     path("estimations/<int:pk>/inspection/findings/", VendorEstimationFindingsView.as_view(), name="vendor-estimation-findings"),
     path("estimations/<int:pk>/inspection/photos/", VendorEstimationPhotosView.as_view(), name="vendor-estimation-photos"),
+    path("estimations/<int:pk>/inspection/save/", VendorEstimationInspectionSaveView.as_view(), name="vendor-estimation-inspection-save"),
     path("estimations/<int:pk>/inspection/complete/", VendorEstimationInspectionCompleteView.as_view(), name="vendor-estimation-inspection-complete"),
 
-    # Quotation Builder, Send & Revise
+    # Quotation Builder, Submit for Review, Admin Review, Send & Revise
     path("estimations/<int:pk>/quotation/", VendorEstimationQuotationView.as_view(), name="vendor-estimation-quotation-create"),
+    path("estimations/<int:pk>/quotation/<int:quote_id>/submit/", VendorEstimationQuotationSubmitForReviewView.as_view(), name="vendor-estimation-quotation-submit"),
+    path("estimations/<int:pk>/quotation/<int:quote_id>/submit-for-review/", VendorEstimationQuotationSubmitForReviewView.as_view(), name="vendor-estimation-quotation-submit-for-review"),
+    path("estimations/<int:pk>/quotation/<int:quote_id>/admin-review/", VendorEstimationAdminReviewView.as_view(), name="vendor-estimation-admin-review"),
     path("estimations/<int:pk>/quotation/<int:quote_id>/send/", VendorEstimationQuotationSendView.as_view(), name="vendor-estimation-quotation-send"),
     path("estimations/<int:pk>/quotation/<int:quote_id>/revise/", VendorEstimationQuotationReviseView.as_view(), name="vendor-estimation-quotation-revise"),
+
+    # Repair Progress Execution Flow
+    path("estimations/<int:pk>/repair/progress/", VendorEstimationRepairProgressView.as_view(), name="vendor-estimation-repair-progress"),
 
     # Visit Fee Collection & Waiver
     path("estimations/<int:pk>/fee/collect/", VendorEstimationFeeCollectView.as_view(), name="vendor-estimation-fee-collect"),

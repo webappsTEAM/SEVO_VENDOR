@@ -40,8 +40,9 @@ from workforce_api.services.workload import get_employee_active_job, ACTIVE_WORK
 
 logger = logging.getLogger("workforce.dispatch")
 
-# GPS telemetry freshness requirement (configurable, default 1 hour / 3600 seconds for active shifts)
-MAX_GPS_AGE_SECONDS = int(getattr(settings, "DISPATCH_MAX_GPS_AGE_SECONDS", 3600))
+# GPS telemetry freshness requirement (configurable, unified default 300 seconds)
+MAX_GPS_AGE_SECONDS = int(getattr(settings, "DISPATCH_MAX_GPS_AGE_SECONDS", 300))
+
 
 # Maximum geographic dispatch radius (50 km) before any widening kicks in.
 MAX_DISPATCH_RADIUS_KM = 50.0
@@ -275,10 +276,10 @@ class ScheduledDispatchWindow(tuple):
 def get_scheduled_dispatch_window(job_obj, now=None) -> ScheduledDispatchWindow:
     """
     Canonical single source of truth for scheduled dispatch timing.
-    Calculates scheduled window: [scheduled_time - 1 hour, scheduled_time + 1 hour].
-    - Before window_open (T - 1 hour): is_future=True, is_eligible=False, is_closed=False (held)
-    - Within window [T - 1 hr, T + 1 hr]: is_future=False, is_eligible=True, is_closed=False (eligible)
-    - After window_close (T + 1 hr): is_future=False, is_eligible=False, is_closed=True (closed)
+    Calculates scheduled window with 1-hour prior dispatch lead:
+    - Before window opens (now < window_open = scheduled_dt - 1hr): is_future=True, is_eligible=False, is_closed=False (held/upcoming)
+    - Within dispatch window (window_open <= now <= scheduled_dt): is_future=False, is_eligible=True, is_closed=False (eligible for dispatch/offer in new offers)
+    - Past scheduled time (now.replace(second=0, microsecond=0) > scheduled_dt): is_future=False, is_eligible=False, is_closed=True (closed/expired)
     - Immediate bookings (no scheduled time or ASAP): is_future=False, is_eligible=True, is_closed=False
     """
     pref_date = getattr(job_obj, "preferred_date", None)
@@ -329,18 +330,18 @@ def get_scheduled_dispatch_window(job_obj, now=None) -> ScheduledDispatchWindow:
 
     naive_dt = datetime.datetime.combine(pref_date, slot_time)
     scheduled_dt = naive_dt.replace(tzinfo=operational_tz)
-    window_open = scheduled_dt - timedelta(hours=1)
-    window_close = scheduled_dt + timedelta(hours=1)
+    window_open = scheduled_dt - datetime.timedelta(hours=1)
+    window_close = scheduled_dt
 
     if now < window_open:
-        # Before T - 1 hour: not dispatchable yet (held)
+        # Before window opens (1 hour before scheduled time): not dispatchable yet (held as future/upcoming)
         return ScheduledDispatchWindow(True, scheduled_dt, window_open, window_close, is_closed=False, is_eligible=False)
 
-    if now > window_close:
-        # After T + 1 hour: offer window closed; no new offers
+    if now.replace(second=0, microsecond=0) > scheduled_dt:
+        # After scheduled time has passed: offer window closed; no new offers
         return ScheduledDispatchWindow(False, scheduled_dt, window_open, window_close, is_closed=True, is_eligible=False)
 
-    # Within [T - 1 hour, T + 1 hour]: dispatchable / eligible for new job offer
+    # Within dispatch window (from 1 hour before scheduled time up to scheduled time): dispatchable / eligible for job offer
     return ScheduledDispatchWindow(False, scheduled_dt, window_open, window_close, is_closed=False, is_eligible=True)
 
 
@@ -816,10 +817,18 @@ def can_accept_offer(emp: Employee, job_obj: Any) -> Tuple[bool, str]:
     return is_eligible, reason
 
 
-def get_eligible_candidates(job_id_or_obj, max_gps_age_seconds: int = MAX_GPS_AGE_SECONDS, exclude_employee_ids: Optional[List[int]] = None, radius_km: float = MAX_DISPATCH_RADIUS_KM) -> List[Dict[str, Any]]:
+def get_eligible_candidates(
+    job_id_or_obj,
+    max_gps_age_seconds: int = MAX_GPS_AGE_SECONDS,
+    exclude_employee_ids: Optional[List[int]] = None,
+    radius_km: float = MAX_DISPATCH_RADIUS_KM,
+    use_redis_geo: bool = False,
+) -> List[Dict[str, Any]]:
     """
     Finds and ranks all eligible candidate employees for a given ServiceRequest.
     Uses database-level filtering and prefetching for optimal WAN performance.
+    When use_redis_geo=True, queries Redis GEO for candidate shortlisting while
+    preserving PostgreSQL as the single authoritative evaluator of business eligibility.
     """
     if hasattr(job_id_or_obj, "latitude"):
         job_obj = job_id_or_obj
@@ -855,6 +864,21 @@ def get_eligible_candidates(job_id_or_obj, max_gps_age_seconds: int = MAX_GPS_AG
         .select_related("user", "company", "scorecard")
         .annotate(is_busy_job=Exists(busy_subquery))
     )
+
+    if use_redis_geo:
+        try:
+            from workforce_api.services.redis_dispatch import query_nearby_technicians_redis
+            redis_cand_ids = query_nearby_technicians_redis(
+                latitude=cust_lat,
+                longitude=cust_lon,
+                radius_km=radius_km,
+                max_age_seconds=max_gps_age_seconds,
+            )
+            if redis_cand_ids is not None:
+                logger.info(f"[REDIS_GEO_PREFILTER] Shortlisted {len(redis_cand_ids)} technician(s) via Redis GEO index.")
+                candidates_qs = candidates_qs.filter(pk__in=redis_cand_ids)
+        except Exception as r_err:
+            logger.debug(f"[REDIS_GEO_PREFILTER_FAIL] {r_err}")
 
     if exclude_employee_ids:
         candidates_qs = candidates_qs.exclude(pk__in=exclude_employee_ids)
@@ -1361,6 +1385,7 @@ def dispatch_job(
     max_gps_age_seconds: int = MAX_GPS_AGE_SECONDS,
     exclude_employee_ids: Optional[List[int]] = None,
     force: bool = False,
+    use_redis_geo: bool = False,
 ) -> Tuple[bool, str]:
     """
     Executes automatic dispatch for a single ServiceRequest using 2-phase claim architecture:
@@ -1372,12 +1397,12 @@ def dispatch_job(
     job_id = getattr(job_id_or_obj, "id", None) or getattr(job_id_or_obj, "pk", None) or job_id_or_obj
 
     try:
-        return _dispatch_job_locked(job_id, max_gps_age_seconds, exclude_employee_ids, force=force)
+        return _dispatch_job_locked(job_id, max_gps_age_seconds, exclude_employee_ids, force=force, use_redis_geo=use_redis_geo)
     except DispatchRaceLost as race:
         return False, str(race)
 
 
-def _dispatch_job_two_phase(job_id, max_gps_age_seconds: int = MAX_GPS_AGE_SECONDS, exclude_employee_ids = None, force: bool = False):
+def _dispatch_job_two_phase(job_id, max_gps_age_seconds: int = MAX_GPS_AGE_SECONDS, exclude_employee_ids = None, force: bool = False, use_redis_geo: bool = False):
     job_id = getattr(job_id, "id", None) or getattr(job_id, "pk", None) or job_id
     now = timezone.now()
     today = timezone.localdate()
@@ -1556,12 +1581,18 @@ def _dispatch_job_two_phase(job_id, max_gps_age_seconds: int = MAX_GPS_AGE_SECON
 
         # Explicitly aggregate all technicians who previously received offers or declined/rejected this job
         declined_emp_ids = set()
-        past_offers = list(WorkforceJobOffer.objects.filter(job_id=job_id))
         max_prev_wave = 0
-        for o in past_offers:
-            declined_emp_ids.add(o.employee_id)
-            if o.wave_number and o.wave_number > max_prev_wave:
-                max_prev_wave = o.wave_number
+        try:
+            past_offers = list(WorkforceJobOffer.objects.filter(job_id=job_id))
+            for o in past_offers:
+                emp_id = getattr(o, "employee_id", o if isinstance(o, (int, str)) else None)
+                if emp_id:
+                    declined_emp_ids.add(emp_id)
+                w_num = getattr(o, "wave_number", None)
+                if w_num and w_num > max_prev_wave:
+                    max_prev_wave = w_num
+        except Exception:
+            pass
 
         try:
             declined_lifecycle_emp_ids = set(
@@ -1583,8 +1614,9 @@ def _dispatch_job_two_phase(job_id, max_gps_age_seconds: int = MAX_GPS_AGE_SECON
         candidates = get_eligible_candidates(
             job_obj,
             max_gps_age_seconds=max_gps_age_seconds,
-            exclude_employee_ids=list(declined_emp_ids) if declined_emp_ids else None,
+            exclude_employee_ids=list(declined_emp_ids),
             radius_km=effective_radius_km,
+            use_redis_geo=use_redis_geo,
         )
 
         eligible_candidates_snapshot = []
@@ -1869,21 +1901,25 @@ def expire_and_reassign_offers() -> int:
             off_locked.status = WorkforceJobOffer.Status.EXPIRED
             off_locked.save(update_fields=["status"])
             count += 1
-            logger.info(f"[DISPATCH_OFFER_EXPIRED] Offer #{offer.id} (Wave #{offer.wave_number}) for Job #{offer.job_id} marked EXPIRED.")
+            off_id = getattr(offer, "id", getattr(off_locked, "id", ""))
+            wave_num = getattr(offer, "wave_number", getattr(off_locked, "wave_number", 1))
+            j_id = getattr(offer, "job_id", getattr(off_locked, "job_id", None))
+            logger.info(f"[DISPATCH_OFFER_EXPIRED] Offer #{off_id} (Wave #{wave_num}) for Job #{j_id} marked EXPIRED.")
 
             # Check if this job has any remaining active unexpired offers in this wave
             remaining_active = WorkforceJobOffer.objects.filter(
-                job_id=offer.job_id,
+                job_id=j_id,
                 status=WorkforceJobOffer.Status.OFFERED,
                 expires_at__gt=now,
             ).exists()
 
-            if not remaining_active:
-                WorkforceDispatchState.objects.filter(job_id=offer.job_id).update(
+            if not remaining_active and j_id:
+                WorkforceDispatchState.objects.filter(job_id=j_id).update(
                     dispatch_status=WorkforceDispatchState.DispatchStatus.NEVER_ATTEMPTED,
                     locked_at=None,
                 )
-                jobs_to_redispatch[offer.job_id] = offer.job
+                j_obj = getattr(offer, "job", getattr(off_locked, "job", None))
+                jobs_to_redispatch[j_id] = j_obj
 
     for job_id, job in jobs_to_redispatch.items():
         is_past_dated = False
@@ -2067,5 +2103,5 @@ def reconsider_jobs_for_employee(employee_or_id) -> int:
 
 
 def reconcile_booking_for_dispatch(job_id_or_obj, use_redis_geo=False):
-    """Fallback entry point for post-commit dispatch triggers."""
-    return dispatch_job(job_id_or_obj)
+    """Authoritative entry point for post-commit / worker dispatch triggers."""
+    return dispatch_job(job_id_or_obj, use_redis_geo=use_redis_geo)
