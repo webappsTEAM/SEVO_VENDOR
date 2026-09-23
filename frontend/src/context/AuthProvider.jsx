@@ -1,0 +1,385 @@
+// Last-resort ceiling on session restoration. Must stay comfortably longer
+// than the profile request's own timeout, otherwise a slow-but-successful
+// restore is mistaken for "not logged in".
+const AUTH_BOOTSTRAP_TIMEOUT_MS = 20000;
+
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { AuthContext } from './AuthContext.jsx';
+import {
+  apiFetchMe,
+  apiWorkforceLogin,
+  apiWorkforceSignup,
+  apiProviderSignup,
+  apiWorkforceLogout,
+  apiGetOnboardingProfile,
+  apiTogglePresence,
+} from '../api/workforceService.js';
+import {
+  getAccessToken,
+  setAuthTokens,
+  clearAuthTokens,
+} from '../utils/authTokens.js';
+
+const CACHED_USER_KEY = 'calservice_workforce_cached_user';
+const CACHED_EMP_KEY = 'calservice_workforce_cached_emp';
+
+export function AuthProvider({ children }) {
+  const [cachedUser] = useState(() => {
+    try {
+      const saved = localStorage.getItem(CACHED_USER_KEY);
+      const token = getAccessToken();
+      return (saved && token) ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const [cachedEmp] = useState(() => {
+    try {
+      const saved = localStorage.getItem(CACHED_EMP_KEY);
+      const token = getAccessToken();
+      return (saved && token) ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const [user, setUser] = useState(cachedUser);
+  const [employee, setEmployee] = useState(cachedEmp);
+  const [token, setToken] = useState(() => getAccessToken());
+  const [isReady, setIsReady] = useState(() => Boolean(cachedUser && getAccessToken()));
+  const inFlightRefreshRef = React.useRef(null);
+
+  const refreshProfile = useCallback(async (force = false) => {
+    if (inFlightRefreshRef.current && !force) {
+      return inFlightRefreshRef.current;
+    }
+
+    inFlightRefreshRef.current = (async () => {
+      try {
+        const activeToken = getAccessToken();
+        setToken(activeToken);
+        if (!activeToken) {
+          localStorage.removeItem(CACHED_USER_KEY);
+          localStorage.removeItem(CACHED_EMP_KEY);
+          setUser(null);
+          setEmployee(null);
+          return null;
+        }
+
+        const me = await apiFetchMe();
+
+        if (me && me.username) {
+          const isPlatformAdmin = Boolean(me.is_superuser || me.is_platform_admin);
+          const isVendorAdmin = Boolean(
+            me.is_vendor_admin ||
+            (!isPlatformAdmin && ['admin', 'manager'].includes((me.role || '').toLowerCase()))
+          );
+          const isAdmin = isPlatformAdmin || isVendorAdmin;
+          const empData = isAdmin ? null : await apiGetOnboardingProfile().catch(() => null);
+
+          const isEmployee = Boolean(empData) || (!isAdmin && (me.role || '').toLowerCase() === 'employee');
+          const isTiedWorker = isEmployee && Boolean(me.is_tied_worker || empData?.is_tied || empData?.workforce_type === 'TIED');
+          const isSeller = Boolean(
+            me.is_seller ||
+            me.business_type === 'grocery_supplier' ||
+            me.company_business_type === 'grocery_supplier' ||
+            (me.role || '').toLowerCase() === 'seller'
+          );
+          const isGrocerySupplier = isSeller || Boolean(
+            me.is_grocery_supplier ||
+            me.business_type === 'grocery_supplier' ||
+            me.business_type === 'hybrid'
+          );
+          const isSoloWorker = Boolean(me.is_solo_worker) || (!isTiedWorker && !isAdmin);
+          const computedRole = me.role || (isPlatformAdmin ? 'platform_admin' : (isSeller ? 'seller' : (isVendorAdmin ? 'vendor_admin' : (isAdmin ? 'admin' : 'employee'))));
+
+          const u = {
+            id: me.id,
+            username: me.username,
+            email: me.email || '',
+            firstName: me.first_name || '',
+            lastName: me.last_name || '',
+            role: computedRole,
+            companyId: me.company,
+            companyName: me.company_name || '',
+            businessType: me.business_type || '',
+            isAdmin: isAdmin,
+            isPlatformAdmin: isPlatformAdmin,
+            isVendorAdmin: isVendorAdmin,
+            isSeller: isSeller,
+            isGrocerySupplier: isGrocerySupplier,
+            isEmployee: isEmployee,
+            isTiedWorker: isTiedWorker,
+            isSoloWorker: isSoloWorker,
+            registrationStatus: empData?.registration_status || me.registration_status || (isAdmin ? 'approved' : 'not_started'),
+            isOnline: empData ? Boolean(empData.is_online) : false,
+            availability: empData ? (empData.live_availability || 'offline') : 'offline',
+          };
+
+          setUser(u);
+          setEmployee(empData);
+          try {
+            localStorage.setItem(CACHED_USER_KEY, JSON.stringify(u));
+            if (empData) localStorage.setItem(CACHED_EMP_KEY, JSON.stringify(empData));
+          } catch (_) {}
+          return u;
+        } else {
+          clearAuthTokens();
+          try {
+            localStorage.removeItem(CACHED_USER_KEY);
+            localStorage.removeItem(CACHED_EMP_KEY);
+          } catch (_) {}
+          setUser(null);
+          setEmployee(null);
+          return null;
+        }
+      } catch (e) {
+        // Only wipe auth tokens if server explicitly rejected with 401
+        if (e && e.status === 401) {
+          clearAuthTokens();
+          try {
+            localStorage.removeItem(CACHED_USER_KEY);
+            localStorage.removeItem(CACHED_EMP_KEY);
+          } catch (_) {}
+          setUser(null);
+          setEmployee(null);
+        }
+        return null;
+      } finally {
+        inFlightRefreshRef.current = null;
+      }
+    })();
+
+    return inFlightRefreshRef.current;
+  }, []);
+
+  const login = useCallback(async (identifier, password) => {
+    const res = await apiWorkforceLogin(identifier, password);
+    if (!res) {
+      throw new Error('Authentication failed. Please try again.');
+    }
+
+    const token = res.access_token || res.token;
+    const refresh = res.refresh_token;
+    if (token) {
+      setAuthTokens(token, refresh);
+      setToken(token);
+    }
+
+    if (res.user) {
+      const isSuper = Boolean(res.user.is_superuser || res.user.is_platform_admin);
+      const isSeller = Boolean(
+        res.user.is_seller ||
+        res.user.business_type === 'grocery_supplier' ||
+        (res.user.role || '').toLowerCase() === 'seller'
+      );
+      const isGrocerySupplier = isSeller || Boolean(
+        res.user.is_grocery_supplier ||
+        res.user.business_type === 'grocery_supplier' ||
+        res.user.business_type === 'hybrid'
+      );
+      const isAdmin = ['admin', 'manager'].includes((res.user.role || '').toLowerCase()) || isSuper || isSeller;
+      const isTied = Boolean(res.user.is_tied_worker);
+      const isSolo = Boolean(res.user.is_solo_worker) || (!isTied && !isAdmin);
+      const regStatus = res.user.registration_status || (isAdmin ? 'approved' : 'not_started');
+      const initialUser = {
+        id: res.user.id,
+        username: res.user.username,
+        email: res.user.email || '',
+        firstName: res.user.first_name || '',
+        lastName: res.user.last_name || '',
+        role: res.user.role || (isSuper ? 'platform_admin' : (isSeller ? 'seller' : (isAdmin ? 'vendor_admin' : 'employee'))),
+        companyId: res.user.company,
+        companyName: res.user.company_name || '',
+        businessType: res.user.business_type || '',
+        isAdmin: isAdmin,
+        isPlatformAdmin: isSuper,
+        isVendorAdmin: isAdmin && !isSuper,
+        isSeller: isSeller,
+        isGrocerySupplier: isGrocerySupplier,
+        isEmployee: !isAdmin,
+        isTiedWorker: isTied,
+        isSoloWorker: isSolo,
+        registrationStatus: regStatus,
+        isOnline: false,
+        availability: 'offline',
+      };
+      setUser(initialUser);
+
+      // Trigger background profile refresh for non-blocking extended details
+      refreshProfile(true).catch(() => {});
+      return initialUser;
+    }
+
+    return await refreshProfile(true);
+  }, [refreshProfile]);
+
+  const signup = useCallback(async (payload) => {
+    const res = await apiWorkforceSignup(payload);
+    if (res) {
+      const token = res.access_token || res.token;
+      const refresh = res.refresh_token;
+      setAuthTokens(token, refresh);
+      setToken(token);
+    }
+    await refreshProfile(true);
+    return res;
+  }, [refreshProfile]);
+
+  // SEVO business plan Section 2: a service-provider business registering
+  // itself (separate flow/endpoint from an individual technician signup --
+  // see ProviderSignupPage.jsx).
+  const providerSignup = useCallback(async (payload) => {
+    const res = await apiProviderSignup(payload);
+    if (res) {
+      const token = res.access_token || res.token;
+      const refresh = res.refresh_token;
+      setAuthTokens(token, refresh);
+      setToken(token);
+    }
+    await refreshProfile(true);
+    return res;
+  }, [refreshProfile]);
+
+  const logout = useCallback(async () => {
+    clearAuthTokens();
+    setToken(null);
+    if (typeof BroadcastChannel !== 'undefined') {
+      try {
+        const channel = new BroadcastChannel('wf_tab_channel');
+        channel.postMessage({ type: 'LOGOUT_SYNC' });
+        channel.close();
+      } catch (_) {}
+    }
+    try {
+      await apiWorkforceLogout();
+    } catch (_) {}
+    try {
+      localStorage.removeItem(CACHED_USER_KEY);
+      localStorage.removeItem(CACHED_EMP_KEY);
+    } catch (_) {}
+    setUser(null);
+    setEmployee(null);
+  }, []);
+
+  const togglePresence = useCallback(async (desiredOnlineState = null) => {
+    try {
+      const res = await apiTogglePresence(desiredOnlineState);
+      if (user) {
+        setUser(prev => ({
+          ...prev,
+          isOnline: res.is_online,
+          availability: res.availability,
+        }));
+      }
+      if (employee) {
+        setEmployee(prev => ({
+          ...prev,
+          is_online: res.is_online,
+          live_availability: res.availability,
+        }));
+      }
+      return res;
+    } catch (e) {
+      throw e;
+    }
+  }, [user, employee]);
+
+  // Cross-tab Session Sync using BroadcastChannel
+  useEffect(() => {
+    if (typeof BroadcastChannel === 'undefined') return;
+    const channel = new BroadcastChannel('wf_tab_channel');
+
+    channel.onmessage = (event) => {
+      const data = event.data;
+      if (!data) return;
+
+      if (data.type === 'LOGOUT_SYNC') {
+        clearAuthTokens();
+        setToken(null);
+        setUser(null);
+        setEmployee(null);
+      }
+    };
+
+    return () => {
+      channel.close();
+    };
+  }, []);
+
+  // Handle unauthenticated event triggered from client.js on 401
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      setToken(null);
+      setUser(null);
+      setEmployee(null);
+    };
+    window.addEventListener('workforce:auth-unauthorized', handleUnauthorized);
+    return () => {
+      window.removeEventListener('workforce:auth-unauthorized', handleUnauthorized);
+    };
+  }, []);
+
+  useEffect(() => {
+    // A hard 4s timer used to force isReady=true even while the profile fetch
+    // was still in flight. On a slow first paint (cold DB, slow network, or the
+    // two serial calls this bootstrap makes) that flipped the app to
+    // "ready, but no user", and the route guards then redirected to login --
+    // which is why a plain browser refresh logged people out while their tokens
+    // were valid the whole time. The safety net stays, so the app can never
+    // hang forever, but it now outlasts the request's own timeout instead of
+    // racing it, and a late-resolving bootstrap no longer loses the race.
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (!settled) setIsReady(true);
+    }, AUTH_BOOTSTRAP_TIMEOUT_MS);
+
+    refreshProfile()
+      .catch(() => {})
+      .finally(() => {
+        settled = true;
+        clearTimeout(timer);
+        setIsReady(true);
+      });
+
+    return () => clearTimeout(timer);
+  }, [refreshProfile]);
+
+  const value = useMemo(() => ({
+    isReady,
+    user,
+    employee,
+    token: token || getAccessToken(),
+    login,
+    signup,
+    providerSignup,
+    logout,
+    refreshProfile,
+    togglePresence,
+    isAuthenticated: Boolean(user),
+    isAdmin: user?.isAdmin || false,
+    isPlatformAdmin: user?.isPlatformAdmin || false,
+    isVendorAdmin: user?.isVendorAdmin || false,
+    isSeller: user?.isSeller || false,
+    isGrocerySupplier: user?.isGrocerySupplier || false,
+    isEmployee: user?.isEmployee || false,
+    isTiedWorker: user?.isTiedWorker || false,
+    isSoloWorker: user?.isSoloWorker || false,
+    registrationStatus: user?.registrationStatus || 'not_started',
+  }), [isReady, user, employee, token, login, signup, providerSignup, logout, refreshProfile, togglePresence]);
+
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+export function useAuth() {
+  const context = React.useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+}
