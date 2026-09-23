@@ -10,6 +10,7 @@ import datetime
 from datetime import timedelta
 import logging
 from decimal import Decimal
+from typing import Any, cast
 from django.conf import settings
 
 from django.contrib.auth import get_user_model
@@ -418,7 +419,7 @@ class WorkforceSignupView(APIView):
             user.save()
 
             employee_id = generate_next_employee_id(None)
-            bank_details = {
+            bank_details: dict[str, Any] = {
                 "onboarding": {
                     "status": "not_started",
                     "step": 1,
@@ -2915,6 +2916,7 @@ def _expected_job_minutes(job):
     """
     category = (getattr(job, "service_category", "") or "").strip()
     if category:
+        from workforce_api.models import WorkforceServiceCatalog
         entry = (
             WorkforceServiceCatalog.objects
             .filter(category__iexact=category, is_active=True)
@@ -4060,6 +4062,32 @@ class WorkforceJobAcceptOfferView(APIView):
         # Cross-company tenant isolation check
         if not is_employee_authorized_for_job(emp, job):
             return Response({"error": "Unauthorized access to job belonging to another company.", "code": "CROSS_TENANT_FORBIDDEN"}, status=status.HTTP_403_FORBIDDEN)
+
+        # GT vehicle-compatibility fix (this session): dispatch's Gate 3
+        # (check_candidate_eligibility in automatic_dispatch.py) already
+        # blocks OFFERING a class-mismatched job to this technician, but a
+        # technician can also accept via a direct assignment or a stale
+        # offer that predates the fix -- so the acceptance path re-checks
+        # the same single narrow authority here, exactly the "single
+        # narrow authority shared by dispatch + acceptance" pattern this
+        # codebase already uses elsewhere (see is_employee_authorized_for_job
+        # just above, and get_scheduled_dispatch_window below).
+        from workforce_api.services.automatic_dispatch import (
+            check_vehicle_class_compatibility,
+            check_vehicle_capacity_compatibility,
+        )
+        class_ok, class_reason = check_vehicle_class_compatibility(emp, job)
+        if not class_ok:
+            return Response({
+                "error": class_reason,
+                "code": "VEHICLE_CLASS_MISMATCH",
+            }, status=status.HTTP_403_FORBIDDEN)
+        cap_ok, cap_reason = check_vehicle_capacity_compatibility(emp, job)
+        if not cap_ok:
+            return Response({
+                "error": cap_reason,
+                "code": "VEHICLE_CAPACITY_MISMATCH",
+            }, status=status.HTTP_403_FORBIDDEN)
 
         with transaction.atomic():
             job_obj = ServiceRequest.objects.select_for_update().filter(pk=pk).first()
@@ -6731,6 +6759,7 @@ class WorkforceLocationUpdateView(APIView):
 
                 # Throttled persistence of JobLocationPoint
                 should_record_point = False
+                seq_num = 1
                 last_point = session.location_points.order_by("-sequence_number").first()
                 if not last_point:
                     should_record_point = True
@@ -8255,11 +8284,11 @@ class WorkforceVerificationSuiteView(APIView):
             suite_name = request.query_params.get("suite", "master")
             if suite_name == "employee_platform":
                 file_path = os.path.join(settings.BASE_DIR, "test_employee_platform_integration.py")
-                glob = {"__file__": file_path, "__name__": "test_suite"}
+                glob: dict[str, Any] = {"__file__": file_path, "__name__": "test_suite"}
                 with open(file_path, "r", encoding="utf-8") as f:
                     code = compile(f.read(), file_path, "exec")
                     exec(code, glob)
-                if "run_tests" in glob:
+                if "run_tests" in glob and callable(glob["run_tests"]):
                     results = glob["run_tests"]()
                 else:
                     results = {"passed": 0, "failed": 1, "errors": ["run_tests function not found"]}
@@ -8273,10 +8302,10 @@ class WorkforceVerificationSuiteView(APIView):
 
             elif suite_name == "phase4":
                 file_path = os.path.join(settings.BASE_DIR, "test_phase4_completed_features.py")
-                glob = {"__file__": file_path, "__name__": "__main__"}
+                glob_p4: dict[str, Any] = {"__file__": file_path, "__name__": "__main__"}
                 with open(file_path, "r", encoding="utf-8") as f:
-                    exec(compile(f.read(), file_path, "exec"), glob)
-                results = glob["run_tests"]() if "run_tests" in glob else {"passed": 0, "failed": 1}
+                    exec(compile(f.read(), file_path, "exec"), glob_p4)
+                results = glob_p4["run_tests"]() if ("run_tests" in glob_p4 and callable(glob_p4["run_tests"])) else {"passed": 0, "failed": 1}
                 name = "Phase 4 Verification Suite"
                 is_ok = results.get("failed", 0) == 0
 
@@ -12962,7 +12991,7 @@ class VendorDealListView(APIView):
             deal_type=data.get("deal_type", "strike_through"),
             original_price=original_price,
             deal_price=deal_price,
-            badge_text=data.get("badge_text", f"{int(round(((original_price - deal_price)/original_price)*100))}% OFF" if original_price > deal_price else "SPECIAL DEAL"),
+            badge_text=data.get("badge_text", f"{round(((original_price - deal_price)/original_price)*100)}% OFF" if original_price > deal_price else "SPECIAL DEAL"),
             is_active=bool(data.get("is_active", True)),
         )
         return Response({

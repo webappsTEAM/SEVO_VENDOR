@@ -292,6 +292,30 @@ class ServiceRequest(models.Model):
     package_version = models.IntegerField(default=1, db_column="package_version")
     package_display = models.JSONField(default=dict, blank=True, db_column="package_display")
 
+    # GT vehicle-compatibility fix (this session): this column already exists
+    # on the shared table -- Customer/backend/service_requests/migrations/
+    # 0066_servicerequest_fare_breakdown.py added it there, and
+    # Customer/backend/service_requests/services/logistics_pricing.py has
+    # been writing {"vehicle_class": ..., "weight_class": ...} into it for
+    # every goods-transport booking since GT audit Update 14/16. This mirror
+    # model never declared the field, so nothing on the Vendor side could
+    # read it -- Gate 3 in workforce_api/services/automatic_dispatch.py
+    # could only check "has a vehicle with current documents", never "has
+    # the RIGHT CLASS of vehicle", even though the data to do so was sitting
+    # in this row the whole time. See check_vehicle_class_compatibility()
+    # in automatic_dispatch.py for the read side.
+    #
+    # NOTE ON MIGRATIONS: this app's migration graph had an unresolved
+    # conflict at 0002 (two independently-generated migrations -- see
+    # migrations/0003_merge_20260923_gt_vehicle_compat.py's own header for
+    # the full explanation). That merge, plus this field's own AddField
+    # migration (0004_servicerequest_fare_breakdown.py), were hand-written
+    # this session with no shell access to run `makemigrations`/`migrate`
+    # and verify them -- read both files' headers before trusting them
+    # against a real database. Both are state-only: this model is
+    # managed=False, so no real DDL runs for either.
+    fare_breakdown = models.JSONField(default=dict, blank=True)
+
     service_category = models.CharField(max_length=150)
     issue_title = models.CharField(max_length=300)
     description = models.TextField(blank=True, default="")

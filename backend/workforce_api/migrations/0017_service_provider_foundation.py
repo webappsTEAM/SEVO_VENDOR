@@ -33,6 +33,12 @@ def _reverse_relax_employee_company_and_role_column(apps, schema_editor):
 
 
 def migrate_platform_superadmins(apps, schema_editor):
+    # accounts_user is managed=False (shared DB, owned elsewhere -- see
+    # accounts/models.py) -- same as its sibling function above, it never
+    # exists on SQLite's fresh `manage.py test` database, so there is
+    # nothing to backfill there.
+    if schema_editor.connection.vendor != "postgresql":
+        return
     from django.contrib.auth import get_user_model
     User = get_user_model()
     # Update existing platform superusers or explicit super_admin accounts to canonical 'superadmin'
@@ -48,6 +54,8 @@ def models_Q_or_filter(User):
 
 
 def reverse_platform_superadmins(apps, schema_editor):
+    if schema_editor.connection.vendor != "postgresql":
+        return
     from django.contrib.auth import get_user_model
     User = get_user_model()
     # Reverse canonical superadmin back to super_admin or admin

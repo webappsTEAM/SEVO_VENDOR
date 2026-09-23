@@ -194,8 +194,14 @@ class AuthoritativeDispatchMatrixTests(SimpleTestCase):
     @patch("workforce_api.models.WorkforceJobOffer.objects.filter")
     @patch("workforce_api.models.WorkforceJobLifecycleEvent.objects.create")
     @patch("workforce_api.models.WorkforceEventLog.objects.create")
+    # Test-mocking gap fix (this session, 2026-09-23): the view's
+    # "remaining_active_offers_count == 0" branch also calls
+    # WorkforceDispatchState.objects.filter(job_id=...).update(...) to reset
+    # the dispatch state before scheduling redispatch. This was previously
+    # unmocked, so it hit a real (forbidden) DB query under SimpleTestCase.
+    @patch("workforce_api.models.WorkforceDispatchState.objects")
     def test_g_decline_triggers_redispatch_excluding_declining_technician(
-        self, mock_event_log, mock_event, mock_offer_filter, mock_offer_sfu, mock_emp_job_filter, mock_sr_filter, mock_sr_sfu, mock_on_commit, mock_atomic
+        self, mock_dispatch_state, mock_event_log, mock_event, mock_offer_filter, mock_offer_sfu, mock_emp_job_filter, mock_sr_filter, mock_sr_sfu, mock_on_commit, mock_atomic
     ):
         """G: Rejecting an offer commits a callback to run_automatic_dispatch excluding the employee."""
         user = MockUser(pk=201)
@@ -234,6 +240,18 @@ class AuthoritativeDispatchMatrixTests(SimpleTestCase):
             save=MagicMock(),
         )
         mock_offer_filter.return_value.first.return_value = mock_offer
+        # Test-mocking gap fix (this session, 2026-09-23): the view's
+        # "remaining_active_offers_count == 0" check calls .count() on this
+        # same WorkforceJobOffer.objects.filter(...) mock (a separate chained
+        # call from .first(), used earlier to look up the offer being
+        # rejected). Left unconfigured, .count() returns a MagicMock, which
+        # is never == 0, so the redispatch on_commit branch was silently
+        # never reached -- not because the view doesn't schedule it (it
+        # does, see WorkforceJobRejectOfferView in views.py), but because
+        # this test never told the mock "zero other active offers remain in
+        # this wave", which is the exact scenario this test's docstring
+        # describes.
+        mock_offer_filter.return_value.count.return_value = 0
         mock_offer_sfu.return_value.filter.return_value.order_by.return_value.first.return_value = mock_offer
 
         req = self.factory.post("/api/workforce/jobs/7001/reject-offer/", {"reason": "Busy"}, format="json")

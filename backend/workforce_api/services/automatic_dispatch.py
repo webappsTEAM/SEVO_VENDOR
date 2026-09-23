@@ -170,6 +170,140 @@ LOGISTICS_SERVICE_CATEGORIES = {
     "goods_transport",
 }
 
+# ── GT vehicle-class compatibility (restored this session) ─────────────────
+#
+# Customer/backend/service_requests/services/logistics_pricing.py's
+# DISPATCHABLE_VEHICLE_CLASSES == {two_wheeler, three_wheeler, pickup, truck}
+# is the customer-facing purchasable taxonomy (heavy_truck is deliberately
+# excluded there -- no vendor vehicle type satisfies it yet). Vehicle.
+# VehicleType on this side additionally has mini_truck and other, neither of
+# which a customer can ever purchase a tier for. RANK expresses "can this
+# vehicle cover a job that needs at least this class" -- a bigger vehicle
+# can always cover a smaller job's class requirement; a smaller one cannot
+# cover a bigger job. mini_truck is ranked with pickup (a reasonable
+# same-tier assumption pending real product guidance -- there is currently
+# no purchasable tier that would ever require exactly "mini_truck", so this
+# only affects whether a mini_truck-only technician's vehicle can satisfy a
+# pickup-class job, never the other direction). "other" never satisfies any
+# classified requirement -- an unclassified vehicle should not be assumed
+# capable of anything.
+_VEHICLE_CLASS_RANK = {
+    "two_wheeler": 1,
+    "three_wheeler": 2,
+    "pickup": 3,
+    "mini_truck": 3,
+    "truck": 4,
+}
+
+
+def check_vehicle_class_compatibility(emp, job) -> Tuple[bool, str]:
+    """
+    Single narrow authority for "does this technician have a vehicle of the
+    right CLASS for this job's purchased vehicle_class", shared by dispatch
+    (Gate 3 below) and acceptance (WorkforceJobAcceptOfferView).
+
+    This is deliberately separate from the "has a vehicle with current
+    documents" check already in check_candidate_eligibility's Gate 3: that
+    check answers "is this technician allowed to operate a logistics job at
+    all", this one answers "is this SPECIFIC job's required vehicle class
+    satisfied by one of that technician's active, current-document
+    vehicles". A technician can pass one and fail the other.
+
+    Fails OPEN (returns True, "") -- not closed -- for any job whose
+    fare_breakdown carries no vehicle_class key. That mirrors the documented
+    "do-not-strand-legacy-bookings" rule already established on the
+    Customer side (see classification_only_snapshot()'s docstring in
+    logistics_pricing.py): a booking made before fare_breakdown existed, or
+    a lane-only booking with no vehicle classification at all, has nothing
+    to enforce here and falls back to the coarse category-level check that
+    already gates entry into LOGISTICS_SERVICE_CATEGORIES. It does NOT fail
+    open for a job that HAS a vehicle_class but the technician's vehicles
+    don't cover it -- that is the exact failure this function exists to
+    catch.
+    """
+    fare_breakdown = getattr(job, "fare_breakdown", None) or {}
+    required_class = str(fare_breakdown.get("vehicle_class") or "").strip().lower()
+    if not required_class or required_class not in _VEHICLE_CLASS_RANK:
+        # No classification to enforce (legacy/lane-only booking, or a
+        # class this table doesn't know about yet) -- do not strand it.
+        return True, ""
+
+    required_rank = _VEHICLE_CLASS_RANK[required_class]
+    vehicles = Vehicle.objects.filter(employee=emp, is_active=True)
+    for v in vehicles:
+        if not v.is_document_current():
+            continue
+        v_rank = _VEHICLE_CLASS_RANK.get(str(v.vehicle_type or "").strip().lower())
+        if v_rank is not None and v_rank >= required_rank:
+            return True, ""
+
+    return False, (
+        f"Gate 3: This job requires a '{required_class}' class vehicle (or larger); "
+        "none of your active, document-current vehicles qualify."
+    )
+
+
+def check_vehicle_capacity_compatibility(emp, job) -> Tuple[bool, str]:
+    """
+    Packers & Movers' own compatibility check (this session) -- the sibling
+    to check_vehicle_class_compatibility() above, for the one
+    LOGISTICS_SERVICE_CATEGORIES member that isn't vehicle-class-classified.
+
+    Customer/backend/service_requests/services/logistics_pricing.py's
+    assert_gt_booking_is_classifiable() docstring says outright that
+    Packers & Movers "is deliberately absent [from class-classified
+    categories]: its tiers are relocation packages... and its compatibility
+    runs on payload_kg instead -- see packers_movers_pricing." That
+    documented design was never actually wired up on this side either: a
+    grep of this whole service and of workforce_api/views.py for
+    "payload_kg" before this fix returned nothing. This closes that gap the
+    same narrow way as the vehicle-class check: read the payload the
+    Customer app already computed and stored (packers_movers_pricing.
+    compute_packers_movers_quote()'s "vehicle" block, saved verbatim into
+    fare_breakdown at booking time -- see service_requests/views.py's
+    booking view), and require an active, document-current vehicle whose
+    capacity_kg covers it.
+
+    Deliberately narrower than the full Porter-observable P&M experience:
+    a real relocation also needs the right CREW SIZE (fare_breakdown.
+    vehicle.crew_size), not just one compatible vehicle. This codebase's
+    dispatch model is one job -> one assigned_employee; there is no
+    multi-technician crew assignment concept anywhere in the models this
+    session read (WorkforceJobOffer, EmployeeJob, etc. are all single-
+    employee). Enforcing crew_size here would mean inventing that
+    architecture from scratch rather than restoring something documented
+    as intended, which is a materially different (and much larger) piece
+    of work than this fix -- left out on purpose, not missed.
+
+    Fails OPEN for any job with no payload_kg to enforce (non-P&M jobs,
+    P&M jobs whose quote predates this field, or a technician vehicle
+    with no capacity_kg on file) -- same do-not-strand-legacy-bookings
+    posture as the vehicle-class check above.
+    """
+    fare_breakdown = getattr(job, "fare_breakdown", None) or {}
+    vehicle_quote = fare_breakdown.get("vehicle") if isinstance(fare_breakdown, dict) else None
+    if not isinstance(vehicle_quote, dict):
+        return True, ""
+    try:
+        required_kg = float(vehicle_quote.get("payload_kg") or 0)
+    except (TypeError, ValueError):
+        required_kg = 0
+    if required_kg <= 0:
+        return True, ""
+
+    vehicles = Vehicle.objects.filter(employee=emp, is_active=True)
+    for v in vehicles:
+        if not v.is_document_current():
+            continue
+        if v.capacity_kg is not None and float(v.capacity_kg) >= required_kg:
+            return True, ""
+
+    return False, (
+        f"Gate 3: This relocation requires a vehicle rated for at least {required_kg:.0f}kg; "
+        "none of your active, document-current vehicles have enough recorded capacity."
+    )
+
+
 # Canonical service synonyms and explicit alias dictionary
 EXPLICIT_SERVICE_ALIASES = {
     "hvac": {"hvac", "ac", "air conditioning", "ac service", "ac repair", "ac installation", "ac gas", "ac repair & diagnostics", "ac service & cleaning", "ac gas & refrigerant", "ac installation & uninstallation"},
@@ -546,6 +680,27 @@ def check_candidate_eligibility(
                 gate_results["G3"] = False
                 logger.debug(f"[9GATE_REJECT_GATE3_VEHICLE_DOCS_EXPIRED] Employee #{emp.id} has no vehicle with current insurance/permit/PUC.")
                 return False, "Gate 3: Vehicle insurance, permit or PUC has expired.", gate_results
+            # GT vehicle-compatibility fix (this session): the checks above
+            # only establish "has SOME current-document vehicle" -- they
+            # never compared its CLASS against what this specific job
+            # actually requires. See check_vehicle_class_compatibility()'s
+            # docstring above for why this is a separate check and why it
+            # fails open (not closed) for jobs with no vehicle_class to
+            # enforce.
+            if job is not None:
+                class_ok, class_reason = check_vehicle_class_compatibility(emp, job)
+                if not class_ok:
+                    gate_results["G3"] = False
+                    logger.debug(f"[9GATE_REJECT_GATE3_VEHICLE_CLASS_MISMATCH] Employee #{emp.id}: {class_reason}")
+                    return False, class_reason, gate_results
+                # Packers & Movers' own compatibility axis (payload_kg, not
+                # vehicle_class) -- see check_vehicle_capacity_compatibility()
+                # docstring above.
+                cap_ok, cap_reason = check_vehicle_capacity_compatibility(emp, job)
+                if not cap_ok:
+                    gate_results["G3"] = False
+                    logger.debug(f"[9GATE_REJECT_GATE3_VEHICLE_CAPACITY_MISMATCH] Employee #{emp.id}: {cap_reason}")
+                    return False, cap_reason, gate_results
         else:
             documents = onboarding.get("documents", {})
             if any(doc.get("status") in ["rejected", "pending_review", "missing"] for doc in documents.values()):
