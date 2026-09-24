@@ -517,10 +517,14 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
     active_quote_total_amount = serializers.SerializerMethodField()
     active_quote_net_payable = serializers.SerializerMethodField()
     active_quote_advance_amount = serializers.SerializerMethodField()
+    active_quote_advance_paid = serializers.SerializerMethodField()
+    active_quote_advance_due = serializers.SerializerMethodField()
+    active_quote_is_fully_paid = serializers.SerializerMethodField()
     active_quote_balance_amount = serializers.SerializerMethodField()
     active_quote_customer_notes = serializers.SerializerMethodField()
     active_quote_customer_decline_reason = serializers.SerializerMethodField()
     active_quote_admin_rejection_reason = serializers.SerializerMethodField()
+    payment_otp = serializers.SerializerMethodField()
     # GT: the logistics half of a job. Without these the driver app can see
     # where to collect from but not where to deliver to, and has no idea
     # which leg of the trip it is on -- the leg/stop endpoints existed but
@@ -594,10 +598,14 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
             "active_quote_total_amount",
             "active_quote_net_payable",
             "active_quote_advance_amount",
+            "active_quote_advance_paid",
+            "active_quote_advance_due",
+            "active_quote_is_fully_paid",
             "active_quote_balance_amount",
             "active_quote_customer_notes",
             "active_quote_customer_decline_reason",
             "active_quote_admin_rejection_reason",
+            "payment_otp",
             # Goods & Transport
             "is_logistics",
             "drop_address",
@@ -1122,6 +1130,33 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
         adv_pct = float(q.advance_percent) if q.advance_percent is not None else 50.0
         return round(float(q.net_payable) * (adv_pct / 100.0), 2)
 
+    def get_active_quote_advance_paid(self, obj):
+        try:
+            from workforce_api.models import WorkforceInvoice
+            inv = WorkforceInvoice.objects.filter(job=obj).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
+            if inv:
+                if inv.status == WorkforceInvoice.Status.PAID:
+                    return True
+                if inv.advance_paid_at is not None:
+                    return True
+                if float(inv.amount_paid) >= float(inv.advance_amount or 0.0) > 0:
+                    return True
+        except Exception:
+            pass
+        st = str(getattr(obj, "status", "")).lower()
+        if st in ["in_progress", "proof_submitted", "completed"]:
+            return True
+        return False
+
+    def get_active_quote_advance_due(self, obj):
+        if self.get_active_quote_advance_paid(obj):
+            return 0.0
+        return self.get_active_quote_advance_amount(obj)
+
+    def get_active_quote_is_fully_paid(self, obj):
+        bal = self.get_active_quote_balance_amount(obj)
+        return bal is not None and bal <= 0.0
+
     def get_active_quote_balance_amount(self, obj):
         try:
             from workforce_api.models import WorkforceInvoice
@@ -1148,6 +1183,18 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
     def get_active_quote_admin_rejection_reason(self, obj):
         q = self._get_active_quote(obj)
         return (getattr(q, "admin_rejection_reason", "") or getattr(q, "admin_clearance_notes", "")) if q else ""
+
+    def get_payment_otp(self, obj):
+        try:
+            from workforce_api.models import JobPayment, PaymentCollectionEvent
+            pmt = getattr(obj, "payment_record", None) or JobPayment.objects.filter(job=obj).first()
+            if pmt and pmt.payment_status == JobPayment.PaymentStatus.CASH_PENDING:
+                last_event = PaymentCollectionEvent.objects.filter(job_payment=pmt, event_type="CASH_REPORTED").order_by("-created_at").first()
+                if last_event and last_event.metadata:
+                    return last_event.metadata.get("otp")
+        except Exception:
+            pass
+        return None
 
     def get_can_create_quote(self, obj):
         if not self._is_estimation_job(obj):

@@ -976,7 +976,8 @@ export function EmployeeDashboardPage() {
         const isPaid = isCompleted || res?.payment_status === 'PAID' || targetJob.payment?.payment_status === 'PAID' || targetJob.payment_status === 'paid';
         if (!isPaid) {
           setCashModalJob(targetJob);
-          setCashAmountReceived(String(targetJob.payment?.amount_due || targetJob.total_amount || ''));
+          const initialDue = targetJob.active_quote_balance_amount ?? targetJob.payment?.amount_due ?? targetJob.total_amount ?? '';
+          setCashAmountReceived(String(initialDue));
           setSuccessMsg('After-service proof submitted! Please collect customer payment.');
         } else {
           if (typeof reconcileJobCompleted === 'function') {
@@ -4315,22 +4316,22 @@ export function EmployeeDashboardPage() {
                   <input
                     type="number"
                     step="0.01"
-                    min={parseFloat(cashModalJob.payment?.amount_due || cashModalJob.total_amount || 0)}
+                    min={parseFloat(cashModalJob.active_quote_balance_amount ?? cashModalJob.payment?.amount_due ?? cashModalJob.total_amount ?? 0)}
                     required
                     value={cashAmountReceived}
                     onChange={(e) => setCashAmountReceived(e.target.value)}
-                    placeholder={String(cashModalJob.payment?.amount_due || cashModalJob.total_amount || '')}
+                    placeholder={String(cashModalJob.active_quote_balance_amount ?? cashModalJob.payment?.amount_due ?? cashModalJob.total_amount ?? '')}
                     className="w-full pl-7 pr-3 py-2 border border-slate-300 rounded-lg text-sm font-mono font-bold text-slate-800 focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white"
                   />
                 </div>
               </div>
 
               {/* Calculated Change Returned */}
-              {parseFloat(cashAmountReceived || 0) > parseFloat(cashModalJob.payment?.amount_due || cashModalJob.total_amount || 0) && (
+              {parseFloat(cashAmountReceived || 0) > parseFloat(cashModalJob.active_quote_balance_amount ?? cashModalJob.payment?.amount_due ?? cashModalJob.total_amount ?? 0) && (
                 <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 flex justify-between items-center">
                   <span className="text-xs font-semibold text-emerald-800">Change to Return Customer:</span>
                   <span className="font-mono font-bold text-sm text-emerald-950">
-                    ₹{(parseFloat(cashAmountReceived || 0) - parseFloat(cashModalJob.payment?.amount_due || cashModalJob.total_amount || 0)).toFixed(2)}
+                    ₹{(parseFloat(cashAmountReceived || 0) - parseFloat(cashModalJob.active_quote_balance_amount ?? cashModalJob.payment?.amount_due ?? cashModalJob.total_amount ?? 0)).toFixed(2)}
                   </span>
                 </div>
               )}

@@ -3352,8 +3352,14 @@ class WorkforceJobCashCollectView(APIView):
 
             sync_payment_amount_due(pmt, job)
 
-            # Rule: Cannot collect cash for Online payment booking
-            if pmt.payment_method == JobPayment.PaymentMethod.ONLINE:
+            # For quotation jobs with an invoice, ensure amount_due reflects the live remaining balance_due
+            from workforce_api.models import WorkforceInvoice
+            inv = WorkforceInvoice.objects.filter(job=job).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
+            if inv and inv.balance_due > Decimal("0.00"):
+                pmt.amount_due = inv.balance_due
+                pmt.payment_method = JobPayment.PaymentMethod.CASH_ON_SERVICE
+                pmt.save(update_fields=["amount_due", "payment_method", "updated_at"])
+            elif pmt.payment_method == JobPayment.PaymentMethod.ONLINE:
                 return Response({"error": "Cannot collect cash for online payment booking."}, status=status.HTTP_400_BAD_REQUEST)
 
             # Rule: Idempotency / Duplicate protection
@@ -3440,14 +3446,14 @@ class WorkforceJobCashCollectView(APIView):
             pmt.payment_status = JobPayment.PaymentStatus.CASH_PENDING
             pmt.save()
 
-            # Record immutable audit event
+            # Record immutable audit event with OTP for customer confirmation
             PaymentCollectionEvent.objects.create(
                 job_payment=pmt,
                 employee=emp,
                 actor_user=request.user,
                 event_type="CASH_REPORTED",
                 amount=pmt.amount_due,
-                metadata={"amount_received": float(amt_received), "change_returned": float(change_returned)},
+                metadata={"amount_received": float(amt_received), "change_returned": float(change_returned), "otp": str(otp_raw)},
             )
 
             # Sync ServiceRequest payment status
@@ -7202,6 +7208,14 @@ class WorkforceJobLiveTrackingView(APIView):
         if (is_owner_customer or is_tenant_admin) and verification and verification.otp_code and not verification.otp_verified:
             start_otp = verification.otp_code
 
+        # Include Payment Confirmation OTP for customer when cash is reported
+        payment_otp = None
+        pmt = getattr(job, "payment_record", None) or JobPayment.objects.filter(job=job).first()
+        if pmt and pmt.payment_status == JobPayment.PaymentStatus.CASH_PENDING:
+            last_event = PaymentCollectionEvent.objects.filter(job_payment=pmt, event_type="CASH_REPORTED").order_by("-created_at").first()
+            if last_event and last_event.metadata:
+                payment_otp = last_event.metadata.get("otp")
+
         tech_photo = ""
         tech_rating = None
         if tech:
@@ -7232,6 +7246,8 @@ class WorkforceJobLiveTrackingView(APIView):
             "technician_photo": tech_photo,
             "technician_rating": tech_rating,
             "start_otp": start_otp,
+            "payment_otp": payment_otp,
+            "payment_status": pmt.payment_status if pmt else "PENDING",
             "distance_m": distance_m,
             "geofence_passed": geofence_passed,
             "geofence_radius_meters": 250.0,
