@@ -1617,3 +1617,1818 @@ class VendorStoreReviewSerializer(serializers.ModelSerializer):
             "created_at",
         ]
         read_only_fields = ["id", "created_at"]
+
+
+# ========================================== #
+# SELLER HUB & GROCERY SERIALIZERS (INCOMING) #
+# ========================================== #
+
+class GrocerySellerSignupSerializer(serializers.Serializer):
+    """
+    Serializer for Sevo Seller Hub (grocery store / supermarket merchant registration).
+    Creates an inactive Company, inactive User, and inactive VendorStore with structured onboarding blob.
+    """
+    business_name = serializers.CharField(max_length=255)
+    store_name = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    contact_first_name = serializers.CharField(max_length=150)
+    contact_last_name = serializers.CharField(max_length=150, required=False, allow_blank=True)
+    mobile_number = serializers.CharField(max_length=20)
+    email = serializers.EmailField()
+    password = serializers.CharField(write_only=True, min_length=6)
+    address = serializers.CharField(required=False, allow_blank=True, default="")
+    city = serializers.CharField(required=False, allow_blank=True, default="Hosur")
+    fssai_license_number = serializers.CharField(max_length=100, required=False, allow_blank=True, default="")
+    gst_number = serializers.CharField(max_length=50, required=False, allow_blank=True, default="")
+    categories = serializers.ListField(
+        child=serializers.CharField(max_length=100),
+        required=False,
+        default=list,
+    )
+    documents = serializers.DictField(required=False, default=dict)
+
+    def validate_email(self, value):
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        if User.objects.filter(email__iexact=value).exists():
+            raise serializers.ValidationError("An account with this email already exists.")
+        return value.lower()
+
+    def validate_mobile_number(self, value):
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        cleaned = value.strip().replace(" ", "").replace("-", "")
+        if User.objects.filter(mobile_number=cleaned).exists():
+            raise serializers.ValidationError("An account with this mobile number already exists.")
+        return cleaned
+
+    def validate_business_name(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Business name is required.")
+        return value
+
+
+class GrocerySellerApplicationDetailSerializer(serializers.ModelSerializer):
+    """
+    Comprehensive serializer for the Admin Seller Application dossier review queue.
+    """
+    company_id = serializers.IntegerField(source="company.id", read_only=True)
+    company_name = serializers.CharField(source="company.company_name", read_only=True)
+    company_slug = serializers.CharField(source="company.slug", read_only=True)
+    is_company_active = serializers.BooleanField(source="company.is_active", read_only=True)
+    owner = serializers.SerializerMethodField()
+    onboarding_data = serializers.SerializerMethodField()
+    registration_status = serializers.SerializerMethodField()
+    documents_status = serializers.SerializerMethodField()
+    categories_status = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models import VendorStore
+        model = VendorStore
+        fields = [
+            "id",
+            "company_id",
+            "company_name",
+            "company_slug",
+            "store_name",
+            "store_slug",
+            "tagline",
+            "description",
+            "logo_url",
+            "banner_url",
+            "fssai_license_number",
+            "gst_number",
+            "store_address",
+            "is_accepting_orders",
+            "is_company_active",
+            "owner",
+            "onboarding_data",
+            "registration_status",
+            "documents_status",
+            "categories_status",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_owner(self, obj):
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        user = User.objects.filter(company=obj.company).order_by("id").first()
+        if not user:
+            return None
+        return {
+            "id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "mobile_number": user.mobile_number or getattr(user, "phone", ""),
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "is_active": user.is_active,
+            "role": getattr(user, "role", "manager"),
+        }
+
+    def get_onboarding_data(self, obj):
+        return obj.onboarding or {
+            "status": "not_started",
+            "step": 1,
+            "draft": {},
+            "categories": [],
+            "documents": {},
+            "correction_notes": "",
+            "rejection_reason": "",
+        }
+
+    def get_registration_status(self, obj):
+        ob = obj.onboarding or {}
+        return ob.get("status", "not_started")
+
+    def get_documents_status(self, obj):
+        ob = obj.onboarding or {}
+        return ob.get("documents", {})
+
+    def get_categories_status(self, obj):
+        ob = obj.onboarding or {}
+        return ob.get("categories", [])
+
+class CatalogCategoryAdminSerializer(serializers.ModelSerializer):
+    services_count = serializers.SerializerMethodField()
+    inventory_items_count = serializers.SerializerMethodField()
+    children_count = serializers.SerializerMethodField()
+    subcategories_count = serializers.SerializerMethodField()
+    level = serializers.SerializerMethodField()
+    depth = serializers.SerializerMethodField()
+    ancestors = serializers.SerializerMethodField()
+    parent_name = serializers.SerializerMethodField()
+    parent_details = serializers.SerializerMethodField()
+
+    class Meta:
+        from service_requests.models import CatalogCategory
+        model = CatalogCategory
+        fields = [
+            "id",
+            "name",
+            "slug",
+            "description",
+            "icon",
+            "image",
+            "jobs_count_str",
+            "rating",
+            "is_active",
+            "sort_order",
+            "parent",
+            "parent_id",
+            "parent_name",
+            "parent_details",
+            "children_count",
+            "subcategories_count",
+            "level",
+            "depth",
+            "ancestors",
+            "services_count",
+            "inventory_items_count",
+        ]
+        read_only_fields = [
+            "id",
+            "parent_name",
+            "parent_details",
+            "children_count",
+            "subcategories_count",
+            "level",
+            "depth",
+            "ancestors",
+            "services_count",
+            "inventory_items_count",
+        ]
+
+    def get_services_count(self, obj):
+        try:
+            return obj.services.count()
+        except Exception:
+            return 0
+
+    def get_inventory_items_count(self, obj):
+        try:
+            from workforce_api.models import InventoryItem
+            return InventoryItem.objects.filter(catalogue_category_id=obj.id).count()
+        except Exception:
+            return 0
+
+    def get_children_count(self, obj):
+        try:
+            return obj.children.count()
+        except Exception:
+            return 0
+
+    def get_subcategories_count(self, obj):
+        return self.get_children_count(obj)
+
+    def get_level(self, obj):
+        depth = 0
+        curr = getattr(obj, "parent", None)
+        visited = {obj.id}
+        while curr and getattr(curr, "id", None) not in visited:
+            depth += 1
+            visited.add(curr.id)
+            curr = getattr(curr, "parent", None)
+        return depth
+
+    def get_depth(self, obj):
+        return self.get_level(obj)
+
+    def get_ancestors(self, obj):
+        ancestors_list = []
+        curr = getattr(obj, "parent", None)
+        visited = {obj.id}
+        while curr and getattr(curr, "id", None) not in visited:
+            ancestors_list.append({
+                "id": curr.id,
+                "name": curr.name,
+                "slug": curr.slug,
+                "is_active": getattr(curr, "is_active", True),
+            })
+            visited.add(curr.id)
+            curr = getattr(curr, "parent", None)
+        ancestors_list.reverse()
+        return ancestors_list
+
+    def get_parent_name(self, obj):
+        parent = getattr(obj, "parent", None)
+        return parent.name if parent else None
+
+    def get_parent_details(self, obj):
+        parent = getattr(obj, "parent", None)
+        if not parent:
+            return None
+        return {
+            "id": parent.id,
+            "name": parent.name,
+            "slug": parent.slug,
+            "is_active": getattr(parent, "is_active", True),
+        }
+
+    def validate(self, attrs):
+        parent = attrs.get("parent")
+        instance = getattr(self, "instance", None)
+
+        if instance and parent:
+            if parent.id == instance.id:
+                raise serializers.ValidationError({
+                    "parent": "A category cannot be its own parent category."
+                })
+
+            # Check circular dependency (is instance an ancestor of parent?)
+            curr = parent
+            visited = {instance.id}
+            while curr:
+                if curr.id in visited:
+                    raise serializers.ValidationError({
+                        "parent": f"Circular reference detected: '{parent.name}' is a child or descendant of '{instance.name}'."
+                    })
+                visited.add(curr.id)
+                curr = getattr(curr, "parent", None)
+
+        return attrs
+
+
+class CatalogCategoryTreeSerializer(serializers.ModelSerializer):
+    services_count = serializers.SerializerMethodField()
+    inventory_items_count = serializers.SerializerMethodField()
+    children_count = serializers.SerializerMethodField()
+    children = serializers.SerializerMethodField()
+    level = serializers.SerializerMethodField()
+
+    class Meta:
+        from service_requests.models import CatalogCategory
+        model = CatalogCategory
+        fields = [
+            "id",
+            "name",
+            "slug",
+            "description",
+            "icon",
+            "image",
+            "is_active",
+            "sort_order",
+            "parent_id",
+            "level",
+            "children_count",
+            "services_count",
+            "inventory_items_count",
+            "children",
+        ]
+
+    def get_services_count(self, obj):
+        try:
+            return obj.services.count()
+        except Exception:
+            return 0
+
+    def get_inventory_items_count(self, obj):
+        try:
+            from workforce_api.models import InventoryItem
+            return InventoryItem.objects.filter(catalogue_category_id=obj.id).count()
+        except Exception:
+            return 0
+
+    def get_children_count(self, obj):
+        try:
+            return obj.children.count()
+        except Exception:
+            return 0
+
+    def get_level(self, obj):
+        depth = 0
+        curr = getattr(obj, "parent", None)
+        visited = {obj.id}
+        while curr and getattr(curr, "id", None) not in visited:
+            depth += 1
+            visited.add(curr.id)
+            curr = getattr(curr, "parent", None)
+        return depth
+
+    def get_children(self, obj):
+        active_only = self.context.get("active_only", False)
+        qs = obj.children.all()
+        if active_only:
+            qs = qs.filter(is_active=True)
+        qs = qs.order_by("sort_order", "id")
+        return CatalogCategoryTreeSerializer(qs, many=True, context=self.context).data
+
+
+class SellerHubCategoryAdminSerializer(serializers.ModelSerializer):
+    services_count = serializers.SerializerMethodField()
+    products_count = serializers.SerializerMethodField()
+    inventory_items_count = serializers.SerializerMethodField()
+    children_count = serializers.SerializerMethodField()
+    subcategories_count = serializers.SerializerMethodField()
+    level = serializers.SerializerMethodField()
+    depth = serializers.SerializerMethodField()
+    ancestors = serializers.SerializerMethodField()
+    parent_name = serializers.SerializerMethodField()
+    parent_details = serializers.SerializerMethodField()
+
+    class Meta:
+        from workforce_api.models import SellerHubCategory
+        model = SellerHubCategory
+        fields = [
+            "id",
+            "name",
+            "slug",
+            "description",
+            "icon",
+            "image",
+            "is_active",
+            "sort_order",
+            "parent",
+            "parent_id",
+            "parent_name",
+            "parent_details",
+            "children_count",
+            "subcategories_count",
+            "level",
+            "depth",
+            "ancestors",
+            "products_count",
+            "services_count",
+            "inventory_items_count",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "parent_name",
+            "parent_details",
+            "children_count",
+            "subcategories_count",
+            "level",
+            "depth",
+            "ancestors",
+            "products_count",
+            "services_count",
+            "inventory_items_count",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_services_count(self, obj):
+        return 0
+
+    def get_products_count(self, obj):
+        try:
+            return obj.products.count()
+        except Exception:
+            return 0
+
+    def get_inventory_items_count(self, obj):
+        try:
+            from workforce_api.models import InventoryItem
+            return InventoryItem.objects.filter(catalogue_category_id=obj.id).count()
+        except Exception:
+            return 0
+
+    def get_children_count(self, obj):
+        try:
+            return obj.children.count()
+        except Exception:
+            return 0
+
+    def get_subcategories_count(self, obj):
+        return self.get_children_count(obj)
+
+    def get_level(self, obj):
+        depth = 0
+        curr = getattr(obj, "parent", None)
+        visited = {obj.id}
+        while curr and getattr(curr, "id", None) not in visited:
+            depth += 1
+            visited.add(curr.id)
+            curr = getattr(curr, "parent", None)
+        return depth
+
+    def get_depth(self, obj):
+        return self.get_level(obj)
+
+    def get_ancestors(self, obj):
+        ancestors_list = []
+        curr = getattr(obj, "parent", None)
+        visited = {obj.id}
+        while curr and getattr(curr, "id", None) not in visited:
+            ancestors_list.append({
+                "id": curr.id,
+                "name": curr.name,
+                "slug": curr.slug,
+                "is_active": getattr(curr, "is_active", True),
+            })
+            visited.add(curr.id)
+            curr = getattr(curr, "parent", None)
+        ancestors_list.reverse()
+        return ancestors_list
+
+    def get_parent_name(self, obj):
+        parent = getattr(obj, "parent", None)
+        return parent.name if parent else None
+
+    def get_parent_details(self, obj):
+        parent = getattr(obj, "parent", None)
+        if not parent:
+            return None
+        return {
+            "id": parent.id,
+            "name": parent.name,
+            "slug": parent.slug,
+            "is_active": getattr(parent, "is_active", True),
+        }
+
+    def validate(self, attrs):
+        parent = attrs.get("parent")
+        instance = getattr(self, "instance", None)
+
+        if instance and parent:
+            if parent.id == instance.id:
+                raise serializers.ValidationError({
+                    "parent": "A category cannot be its own parent category."
+                })
+
+            # Check circular dependency (is instance an ancestor of parent?)
+            curr = parent
+            visited = {instance.id}
+            while curr:
+                if curr.id in visited:
+                    raise serializers.ValidationError({
+                        "parent": f"Circular reference detected: '{parent.name}' is a child or descendant of '{instance.name}'."
+                    })
+                visited.add(curr.id)
+                curr = getattr(curr, "parent", None)
+
+        return attrs
+
+
+class SellerHubCategoryTreeSerializer(serializers.ModelSerializer):
+    services_count = serializers.SerializerMethodField()
+    inventory_items_count = serializers.SerializerMethodField()
+    children_count = serializers.SerializerMethodField()
+    children = serializers.SerializerMethodField()
+    level = serializers.SerializerMethodField()
+
+    class Meta:
+        from workforce_api.models import SellerHubCategory
+        model = SellerHubCategory
+        fields = [
+            "id",
+            "name",
+            "slug",
+            "description",
+            "icon",
+            "image",
+            "is_active",
+            "sort_order",
+            "parent_id",
+            "level",
+            "children_count",
+            "services_count",
+            "inventory_items_count",
+            "children",
+        ]
+
+    def get_services_count(self, obj):
+        return 0
+
+    def get_inventory_items_count(self, obj):
+        try:
+            from workforce_api.models import InventoryItem
+            return InventoryItem.objects.filter(catalogue_category_id=obj.id).count()
+        except Exception:
+            return 0
+
+    def get_children_count(self, obj):
+        try:
+            return obj.children.count()
+        except Exception:
+            return 0
+
+    def get_level(self, obj):
+        depth = 0
+        curr = getattr(obj, "parent", None)
+        visited = {obj.id}
+        while curr and getattr(curr, "id", None) not in visited:
+            depth += 1
+            visited.add(curr.id)
+            curr = getattr(curr, "parent", None)
+        return depth
+
+    def get_children(self, obj):
+        active_only = self.context.get("active_only", False)
+        qs = obj.children.all()
+        if active_only:
+            qs = qs.filter(is_active=True)
+        qs = qs.order_by("sort_order", "id")
+        return SellerHubCategoryTreeSerializer(qs, many=True, context=self.context).data
+
+
+class SellerCatalogCategoryItemSerializer(serializers.ModelSerializer):
+    has_children = serializers.SerializerMethodField()
+    is_leaf = serializers.SerializerMethodField()
+    path = serializers.SerializerMethodField()
+    path_string = serializers.SerializerMethodField()
+
+    class Meta:
+        from workforce_api.models import SellerHubCategory
+        model = SellerHubCategory
+        fields = [
+            "id",
+            "name",
+            "slug",
+            "description",
+            "icon",
+            "image",
+            "parent_id",
+            "sort_order",
+            "is_active",
+            "has_children",
+            "is_leaf",
+            "path",
+            "path_string",
+        ]
+
+    def get_has_children(self, obj):
+        if hasattr(obj, "_has_children"):
+            return obj._has_children
+        return obj.children.filter(is_active=True).exists()
+
+    def get_is_leaf(self, obj):
+        return not self.get_has_children(obj)
+
+    def get_path(self, obj):
+        if hasattr(obj, "_path"):
+            return obj._path
+        ancestors = []
+        curr = obj
+        visited = set()
+        while curr and curr.id not in visited:
+            visited.add(curr.id)
+            ancestors.append({
+                "id": curr.id,
+                "name": curr.name,
+                "slug": curr.slug,
+            })
+            curr = curr.parent
+        ancestors.reverse()
+        return ancestors
+
+    def get_path_string(self, obj):
+        if hasattr(obj, "_path_string"):
+            return obj._path_string
+        path_list = self.get_path(obj)
+        return " > ".join(a["name"] for a in path_list)
+
+class SellerProductImageSerializer(serializers.ModelSerializer):
+    class Meta:
+        from .models import SellerProductImage
+        model = SellerProductImage
+        fields = [
+            "id",
+            "product",
+            "image_url",
+            "is_primary",
+            "sort_order",
+            "created_at",
+        ]
+        read_only_fields = ["id", "created_at"]
+
+
+class SellerProductAuditLogSerializer(serializers.ModelSerializer):
+    actor_name = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models import SellerProductAuditLog
+        model = SellerProductAuditLog
+        fields = [
+            "id",
+            "product",
+            "action",
+            "from_status",
+            "to_status",
+            "actor",
+            "actor_name",
+            "notes",
+            "created_at",
+        ]
+        read_only_fields = ["id", "created_at"]
+
+    def get_actor_name(self, obj):
+        if not obj.actor:
+            return "System Engine"
+        name = f"{getattr(obj.actor, 'first_name', '')} {getattr(obj.actor, 'last_name', '')}".strip()
+        return name or getattr(obj.actor, "username", "Reviewer")
+
+
+class SellerCatalogUploadBatchSerializer(serializers.ModelSerializer):
+    company_name = serializers.CharField(source="company.company_name", read_only=True)
+    uploaded_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models import SellerCatalogUploadBatch
+        model = SellerCatalogUploadBatch
+        fields = [
+            "id",
+            "company",
+            "company_name",
+            "uploaded_by",
+            "uploaded_by_name",
+            "file_name",
+            "total_rows",
+            "imported_rows",
+            "failed_rows",
+            "status",
+            "error_report",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+    def get_uploaded_by_name(self, obj):
+        if not obj.uploaded_by:
+            return "System / Bulk API"
+        name = f"{getattr(obj.uploaded_by, 'first_name', '')} {getattr(obj.uploaded_by, 'last_name', '')}".strip()
+        return name or getattr(obj.uploaded_by, "username", "Seller")
+
+
+class SellerLeafCategorySerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    slug = serializers.CharField()
+    path = serializers.CharField()
+    path_string = serializers.SerializerMethodField()
+    parent_name = serializers.CharField(allow_null=True)
+
+    def get_path_string(self, obj):
+        if isinstance(obj, dict):
+            return obj.get("path_string") or obj.get("path", "")
+        return getattr(obj, "path_string", getattr(obj, "path", ""))
+
+
+class SellerProductListSerializer(serializers.ModelSerializer):
+    category_name = serializers.CharField(source="category.name", read_only=True)
+    category_slug = serializers.CharField(source="category.slug", read_only=True)
+    category_path = serializers.SerializerMethodField()
+    path_string = serializers.SerializerMethodField()
+    company_name = serializers.CharField(source="company.company_name", read_only=True)
+    primary_image = serializers.SerializerMethodField()
+    images_count = serializers.SerializerMethodField()
+    reviewed_by_name = serializers.SerializerMethodField()
+    rejection_reason = serializers.CharField(source="admin_review_note", read_only=True)
+
+    class Meta:
+        from .models import SellerProduct
+        model = SellerProduct
+        fields = [
+            "id",
+            "company",
+            "company_name",
+            "category",
+            "category_name",
+            "category_slug",
+            "category_path",
+            "path_string",
+            "title",
+            "description",
+            "brand",
+            "sku",
+            "barcode",
+            "unit",
+            "pack_size",
+            "mrp",
+            "selling_price",
+            "tax_rate",
+            "hsn_code",
+            "storage_info",
+            "expiry_info",
+            "status",
+            "admin_review_note",
+            "rejection_reason",
+            "primary_image",
+            "images_count",
+            "reviewed_by_name",
+            "submitted_at",
+            "reviewed_at",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "company", "created_at", "updated_at"]
+
+    def get_category_path(self, obj):
+        if not obj.category:
+            return ""
+        path = [obj.category.name]
+        curr = obj.category.parent
+        while curr:
+            path.insert(0, curr.name)
+            curr = curr.parent
+        return " > ".join(path)
+
+    def get_path_string(self, obj):
+        return self.get_category_path(obj)
+
+    def get_primary_image(self, obj):
+        images_list = getattr(obj, "_prefetched_images", None)
+        if images_list is not None:
+            primary = next((img.image_url for img in images_list if img.is_primary), None)
+            if primary:
+                return primary
+            return images_list[0].image_url if images_list else ""
+        img = obj.images.filter(is_primary=True).first() or obj.images.first()
+        return img.image_url if img else ""
+
+    def get_images_count(self, obj):
+        images_list = getattr(obj, "_prefetched_images", None)
+        if images_list is not None:
+            return len(images_list)
+        return obj.images.count()
+
+    def get_reviewed_by_name(self, obj):
+        if not obj.reviewed_by:
+            return None
+        name = f"{getattr(obj.reviewed_by, 'first_name', '')} {getattr(obj.reviewed_by, 'last_name', '')}".strip()
+        return name or getattr(obj.reviewed_by, "username", "Reviewer")
+
+
+class SellerProductDetailSerializer(serializers.ModelSerializer):
+    images = SellerProductImageSerializer(many=True, read_only=True)
+    audit_logs = SellerProductAuditLogSerializer(many=True, read_only=True)
+    category_name = serializers.CharField(source="category.name", read_only=True)
+    category_slug = serializers.CharField(source="category.slug", read_only=True)
+    category_path = serializers.SerializerMethodField()
+    path_string = serializers.SerializerMethodField()
+    company_name = serializers.CharField(source="company.company_name", read_only=True)
+    reviewed_by_name = serializers.SerializerMethodField()
+    rejection_reason = serializers.CharField(source="admin_review_note", read_only=True)
+
+    class Meta:
+        from .models import SellerProduct
+        model = SellerProduct
+        fields = [
+            "id",
+            "company",
+            "company_name",
+            "category",
+            "category_name",
+            "category_slug",
+            "category_path",
+            "path_string",
+            "title",
+            "description",
+            "brand",
+            "sku",
+            "barcode",
+            "unit",
+            "pack_size",
+            "mrp",
+            "selling_price",
+            "tax_rate",
+            "hsn_code",
+            "storage_info",
+            "expiry_info",
+            "status",
+            "admin_review_note",
+            "rejection_reason",
+            "reviewed_by_name",
+            "submitted_at",
+            "reviewed_at",
+            "upload_batch",
+            "images",
+            "audit_logs",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "company", "created_at", "updated_at"]
+
+    def get_category_path(self, obj):
+        if not obj.category:
+            return ""
+        path = [obj.category.name]
+        curr = obj.category.parent
+        while curr:
+            path.insert(0, curr.name)
+            curr = curr.parent
+        return " > ".join(path)
+
+    def get_path_string(self, obj):
+        return self.get_category_path(obj)
+
+    def get_reviewed_by_name(self, obj):
+        if not obj.reviewed_by:
+            return None
+        name = f"{getattr(obj.reviewed_by, 'first_name', '')} {getattr(obj.reviewed_by, 'last_name', '')}".strip()
+        return name or getattr(obj.reviewed_by, "username", "Reviewer")
+
+
+def is_category_leaf(category):
+    """
+    Unified Leaf Rule: A category is a leaf if it has no ACTIVE child categories.
+    Categories with only inactive children are considered leaves.
+    """
+    if not category:
+        return True
+    if hasattr(category, "children"):
+        return not category.children.filter(is_active=True).exists()
+    return True
+
+
+def validate_product_category_is_leaf(category, current_category=None):
+    """
+    Shared validator for product category assignment across single create/update,
+    bulk/CSV uploads, and administrative updates.
+    
+    Rules:
+    - Must exist.
+    - Category itself must be active.
+    - Entire ancestor parent chain must be active.
+    - Category must be a leaf (no ACTIVE subcategories).
+    - If current_category is supplied and matches category, legacy products are
+      permitted to bypass validation when category is unchanged.
+      
+    Returns: (is_valid: bool, error_message: str or None, error_code: str or None)
+    """
+    if not category:
+        return False, "Seller Hub category is required.", "REQUIRED"
+
+    cat_id = getattr(category, "id", None)
+    curr_cat_id = getattr(current_category, "id", None) if current_category else None
+
+    # Legacy exemption when category is unchanged
+    if curr_cat_id is not None and cat_id is not None and curr_cat_id == cat_id:
+        return True, None, None
+
+    if not getattr(category, "is_active", True):
+        return False, f"Category '{getattr(category, 'name', '')}' is currently inactive.", "CATEGORY_INACTIVE"
+
+    # Ancestor chain check
+    curr = getattr(category, "parent", None)
+    visited = {category.id} if hasattr(category, "id") else set()
+    while curr:
+        if curr.id in visited:
+            break
+        if not getattr(curr, "is_active", True):
+            return False, f"Parent category '{curr.name}' is inactive. All parent categories must be active.", "CATEGORY_INACTIVE"
+        visited.add(curr.id)
+        curr = getattr(curr, "parent", None)
+
+    # Leaf check: category must not have ACTIVE child categories
+    if not is_category_leaf(category):
+        return False, f"Category '{category.name}' is a parent category with active subcategories. Products must only be assigned to leaf categories.", "CATEGORY_NOT_LEAF"
+
+    return True, None, None
+
+
+class SellerProductCreateUpdateSerializer(serializers.ModelSerializer):
+    images = serializers.ListField(
+        child=serializers.CharField(max_length=500),
+        required=False,
+        write_only=True,
+    )
+
+    class Meta:
+        from .models import SellerProduct
+        model = SellerProduct
+        fields = [
+            "id",
+            "category",
+            "title",
+            "description",
+            "brand",
+            "sku",
+            "barcode",
+            "unit",
+            "pack_size",
+            "mrp",
+            "selling_price",
+            "tax_rate",
+            "hsn_code",
+            "storage_info",
+            "expiry_info",
+            "status",
+            "images",
+        ]
+
+    def validate_category(self, value):
+        current_cat = self.instance.category if self.instance else None
+        is_valid, err_msg, err_code = validate_product_category_is_leaf(value, current_category=current_cat)
+        if not is_valid:
+            raise serializers.ValidationError(err_msg, code=err_code)
+        return value
+
+    def validate(self, data):
+        mrp = data.get("mrp")
+        selling_price = data.get("selling_price")
+
+        # Fallback to instance values if partial update
+        if mrp is None and self.instance:
+            mrp = self.instance.mrp
+        if selling_price is None and self.instance:
+            selling_price = self.instance.selling_price
+
+        if mrp is not None and mrp <= 0:
+            raise serializers.ValidationError({"mrp": "MRP must be greater than zero."})
+
+        if selling_price is not None and selling_price <= 0:
+            raise serializers.ValidationError({"selling_price": "Selling price must be greater than zero."})
+
+        if mrp is not None and selling_price is not None and selling_price > mrp:
+            raise serializers.ValidationError(
+                {"selling_price": f"Selling price (Ôé╣{selling_price}) cannot exceed MRP (Ôé╣{mrp})."}
+            )
+
+        tax_rate = data.get("tax_rate")
+        if tax_rate is not None and tax_rate < 0:
+            raise serializers.ValidationError({"tax_rate": "Tax rate cannot be negative."})
+
+        # SKU uniqueness per company check
+        sku = data.get("sku")
+        company = self.context.get("company")
+        if sku and company:
+            from .models import SellerProduct
+            qs = SellerProduct.objects.filter(company=company, sku=sku)
+            if self.instance:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(
+                    {"sku": f"A product with SKU '{sku}' already exists in your store catalog."}
+                )
+
+        return data
+
+
+class AdminSellerApprovalListSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    seller_id = serializers.IntegerField(source="id", read_only=True)
+    name = serializers.CharField(source="company_name")
+    company_name = serializers.CharField()
+    slug = serializers.CharField()
+    business_type = serializers.CharField()
+    pending_count = serializers.IntegerField(default=0)
+    approved_count = serializers.IntegerField(default=0)
+    rejected_count = serializers.IntegerField(default=0)
+    total_count = serializers.IntegerField(default=0)
+    latest_submitted_at = serializers.DateTimeField(allow_null=True)
+
+
+# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+# SELLER HUB INVENTORY MANAGEMENT SERIALIZERS (Phase 3)
+# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+
+class SellerInventoryMovementSerializer(serializers.ModelSerializer):
+    actor_name = serializers.SerializerMethodField()
+    batch_number = serializers.CharField(source="batch.batch_number", read_only=True, default=None)
+    movement_type_display = serializers.CharField(source="get_movement_type_display", read_only=True)
+
+    class Meta:
+        from .models import SellerInventoryMovement
+        model = SellerInventoryMovement
+        fields = [
+            "id",
+            "inventory",
+            "batch",
+            "batch_number",
+            "movement_type",
+            "movement_type_display",
+            "quantity_change",
+            "balance_before",
+            "balance_after",
+            "reason",
+            "reference_id",
+            "actor",
+            "actor_name",
+            "created_at",
+        ]
+
+    def get_actor_name(self, obj):
+        if not obj.actor:
+            return "System / Auto"
+        name = f"{getattr(obj.actor, 'first_name', '')} {getattr(obj.actor, 'last_name', '')}".strip()
+        return name or getattr(obj.actor, "username", "User")
+
+
+class SellerInventoryBatchSerializer(serializers.ModelSerializer):
+    days_until_expiry = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models import SellerInventoryBatch
+        model = SellerInventoryBatch
+        fields = [
+            "id",
+            "inventory",
+            "batch_number",
+            "received_date",
+            "expiry_date",
+            "initial_quantity",
+            "current_quantity",
+            "cost_price",
+            "status",
+            "days_until_expiry",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_days_until_expiry(self, obj):
+        if not obj.expiry_date:
+            return None
+        from django.utils import timezone
+        diff = obj.expiry_date - timezone.now().date()
+        return diff.days
+
+
+class SellerInventoryListSerializer(serializers.ModelSerializer):
+    company_name = serializers.CharField(source="company.company_name", read_only=True)
+    product_title = serializers.CharField(source="product.title", read_only=True)
+    product_sku = serializers.CharField(source="product.sku", read_only=True)
+    product_brand = serializers.CharField(source="product.brand", read_only=True)
+    product_barcode = serializers.CharField(source="product.barcode", read_only=True)
+    product_unit = serializers.CharField(source="product.unit", read_only=True)
+    product_pack_size = serializers.CharField(source="product.pack_size", read_only=True)
+    product_selling_price = serializers.DecimalField(source="product.selling_price", max_digits=10, decimal_places=2, read_only=True)
+    product_mrp = serializers.DecimalField(source="product.mrp", max_digits=10, decimal_places=2, read_only=True)
+    product_status = serializers.CharField(source="product.status", read_only=True)
+    product_category_name = serializers.CharField(source="product.category.name", read_only=True)
+    product_category_path = serializers.SerializerMethodField()
+    product_image = serializers.SerializerMethodField()
+    available_qty = serializers.DecimalField(max_digits=12, decimal_places=3, read_only=True)
+    stock_status = serializers.CharField(read_only=True)
+    batches_count = serializers.SerializerMethodField()
+    has_expiring_batches = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models import SellerInventory
+        model = SellerInventory
+        fields = [
+            "id",
+            "company",
+            "company_name",
+            "product",
+            "product_title",
+            "product_sku",
+            "product_brand",
+            "product_barcode",
+            "product_unit",
+            "product_pack_size",
+            "product_selling_price",
+            "product_mrp",
+            "product_status",
+            "product_category_name",
+            "product_category_path",
+            "product_image",
+            "on_hand_qty",
+            "reserved_qty",
+            "available_qty",
+            "low_stock_threshold",
+            "reorder_level",
+            "stock_status",
+            "batches_count",
+            "has_expiring_batches",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_product_category_path(self, obj):
+        cat = obj.product.category
+        if not cat:
+            return ""
+        path = [cat.name]
+        curr = cat.parent
+        while curr:
+            path.insert(0, curr.name)
+            curr = curr.parent
+        return " > ".join(path)
+
+    def get_product_image(self, obj):
+        img = obj.product.images.filter(is_primary=True).first() or obj.product.images.first()
+        return img.image_url if img else None
+
+    def get_batches_count(self, obj):
+        return obj.batches.filter(current_quantity__gt=0).count()
+
+    def get_has_expiring_batches(self, obj):
+        from django.utils import timezone
+        thirty_days = timezone.now().date() + timezone.timedelta(days=30)
+        return obj.batches.filter(current_quantity__gt=0, expiry_date__lte=thirty_days).exists()
+
+
+class SellerInventoryDetailSerializer(SellerInventoryListSerializer):
+    batches = SellerInventoryBatchSerializer(many=True, read_only=True)
+    recent_movements = serializers.SerializerMethodField()
+
+    class Meta(SellerInventoryListSerializer.Meta):
+        fields = SellerInventoryListSerializer.Meta.fields + [
+            "batches",
+            "recent_movements",
+        ]
+
+    def get_recent_movements(self, obj):
+        qs = obj.movements.select_related("actor", "batch").order_by("-created_at")[:15]
+        return SellerInventoryMovementSerializer(qs, many=True).data
+
+
+class SellerInventoryAdjustSerializer(serializers.Serializer):
+    movement_type = serializers.ChoiceField(
+        choices=[
+            ("OPENING_STOCK", "Opening Stock"),
+            ("STOCK_IN", "Stock In"),
+            ("ADJUSTMENT_INCREASE", "Stock Adjustment (Increase)"),
+            ("ADJUSTMENT_DECREASE", "Stock Adjustment (Decrease)"),
+            ("DAMAGE", "Damaged / Broken Stock"),
+            ("EXPIRED", "Expired Stock Write-off"),
+        ]
+    )
+    quantity = serializers.DecimalField(max_digits=12, decimal_places=3, min_value=Decimal("0.001"))
+    reason = serializers.CharField(max_length=500, required=False, allow_blank=True)
+    reference_id = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    # Optional Batch Details
+    batch_number = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    expiry_date = serializers.DateField(required=False, allow_null=True)
+    cost_price = serializers.DecimalField(max_digits=10, decimal_places=2, required=False, allow_null=True)
+
+    def validate(self, data):
+        movement_type = data.get("movement_type")
+        reason = (data.get("reason") or "").strip()
+
+        # Rule: Decreases, Damages, Expiries and Adjustments require a mandatory reason
+        if movement_type in ("ADJUSTMENT_DECREASE", "DAMAGE", "EXPIRED", "ADJUSTMENT_INCREASE") and not reason:
+            raise serializers.ValidationError(
+                {"reason": f"A reason is mandatory when recording '{movement_type}'."}
+            )
+
+        return data
+
+
+# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+# 7. SELLER HUB ORDERS & FULFILMENT SERIALIZERS (Phase 4)
+# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+
+class SellerOrderItemSerializer(serializers.ModelSerializer):
+    product_image = serializers.SerializerMethodField()
+    available_stock = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models import SellerOrderItem
+        model = SellerOrderItem
+        fields = [
+            "id",
+            "order",
+            "product",
+            "product_title",
+            "sku",
+            "unit",
+            "pack_size",
+            "ordered_quantity",
+            "fulfilled_quantity",
+            "unit_price",
+            "line_total",
+            "batch",
+            "is_picked",
+            "is_packed",
+            "notes",
+            "product_image",
+            "available_stock",
+        ]
+
+    def get_product_image(self, obj):
+        if not obj.product:
+            return None
+        img = obj.product.images.filter(is_primary=True).first() or obj.product.images.first()
+        return img.image_url if img else None
+
+    def get_available_stock(self, obj):
+        if not obj.product or not hasattr(obj.product, "inventory"):
+            return "0.000"
+        return str(obj.product.inventory.available_qty)
+
+
+class SellerOrderAuditLogSerializer(serializers.ModelSerializer):
+    actor_name = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models import SellerOrderAuditLog
+        model = SellerOrderAuditLog
+        fields = [
+            "id",
+            "order",
+            "from_status",
+            "to_status",
+            "action",
+            "actor",
+            "actor_name",
+            "notes",
+            "created_at",
+        ]
+
+    def get_actor_name(self, obj):
+        if not obj.actor:
+            return "System"
+        name = f"{obj.actor.first_name} {obj.actor.last_name}".strip()
+        return name or obj.actor.username
+
+
+class SellerOrderListSerializer(serializers.ModelSerializer):
+    company_name = serializers.CharField(source="company.company_name", read_only=True)
+    items_count = serializers.SerializerMethodField()
+    items_summary = serializers.SerializerMethodField()
+    handling_technician_id = serializers.IntegerField(source="handling_technician.id", read_only=True)
+    handling_technician_name = serializers.SerializerMethodField()
+    handling_technician_phone = serializers.SerializerMethodField()
+    dispatch_job_id = serializers.IntegerField(source="dispatch_job.id", read_only=True)
+    handover_otp_pending = serializers.SerializerMethodField()
+    delivery_otp_pending = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models import SellerOrder
+        model = SellerOrder
+        fields = [
+            "id",
+            "source_order_id",
+            "order_number",
+            "company",
+            "company_name",
+            "customer_name",
+            "customer_phone",
+            "delivery_address",
+            "fulfillment_type",
+            "delivery_slot",
+            "payment_method",
+            "payment_status",
+            "total_amount",
+            "currency",
+            "status",
+            "dispatch_job_id",
+            "handling_technician_id",
+            "handling_technician_name",
+            "handling_technician_phone",
+            "handover_otp_pending",
+            "delivery_otp_pending",
+            "inventory_deducted",
+            "items_count",
+            "items_summary",
+            "seller_notes",
+            "cancellation_reason",
+            "accepted_at",
+            "picking_at",
+            "packed_at",
+            "ready_at",
+            "assigned_at",
+            "handed_over_at",
+            "delivered_at",
+            "cancelled_at",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_handling_technician_name(self, obj):
+        if not obj.handling_technician:
+            return None
+        tech = obj.handling_technician
+        if getattr(tech, "user", None):
+            return tech.user.get_full_name() or tech.user.username
+        return getattr(tech, "name", f"Rider #{tech.id}")
+
+    def get_handling_technician_phone(self, obj):
+        if not obj.handling_technician:
+            return None
+        tech = obj.handling_technician
+        user = getattr(tech, "user", None)
+        return getattr(user, "mobile_number", "") or getattr(user, "phone", "") or getattr(tech, "phone", "") or getattr(user, "username", "")
+
+    def get_handover_otp_pending(self, obj):
+        return bool(obj.handover_otp_hash and obj.handover_otp_used_at is None)
+
+    def get_delivery_otp_pending(self, obj):
+        return bool(obj.delivery_otp_hash and obj.delivery_otp_used_at is None)
+
+    def get_items_count(self, obj):
+        if hasattr(obj, "_prefetched_objects_cache") and "items" in obj._prefetched_objects_cache:
+            return len(obj._prefetched_objects_cache["items"])
+        return obj.items.count()
+
+    def get_items_summary(self, obj):
+        if hasattr(obj, "_prefetched_objects_cache") and "items" in obj._prefetched_objects_cache:
+            items = list(obj._prefetched_objects_cache["items"])[:3]
+            count = len(obj._prefetched_objects_cache["items"])
+        else:
+            items = list(obj.items.all()[:3])
+            count = obj.items.count()
+        summary = [f"{item.product_title} (x{item.ordered_quantity})" for item in items]
+        if count > 3:
+            summary.append(f"+{count - 3} more")
+        return ", ".join(summary)
+
+
+class SellerOrderDetailSerializer(SellerOrderListSerializer):
+    items = SellerOrderItemSerializer(many=True, read_only=True)
+    audit_logs = SellerOrderAuditLogSerializer(many=True, read_only=True)
+    pickup_otp = serializers.SerializerMethodField()
+
+    class Meta(SellerOrderListSerializer.Meta):
+        fields = SellerOrderListSerializer.Meta.fields + [
+            "items",
+            "audit_logs",
+            "handover_ref",
+            "pickup_otp",
+        ]
+
+    def get_pickup_otp(self, obj):
+        # Surface recent pickup OTP notification text if merchant is viewing
+        request = self.context.get("request")
+        if not request or not request.user.is_authenticated:
+            return None
+        # Only show to merchant belonging to order company or admin
+        from .models import WorkforceNotification
+        if obj.handover_otp_hash and obj.handover_otp_used_at is None:
+            notif = WorkforceNotification.objects.filter(
+                notification_type="ORDER_PICKUP_OTP",
+                related_object_id=str(obj.id),
+            ).order_by("-created_at").first()
+            if notif and "Pickup Handover OTP is " in notif.message:
+                try:
+                    return notif.message.split("Pickup Handover OTP is ")[1].split(".")[0].strip()
+                except Exception:
+                    pass
+        return None
+
+
+class SellerOrderStatusTransitionSerializer(serializers.Serializer):
+    action = serializers.ChoiceField(
+        choices=[
+            ("accept", "Accept Order"),
+            ("start_picking", "Start Picking"),
+            ("mark_packed", "Mark as Packed"),
+            ("mark_ready", "Mark Ready for Pickup"),
+            ("handover", "Handover to Courier/Customer"),
+            ("deliver", "Mark as Delivered"),
+            ("cancel", "Cancel Order"),
+        ]
+    )
+    notes = serializers.CharField(max_length=500, required=False, allow_blank=True)
+    cancellation_reason = serializers.CharField(max_length=500, required=False, allow_blank=True)
+    handover_ref = serializers.CharField(max_length=100, required=False, allow_blank=True)
+
+    def validate(self, data):
+        action = data.get("action")
+        if action == "cancel":
+            reason = (data.get("cancellation_reason") or "").strip()
+            if not reason:
+                raise serializers.ValidationError(
+                    {"cancellation_reason": "A cancellation reason is required to cancel an order."}
+                )
+        return data
+
+
+class SellerOrderItemPickSerializer(serializers.Serializer):
+    item_id = serializers.IntegerField()
+    is_picked = serializers.BooleanField(required=False)
+    is_packed = serializers.BooleanField(required=False)
+    fulfilled_quantity = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=3,
+        min_value=Decimal("0.000"),
+        required=False,
+    )
+    batch_id = serializers.IntegerField(required=False, allow_null=True)
+    notes = serializers.CharField(max_length=255, required=False, allow_blank=True)
+
+
+# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+# 8. SELLER HUB RETURNS & REVERSE LOGISTICS SERIALIZERS (Phase 5)
+# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+
+class SellerReturnItemSerializer(serializers.ModelSerializer):
+    product_image = serializers.SerializerMethodField()
+    available_stock = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models import SellerReturnItem
+        model = SellerReturnItem
+        fields = [
+            "id",
+            "return_case",
+            "order_item",
+            "product",
+            "product_title",
+            "sku",
+            "unit",
+            "pack_size",
+            "returned_quantity",
+            "restocked_quantity",
+            "scrapped_quantity",
+            "item_condition",
+            "qc_result",
+            "batch",
+            "notes",
+            "product_image",
+            "available_stock",
+        ]
+
+    def get_product_image(self, obj):
+        if not obj.product:
+            return None
+        img = obj.product.images.filter(is_primary=True).first() or obj.product.images.first()
+        return img.image_url if img else None
+
+    def get_available_stock(self, obj):
+        if not obj.product or not hasattr(obj.product, "inventory"):
+            return "0.000"
+        return str(obj.product.inventory.available_qty)
+
+
+class SellerReturnAuditLogSerializer(serializers.ModelSerializer):
+    actor_name = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models import SellerReturnAuditLog
+        model = SellerReturnAuditLog
+        fields = [
+            "id",
+            "return_case",
+            "from_status",
+            "to_status",
+            "action",
+            "actor",
+            "actor_name",
+            "notes",
+            "created_at",
+        ]
+
+    def get_actor_name(self, obj):
+        if not obj.actor:
+            return "System"
+        name = f"{obj.actor.first_name} {obj.actor.last_name}".strip()
+        return name or obj.actor.username
+
+
+class SellerReturnListSerializer(serializers.ModelSerializer):
+    company_name = serializers.CharField(source="company.company_name", read_only=True)
+    order_number = serializers.CharField(source="order.order_number", read_only=True)
+    source_order_id = serializers.CharField(source="order.source_order_id", read_only=True)
+    items_count = serializers.SerializerMethodField()
+    items_summary = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models import SellerReturn
+        model = SellerReturn
+        fields = [
+            "id",
+            "source_return_id",
+            "return_number",
+            "order",
+            "order_number",
+            "source_order_id",
+            "company",
+            "company_name",
+            "customer_name",
+            "customer_phone",
+            "customer_address",
+            "reason",
+            "status",
+            "seller_decision",
+            "quality_check_status",
+            "restock_decision",
+            "items_count",
+            "items_summary",
+            "created_at",
+            "reviewed_at",
+            "received_at",
+            "inspected_at",
+            "restocked_at",
+            "closed_at",
+            "updated_at",
+        ]
+
+    def get_items_count(self, obj):
+        return obj.items.count()
+
+    def get_items_summary(self, obj):
+        items = obj.items.all()[:3]
+        summary = [f"{item.product_title} (x{item.returned_quantity})" for item in items]
+        if obj.items.count() > 3:
+            summary.append(f"+{obj.items.count() - 3} more")
+        return ", ".join(summary)
+
+
+class SellerReturnDetailSerializer(SellerReturnListSerializer):
+    items = SellerReturnItemSerializer(many=True, read_only=True)
+    audit_logs = SellerReturnAuditLogSerializer(many=True, read_only=True)
+    quality_checked_by_name = serializers.SerializerMethodField()
+
+    class Meta(SellerReturnListSerializer.Meta):
+        fields = SellerReturnListSerializer.Meta.fields + [
+            "customer_notes",
+            "evidence_urls",
+            "seller_notes",
+            "rejection_reason",
+            "quality_check_notes",
+            "quality_checked_by",
+            "quality_checked_by_name",
+            "restock_notes",
+            "pickup_ref",
+            "admin_resolution_notes",
+            "items",
+            "audit_logs",
+        ]
+
+    def get_quality_checked_by_name(self, obj):
+        if not obj.quality_checked_by:
+            return None
+        name = f"{obj.quality_checked_by.first_name} {obj.quality_checked_by.last_name}".strip()
+        return name or obj.quality_checked_by.username
+
+
+class SellerReturnReviewSerializer(serializers.Serializer):
+    decision = serializers.ChoiceField(
+        choices=[
+            ("approve", "Approve Return"),
+            ("reject", "Reject Return"),
+            ("escalate", "Escalate to Platform Admin"),
+        ]
+    )
+    seller_notes = serializers.CharField(max_length=500, required=False, allow_blank=True)
+    rejection_reason = serializers.CharField(max_length=500, required=False, allow_blank=True)
+
+    def validate(self, data):
+        decision = data.get("decision")
+        if decision == "reject":
+            reason = (data.get("rejection_reason") or "").strip()
+            if not reason:
+                raise serializers.ValidationError(
+                    {"rejection_reason": "A rejection reason is mandatory when rejecting a return request."}
+                )
+        return data
+
+
+class SellerReturnQualityCheckSerializer(serializers.Serializer):
+    quality_check_status = serializers.ChoiceField(
+        choices=[
+            ("PASSED", "Passed (Fit for Restock)"),
+            ("FAILED", "Failed (Damaged / Unusable)"),
+            ("PARTIAL_PASS", "Partial Pass"),
+        ]
+    )
+    quality_check_notes = serializers.CharField(max_length=500, required=False, allow_blank=True)
+    # Item-level QC results
+    items_qc = serializers.ListField(
+        child=serializers.DictField(),
+        required=False,
+        help_text="List of items with item_id, item_condition, qc_result, and optional notes.",
+    )
+
+
+class SellerReturnRestockSerializer(serializers.Serializer):
+    restock_decision = serializers.ChoiceField(
+        choices=[
+            ("FULL_RESTOCK", "Full Restock"),
+            ("PARTIAL_RESTOCK", "Partial Restock"),
+            ("SCRAP_DISPOSE", "Scrap / Dispose All"),
+        ]
+    )
+    restock_notes = serializers.CharField(max_length=500, required=False, allow_blank=True)
+    # Per-item restocked vs scrapped breakdown
+    items_breakdown = serializers.ListField(
+        child=serializers.DictField(),
+        required=False,
+        help_text="List of items with item_id, restocked_quantity, scrapped_quantity.",
+    )
+
+
+class SellerReturnIntakeSerializer(serializers.Serializer):
+    source_return_id = serializers.CharField(max_length=100)
+    source_order_id = serializers.CharField(max_length=100)
+    reason = serializers.CharField(max_length=100, required=False, default="DAMAGED")
+    customer_notes = serializers.CharField(max_length=1000, required=False, allow_blank=True, default="")
+    evidence_urls = serializers.ListField(
+        child=serializers.CharField(max_length=500),
+        required=False,
+        default=list,
+    )
+    items = serializers.ListField(
+        child=serializers.DictField(),
+        required=False,
+        default=list,
+    )
+
+
+# ==============================================================================
+# PHASE 6: SELLER HUB CLAIMS SERIALIZERS
+# ==============================================================================
+
+class SellerClaimAuditLogSerializer(serializers.ModelSerializer):
+    actor_name = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models import SellerClaimAuditLog
+        model = SellerClaimAuditLog
+        fields = [
+            "id",
+            "from_status",
+            "to_status",
+            "action",
+            "actor",
+            "actor_name",
+            "notes",
+            "created_at",
+        ]
+
+    def get_actor_name(self, obj):
+        if not obj.actor:
+            return "System / Integration"
+        name = f"{obj.actor.first_name} {obj.actor.last_name}".strip()
+        return name or obj.actor.username
+
+
+class SellerClaimListSerializer(serializers.ModelSerializer):
+    company_name = serializers.CharField(source="company.company_name", read_only=True)
+    order_number = serializers.CharField(source="order.order_number", read_only=True)
+    source_order_id = serializers.CharField(source="order.source_order_id", read_only=True)
+    return_number = serializers.CharField(source="return_case.return_number", read_only=True)
+    claim_type_display = serializers.CharField(source="get_claim_type_display", read_only=True)
+    needs_seller_response = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models import SellerClaim
+        model = SellerClaim
+        fields = [
+            "id",
+            "source_claim_id",
+            "claim_number",
+            "company",
+            "company_name",
+            "order",
+            "order_number",
+            "source_order_id",
+            "return_case",
+            "return_number",
+            "claim_type",
+            "claim_type_display",
+            "description",
+            "claimed_amount",
+            "status",
+            "seller_response",
+            "seller_responded_at",
+            "admin_decision",
+            "admin_decided_at",
+            "needs_seller_response",
+            "created_at",
+            "resolved_at",
+            "closed_at",
+            "updated_at",
+        ]
+
+    def get_needs_seller_response(self, obj):
+        return obj.status == "SELLER_RESPONSE_REQUIRED"
+
+
+class SellerClaimDetailSerializer(SellerClaimListSerializer):
+    audit_logs = SellerClaimAuditLogSerializer(many=True, read_only=True)
+    seller_responded_by_name = serializers.SerializerMethodField()
+    admin_decided_by_name = serializers.SerializerMethodField()
+    created_by_name = serializers.SerializerMethodField()
+
+    class Meta(SellerClaimListSerializer.Meta):
+        fields = SellerClaimListSerializer.Meta.fields + [
+            "evidence_urls",
+            "customer_name",
+            "customer_phone",
+            "seller_responded_by",
+            "seller_responded_by_name",
+            "admin_decision_reason",
+            "admin_decided_by",
+            "admin_decided_by_name",
+            "created_by",
+            "created_by_name",
+            "audit_logs",
+        ]
+
+    def get_seller_responded_by_name(self, obj):
+        if not obj.seller_responded_by:
+            return None
+        name = f"{obj.seller_responded_by.first_name} {obj.seller_responded_by.last_name}".strip()
+        return name or obj.seller_responded_by.username
+
+    def get_admin_decided_by_name(self, obj):
+        if not obj.admin_decided_by:
+            return None
+        name = f"{obj.admin_decided_by.first_name} {obj.admin_decided_by.last_name}".strip()
+        return name or obj.admin_decided_by.username
+
+    def get_created_by_name(self, obj):
+        if not obj.created_by:
+            return "System / Customer Portal"
+        name = f"{obj.created_by.first_name} {obj.created_by.last_name}".strip()
+        return name or obj.created_by.username
+
+
+class SellerClaimCreateSerializer(serializers.Serializer):
+    order_id = serializers.IntegerField(required=False, allow_null=True)
+    return_id = serializers.IntegerField(required=False, allow_null=True)
+    claim_type = serializers.ChoiceField(
+        choices=[
+            ("DAMAGED_ITEM", "Damaged Item"),
+            ("MISSING_ITEM", "Missing / Undelivered Item"),
+            ("WRONG_ITEM", "Wrong Item Delivered"),
+            ("QUALITY_ISSUE", "Quality / Freshness Issue"),
+            ("DELIVERY_DAMAGE", "Damage During Delivery / In-Transit"),
+            ("SELLER_DISPUTE", "Seller Operational Dispute"),
+            ("SETTLEMENT_DISPUTE", "Settlement / Fee Dispute"),
+            ("OTHER", "Other Claim / Dispute"),
+        ]
+    )
+    description = serializers.CharField(max_length=2000)
+    claimed_amount = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, default=Decimal("0.00"))
+    evidence_urls = serializers.ListField(
+        child=serializers.CharField(max_length=500),
+        required=False,
+        default=list,
+    )
+    customer_name = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
+    customer_phone = serializers.CharField(max_length=32, required=False, allow_blank=True, default="")
+
+
+class SellerClaimRespondSerializer(serializers.Serializer):
+    seller_response = serializers.CharField(max_length=2000)
+    evidence_urls = serializers.ListField(
+        child=serializers.CharField(max_length=500),
+        required=False,
+        default=list,
+    )
+
+
+class SellerClaimAdminDecisionSerializer(serializers.Serializer):
+    decision = serializers.ChoiceField(
+        choices=[
+            ("REQUEST_SELLER_RESPONSE", "Request Seller Response"),
+            ("APPROVE", "Approve Claim"),
+            ("REJECT", "Reject Claim"),
+            ("SETTLE", "Settle Claim"),
+            ("CLOSE", "Close Claim"),
+        ]
+    )
+    reason = serializers.CharField(max_length=1000)
+
+    def validate_reason(self, value):
+        cleaned = value.strip()
+        if not cleaned:
+            raise serializers.ValidationError("A detailed rationale is mandatory for all admin decisions.")
+        return cleaned
+
+
+class SellerClaimIntakeSerializer(serializers.Serializer):
+    source_claim_id = serializers.CharField(max_length=128)
+    source_order_id = serializers.CharField(max_length=100, required=False, allow_blank=True, allow_null=True, default=None)
+    order_id = serializers.IntegerField(required=False, allow_null=True, default=None)
+    source_return_id = serializers.CharField(max_length=100, required=False, allow_blank=True, allow_null=True, default=None)
+    return_id = serializers.IntegerField(required=False, allow_null=True, default=None)
+    company_id = serializers.IntegerField(required=False, allow_null=True, default=None)
+    claim_type = serializers.CharField(max_length=40, required=False, default="DAMAGED_ITEM")
+    description = serializers.CharField(max_length=2000)
+    claimed_amount = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, default=Decimal("0.00"))
+    evidence_urls = serializers.ListField(
+        child=serializers.CharField(max_length=500),
+        required=False,
+        default=list,
+    )
+    customer_name = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
+    customer_phone = serializers.CharField(max_length=32, required=False, allow_blank=True, default="")
