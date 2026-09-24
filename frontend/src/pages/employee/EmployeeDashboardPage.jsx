@@ -97,8 +97,8 @@ import {
   Power,
   Loader2,
   Lock,
-  RotateCw,
 } from 'lucide-react';
+
 import QuotationBuilderModal from '../../components/estimates/QuotationBuilderModal.jsx';
 
 /**

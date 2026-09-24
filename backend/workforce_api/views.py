@@ -2951,7 +2951,7 @@ def sync_payment_amount_due(pmt, job):
     """
     if pmt is None or job is None:
         return False
-    if pmt.payment_status != JobPayment.PaymentStatus.PENDING:
+    if pmt.payment_status not in [JobPayment.PaymentStatus.PENDING, JobPayment.PaymentStatus.CASH_PENDING]:
         return False
     expected = job.total_amount or Decimal("0.00")
 
@@ -3875,7 +3875,7 @@ class WorkforceJobCashCollectView(APIView):
                     "amount_paid": str(pmt.amount_paid),
                 }, status=status.HTTP_200_OK)
 
-            if pmt.payment_status == JobPayment.PaymentStatus.CASH_PENDING and not request.data:
+            if pmt.payment_status == JobPayment.PaymentStatus.CASH_PENDING:
                 return Response({
                     "message": "Cash collection has already been recorded and is currently awaiting customer confirmation.",
                     "payment_status": "CASH_PENDING",

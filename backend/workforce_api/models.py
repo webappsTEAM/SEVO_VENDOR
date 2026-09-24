@@ -1,4 +1,4 @@
-﻿"""
+"""
 workforce-app/backend/workforce_api/models.py
 Relational database models for Workforce Scheduling, Skills, Compliance, Notifications, Events, Payroll, and Reports.
 """
@@ -5324,3 +5324,43 @@ class WorkforceScopeReduction(models.Model):
 
     def __str__(self):
         return f"Scope Reduction #{self.id} on Job #{self.job_id} (-\u20b9{self.reduction_amount}) [{self.crm_status}]"
+
+
+class WorkforceVendorBaseLocation(models.Model):
+    """
+    Authoritative registered operational base location for Vendor / Service Provider.
+    Anchors all dual-radius serviceability and dynamic distance fee calculations.
+    """
+    company = models.ForeignKey(
+        "companies.Company",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="base_locations",
+    )
+    employee = models.ForeignKey(
+        "employees.Employee",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="base_locations",
+    )
+    address = models.TextField(blank=True, default="")
+    area = models.CharField(max_length=150, blank=True, default="")
+    city = models.CharField(max_length=100, default="Hosur")
+    pincode = models.CharField(max_length=20, blank=True, default="")
+    base_latitude = models.FloatField(default=12.7409)
+    base_longitude = models.FloatField(default=77.8253)
+    max_service_radius_km = models.DecimalField(max_digits=6, decimal_places=2, default=50.00)
+    is_active = models.BooleanField(default=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "workforce_vendor_base_location"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        target = self.company.company_name if self.company else str(self.employee)
+        return f"BaseLocation for {target}: ({self.base_latitude}, {self.base_longitude}) - Max {self.max_service_radius_km}km"
+

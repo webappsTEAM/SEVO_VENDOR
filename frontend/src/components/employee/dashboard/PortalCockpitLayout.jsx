@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 import { TechnicianNavigationView } from '../navigation/TechnicianNavigationView.jsx';
 import { ACTIVE_QUEUE_STATUSES } from '../../../context/EmployeeRuntimeContext.jsx';
-import { LogisticsLegController } from '../logistics/LogisticsLegController.jsx';
+import { LogisticsLegController, isLogisticsJob } from '../logistics/LogisticsLegController.jsx';
 import { LogisticsStopManager } from '../logistics/LogisticsStopManager.jsx';
 
 /**
@@ -693,7 +693,7 @@ export function PortalCockpitLayout({
                 )}
 
                 {/* ── MULTI-STOP ROUTE ITINERARY (When trip stops exist) ── */}
-                {isActiveAssignment && activeJob && (
+                {isActiveAssignment && activeJob && isLogisticsJob(activeJob) && (
                   <LogisticsStopManager
                     job={activeJob}
                     onStopsUpdated={() => onRefreshData && onRefreshData()}
