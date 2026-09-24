@@ -403,7 +403,6 @@ SEVO_INDIVIDUAL_COMMISSION_RATE = os.getenv("SEVO_INDIVIDUAL_COMMISSION_RATE", "
 SEVO_INDIVIDUAL_PROMO_RATE = os.getenv("SEVO_INDIVIDUAL_PROMO_RATE", "0.08")
 SEVO_PROMO_PERIOD_DAYS = os.getenv("SEVO_PROMO_PERIOD_DAYS", "90")
 SEVO_DISPUTE_HOLD_HOURS = os.getenv("SEVO_DISPUTE_HOLD_HOURS", "48")
-
 # ----------------------------------------------------------------------------
 # Email / SMTP Configuration
 # ----------------------------------------------------------------------------
@@ -422,3 +421,10 @@ else:
     EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
     DEFAULT_FROM_EMAIL = "noreply@sevo.co.in"
 # env-reload: 2026-09-23
+
+# ─── Authoritative Dispatch & GPS Freshness Configuration ───────────────────
+# Canonical GPS freshness requirement in seconds for dispatch candidate eligibility.
+# Technicians whose last GPS fix is older than this will not be considered fresh for dispatch.
+DISPATCH_MAX_GPS_AGE_SECONDS = int(os.getenv("DISPATCH_MAX_GPS_AGE_SECONDS", "300"))
+DISPATCH_LOCATION_MAX_AGE_SECONDS = DISPATCH_MAX_GPS_AGE_SECONDS
+

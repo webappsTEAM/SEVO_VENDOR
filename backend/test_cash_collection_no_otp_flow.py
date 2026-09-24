@@ -7,7 +7,7 @@ import django
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "workforce_core.settings")
 django.setup()
 
-from django.test import TestCase
+from unittest import TestCase
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIRequestFactory, force_authenticate
@@ -69,15 +69,17 @@ class CashCollectionLifecycleTests(TestCase):
         )
 
     def test_complete_cash_collection_otp_and_wallet_lifecycle(self):
-        # Step 1: Technician reports cash collection
-        req1 = self.factory.post(
-            f"/workforce/jobs/{self.job.id}/payment/collect/",
-            {"amount_received": "1000.00"},
-            format="json",
-        )
-        force_authenticate(req1, user=self.user)
-        view_collect = WorkforceJobCashCollectView.as_view()
-        resp1 = view_collect(req1, pk=self.job.id)
+        from unittest.mock import patch
+        # Step 1: Technician reports cash collection with mocked deterministic OTP
+        with patch("secrets.randbelow", return_value=123456):
+            req1 = self.factory.post(
+                f"/workforce/jobs/{self.job.id}/payment/collect/",
+                {"amount_received": "1000.00"},
+                format="json",
+            )
+            force_authenticate(req1, user=self.user)
+            view_collect = WorkforceJobCashCollectView.as_view()
+            resp1 = view_collect(req1, pk=self.job.id)
 
         self.assertEqual(resp1.status_code, 200)
         self.assertEqual(resp1.data["payment_status"], "CASH_PENDING")
@@ -101,14 +103,9 @@ class CashCollectionLifecycleTests(TestCase):
         # Verify no premature wallet credit
         self.assertFalse(WalletLedgerEntry.objects.filter(job=self.job).exists())
 
-        # Step 2: Extract generated OTP for verification test
-        # We find the 6-digit OTP that matches the hash
-        valid_otp = None
-        for i in range(100000, 1000000):
-            if check_password(str(i), pmt.payment_confirmation_otp_hash):
-                valid_otp = str(i)
-                break
-        self.assertIsNotNone(valid_otp, "Should have valid 6-digit OTP generated")
+        # Step 2: Valid OTP is deterministic (123456 + 100000 = 223456)
+        valid_otp = "223456"
+        self.assertTrue(check_password(valid_otp, pmt.payment_confirmation_otp_hash))
 
         # Step 3: Technician verifies OTP
         req2 = self.factory.post(

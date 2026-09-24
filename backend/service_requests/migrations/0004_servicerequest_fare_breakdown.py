@@ -21,7 +21,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('service_requests', '0003_merge_20260923_gt_vehicle_compat'),
+        ('service_requests', '0003_merge_20260923_1507'),
     ]
 
     operations = [

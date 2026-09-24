@@ -65,6 +65,16 @@ class DateBasedDispatchEligibilityTests(SimpleTestCase):
         self.mock_dispatch_state.select_for_update.return_value.filter.return_value.first.return_value = mock_state
         self.addCleanup(self.patch_dispatch_state.stop)
 
+        self.patch_job_offer = patch("workforce_api.models.WorkforceJobOffer.objects")
+        self.mock_job_offer = self.patch_job_offer.start()
+        self.mock_job_offer.filter.return_value = []
+        self.addCleanup(self.patch_job_offer.stop)
+
+        self.patch_lifecycle = patch("workforce_api.models.WorkforceJobLifecycleEvent.objects")
+        self.mock_lifecycle = self.patch_lifecycle.start()
+        self.mock_lifecycle.filter.return_value.values_list.return_value = []
+        self.addCleanup(self.patch_lifecycle.stop)
+
     # 1. Past preferred_date cannot be dispatched
     @patch("django.db.transaction.atomic")
     @patch("service_requests.models.ServiceRequest.objects.select_for_update")
@@ -301,6 +311,7 @@ class DateBasedDispatchEligibilityTests(SimpleTestCase):
         )
 
         mock_chain = MagicMock()
+        mock_chain.exists.return_value = False
         mock_offer_filter.return_value = mock_chain
         mock_chain.filter.return_value = mock_chain
         mock_chain.select_related.return_value = [today_timed_out_offer]

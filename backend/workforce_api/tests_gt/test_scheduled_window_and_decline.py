@@ -52,14 +52,13 @@ class ScheduledDispatchWindowTests(SimpleTestCase):
     def test_window_boundaries_for_11am(self):
         """
         For scheduled time 11:00 AM on 2026-09-19 in Asia/Kolkata:
-        Window Open:  10:00 AM
-        Window Close: 12:00 PM (noon)
+        Window Open:  10:00 AM (1 hour before scheduled time)
+        Window Close: 11:00 AM (exact scheduled slot)
         - 09:59 AM -> not dispatchable (held)
-        - 10:00 AM -> dispatchable
+        - 10:00 AM -> dispatchable (visible in new offers)
+        - 10:30 AM -> dispatchable
         - 11:00 AM -> dispatchable
-        - 11:59 AM -> dispatchable
-        - 12:00 PM -> dispatchable (exact boundary)
-        - 12:01 PM -> closed (past +1 hr)
+        - 11:01 AM -> closed/expired (past scheduled time)
         """
         job = SimpleNamespace(
             id=3001,
@@ -68,40 +67,47 @@ class ScheduledDispatchWindowTests(SimpleTestCase):
             company=None,
         )
 
-        # 1. At 09:59:59 AM (before window_open)
+        # 1. At 09:59:59 AM (before 1-hour lead window opens)
         t_0959 = datetime.datetime(2026, 9, 19, 9, 59, 59, tzinfo=self.tz)
         res_0959 = ad.get_scheduled_dispatch_window(job, now=t_0959)
         self.assertTrue(res_0959.is_future)
         self.assertFalse(res_0959.is_eligible)
         self.assertFalse(res_0959.is_closed)
 
-        # 2. At 10:00:00 AM (exact window_open)
+        # 2. At 10:00:00 AM (exact 1-hour lead window open)
         t_1000 = datetime.datetime(2026, 9, 19, 10, 0, 0, tzinfo=self.tz)
         res_1000 = ad.get_scheduled_dispatch_window(job, now=t_1000)
         self.assertFalse(res_1000.is_future)
         self.assertTrue(res_1000.is_eligible)
         self.assertFalse(res_1000.is_closed)
 
-        # 3. At 11:00:00 AM (scheduled time)
+        # 3. At 10:30:00 AM (within 1-hour lead window)
+        t_1030 = datetime.datetime(2026, 9, 19, 10, 30, 0, tzinfo=self.tz)
+        res_1030 = ad.get_scheduled_dispatch_window(job, now=t_1030)
+        self.assertFalse(res_1030.is_future)
+        self.assertTrue(res_1030.is_eligible)
+        self.assertFalse(res_1030.is_closed)
+
+        # 4. At 11:00:00 AM (exact scheduled time)
         t_1100 = datetime.datetime(2026, 9, 19, 11, 0, 0, tzinfo=self.tz)
         res_1100 = ad.get_scheduled_dispatch_window(job, now=t_1100)
         self.assertFalse(res_1100.is_future)
         self.assertTrue(res_1100.is_eligible)
         self.assertFalse(res_1100.is_closed)
 
-        # 4. At 11:59:59 AM (inside window)
-        t_1159 = datetime.datetime(2026, 9, 19, 11, 59, 59, tzinfo=self.tz)
-        res_1159 = ad.get_scheduled_dispatch_window(job, now=t_1159)
-        self.assertFalse(res_1159.is_future)
-        self.assertTrue(res_1159.is_eligible)
-        self.assertFalse(res_1159.is_closed)
+        # 5. At 11:00:30 AM (during scheduled slot)
+        t_1100_30 = datetime.datetime(2026, 9, 19, 11, 0, 30, tzinfo=self.tz)
+        res_1100_30 = ad.get_scheduled_dispatch_window(job, now=t_1100_30)
+        self.assertFalse(res_1100_30.is_future)
+        self.assertTrue(res_1100_30.is_eligible)
+        self.assertFalse(res_1100_30.is_closed)
 
-        # 5. At 12:01:00 PM (past window_close = 12:00:00 PM)
-        t_1201 = datetime.datetime(2026, 9, 19, 12, 1, 0, tzinfo=self.tz)
-        res_1201 = ad.get_scheduled_dispatch_window(job, now=t_1201)
-        self.assertFalse(res_1201.is_future)
-        self.assertFalse(res_1201.is_eligible)
-        self.assertTrue(res_1201.is_closed)
+        # 6. At 11:01:00 AM (past scheduled time slot - closed/expired)
+        t_1101 = datetime.datetime(2026, 9, 19, 11, 1, 0, tzinfo=self.tz)
+        res_1101 = ad.get_scheduled_dispatch_window(job, now=t_1101)
+        self.assertFalse(res_1101.is_future)
+        self.assertFalse(res_1101.is_eligible)
+        self.assertTrue(res_1101.is_closed)
 
     def test_immediate_asap_booking_window(self):
         """
@@ -129,8 +135,8 @@ class ScheduledDispatchWindowTests(SimpleTestCase):
             preferred_time="11:00",
             company=None,
         )
-        t_1030 = datetime.datetime(2026, 9, 19, 10, 30, 0, tzinfo=self.tz)
-        is_future, scheduled_dt, window_open = ad.get_scheduled_dispatch_window(job, now=t_1030)
+        t_1100 = datetime.datetime(2026, 9, 19, 11, 0, 0, tzinfo=self.tz)
+        is_future, scheduled_dt, window_open = ad.get_scheduled_dispatch_window(job, now=t_1100)
         self.assertFalse(is_future)
         self.assertEqual(scheduled_dt, datetime.datetime(2026, 9, 19, 11, 0, tzinfo=self.tz))
         self.assertEqual(window_open, datetime.datetime(2026, 9, 19, 10, 0, tzinfo=self.tz))
@@ -188,8 +194,8 @@ class RetryReconciliationTests(SimpleTestCase):
         mock_state = SimpleNamespace(
             dispatch_status="RETRY_SCHEDULED",
             attempt_count=1,
-            last_attempt_at=datetime.datetime(2026, 9, 19, 9, 25, tzinfo=self.tz),
-            retry_at=datetime.datetime(2026, 9, 19, 9, 45, tzinfo=self.tz),
+            last_attempt_at=datetime.datetime(2026, 9, 19, 10, 25, tzinfo=self.tz),
+            retry_at=datetime.datetime(2026, 9, 19, 10, 45, tzinfo=self.tz),
             locked_at=None,
             save=MagicMock(),
         )
@@ -208,9 +214,9 @@ class RetryReconciliationTests(SimpleTestCase):
         mock_offer = SimpleNamespace(id=901)
         mock_offer_create.return_value = mock_offer
 
-        # Now is 10:01 AM (window just opened)
-        now_1001 = datetime.datetime(2026, 9, 19, 10, 1, 0, tzinfo=self.tz)
-        with patch("django.utils.timezone.now", return_value=now_1001):
+        # Now is 11:00 AM (window just opened)
+        now_1100 = datetime.datetime(2026, 9, 19, 11, 0, 0, tzinfo=self.tz)
+        with patch("django.utils.timezone.now", return_value=now_1100):
             ok, reason = ad._dispatch_job_locked(4001)
 
         self.assertTrue(ok)
@@ -258,20 +264,20 @@ class RetryReconciliationTests(SimpleTestCase):
         mock_sfu.return_value.filter.return_value.first.return_value = job
         mock_offer_sfu.return_value.filter.return_value.first.return_value = None
 
-        # Dispatch state updated AFTER window open (last_attempt_at >= window_open)
+        # Dispatch state updated during window open (last_attempt_at >= window_open)
         mock_state = SimpleNamespace(
             dispatch_status="RETRY_SCHEDULED",
             attempt_count=1,
-            last_attempt_at=datetime.datetime(2026, 9, 19, 10, 5, tzinfo=self.tz),
-            retry_at=datetime.datetime(2026, 9, 19, 10, 10, tzinfo=self.tz),
+            last_attempt_at=datetime.datetime(2026, 9, 19, 11, 0, 0, tzinfo=self.tz),
+            retry_at=datetime.datetime(2026, 9, 19, 11, 0, 30, tzinfo=self.tz),
             locked_at=None,
             save=MagicMock(),
         )
         mock_dispatch_state.select_for_update.return_value.filter.return_value.first.return_value = mock_state
 
-        # Now is 10:06 AM (inside retry backoff window)
-        now_1006 = datetime.datetime(2026, 9, 19, 10, 6, 0, tzinfo=self.tz)
-        with patch("django.utils.timezone.now", return_value=now_1006):
+        # Now is 11:00:15 AM (inside retry backoff window)
+        now_1100_15 = datetime.datetime(2026, 9, 19, 11, 0, 15, tzinfo=self.tz)
+        with patch("django.utils.timezone.now", return_value=now_1100_15):
             ok, reason = ad._dispatch_job_locked(4002)
 
         self.assertFalse(ok)
@@ -352,7 +358,7 @@ class ScheduledWindowClosedExpirationTests(SimpleTestCase):
     @patch("django.db.transaction.atomic")
     def test_window_closed_marks_expired_and_refuses_dispatch(self, mock_atomic, mock_sfu, mock_dispatch_state_filter):
         """
-        At 12:01 PM for an 11:00 AM job, the scheduled window is closed (+1 hr exceeded).
+        At 11:01 AM for an 11:00 AM job, the scheduled window is closed.
         Dispatch must refuse and mark dispatch state as EXPIRED.
         """
         mock_company = SimpleNamespace(id=1, operational_timezone="Asia/Kolkata", company_name="Test Company")
@@ -372,9 +378,9 @@ class ScheduledWindowClosedExpirationTests(SimpleTestCase):
         )
         mock_sfu.return_value.filter.return_value.first.return_value = job
 
-        # 12:01 PM on the same day (1 minute past window close)
-        now_1201 = datetime.datetime(2026, 9, 19, 12, 1, 0, tzinfo=self.tz)
-        with patch("django.utils.timezone.now", return_value=now_1201):
+        # 11:01 AM on the same day (1 minute past window close)
+        now_1101 = datetime.datetime(2026, 9, 19, 11, 1, 0, tzinfo=self.tz)
+        with patch("django.utils.timezone.now", return_value=now_1101):
             ok, reason = ad._dispatch_job_locked(7001)
 
         self.assertFalse(ok)
@@ -462,8 +468,8 @@ class CandidateDiscoveryDeclineExclusionTests(SimpleTestCase):
         mock_lifecycle_filter.return_value.values_list.return_value = []
         mock_get_candidates.return_value = []
 
-        now_1030 = datetime.datetime(2026, 9, 19, 10, 30, 0, tzinfo=self.tz)
-        with patch("django.utils.timezone.now", return_value=now_1030):
+        now_1100 = datetime.datetime(2026, 9, 19, 11, 0, 0, tzinfo=self.tz)
+        with patch("django.utils.timezone.now", return_value=now_1100):
             ad._dispatch_job_locked(8001)
 
         # Verify get_eligible_candidates was called with exclude_employee_ids containing 101

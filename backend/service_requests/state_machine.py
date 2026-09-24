@@ -136,10 +136,11 @@ def apply_transition(service_request, target_status: str, actor=None) -> str:
     if webhook_event:
         try:
             from workforce_api.services.customer_webhook import notify_customer_app
+            effective_emp = emp or getattr(service_request, "assigned_employee", None)
             notify_customer_app(
                 webhook_event,
                 service_request,
-                technician=_technician_dict(emp),
+                technician=_technician_dict(effective_emp),
             )
         except Exception as webhook_err:
             logger.info("Could not notify Customer app of transition to '%s': %s", target, webhook_err)

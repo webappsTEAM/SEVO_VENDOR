@@ -200,10 +200,10 @@ class ScheduledDispatchSafetyGateTests(SimpleTestCase):
         is_future, sched_dt, win_open = ad.get_scheduled_dispatch_window(job, now=now)
         self.assertFalse(is_future)
 
-    def test_same_day_job_within_lead_window_dispatches_immediately(self):
+    def test_same_day_job_at_scheduled_time_dispatches_immediately(self):
         tz = zoneinfo.ZoneInfo("Asia/Kolkata")
         ref_now = datetime.datetime(2026, 9, 8, 14, 0, tzinfo=tz)
-        slot_str = "14:30"  # 30 minutes ahead (< 1 hour lead window)
+        slot_str = "14:00"
 
         job = SimpleNamespace(
             service_category="goods_transport_truck",
@@ -211,9 +211,10 @@ class ScheduledDispatchSafetyGateTests(SimpleTestCase):
             preferred_time=slot_str,
         )
         is_future, sched_dt, win_open = ad.get_scheduled_dispatch_window(job, now=ref_now)
-        self.assertFalse(is_future, "Job within 1 hour lead window must dispatch immediately")
+        self.assertFalse(is_future, "Job at scheduled time must dispatch immediately")
+        self.assertEqual(win_open, datetime.datetime(2026, 9, 8, 13, 0, tzinfo=tz))
 
-    def test_same_day_job_outside_lead_window_is_held(self):
+    def test_same_day_job_before_scheduled_time_is_held(self):
         tz = zoneinfo.ZoneInfo("Asia/Kolkata")
         ref_now = datetime.datetime(2026, 9, 8, 10, 0, tzinfo=tz)
         slot_str = "14:00"
@@ -224,7 +225,7 @@ class ScheduledDispatchSafetyGateTests(SimpleTestCase):
             preferred_time=slot_str,
         )
         is_future, sched_dt, win_open = ad.get_scheduled_dispatch_window(job, now=ref_now)
-        self.assertTrue(is_future, "Job 4 hours away must be held from immediate dispatch")
+        self.assertTrue(is_future, "Job scheduled 4 hours away must be held from immediate dispatch")
         self.assertEqual(win_open, datetime.datetime(2026, 9, 8, 13, 0, tzinfo=tz))
 
     def test_future_day_job_is_held(self):
@@ -256,7 +257,7 @@ class ScheduledDispatchSafetyGateTests(SimpleTestCase):
         job_active = SimpleNamespace(
             service_category="packers_movers",
             preferred_date=ref_now.date(),
-            preferred_time="10:30",
+            preferred_time="10:00",
         )
         is_future_b, _, _ = ad.get_scheduled_dispatch_window(job_active, now=ref_now)
         self.assertFalse(is_future_b)
@@ -330,6 +331,7 @@ class DateBasedDispatchSafetyTests(SimpleTestCase):
         # select_for_update() mock, not a dispatch logic defect.
         mock_user_model.return_value.objects.filter.return_value.first.return_value = None
         mock_offer_sfu.return_value.filter.return_value.first.return_value = None
+        mock_offer_filter.return_value = []
         mock_ds = MagicMock(dispatch_status="never_attempted", attempt_count=0, retry_at=None, locked_at=None)
         mock_ds_sfu.return_value.filter.return_value.first.return_value = mock_ds
         mock_ds_sfu.return_value.get.return_value = mock_ds
@@ -366,6 +368,8 @@ class DateBasedDispatchSafetyTests(SimpleTestCase):
     def test_today_scheduled_booking_passes_date_gate(self, mock_offer_filter, mock_sfu, mock_cands, mock_event, mock_cycles, mock_desc, mock_offer_sfu, mock_user_model, mock_ds_sfu, mock_atomic):
         # Same test-mocking gap fix as test_today_immediate_booking_passes_date_gate above.
         mock_user_model.return_value.objects.filter.return_value.first.return_value = None
+        mock_offer_sfu.return_value.filter.return_value.first.return_value = None
+        mock_offer_filter.return_value = []
         mock_offer_sfu.return_value.filter.return_value.first.return_value = None
         mock_ds = MagicMock(dispatch_status="never_attempted", attempt_count=0, retry_at=None, locked_at=None)
         mock_ds_sfu.return_value.filter.return_value.first.return_value = mock_ds

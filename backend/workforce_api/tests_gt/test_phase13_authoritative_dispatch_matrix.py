@@ -184,7 +184,6 @@ class AuthoritativeDispatchMatrixTests(SimpleTestCase):
         self.assertFalse(ok)
         self.assertIn("Gate 6", reason)
 
-    # ── Test G: Decline Exclusion ─────────────────────────────────────────────
     @patch("django.db.transaction.atomic")
     @patch("django.db.transaction.on_commit")
     @patch("service_requests.models.ServiceRequest.objects.select_for_update")
