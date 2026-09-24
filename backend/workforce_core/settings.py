@@ -14,8 +14,7 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Load .env file with override=True to guarantee local .env takes precedence over inherited shell env vars
-_dotenv_override = os.getenv("SEVO_DOTENV_OVERRIDE", "1").strip() != "0"
-load_dotenv(BASE_DIR / ".env", override=_dotenv_override)
+load_dotenv(BASE_DIR / ".env", override=True)
 
 _raw_secret = os.getenv("SECRET_KEY") or os.getenv("DJANGO_SECRET_KEY")
 # SECURITY: DEBUG defaults to FALSE. A missing or misspelled env var must never
@@ -43,7 +42,9 @@ _allowed_hosts_env = os.getenv("ALLOWED_HOSTS") or os.getenv("DJANGO_ALLOWED_HOS
 if _allowed_hosts_env:
     ALLOWED_HOSTS = [h.strip() for h in _allowed_hosts_env.split(",") if h.strip()]
 else:
-    ALLOWED_HOSTS = ["*"] if DEBUG else ["localhost", "127.0.0.1"]
+    ALLOWED_HOSTS = ["*"] if DEBUG else ["localhost", "127.0.0.1", "testserver"]
+if "testserver" not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append("testserver")
 
 # Application definition
 INSTALLED_APPS = [
@@ -104,30 +105,11 @@ WSGI_APPLICATION = "workforce_core.wsgi.application"
 ASGI_APPLICATION = "workforce_core.asgi.application"
 
 # ─── Database Configuration (Shared Supabase PostgreSQL) ──────────────────────
-#
-# `manage.py test` used to force SQLite unconditionally. That's wrong for
-# this project specifically: several tables this backend queries in tests
-# (accounts_user, companies_company, employees_employee, and everything
-# service_requests mirrors) are `managed=False` -- owned and migrated by
-# Customer/backend against the one shared Postgres database, never created
-# by this project's own `migrate`. On SQLite those tables simply never
-# exist, so any test touching them (which is most of them -- they all
-# create a User/Company first) fails with "no such table", independent of
-# whatever the test is actually trying to verify.
-#
-# Postgres is now the default test backend too, using the exact same
-# connection this process already has configured (DB_HOST/DB_NAME/etc) --
-# `manage.py test` wraps it in a throwaway `test_<DB_NAME>` database it
-# creates and tears down itself, same as Django does for any Postgres
-# project. Set DJANGO_TEST_SQLITE=1 to force the old SQLite-only behavior
-# back (e.g. for a quick syntax/logic check of code that never touches a
-# managed=False table) -- but that's the exception now, not the default.
 
 IS_TESTING = "test" in sys.argv or os.getenv("DJANGO_TEST_SQLITE") == "1"
 USE_POSTGRES = bool(os.getenv("DB_NAME") or os.getenv("DB_HOST"))
-FORCE_SQLITE_TESTS = os.getenv("DJANGO_TEST_SQLITE") == "1"
 
-if IS_TESTING and (FORCE_SQLITE_TESTS or not USE_POSTGRES):
+if IS_TESTING:
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
@@ -136,6 +118,7 @@ if IS_TESTING and (FORCE_SQLITE_TESTS or not USE_POSTGRES):
     }
 elif USE_POSTGRES:
     _db_options = {
+        "connect_timeout": int(os.getenv("DB_CONNECT_TIMEOUT", "10")),
         "keepalives": 1,
         "keepalives_idle": 30,
         "keepalives_interval": 10,
@@ -173,25 +156,29 @@ else:
         }
     }
 
-_e2e_sqlite_path = os.getenv("SEVO_E2E_SQLITE_PATH")
-if _e2e_sqlite_path:
-    DATABASES["default"] = {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": Path(_e2e_sqlite_path),
-    }
+REDIS_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
 
 _cache_backend = "django.core.cache.backends.locmem.LocMemCache"
-try:
-    import redis  # noqa: F401
-    _cache_backend = "django.core.cache.backends.redis.RedisCache"
-except ImportError:
-    pass
+_cache_location = "workforce-local-cache"
+_cache_url = os.getenv("CACHE_URL") or (os.getenv("REDIS_URL") if not DEBUG else None)
 
-_cache_url = os.getenv("CACHE_URL", "redis://127.0.0.1:6379/1")
+if _cache_url and ("redis://" in _cache_url or "rediss://" in _cache_url):
+    try:
+        import redis
+        # Quick liveness probe (0.2s timeout) to ensure Redis is actually online and accepting connections
+        _probe_client = redis.from_url(_cache_url, socket_timeout=0.2, socket_connect_timeout=0.2)
+        _probe_client.ping()
+        _cache_backend = "django.core.cache.backends.redis.RedisCache"
+        _cache_location = _cache_url
+    except Exception:
+        # Redis offline or unreachable; safely fallback to LocMemCache so throttling and caching do not fail
+        _cache_backend = "django.core.cache.backends.locmem.LocMemCache"
+        _cache_location = "workforce-local-cache"
+
 CACHES = {
     "default": {
         "BACKEND": _cache_backend,
-        "LOCATION": _cache_url if "redis" in _cache_backend else "workforce-local-cache",
+        "LOCATION": _cache_location,
         "TIMEOUT": 300,
         "KEY_PREFIX": "workforce",
     }
@@ -406,3 +393,10 @@ SEVO_INDIVIDUAL_PROMO_RATE = os.getenv("SEVO_INDIVIDUAL_PROMO_RATE", "0.08")
 SEVO_PROMO_PERIOD_DAYS = os.getenv("SEVO_PROMO_PERIOD_DAYS", "90")
 SEVO_DISPUTE_HOLD_HOURS = os.getenv("SEVO_DISPUTE_HOLD_HOURS", "48")
 # env-reload: 2026-09-08
+
+# ─── Authoritative Dispatch & GPS Freshness Configuration ───────────────────
+# Canonical GPS freshness requirement in seconds for dispatch candidate eligibility.
+# Technicians whose last GPS fix is older than this will not be considered fresh for dispatch.
+DISPATCH_MAX_GPS_AGE_SECONDS = int(os.getenv("DISPATCH_MAX_GPS_AGE_SECONDS", "300"))
+DISPATCH_LOCATION_MAX_AGE_SECONDS = DISPATCH_MAX_GPS_AGE_SECONDS
+

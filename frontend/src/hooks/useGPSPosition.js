@@ -21,16 +21,17 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { getAccessToken } from '../utils/authTokens.js';
 
 // Minimum distance (metres) that must be exceeded before a new position is reported
-const MOVEMENT_THRESHOLD_METRES = 5;
+const MOVEMENT_THRESHOLD_METRES = 8;
 // Maximum age of a cached position to accept (milliseconds).
 // This was 30s, which let the browser hand back a half-minute-old fix and call
 // it current -- staleness introduced before the position even left the device.
-const MAX_POSITION_AGE_MS = 3_000;
+const MAX_POSITION_AGE_MS = 5_000;
 // Interval between automatic periodic telemetry heartbeats (ms).
-// Reduced from 5s to 2s for noticeably smoother real-time tracking on
-// the customer map. At 30 km/h a technician moves ~8m/s; a 5s window meant
-// up to 40m of positional staleness before the fix even left the device.
-const POLL_INTERVAL_MS = 2_000;
+// Was 25s. Because handlePosition() also uses this value as its reporting gate,
+// a technician driving steadily could hold a fresh position for a full 25s
+// before sending it -- the first of three throttles that stacked up between the
+// technician's GPS and the customer's map.
+const POLL_INTERVAL_MS = 5_000;
 
 /**
  * Haversine distance in metres between two lat/lng points.
@@ -272,14 +273,32 @@ export function useLocationTracker(active, onPositionChange, onError, adapter = 
     [onError],
   );
 
-  // Force-poll on interval in case watcher is idle
+  const isPollingRef = useRef(false);
+
+  // Single one-shot poll helper with overlapping prevention
   const forcePoll = useCallback(() => {
-    if (!getAccessToken()) return;
-    adapter.getCurrentPosition(handlePosition, handleError, {
-      enableHighAccuracy: true,
-      timeout: 10_000,
-      maximumAge: MAX_POSITION_AGE_MS,
-    });
+    if (!getAccessToken() || isPollingRef.current) return;
+    isPollingRef.current = true;
+    adapter.getCurrentPosition(
+      (pos) => {
+        isPollingRef.current = false;
+        handlePosition(pos);
+      },
+      (err) => {
+        isPollingRef.current = false;
+        // Suppress transient timeout notification if we already hold a valid recent position
+        if (lastPositionRef.current && (err.code === 3 || err.code === 'TIMEOUT')) {
+          console.debug('[GPS_TRANSIENT_TIMEOUT] Preserving existing valid GPS fix.');
+          return;
+        }
+        handleError(err);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10_000,
+        maximumAge: MAX_POSITION_AGE_MS,
+      }
+    );
   }, [handlePosition, handleError, adapter]);
 
   useEffect(() => {
@@ -313,18 +332,28 @@ export function useLocationTracker(active, onPositionChange, onError, adapter = 
       return;
     }
 
-    // Start single continuous watch when active and authenticated
-    watchIdRef.current = adapter.watch(handlePosition, handleError, {
-      enableHighAccuracy: true,
-      timeout: 10_000,
-      maximumAge: MAX_POSITION_AGE_MS,
-    });
+    // Single continuous authoritative watcher
+    watchIdRef.current = adapter.watch(
+      handlePosition,
+      (err) => {
+        // If we already hold a recent valid position, do not flash transient timeout warning
+        if (lastPositionRef.current && (err.code === 3 || err.code === 'TIMEOUT')) {
+          console.debug('[GPS_WATCH_TRANSIENT_TIMEOUT] Preserving existing valid GPS fix during watch retry.');
+          return;
+        }
+        handleError(err);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10_000,
+        maximumAge: MAX_POSITION_AGE_MS,
+      }
+    );
 
-    // Periodic force-poll as backup
-    intervalRef.current = setInterval(forcePoll, POLL_INTERVAL_MS);
-
-    // Initial fix immediately upon becoming active
-    forcePoll();
+    // Initial fix seed only if no position recorded yet
+    if (!lastPositionRef.current) {
+      forcePoll();
+    }
 
     return () => {
       if (watchIdRef.current !== null) {

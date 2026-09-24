@@ -91,7 +91,7 @@ export function AuthProvider({ children }) {
             me.business_type === 'grocery_supplier' ||
             me.business_type === 'hybrid'
           );
-          const isSoloWorker = Boolean(me.is_solo_worker) || (!isTiedWorker && !isAdmin);
+          const isSoloWorker = isEmployee && (!isTiedWorker || Boolean(me.is_solo_worker) || empData?.workforce_type === 'SOLO' || !me.company);
           const computedRole = me.role || (isPlatformAdmin ? 'platform_admin' : (isSeller ? 'seller' : (isVendorAdmin ? 'vendor_admin' : (isAdmin ? 'admin' : 'employee'))));
 
           const u = {
@@ -113,6 +113,7 @@ export function AuthProvider({ children }) {
             isTiedWorker: isTiedWorker,
             isSoloWorker: isSoloWorker,
             registrationStatus: empData?.registration_status || me.registration_status || (isAdmin ? 'approved' : 'not_started'),
+            onboarding_data: empData?.onboarding_data || null,
             isOnline: empData ? Boolean(empData.is_online) : false,
             availability: empData ? (empData.live_availability || 'offline') : 'offline',
           };

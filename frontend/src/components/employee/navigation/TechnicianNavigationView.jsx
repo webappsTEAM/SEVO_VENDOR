@@ -288,7 +288,7 @@ export function TechnicianNavigationView({
   job,
   technicianLocation,
   preServiceState = {},
-  geofenceRadius = 10,
+  geofenceRadius = 250,
   onLocationReport,
   onExitNavigation,
   isOnline = true,

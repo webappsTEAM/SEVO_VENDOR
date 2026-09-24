@@ -471,6 +471,52 @@ class WorkforceJobOffer(models.Model):
         return f"Offer Job #{self.job_id} to {self.employee} ({self.status})"
 
 
+class WorkforceDispatchState(models.Model):
+    """
+    Dedicated dispatch-control state for ServiceRequest.
+    Controls retry scheduling, backoff, and dispatch claim locking.
+    ServiceRequest remains the authoritative booking/job record.
+    """
+    class DispatchStatus(models.TextChoices):
+        NEVER_ATTEMPTED = "NEVER_ATTEMPTED", "Never Attempted"
+        DISPATCHING = "DISPATCHING", "Dispatching"
+        RETRY_SCHEDULED = "RETRY_SCHEDULED", "Retry Scheduled"
+        OFFER_ACTIVE = "OFFER_ACTIVE", "Offer Active"
+        ASSIGNED = "ASSIGNED", "Assigned"
+        CANCELLED = "CANCELLED", "Cancelled"
+        COMPLETED = "COMPLETED", "Completed"
+        EXPIRED = "EXPIRED", "Expired"
+
+    job = models.OneToOneField(
+        "service_requests.ServiceRequest",
+        on_delete=models.CASCADE,
+        related_name="dispatch_state",
+    )
+    dispatch_status = models.CharField(
+        max_length=32,
+        choices=DispatchStatus.choices,
+        default=DispatchStatus.NEVER_ATTEMPTED,
+        db_index=True,
+    )
+    attempt_count = models.PositiveIntegerField(default=0)
+    last_attempt_at = models.DateTimeField(null=True, blank=True)
+    retry_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    locked_at = models.DateTimeField(null=True, blank=True)
+    unassigned_reason_code = models.CharField(max_length=64, blank=True, default="")
+    unassigned_reason_message = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "workforce_dispatch_state"
+        indexes = [
+            models.Index(fields=["dispatch_status", "retry_at"], name="wf_disp_st_retry_idx"),
+        ]
+
+    def __str__(self):
+        return f"DispatchState Job #{self.job_id} [{self.dispatch_status}] (Attempt {self.attempt_count}, retry_at: {self.retry_at})"
+
+
 class WorkforceJobLifecycleEvent(models.Model):
     """
     Immutable audit event for workforce job state transitions.
@@ -478,6 +524,7 @@ class WorkforceJobLifecycleEvent(models.Model):
     class EventType(models.TextChoices):
         EMPLOYEE_JOB_ACCEPTED = "EMPLOYEE_JOB_ACCEPTED", "Employee Job Accepted"
         EMPLOYEE_JOB_CANCELLED = "EMPLOYEE_JOB_CANCELLED", "Employee Job Cancelled"
+        EMPLOYEE_JOB_DECLINED = "EMPLOYEE_JOB_DECLINED", "Employee Job Declined"
         EMPLOYEE_JOB_REDISPATCH_STARTED = "EMPLOYEE_JOB_REDISPATCH_STARTED", "Employee Job Redispatch Started"
         NEW_EMPLOYEE_ASSIGNED = "NEW_EMPLOYEE_ASSIGNED", "New Employee Assigned"
 
@@ -525,6 +572,48 @@ class WorkforceJobLifecycleEvent(models.Model):
 
     def __str__(self):
         return f"{self.event_type} for Job #{self.job_id} by {self.actor_user_id} at {self.created_at}"
+
+
+class WorkforceOutboundWebhook(models.Model):
+    """
+    Durable Outbox for cross-application webhook events sent to the Customer app.
+    Guarantees at-least-once delivery for critical lifecycle state changes:
+    employee_accepted, employee_on_the_way, employee_arrived, service_started,
+    service_completed, technician.cancelled, technician.searching, payment.collected.
+    """
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "Pending"
+        DELIVERED = "DELIVERED", "Delivered"
+        FAILED = "FAILED", "Failed"
+
+    event_id = models.CharField(max_length=64, unique=True, db_index=True)
+    event_type = models.CharField(max_length=100, db_index=True)
+    booking_id = models.CharField(max_length=100, db_index=True)
+    payload = models.JSONField(default=dict, blank=True)
+    sequence = models.BigIntegerField(default=0)
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+    )
+    attempts = models.IntegerField(default=0)
+    last_attempt_at = models.DateTimeField(null=True, blank=True)
+    next_retry_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    last_error = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "workforce_outbound_webhook"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["status", "next_retry_at"], name="wf_outbound_wh_st_retry_idx"),
+            models.Index(fields=["booking_id", "status"], name="wf_outbound_wh_bk_st_idx"),
+        ]
+
+    def __str__(self):
+        return f"Webhook {self.event_type} [{self.status}] for {self.booking_id} (attempts: {self.attempts})"
 
 
 class PreServiceVerification(models.Model):
@@ -987,6 +1076,18 @@ class WorkforceEventLog(models.Model):
     def __str__(self):
         return f"{self.event_type} at {self.created_at}"
 
+    def save(self, *args, **kwargs):
+        is_new = self.pk is None
+        super().save(*args, **kwargs)
+        if is_new and self.id:
+            try:
+                from workforce_api.services.redis_dispatch import get_redis_client
+                client = get_redis_client()
+                if client:
+                    client.publish("workforce:realtime:events", str(self.id))
+            except Exception:
+                pass
+
 
 class EmployeeSavedLocation(models.Model):
     """Employee-owned personal saved locations (home, work, favourite spot, etc.).
@@ -1285,6 +1386,7 @@ class JobPayment(models.Model):
         blank=True,
         related_name="reconciled_payments",
     )
+    is_mock = models.BooleanField(default=False)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -1658,6 +1760,7 @@ class WalletLedgerEntry(models.Model):
     )
 
     notes = models.CharField(max_length=255, blank=True, default="")
+    is_mock = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:
@@ -2329,6 +2432,7 @@ class WorkforceQuote(models.Model):
         db_index=True,
     )
     valid_until = models.DateTimeField(null=True, blank=True, db_index=True)
+    estimated_duration_days = models.IntegerField(default=1, null=True, blank=True)
 
     # Cryptographic decision token for customer verification
     decision_token = models.CharField(max_length=64, unique=True, null=True, blank=True, db_index=True)
@@ -3189,7 +3293,6 @@ class VendorStore(models.Model):
     logo_url = models.CharField(max_length=1000, blank=True, default="")
     banner_url = models.CharField(max_length=1000, blank=True, default="")
     fssai_license_number = models.CharField(max_length=100, blank=True, default="")
-    gst_number = models.CharField(max_length=50, blank=True, default="")
     store_address = models.TextField(blank=True, default="")
     latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
@@ -3201,7 +3304,6 @@ class VendorStore(models.Model):
     closing_time = models.TimeField(null=True, blank=True)
     rating_average = models.DecimalField(max_digits=3, decimal_places=2, default=5.00)
     total_reviews = models.IntegerField(default=0)
-    onboarding = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -3943,9 +4045,9 @@ class SellerProductAuditLog(models.Model):
         return f"Audit #{self.id} for Product #{self.product_id}: {self.action} ({self.from_status} -> {self.to_status})"
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
 # SELLER HUB INVENTORY MANAGEMENT (Phase 3)
-# ═══════════════════════════════════════════════════════════════════════════════
+# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
 
 class SellerInventory(models.Model):
     """
@@ -4184,9 +4286,9 @@ class SellerInventoryMovement(models.Model):
         return f"Movement #{self.id} ({self.movement_type}): {self.quantity_change} on {self.inventory.product.title}"
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
 # 4. SELLER HUB ORDERS & FULFILMENT (Phase 4)
-# ═══════════════════════════════════════════════════════════════════════════════
+# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
 
 class SellerOrder(models.Model):
     """
@@ -4530,9 +4632,9 @@ class SellerOrderStatusOutbox(models.Model):
         return f"OutboxEvent {self.event_id} (#{self.order.order_number} seq={self.sequence} {self.previous_status}->{self.new_status} [{self.status}])"
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
 # 5. SELLER HUB RETURNS & REVERSE LOGISTICS (Phase 5)
-# ═══════════════════════════════════════════════════════════════════════════════
+# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
 
 class SellerReturn(models.Model):
     """

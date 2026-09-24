@@ -3,7 +3,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthProvider.jsx';
 
 export function EmployeeRoute({ children }) {
-  const { isReady, isAuthenticated, isAdmin, isSeller, isPlatformAdmin, registrationStatus } = useAuth();
+  const { isReady, isAuthenticated, isAdmin, registrationStatus } = useAuth();
   const location = useLocation();
 
   if (!isReady) {
@@ -19,10 +19,6 @@ export function EmployeeRoute({ children }) {
 
   if (!isAuthenticated) {
     return <Navigate to="/workforce/login" state={{ from: location }} replace />;
-  }
-
-  if (isSeller && !isPlatformAdmin) {
-    return <Navigate to="/workforce/seller/dashboard" replace />;
   }
 
   if (isAdmin) {
@@ -50,9 +46,12 @@ export function EmployeeRoute({ children }) {
     return children;
   }
 
-  // 3. CORRECTION REQUIRED Employee: Restricted to corrections page
+  // 3. CORRECTION REQUIRED Employee: Can access corrections hub or wizard to update details
   if (normalizedStatus === 'correction_required') {
-    if (currentPath !== '/workforce/onboarding/corrections') {
+    if (
+      currentPath !== '/workforce/onboarding/corrections' &&
+      !currentPath.includes('/workforce/onboarding/wizard')
+    ) {
       return <Navigate to="/workforce/onboarding/corrections" replace />;
     }
     return children;
@@ -67,7 +66,10 @@ export function EmployeeRoute({ children }) {
   }
 
   // 5. INCOMPLETE / NOT STARTED / DRAFT Employee: Restricted to registration wizard
-  if (!currentPath.includes('/workforce/onboarding/wizard')) {
+  if (
+    !currentPath.includes('/workforce/onboarding/wizard') &&
+    currentPath !== '/workforce/onboarding/pending-review'
+  ) {
     return <Navigate to="/workforce/onboarding/wizard" replace />;
   }
 

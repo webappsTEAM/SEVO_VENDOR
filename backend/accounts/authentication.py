@@ -19,11 +19,7 @@ class ServiceUnavailableException(APIException):
 
 class CookieJWTAuthentication(JWTAuthentication):
     def authenticate(self, request):
-        try:
-            header = self.get_header(request)
-        except Exception:
-            header = None
-
+        header = self.get_header(request)
         if header is not None:
             raw_token = self.get_raw_token(header)
             if raw_token:

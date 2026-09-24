@@ -97,6 +97,12 @@ export default function QuotationBuilderModal({
     job?.issue_title?.toLowerCase().includes('brick') ||
     job?.issue_title?.toLowerCase().includes('plaster');
 
+  const isReadOnly = Boolean(
+    quoteStatus &&
+    quoteStatus !== 'DRAFT' &&
+    quoteStatus !== 'CHANGES_REQUESTED'
+  );
+
   // Load existing quote or initialize from job
   useEffect(() => {
     if (!isOpen) return;
@@ -353,39 +359,44 @@ export default function QuotationBuilderModal({
 
   // Measurement management
   const handleAddMeasurement = () => {
-    setMeasurements([
-      ...measurements,
+    setMeasurements((prev) => [
+      ...prev,
       {
-        name: `Area #${measurements.length + 1}`,
+        name: `Area #${prev.length + 1}`,
         measurement_type: 'area',
-        length: 10,
-        width: 10,
-        height: 10,
-        area: 100,
+        length: '',
+        width: '',
+        height: '',
+        area: 0,
         unit: 'sqft',
         notes: '',
       },
     ]);
   };
 
-  const handleUpdateMeasurement = (index, field, value) => {
-    const updated = [...measurements];
-    const item = { ...updated[index], [field]: value };
+  // Single functional updater — avoids the React-batching race condition where
+  // two synchronous setMeasurements calls (for width + height) each close over
+  // the same stale array and the second one silently overwrites the first.
+  const handleUpdateMeasurement = (index, fields) => {
+    setMeasurements((prev) => {
+      const updated = [...prev];
+      const item = { ...updated[index], ...fields };
 
-    // Auto compute area if length & height or width changed
-    if (field === 'length' || field === 'height' || field === 'width') {
-      const len = parseFloat(field === 'length' ? value : item.length) || 0;
-      const hgt = parseFloat(field === 'height' ? value : item.height) || 0;
-      const wid = parseFloat(field === 'width' ? value : item.width) || 0;
+      // Auto-compute area whenever length, width, or height changes
+      const len = parseFloat(item.length) || 0;
+      const hgt = parseFloat(item.height) || 0;
+      const wid = parseFloat(item.width) || 0;
       if (len > 0 && hgt > 0) {
         item.area = Math.round(len * hgt * 100) / 100;
       } else if (len > 0 && wid > 0) {
         item.area = Math.round(len * wid * 100) / 100;
+      } else {
+        item.area = 0;
       }
-    }
 
-    updated[index] = item;
-    setMeasurements(updated);
+      updated[index] = item;
+      return updated;
+    });
   };
 
   const handleRemoveMeasurement = (index) => {
@@ -599,6 +610,22 @@ export default function QuotationBuilderModal({
           })}
         </div>
 
+        {/* Read-Only Status Banner */}
+        {isReadOnly && (
+          <div className="mx-6 mt-4 p-3 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/60 flex items-center justify-between gap-3 text-xs text-blue-900 dark:text-blue-300">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0" />
+              <span>
+                {quoteStatus === 'CUSTOMER_ACCEPTED' || quoteStatus === 'CONVERTED'
+                  ? 'Quotation has been accepted by customer and is locked for execution.'
+                  : quoteStatus === 'SENT_TO_CUSTOMER'
+                  ? 'Quotation has been delivered to customer and is awaiting decision.'
+                  : `Quotation is in ${quoteStatus.replace(/_/g, ' ')} state (Read-Only).`}
+              </span>
+            </div>
+          </div>
+        )}
+
         {/* Messages */}
         {error && (
           <div className="mx-6 mt-4 p-3 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/60 flex items-center gap-2.5 text-xs text-red-800 dark:text-red-300">
@@ -665,98 +692,128 @@ export default function QuotationBuilderModal({
                   <div className="flex items-center justify-between">
                     <div>
                       <h4 className="text-sm font-bold text-gray-900 dark:text-gray-100">
-                        Dimensional Site Measurements
+                        Site Dimensions & Area Measurements
                       </h4>
-                      <p className="text-xs text-gray-500 mt-0.5">
-                        Log wall, room, or structural dimensions measured with laser/measuring tape.
+                      <p className="text-xs text-gray-500">
+                        Record dimensions for roofs, walls, rooms, or slab areas.
                       </p>
                     </div>
-                    <button
-                      onClick={handleAddMeasurement}
-                      className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 hover:bg-blue-100"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      Add Measurement
-                    </button>
+                    {!isReadOnly && (
+                      <button
+                        onClick={handleAddMeasurement}
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400 cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        Add Area
+                      </button>
+                    )}
                   </div>
 
                   {measurements.length === 0 ? (
-                    <div className="text-center py-10 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl">
-                      <Ruler className="w-8 h-8 text-gray-400 mx-auto mb-2 opacity-60" />
-                      <p className="text-xs text-gray-500 font-medium">No site measurements recorded yet.</p>
-                      <button
-                        onClick={handleAddMeasurement}
-                        className="mt-3 text-xs font-semibold text-blue-600 hover:underline"
-                      >
-                        + Add first room/wall measurement
-                      </button>
+                    <div className="py-8 text-center text-xs text-gray-400 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl">
+                      No measurements added yet. Click &quot;Add Area&quot; to record dimensions.
                     </div>
                   ) : (
                     <div className="space-y-3">
                       {measurements.map((m, idx) => (
                         <div
-                          key={idx}
-                          className="p-3.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/40 grid grid-cols-1 sm:grid-cols-12 gap-3 items-center"
+                          key={m.id || idx}
+                          className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 space-y-3 shadow-xs"
                         >
-                          <div className="sm:col-span-4">
-                            <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">
-                              Area / Location
-                            </label>
+                          <div className="flex items-center justify-between gap-3">
                             <input
                               type="text"
-                              value={m.name}
-                              onChange={(e) => handleUpdateMeasurement(idx, 'name', e.target.value)}
-                              placeholder="e.g. Master Bedroom Wall"
-                              className="w-full text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 p-2 focus:ring-1 focus:ring-blue-500"
+                              disabled={isReadOnly}
+                              value={m.name ?? ''}
+                              onChange={(e) => handleUpdateMeasurement(idx, { name: e.target.value })}
+                              placeholder="Area / Location (e.g. Terrace Slab, North Wall)"
+                              className="text-xs font-bold text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-1.5 flex-1 outline-none focus:ring-1 focus:ring-blue-500"
                             />
+                            {!isReadOnly && (
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveMeasurement(idx)}
+                                className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/40 cursor-pointer transition-colors"
+                                title="Remove Measurement"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
                           </div>
 
-                          <div className="sm:col-span-2">
-                            <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">
-                              Length (Ft)
-                            </label>
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                            <div>
+                              <label className="block text-[10px] uppercase font-bold text-gray-400 mb-1">
+                                Length (ft)
+                              </label>
+                              <input
+                                type="number"
+                                step="0.1"
+                                min="0"
+                                disabled={isReadOnly}
+                                value={m.length ?? ''}
+                                onChange={(e) => handleUpdateMeasurement(idx, { length: e.target.value })}
+                                placeholder="0.0"
+                                className="w-full rounded-lg border border-gray-200 dark:border-gray-700 p-2 bg-white dark:bg-gray-800 text-xs font-semibold focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[10px] uppercase font-bold text-gray-400 mb-1">
+                                Width / Height (ft)
+                              </label>
+                              {/* Single onChange — merges width+height in one setMeasurements call
+                                  to avoid React batching silently dropping one of two concurrent updates */}
+                              <input
+                                type="number"
+                                step="0.1"
+                                min="0"
+                                disabled={isReadOnly}
+                                value={m.width ?? m.height ?? ''}
+                                onChange={(e) =>
+                                  handleUpdateMeasurement(idx, {
+                                    width: e.target.value,
+                                    height: e.target.value,
+                                  })
+                                }
+                                placeholder="0.0"
+                                className="w-full rounded-lg border border-gray-200 dark:border-gray-700 p-2 bg-white dark:bg-gray-800 text-xs font-semibold focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[10px] uppercase font-bold text-gray-400 mb-1">
+                                Unit
+                              </label>
+                              <input
+                                type="text"
+                                disabled={isReadOnly}
+                                value={m.unit ?? 'sqft'}
+                                onChange={(e) => handleUpdateMeasurement(idx, { unit: e.target.value })}
+                                className="w-full rounded-lg border border-gray-200 dark:border-gray-700 p-2 bg-white dark:bg-gray-800 text-xs font-semibold focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[10px] uppercase font-bold text-gray-400 mb-1">
+                                Computed Area
+                              </label>
+                              <div className="p-2 rounded-lg bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 font-extrabold text-xs flex items-center justify-between">
+                                <span>{m.area ?? 0}</span>
+                                <span className="text-[10px] font-normal uppercase text-blue-500">{m.unit ?? 'sqft'}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div>
                             <input
-                              type="number"
-                              step="0.1"
-                              value={m.length || ''}
-                              onChange={(e) => handleUpdateMeasurement(idx, 'length', e.target.value)}
-                              className="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 p-2"
+                              type="text"
+                              disabled={isReadOnly}
+                              value={m.notes ?? ''}
+                              onChange={(e) => handleUpdateMeasurement(idx, { notes: e.target.value })}
+                              placeholder="Optional notes (e.g. cracked plaster, 2 coats required)..."
+                              className="w-full text-xs text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-1.5 outline-none focus:ring-1 focus:ring-blue-500"
                             />
-                          </div>
-
-                          <div className="sm:col-span-2">
-                            <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">
-                              Height (Ft)
-                            </label>
-                            <input
-                              type="number"
-                              step="0.1"
-                              value={m.height || ''}
-                              onChange={(e) => handleUpdateMeasurement(idx, 'height', e.target.value)}
-                              className="w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 p-2"
-                            />
-                          </div>
-
-                          <div className="sm:col-span-3">
-                            <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">
-                              Area (Sq.Ft.)
-                            </label>
-                            <input
-                              type="number"
-                              step="0.1"
-                              value={m.area || ''}
-                              onChange={(e) => handleUpdateMeasurement(idx, 'area', parseFloat(e.target.value) || 0)}
-                              className="w-full text-xs font-bold rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 p-2 text-blue-600 dark:text-blue-400"
-                            />
-                          </div>
-
-                          <div className="sm:col-span-1 flex justify-end pt-4">
-                            <button
-                              onClick={() => handleRemoveMeasurement(idx)}
-                              className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/40"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
                           </div>
                         </div>
                       ))}
@@ -1117,28 +1174,37 @@ export default function QuotationBuilderModal({
           </div>
 
           <div className="flex items-center gap-3">
-            <button
-              onClick={handleSaveDraft}
-              disabled={saving || sending}
-              className="inline-flex items-center gap-1.5 text-xs font-semibold px-4 py-2 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-50 shadow-sm disabled:opacity-50"
-            >
-              <Save className="w-4 h-4 text-gray-500" />
-              {saving ? 'Saving...' : 'Save Draft'}
-            </button>
+            {!isReadOnly && (
+              <button
+                onClick={handleSaveDraft}
+                disabled={saving || sending}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold px-4 py-2 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-50 shadow-sm disabled:opacity-50 cursor-pointer"
+              >
+                <Save className="w-4 h-4 text-gray-500" />
+                {saving ? 'Saving...' : 'Save Draft'}
+              </button>
+            )}
 
             {step < 4 ? (
               <button
                 onClick={() => setStep(step + 1)}
-                className="inline-flex items-center gap-1.5 text-xs font-semibold px-5 py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700 shadow-md shadow-blue-600/20"
+                className="inline-flex items-center gap-1.5 text-xs font-semibold px-5 py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700 shadow-md shadow-blue-600/20 cursor-pointer"
               >
                 Next Step
                 <ChevronRight className="w-4 h-4" />
+              </button>
+            ) : isReadOnly ? (
+              <button
+                onClick={onClose}
+                className="inline-flex items-center gap-1.5 text-xs font-bold px-5 py-2 rounded-xl bg-slate-700 text-white hover:bg-slate-800 shadow-md cursor-pointer"
+              >
+                Close View
               </button>
             ) : (
               <button
                 onClick={handleSendQuote}
                 disabled={sending || saving || items.length === 0}
-                className="inline-flex items-center gap-1.5 text-xs font-bold px-5 py-2 rounded-xl bg-green-600 text-white hover:bg-green-700 shadow-md shadow-green-600/20 disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 text-xs font-bold px-5 py-2 rounded-xl bg-green-600 text-white hover:bg-green-700 shadow-md shadow-green-600/20 disabled:opacity-50 cursor-pointer"
               >
                 <Send className="w-4 h-4" />
                 {sending ? 'Sending to Customer...' : 'Send Quote to Customer'}

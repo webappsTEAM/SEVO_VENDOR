@@ -11,8 +11,8 @@ WorkingDirectory=/var/www/workforce/backend
 Environment="DJANGO_SETTINGS_MODULE=workforce_core.settings"
 EnvironmentFile=/var/www/workforce/backend/.env
 
-# Executable command: runs continuous stream consumer
-ExecStart=/var/www/workforce/backend/venv/bin/python manage.py dispatch_worker --batch-size 10 --block-ms 500
+# Executable command: runs continuous automatic dispatch reconciliation
+ExecStart=/var/www/workforce/backend/venv/bin/python manage.py dispatch_pending_workforce_jobs --loop --interval 5
 
 # Process Supervision & Automatic Recovery
 Restart=always

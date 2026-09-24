@@ -30,7 +30,6 @@ export async function apiGrocerySellerSignup(payload) {
     json: payload,
   });
 }
-
 export async function apiGetMyWallet() {
   return await apiRequest('/workforce/wallet/me/');
 }
@@ -175,9 +174,10 @@ export async function apiUploadDocument(categoryOrFormData, file = null, title =
 
 export const apiUploadOnboardingDocument = apiUploadDocument;
 
-export async function apiSubmitOnboarding() {
+export async function apiSubmitOnboarding(payload = { declaration_accepted: true }) {
   return await apiRequest('/workforce/onboarding/submit/', {
     method: 'POST',
+    json: payload,
   });
 }
 
@@ -282,6 +282,17 @@ export async function apiGetLogisticsLeg(jobId) {
   return await apiRequest(`/workforce/jobs/${jobId}/logistics-leg/`);
 }
 
+export async function apiGetJobStops(jobId) {
+  return await apiRequest(`/workforce/jobs/${jobId}/stops/`);
+}
+
+export async function apiUpdateJobStop(jobId, stopId, completed = false) {
+  return await apiRequest(`/workforce/jobs/${jobId}/stops/`, {
+    method: 'POST',
+    json: { stop_id: stopId, completed: Boolean(completed) },
+  });
+}
+
 // X-09: in-app chat -- mirrors CustomerBookingMessagesView on the Customer
 // app. Polling-based, see BookingMessage's docstring (both apps) for why.
 export async function apiGetJobMessages(jobId) {
@@ -373,6 +384,14 @@ export async function apiTriggerAutoDispatch(jobId) {
   });
 }
 
+export async function apiGetDispatchRadar(params = {}) {
+  const query = new URLSearchParams();
+  if (params.jobId) query.set('job_id', params.jobId);
+  if (params.status && params.status !== 'all') query.set('status', params.status);
+  if (params.search) query.set('search', params.search);
+  const qStr = query.toString();
+  return await apiRequest(`/workforce/admin/dispatch-radar/${qStr ? `?${qStr}` : ''}`);
+}
 export async function apiAdminCancelJob(jobId, reason = '') {
   return await apiRequest(`/workforce/jobs/${jobId}/admin-cancel/`, {
     method: 'POST',
@@ -603,7 +622,6 @@ export async function apiRejectSellerApplication(storeId, reason = '') {
     json: { reason },
   });
 }
-
 // ── Admin Dynamic Dispatch & Matching (Phase 14) ──────────────────────────────
 
 export async function apiGetEligibleTechnicians(jobId = '', serviceName = '') {
@@ -613,10 +631,11 @@ export async function apiGetEligibleTechnicians(jobId = '', serviceName = '') {
   return await apiRequest(`/workforce/dispatch/eligible-technicians/?${params.toString()}`);
 }
 
-export async function apiDispatchAssign(jobId, employeeId) {
-  return await apiRequest('/workforce/dispatch/assign/', {
+export async function apiDispatchAssign(jobId, employeeId = null) {
+  // Converges into authoritative automatic dispatch engine
+  return await apiRequest(`/workforce/dispatch/auto-dispatch/${jobId}/`, {
     method: 'POST',
-    json: { job_id: jobId, employee_id: employeeId },
+    json: employeeId ? { employee_id: employeeId } : {},
   });
 }
 
@@ -1659,69 +1678,6 @@ export async function apiSellerOrderAdminOverride(orderId, action, reason) {
     json: { action, reason },
   });
 }
-
-export async function apiGetAvailableRiders(orderId) {
-  return await apiRequest(`/workforce/seller-hub/orders/${orderId}/available-riders/`);
-}
-
-export async function apiRetryOrderDispatch(orderId) {
-  return await apiRequest(`/workforce/seller-hub/orders/${orderId}/retry-dispatch/`, {
-    method: 'POST',
-    json: {},
-  });
-}
-
-// ── Phase T: Admin Warehouses & Seller Warehouse Assignment ───────────────────
-export async function apiAdminGetWarehouses(params = {}) {
-  const qs = new URLSearchParams();
-  if (params.search) qs.set('search', params.search);
-  if (params.city) qs.set('city', params.city);
-  if (params.is_active != null) qs.set('is_active', String(params.is_active));
-  const queryStr = qs.toString();
-  return await apiRequest(`/workforce/admin/warehouses/${queryStr ? `?${queryStr}` : ''}`);
-}
-
-export async function apiAdminGetWarehouseDetail(id) {
-  return await apiRequest(`/workforce/admin/warehouses/${id}/`);
-}
-
-export async function apiAdminCreateWarehouse(payload) {
-  return await apiRequest('/workforce/admin/warehouses/', {
-    method: 'POST',
-    json: payload,
-  });
-}
-
-export async function apiAdminUpdateWarehouse(id, payload) {
-  return await apiRequest(`/workforce/admin/warehouses/${id}/`, {
-    method: 'PATCH',
-    json: payload,
-  });
-}
-
-export async function apiAdminDeleteWarehouse(id) {
-  return await apiRequest(`/workforce/admin/warehouses/${id}/`, {
-    method: 'DELETE',
-  });
-}
-
-export async function apiAdminGetSellerWarehouse(sellerId) {
-  return await apiRequest(`/workforce/admin/sellers/${sellerId}/warehouse/`);
-}
-
-export async function apiAdminAssignSellerWarehouse(sellerId, warehouseId, notes = '') {
-  return await apiRequest(`/workforce/admin/sellers/${sellerId}/warehouse/`, {
-    method: 'POST',
-    json: { warehouse_id: warehouseId, notes },
-  });
-}
-
-export async function apiAdminUnassignSellerWarehouse(sellerId) {
-  return await apiRequest(`/workforce/admin/sellers/${sellerId}/warehouse/`, {
-    method: 'DELETE',
-  });
-}
-
 // Named object export for convenient namespace usage
 export const workforceService = {
   getGroceryOrders: apiGetGroceryOrders,

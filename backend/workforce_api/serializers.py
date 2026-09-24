@@ -21,22 +21,62 @@ class WorkforceSignupSerializer(serializers.Serializer):
     mobile_number = serializers.CharField(max_length=20)
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True, min_length=6)
+    account_type = serializers.CharField(required=False, default="independent")
+    provider_id = serializers.IntegerField(required=False, allow_null=True)
+    provider_slug = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    company_id = serializers.IntegerField(required=False, allow_null=True)
+    company_slug = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+
+    def validate_first_name(self, value):
+        cleaned = value.strip()
+        if not cleaned:
+            raise serializers.ValidationError("First name cannot be empty.")
+        return cleaned
+
+    def validate_last_name(self, value):
+        return (value or "").strip()
 
     def validate_email(self, value):
-        if User.objects.filter(email__iexact=value).exists():
+        cleaned = value.strip().lower()
+        if User.objects.filter(email__iexact=cleaned).exists():
             raise serializers.ValidationError("An account with this email already exists.")
-        return value.lower()
+        return cleaned
 
     def validate_mobile_number(self, value):
         cleaned = value.strip().replace(" ", "").replace("-", "")
+        if len(cleaned) < 10:
+            raise serializers.ValidationError("Please enter a valid mobile number with at least 10 digits.")
         if User.objects.filter(mobile_number=cleaned).exists():
             raise serializers.ValidationError("An account with this mobile number already exists.")
         return cleaned
 
 
+ALLOWED_DRAFT_SECTIONS = {"personal", "address", "services", "skills", "documents", "bank"}
+FORBIDDEN_DRAFT_KEYS = {
+    "status", "step", "completed_steps", "submitted_at", "approved_at",
+    "approved_by", "rejected_at", "rejected_by", "rejection_reason",
+    "verified_at", "verified_by", "verification_status", "correction_notes"
+}
+
+
 class WorkforceOnboardingDraftSerializer(serializers.Serializer):
     step = serializers.IntegerField(min_value=1, max_value=7, required=False)
     draft_data = serializers.DictField(required=True)
+
+    def validate_draft_data(self, value):
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("draft_data must be a dictionary.")
+        for forbidden in FORBIDDEN_DRAFT_KEYS:
+            if forbidden in value:
+                raise serializers.ValidationError(
+                    f"Field '{forbidden}' is server-controlled and cannot be supplied in draft_data."
+                )
+        unknown = set(value.keys()) - ALLOWED_DRAFT_SECTIONS
+        if unknown:
+            raise serializers.ValidationError(
+                f"Unknown onboarding sections: {', '.join(sorted(unknown))}."
+            )
+        return value
 
 
 class WorkforceEmployeeProfileSerializer(serializers.ModelSerializer):
@@ -114,19 +154,12 @@ class WorkforceEmployeeProfileSerializer(serializers.ModelSerializer):
         return ""
 
     def get_onboarding_data(self, obj):
-        return (obj.bank_details or {}).get("onboarding", {
-            "status": "not_started",
-            "step": 1,
-            "draft": {},
-            "services": [],
-            "documents": {},
-            "correction_notes": "",
-            "rejection_reason": "",
-        })
+        from workforce_api.services.registration import get_employee_onboarding_dict
+        return get_employee_onboarding_dict(obj)
 
     def get_registration_status(self, obj):
-        ob = (obj.bank_details or {}).get("onboarding", {})
-        return ob.get("status", "not_started")
+        from workforce_api.services.registration import get_employee_registration_status
+        return get_employee_registration_status(obj)
 
     def get_approved_services(self, obj):
         ob = (obj.bank_details or {}).get("onboarding", {})
@@ -479,12 +512,18 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
     can_create_quote = serializers.SerializerMethodField()
     active_quote_id = serializers.SerializerMethodField()
     active_quote_number = serializers.SerializerMethodField()
+    active_quote_status = serializers.SerializerMethodField()
+    active_quote_version = serializers.SerializerMethodField()
     # GT: the logistics half of a job. Without these the driver app can see
     # where to collect from but not where to deliver to, and has no idea
     # which leg of the trip it is on -- the leg/stop endpoints existed but
     # nothing in the job payload told the app they applied.
     is_logistics = serializers.SerializerMethodField()
     trip_stop_count = serializers.SerializerMethodField()
+    is_scheduled_future = serializers.SerializerMethodField()
+    can_accept = serializers.SerializerMethodField()
+    scheduled_window_open = serializers.SerializerMethodField()
+    scheduled_hold_reason = serializers.SerializerMethodField()
 
     class Meta:
         model = ServiceRequest
@@ -540,6 +579,8 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
             "can_create_quote",
             "active_quote_id",
             "active_quote_number",
+            "active_quote_status",
+            "active_quote_version",
             # Goods & Transport
             "is_logistics",
             "drop_address",
@@ -550,11 +591,47 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
             "logistics_leg",
             "logistics_leg_updated_at",
             "trip_stop_count",
+            "is_scheduled_future",
+            "can_accept",
+            "scheduled_window_open",
+            "scheduled_hold_reason",
         ]
 
     def get_is_logistics(self, obj):
         from workforce_api.services.automatic_dispatch import LOGISTICS_SERVICE_CATEGORIES
         return (obj.service_category or "").strip().lower() in LOGISTICS_SERVICE_CATEGORIES
+
+    def _get_scheduled_window(self, obj):
+        if hasattr(obj, "_cached_scheduled_window"):
+            return obj._cached_scheduled_window
+        from workforce_api.services.automatic_dispatch import get_scheduled_dispatch_window
+        from django.utils import timezone
+        res = get_scheduled_dispatch_window(obj, now=timezone.now())
+        obj._cached_scheduled_window = res
+        return res
+
+    def get_is_scheduled_future(self, obj):
+        is_future, _, _ = self._get_scheduled_window(obj)
+        return bool(is_future)
+
+    def get_can_accept(self, obj):
+        is_future, _, _ = self._get_scheduled_window(obj)
+        if is_future:
+            return False
+        return True
+
+    def get_scheduled_window_open(self, obj):
+        is_future, _, window_open = self._get_scheduled_window(obj)
+        if is_future and window_open:
+            return window_open.isoformat()
+        return None
+
+    def get_scheduled_hold_reason(self, obj):
+        is_future, scheduled_dt, window_open = self._get_scheduled_window(obj)
+        if is_future and scheduled_dt and window_open:
+            lead_mins = int(round((scheduled_dt - window_open).total_seconds() / 60))
+            return f"Service scheduled for {scheduled_dt.strftime('%d %b %Y at %I:%M %p')}. Acceptance opens at {window_open.strftime('%I:%M %p')} ({lead_mins} mins prior)."
+        return None
 
     def get_trip_stop_count(self, obj):
         trip_stops_map = self.context.get("trip_stops_map")
@@ -590,6 +667,11 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
         if not obj.assigned_employee_id:
             obj._cached_wallet_channel = (None, None)
             return None, None
+        wallets_map = self.context.get("wallets_map")
+        if wallets_map is not None:
+            res = wallets_map.get(obj.assigned_employee_id, (None, None))
+            obj._cached_wallet_channel = res
+            return res
         try:
             from workforce_api.services import resolve_payee_wallet
             wallet, channel = resolve_payee_wallet(obj)
@@ -736,12 +818,13 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
                 return full
             if getattr(cust, "name", None) and not str(cust.name).startswith("cust_"):
                 return cust.name
-            try:
-                addr = cust.saved_addresses.filter(receiver_name__isnull=False).exclude(receiver_name="").first()
-                if addr and addr.receiver_name:
-                    return addr.receiver_name
-            except Exception:
-                pass
+            if hasattr(cust, "saved_addresses"):
+                try:
+                    addr = cust.saved_addresses.filter(receiver_name__isnull=False).exclude(receiver_name="").first()
+                    if addr and addr.receiver_name:
+                        return addr.receiver_name
+                except Exception:
+                    pass
             if cust.phone:
                 return f"Customer ({str(cust.phone)[-4:]})"
             if cust.username and not str(cust.username).startswith("cust_"):
@@ -775,7 +858,7 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
     def get_address(self, obj):
         if obj.address:
             return obj.address
-        if obj.customer:
+        if obj.customer and hasattr(obj.customer, "saved_addresses"):
             try:
                 addr = obj.customer.saved_addresses.first()
                 if addr and getattr(addr, "address_line1", None):
@@ -939,8 +1022,22 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
             "remaining_seconds": remaining_seconds,
         }
 
+    def _is_estimation_job(self, obj):
+        if getattr(obj, "is_estimation", False):
+            return True
+        if getattr(obj, "request_kind", "") == "ESTIMATION":
+            return True
+        if getattr(obj, "job_type", "") == "ESTIMATION":
+            return True
+        from service_requests.models import is_quotation_service
+        return is_quotation_service(
+            service_id=getattr(obj, "catalog_service_id", None),
+            name=getattr(obj, "issue_title", ""),
+            category=getattr(obj, "service_category", "")
+        )
+
     def _get_active_quote(self, obj):
-        if not getattr(obj, "is_estimation", False):
+        if not self._is_estimation_job(obj):
             return None
         quotes_map = self.context.get("quotes_map")
         if quotes_map is not None:
@@ -956,10 +1053,13 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
         return obj._cached_active_quote
 
     def get_is_estimation(self, obj):
-        return bool(getattr(obj, "is_estimation", False))
+        return self._is_estimation_job(obj)
 
     def get_pricing_mode(self, obj):
-        return getattr(obj, "pricing_mode", "FIXED")
+        mode = getattr(obj, "pricing_mode", None)
+        if mode:
+            return mode
+        return "QUOTATION" if self._is_estimation_job(obj) else "FIXED"
 
     def get_active_quote_id(self, obj):
         q = self._get_active_quote(obj)
@@ -969,8 +1069,16 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
         q = self._get_active_quote(obj)
         return q.quote_number if q else None
 
+    def get_active_quote_status(self, obj):
+        q = self._get_active_quote(obj)
+        return q.status if q else None
+
+    def get_active_quote_version(self, obj):
+        q = self._get_active_quote(obj)
+        return q.quote_version if q else None
+
     def get_can_create_quote(self, obj):
-        if not getattr(obj, "is_estimation", False):
+        if not self._is_estimation_job(obj):
             return False
         psvs_map = self.context.get("psvs_map")
         psv = psvs_map.get(obj.id) if psvs_map is not None else None
@@ -1273,7 +1381,6 @@ class VendorStoreSerializer(serializers.ModelSerializer):
             "logo_url",
             "banner_url",
             "fssai_license_number",
-            "gst_number",
             "store_address",
             "latitude",
             "longitude",
@@ -1285,12 +1392,236 @@ class VendorStoreSerializer(serializers.ModelSerializer):
             "closing_time",
             "rating_average",
             "total_reviews",
-            "onboarding",
             "created_at",
             "updated_at",
         ]
         read_only_fields = ["id", "company", "rating_average", "total_reviews", "created_at", "updated_at"]
 
+
+class VendorDealSerializer(serializers.ModelSerializer):
+    item_name = serializers.CharField(source="inventory_item.display_name", read_only=True)
+    unit = serializers.CharField(source="inventory_item.unit", read_only=True)
+    discount_percent = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        from .models import VendorDeal
+        model = VendorDeal
+        fields = [
+            "id",
+            "company",
+            "inventory_item",
+            "item_name",
+            "unit",
+            "deal_type",
+            "original_price",
+            "deal_price",
+            "discount_percent",
+            "deal_start_at",
+            "deal_end_at",
+            "badge_text",
+            "is_active",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "company", "discount_percent", "created_at", "updated_at"]
+
+
+class VendorCouponSerializer(serializers.ModelSerializer):
+    class Meta:
+        from .models import VendorCoupon
+        model = VendorCoupon
+        fields = [
+            "id",
+            "company",
+            "code",
+            "description",
+            "discount_type",
+            "discount_value",
+            "min_order_amount",
+            "max_discount_amount",
+            "usage_limit_total",
+            "usage_limit_per_user",
+            "times_used",
+            "valid_from",
+            "valid_until",
+            "is_active",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "company", "times_used", "created_at", "updated_at"]
+
+
+class GroceryOrderItemSerializer(serializers.ModelSerializer):
+    class Meta:
+        from .models import GroceryOrderItem
+        model = GroceryOrderItem
+        fields = [
+            "id",
+            "inventory_item",
+            "product_name_snapshot",
+            "sku_snapshot",
+            "unit_snapshot",
+            "quantity",
+            "mrp_snapshot",
+            "regular_price_snapshot",
+            "deal_price_snapshot",
+            "final_unit_price",
+            "total_price",
+        ]
+        read_only_fields = ["id"]
+
+
+class GroceryDeliverySerializer(serializers.ModelSerializer):
+    class Meta:
+        from .models import GroceryDelivery
+        model = GroceryDelivery
+        fields = [
+            "id",
+            "fulfillment_method",
+            "status",
+            "rider_name",
+            "rider_phone",
+            "delivery_otp",
+            "delivered_at",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+
+class GroceryOrderSerializer(serializers.ModelSerializer):
+    items = GroceryOrderItemSerializer(many=True, read_only=True)
+    delivery = GroceryDeliverySerializer(read_only=True)
+    vendor_store_name = serializers.CharField(source="vendor_store.store_name", read_only=True)
+
+    class Meta:
+        from .models import GroceryOrder
+        model = GroceryOrder
+        fields = [
+            "id",
+            "order_number",
+            "customer_id",
+            "customer_name",
+            "customer_phone",
+            "delivery_address",
+            "delivery_latitude",
+            "delivery_longitude",
+            "vendor_store",
+            "vendor_store_name",
+            "status",
+            "payment_method",
+            "payment_status",
+            "subtotal",
+            "deal_discount",
+            "vendor_coupon_discount",
+            "platform_coupon_discount",
+            "delivery_fee",
+            "tax",
+            "total_amount",
+            "applied_coupon_code",
+            "delivery_notes",
+            "placed_at",
+            "accepted_at",
+            "packed_at",
+            "out_for_delivery_at",
+            "delivered_at",
+            "cancelled_at",
+            "rejection_reason",
+            "created_at",
+            "updated_at",
+            "items",
+            "delivery",
+        ]
+        read_only_fields = ["id", "order_number", "placed_at", "created_at", "updated_at"]
+
+
+class InventoryTransactionSerializer(serializers.ModelSerializer):
+    product_name = serializers.CharField(source="inventory_item.display_name", read_only=True)
+    unit = serializers.CharField(source="inventory_item.unit", read_only=True)
+
+    class Meta:
+        from .models import InventoryTransaction
+        model = InventoryTransaction
+        fields = [
+            "id",
+            "inventory_item",
+            "product_name",
+            "unit",
+            "transaction_type",
+            "quantity",
+            "balance_after",
+            "reference_id",
+            "notes",
+            "created_at",
+        ]
+        read_only_fields = ["id", "created_at"]
+
+
+class VendorSettlementSerializer(serializers.ModelSerializer):
+    store_name = serializers.CharField(source="vendor_store.store_name", read_only=True)
+
+    class Meta:
+        from .models import VendorSettlement
+        model = VendorSettlement
+        fields = [
+            "id",
+            "settlement_number",
+            "vendor_store",
+            "store_name",
+            "period_start",
+            "period_end",
+            "gross_sales",
+            "platform_commission",
+            "vendor_funded_discounts",
+            "net_payable",
+            "status",
+            "settled_at",
+            "created_at",
+        ]
+        read_only_fields = ["id", "settlement_number", "created_at"]
+
+
+class FinancialLedgerEntrySerializer(serializers.ModelSerializer):
+    class Meta:
+        from .models import FinancialLedgerEntry
+        model = FinancialLedgerEntry
+        fields = [
+            "id",
+            "entry_type",
+            "category",
+            "amount",
+            "balance_after",
+            "order",
+            "settlement",
+            "description",
+            "created_at",
+        ]
+        read_only_fields = ["id", "created_at"]
+
+
+class VendorStoreReviewSerializer(serializers.ModelSerializer):
+    store_name = serializers.CharField(source="vendor_store.store_name", read_only=True)
+
+    class Meta:
+        from .models import VendorStoreReview
+        model = VendorStoreReview
+        fields = [
+            "id",
+            "vendor_store",
+            "store_name",
+            "customer_id",
+            "customer_name",
+            "order",
+            "rating",
+            "review_text",
+            "created_at",
+        ]
+        read_only_fields = ["id", "created_at"]
+
+
+# ========================================== #
+# SELLER HUB & GROCERY SERIALIZERS (INCOMING) #
+# ========================================== #
 
 class GrocerySellerSignupSerializer(serializers.Serializer):
     """
@@ -1418,35 +1749,6 @@ class GrocerySellerApplicationDetailSerializer(serializers.ModelSerializer):
     def get_categories_status(self, obj):
         ob = obj.onboarding or {}
         return ob.get("categories", [])
-
-
-class VendorDealSerializer(serializers.ModelSerializer):
-    item_name = serializers.CharField(source="inventory_item.display_name", read_only=True)
-    unit = serializers.CharField(source="inventory_item.unit", read_only=True)
-    discount_percent = serializers.IntegerField(read_only=True)
-
-    class Meta:
-        from .models import VendorDeal
-        model = VendorDeal
-        fields = [
-            "id",
-            "company",
-            "inventory_item",
-            "item_name",
-            "unit",
-            "deal_type",
-            "original_price",
-            "deal_price",
-            "discount_percent",
-            "deal_start_at",
-            "deal_end_at",
-            "badge_text",
-            "is_active",
-            "created_at",
-            "updated_at",
-        ]
-        read_only_fields = ["id", "company", "discount_percent", "created_at", "updated_at"]
-
 
 class CatalogCategoryAdminSerializer(serializers.ModelSerializer):
     services_count = serializers.SerializerMethodField()
@@ -1919,220 +2221,6 @@ class SellerCatalogCategoryItemSerializer(serializers.ModelSerializer):
         path_list = self.get_path(obj)
         return " > ".join(a["name"] for a in path_list)
 
-
-class VendorCouponSerializer(serializers.ModelSerializer):
-    company_name = serializers.CharField(source="company.company_name", read_only=True)
-
-    class Meta:
-        from .models import VendorCoupon
-        model = VendorCoupon
-        fields = [
-            "id",
-            "company",
-            "company_name",
-            "code",
-            "description",
-            "discount_type",
-            "discount_value",
-            "min_order_amount",
-            "max_discount_amount",
-            "usage_limit_total",
-            "usage_limit_per_user",
-            "times_used",
-            "valid_from",
-            "valid_until",
-            "is_active",
-            "created_at",
-            "updated_at",
-        ]
-        read_only_fields = ["id", "company", "company_name", "times_used", "created_at", "updated_at"]
-
-    def validate_code(self, value):
-        val = str(value).strip().upper()
-        if not val:
-            raise serializers.ValidationError("Coupon code cannot be empty.")
-        return val
-
-    def validate(self, attrs):
-        v_from = attrs.get("valid_from") or (self.instance.valid_from if self.instance else None)
-        v_until = attrs.get("valid_until") or (self.instance.valid_until if self.instance else None)
-        if v_from and v_until and v_until < v_from:
-            raise serializers.ValidationError({"valid_until": "End validity date must be after the start date."})
-        return attrs
-
-
-class GroceryOrderItemSerializer(serializers.ModelSerializer):
-    class Meta:
-        from .models import GroceryOrderItem
-        model = GroceryOrderItem
-        fields = [
-            "id",
-            "inventory_item",
-            "product_name_snapshot",
-            "sku_snapshot",
-            "unit_snapshot",
-            "quantity",
-            "mrp_snapshot",
-            "regular_price_snapshot",
-            "deal_price_snapshot",
-            "final_unit_price",
-            "total_price",
-        ]
-        read_only_fields = ["id"]
-
-
-class GroceryDeliverySerializer(serializers.ModelSerializer):
-    class Meta:
-        from .models import GroceryDelivery
-        model = GroceryDelivery
-        fields = [
-            "id",
-            "fulfillment_method",
-            "status",
-            "rider_name",
-            "rider_phone",
-            "delivery_otp",
-            "delivered_at",
-            "created_at",
-            "updated_at",
-        ]
-        read_only_fields = ["id", "created_at", "updated_at"]
-
-
-class GroceryOrderSerializer(serializers.ModelSerializer):
-    items = GroceryOrderItemSerializer(many=True, read_only=True)
-    delivery = GroceryDeliverySerializer(read_only=True)
-    vendor_store_name = serializers.CharField(source="vendor_store.store_name", read_only=True)
-
-    class Meta:
-        from .models import GroceryOrder
-        model = GroceryOrder
-        fields = [
-            "id",
-            "order_number",
-            "customer_id",
-            "customer_name",
-            "customer_phone",
-            "delivery_address",
-            "delivery_latitude",
-            "delivery_longitude",
-            "vendor_store",
-            "vendor_store_name",
-            "status",
-            "payment_method",
-            "payment_status",
-            "subtotal",
-            "deal_discount",
-            "vendor_coupon_discount",
-            "platform_coupon_discount",
-            "delivery_fee",
-            "tax",
-            "total_amount",
-            "applied_coupon_code",
-            "delivery_notes",
-            "placed_at",
-            "accepted_at",
-            "packed_at",
-            "out_for_delivery_at",
-            "delivered_at",
-            "cancelled_at",
-            "rejection_reason",
-            "created_at",
-            "updated_at",
-            "items",
-            "delivery",
-        ]
-        read_only_fields = ["id", "order_number", "placed_at", "created_at", "updated_at"]
-
-
-class InventoryTransactionSerializer(serializers.ModelSerializer):
-    product_name = serializers.CharField(source="inventory_item.display_name", read_only=True)
-    unit = serializers.CharField(source="inventory_item.unit", read_only=True)
-
-    class Meta:
-        from .models import InventoryTransaction
-        model = InventoryTransaction
-        fields = [
-            "id",
-            "inventory_item",
-            "product_name",
-            "unit",
-            "transaction_type",
-            "quantity",
-            "balance_after",
-            "reference_id",
-            "notes",
-            "created_at",
-        ]
-        read_only_fields = ["id", "created_at"]
-
-
-class VendorSettlementSerializer(serializers.ModelSerializer):
-    store_name = serializers.CharField(source="vendor_store.store_name", read_only=True)
-
-    class Meta:
-        from .models import VendorSettlement
-        model = VendorSettlement
-        fields = [
-            "id",
-            "settlement_number",
-            "vendor_store",
-            "store_name",
-            "period_start",
-            "period_end",
-            "gross_sales",
-            "platform_commission",
-            "vendor_funded_discounts",
-            "net_payable",
-            "status",
-            "settled_at",
-            "created_at",
-        ]
-        read_only_fields = ["id", "settlement_number", "created_at"]
-
-
-class FinancialLedgerEntrySerializer(serializers.ModelSerializer):
-    class Meta:
-        from .models import FinancialLedgerEntry
-        model = FinancialLedgerEntry
-        fields = [
-            "id",
-            "entry_type",
-            "category",
-            "amount",
-            "balance_after",
-            "order",
-            "settlement",
-            "description",
-            "created_at",
-        ]
-        read_only_fields = ["id", "created_at"]
-
-
-class VendorStoreReviewSerializer(serializers.ModelSerializer):
-    store_name = serializers.CharField(source="vendor_store.store_name", read_only=True)
-
-    class Meta:
-        from .models import VendorStoreReview
-        model = VendorStoreReview
-        fields = [
-            "id",
-            "vendor_store",
-            "store_name",
-            "customer_id",
-            "customer_name",
-            "order",
-            "rating",
-            "review_text",
-            "created_at",
-        ]
-        read_only_fields = ["id", "created_at"]
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# SELLER HUB PRODUCT CATALOG & UPLOAD SERIALIZERS (Phase 2 Foundation)
-# ═══════════════════════════════════════════════════════════════════════════════
-
 class SellerProductImageSerializer(serializers.ModelSerializer):
     class Meta:
         from .models import SellerProductImage
@@ -2487,7 +2575,7 @@ class SellerProductCreateUpdateSerializer(serializers.ModelSerializer):
 
         if mrp is not None and selling_price is not None and selling_price > mrp:
             raise serializers.ValidationError(
-                {"selling_price": f"Selling price (₹{selling_price}) cannot exceed MRP (₹{mrp})."}
+                {"selling_price": f"Selling price (Ôé╣{selling_price}) cannot exceed MRP (Ôé╣{mrp})."}
             )
 
         tax_rate = data.get("tax_rate")
@@ -2548,9 +2636,9 @@ class AdminSellerApprovalListSerializer(serializers.Serializer):
 
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
 # SELLER HUB INVENTORY MANAGEMENT SERIALIZERS (Phase 3)
-# ═══════════════════════════════════════════════════════════════════════════════
+# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
 
 class SellerInventoryMovementSerializer(serializers.ModelSerializer):
     actor_name = serializers.SerializerMethodField()
@@ -2735,9 +2823,9 @@ class SellerInventoryAdjustSerializer(serializers.Serializer):
         return data
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
 # 7. SELLER HUB ORDERS & FULFILMENT SERIALIZERS (Phase 4)
-# ═══════════════════════════════════════════════════════════════════════════════
+# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
 
 class SellerOrderItemSerializer(serializers.ModelSerializer):
     product_image = serializers.SerializerMethodField()
@@ -2972,9 +3060,9 @@ class SellerOrderItemPickSerializer(serializers.Serializer):
     notes = serializers.CharField(max_length=255, required=False, allow_blank=True)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
 # 8. SELLER HUB RETURNS & REVERSE LOGISTICS SERIALIZERS (Phase 5)
-# ═══════════════════════════════════════════════════════════════════════════════
+# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
 
 class SellerReturnItemSerializer(serializers.ModelSerializer):
     product_image = serializers.SerializerMethodField()

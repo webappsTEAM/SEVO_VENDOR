@@ -25,7 +25,6 @@ export function AdminRoute({ children }) {
     // If a seller user attempts to open vendor operational admin routes, redirect to seller hub
     return <Navigate to="/workforce/seller/dashboard" replace />;
   }
-
   if (!isAdmin) {
     // If an employee user attempts to open /admin/*, redirect to employee dashboard
     return <Navigate to="/workforce/employee/dashboard" replace />;

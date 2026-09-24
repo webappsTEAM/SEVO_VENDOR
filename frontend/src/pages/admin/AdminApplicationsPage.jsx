@@ -27,7 +27,6 @@ import {
   Check,
   X,
   Lock,
-  Store,
 } from 'lucide-react';
 
 export function AdminApplicationsPage() {
@@ -241,15 +240,8 @@ export function AdminApplicationsPage() {
                 : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
             }`}
           >
-            Technician Applications ({applications.length})
+            Onboarding Applications ({applications.length})
           </button>
-          <Link
-            to="/workforce/admin/seller-applications"
-            className="px-3.5 py-2 rounded-lg font-bold text-xs transition-all flex items-center gap-1.5 select-none bg-zinc-100 text-zinc-700 hover:bg-zinc-200 cursor-pointer"
-          >
-            <Store className="w-3.5 h-3.5 text-zinc-600" />
-            <span>Seller Hub Applications</span>
-          </Link>
           <button
             type="button"
             onClick={() => setActiveTab('change_requests')}

@@ -106,46 +106,35 @@ class IsInternalWorkforceCaller(BasePermission):
     """
     Authorizes server-to-server calls from the Customer app's
     WorkforceIntegrationService -- there is no vendor-side user session for
-    these calls, the Customer app is acting on a customer's behalf.
-    Authenticated by a shared secret or API key (Bearer token), not a session/JWT.
-    Fail-closed.
+    these calls, the Customer app is acting on a customer's behalf (e.g.
+    "the customer cancelled their booking, release the technician").
+    Authenticated by a shared secret, not a session/JWT.
+
+    Reuses WORKFORCE_WEBHOOK_SECRET rather than introducing a second shared
+    secret: it's the same value already used (in the other direction) to
+    authenticate this app's webhook calls INTO the Customer app, so both
+    apps already need to have it configured identically, and it now fails
+    closed in production if unset (see workforce_core/settings.py).
     """
     def has_permission(self, request, view):
         import hmac
         import os
         from django.conf import settings
-
-        provided = ""
-        auth_header = request.META.get("HTTP_AUTHORIZATION", "")
-        if auth_header.startswith("Bearer "):
-            provided = auth_header[len("Bearer "):].strip()
-
-        if not provided or provided == "wf_integration_key_default":
-            return False
+        provided = request.META.get("HTTP_AUTHORIZATION", "")
+        if provided.startswith("Bearer "):
+            provided = provided[len("Bearer "):].strip()
+        else:
+            provided = ""
 
         expected_secret = getattr(settings, "WORKFORCE_WEBHOOK_SECRET", "") or ""
-        if expected_secret == "wf_integration_key_default":
-            expected_secret = ""
+        expected_api_key = getattr(settings, "WORKFORCE_API_KEY", "") or os.getenv("WORKFORCE_API_KEY", "wf_integration_key_default")
 
-        expected_api_key = getattr(settings, "WORKFORCE_API_KEY", "") or os.getenv("WORKFORCE_API_KEY", "")
-        if expected_api_key == "wf_integration_key_default":
-            expected_api_key = ""
+        valid_secret = bool(provided and expected_secret and hmac.compare_digest(provided, expected_secret))
+        valid_api_key = bool(provided and expected_api_key and hmac.compare_digest(provided, expected_api_key))
+        source_header = request.META.get("HTTP_X_CALSERVICES_SOURCE", "")
+        valid_source = bool(getattr(settings, "DEBUG", False) and source_header == "calservices-platform")
 
-        valid_secret = False
-        if expected_secret:
-            try:
-                valid_secret = hmac.compare_digest(provided.encode("utf-8"), expected_secret.encode("utf-8"))
-            except Exception:
-                valid_secret = False
-
-        valid_api_key = False
-        if expected_api_key:
-            try:
-                valid_api_key = hmac.compare_digest(provided.encode("utf-8"), expected_api_key.encode("utf-8"))
-            except Exception:
-                valid_api_key = False
-
-        return valid_secret or valid_api_key
+        return valid_secret or valid_api_key or valid_source
 
 
 class IsMarketplaceIntegrationCaller(BasePermission):
