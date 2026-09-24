@@ -30,6 +30,7 @@ import {
   apiBulkSaveQuoteMeasurements,
   apiSaveQuoteInspection,
   apiSendQuoteToCustomer,
+  apiSubmitQuoteToCRM,
 } from '../../api/workforceService.js';
 
 /**
@@ -39,12 +40,12 @@ import {
 function describeRate(rc) {
   switch (rc.pricing_model) {
     case 'PER_UNIT':
-      return `₹${rc.default_rate}/${rc.unit}`;
+      return `₹${Number(rc.default_rate || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/${rc.unit}`;
     case 'FLAT':
-      return `₹${rc.default_rate} flat`;
+      return `₹${Number(rc.default_rate || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} flat`;
     case 'TIERED': {
       const rates = Object.values(rc.pricing_config?.tiers || {});
-      return rates.length ? `₹${Math.min(...rates)}–₹${Math.max(...rates)}/${rc.unit}` : 'tiered';
+      return rates.length ? `₹${Math.min(...rates).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}–₹${Math.max(...rates).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/${rc.unit}` : 'tiered';
     }
     case 'CAPACITY_BAND':
     case 'SIZE_BAND':
@@ -52,8 +53,16 @@ function describeRate(rc) {
     case 'QUOTE_ONLY':
       return 'priced on site';
     default:
-      return `₹${rc.default_rate}/${rc.unit}`;
+      return `₹${Number(rc.default_rate || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/${rc.unit}`;
   }
+}
+
+export function formatCurrency(val) {
+  const num = Number(val || 0);
+  return num.toLocaleString('en-IN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 }
 
 export default function QuotationBuilderModal({
@@ -103,9 +112,17 @@ export default function QuotationBuilderModal({
     quoteStatus !== 'CHANGES_REQUESTED'
   );
 
-  // Load existing quote or initialize from job
+  const hasInitializedRef = useRef(false);
+  const jobId = job?.id;
+
+  // Load existing quote or initialize from job once when modal opens
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      hasInitializedRef.current = false;
+      return;
+    }
+    if (hasInitializedRef.current) return;
+    hasInitializedRef.current = true;
 
     const loadData = async () => {
       setLoading(true);
@@ -116,8 +133,10 @@ export default function QuotationBuilderModal({
         const rCards = await apiGetRateCards(categoryParam);
         setRateCards(rCards || []);
 
-        if (activeQuoteId) {
-          const detail = await apiGetQuoteDetail(activeQuoteId);
+        const targetQuoteId = quoteId || activeQuoteId;
+        if (targetQuoteId) {
+          const detail = await apiGetQuoteDetail(targetQuoteId);
+          setActiveQuoteId(detail.id);
           setQuoteNumber(detail.quote_number || '');
           setQuoteVersion(detail.quote_version || 1);
           setQuoteStatus(detail.status || 'DRAFT');
@@ -135,12 +154,6 @@ export default function QuotationBuilderModal({
         } else if (job) {
           setTitle(`Quotation for ${job.issue_title || job.service_category}`);
           setDescription(`Site inspection and estimation for ${job.customer_name || 'Customer'}.`);
-
-          // Deliberately no pre-populated line items. Seeding the first three
-          // rate cards put work on the quote that the technician had not
-          // chosen and the customer had not been shown -- and for banded or
-          // quote-only items, default_rate is not the price at all, so the
-          // suggested figures were wrong as well as unasked for.
           setItems([]);
         }
       } catch (err) {
@@ -152,7 +165,7 @@ export default function QuotationBuilderModal({
     };
 
     loadData();
-  }, [isOpen, activeQuoteId, job]);
+  }, [isOpen, quoteId, jobId]);
 
   // Live total calculations
   const calculateTotals = () => {
@@ -532,6 +545,34 @@ export default function QuotationBuilderModal({
     }
   };
 
+  // Submit Quote to CRM for Review
+  const handleSubmitToCRM = async () => {
+    setSending(true);
+    setError(null);
+    setSuccessMsg(null);
+
+    try {
+      const currentId = await handleSaveDraft();
+      if (!currentId) {
+        throw new Error('Please save quotation before submitting.');
+      }
+
+      const res = await apiSubmitQuoteToCRM(currentId);
+      setSuccessMsg(res.message || 'Quotation submitted to CRM / Operations for review!');
+      setQuoteStatus('PENDING_APPROVAL');
+
+      if (onQuoteSaved) onQuoteSaved(currentId);
+      setTimeout(() => {
+        onClose();
+      }, 2000);
+    } catch (err) {
+      console.error('Failed to submit quote to CRM:', err);
+      setError(err.message || 'Failed to submit quotation to CRM.');
+    } finally {
+      setSending(false);
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -570,7 +611,7 @@ export default function QuotationBuilderModal({
             <div className="hidden sm:flex flex-col items-end px-3 py-1 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
               <span className="text-[10px] uppercase font-bold text-gray-400">Estimated Total</span>
               <span className="text-sm font-extrabold text-blue-600 dark:text-blue-400">
-                ₹{totals.netPayable.toLocaleString()}
+                ₹{formatCurrency(totals.netPayable)}
               </span>
             </div>
 
@@ -1004,9 +1045,9 @@ export default function QuotationBuilderModal({
                               ) : (
                                 <>
                                   ₹
-                                  {(
+                                  {formatCurrency(
                                     Math.max(0, (item.quantity || 1) * (item.unit_price || 0) - (item.discount_amount || 0))
-                                  ).toLocaleString()}
+                                  )}
                                 </>
                               )}
                             </span>
@@ -1079,25 +1120,25 @@ export default function QuotationBuilderModal({
                       <div>
                         <span className="text-gray-500 dark:text-gray-400 block text-[11px]">Material Subtotal</span>
                         <span className="font-bold text-gray-900 dark:text-gray-100 text-sm">
-                          ₹{totals.materialsCost.toLocaleString()}
+                          ₹{formatCurrency(totals.materialsCost)}
                         </span>
                       </div>
                       <div>
                         <span className="text-gray-500 dark:text-gray-400 block text-[11px]">Labour Subtotal</span>
                         <span className="font-bold text-gray-900 dark:text-gray-100 text-sm">
-                          ₹{totals.laborCost.toLocaleString()}
+                          ₹{formatCurrency(totals.laborCost)}
                         </span>
                       </div>
                       <div>
                         <span className="text-gray-500 dark:text-gray-400 block text-[11px]">GST / Tax (18%)</span>
                         <span className="font-bold text-gray-900 dark:text-gray-100 text-sm">
-                          ₹{totals.totalTax.toLocaleString()}
+                          ₹{formatCurrency(totals.totalTax)}
                         </span>
                       </div>
                       <div>
                         <span className="text-gray-500 dark:text-gray-400 block text-[11px]">Gross Total</span>
                         <span className="font-bold text-gray-900 dark:text-gray-100 text-sm">
-                          ₹{totals.grandTotal.toLocaleString()}
+                          ₹{formatCurrency(totals.grandTotal)}
                         </span>
                       </div>
                     </div>
@@ -1118,8 +1159,35 @@ export default function QuotationBuilderModal({
                       <div className="flex items-center gap-3">
                         <span className="text-xs font-bold text-gray-700 dark:text-gray-300">Net Payable:</span>
                         <span className="text-xl font-black text-blue-600 dark:text-blue-400">
-                          ₹{totals.netPayable.toLocaleString()}
+                          ₹{formatCurrency(totals.netPayable)}
                         </span>
+                      </div>
+                    </div>
+
+                    {/* Multi-Day Contracting Advance Policy Display */}
+                    <div className="bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div>
+                        <div className="text-xs font-bold text-indigo-900 dark:text-indigo-200 flex items-center gap-1.5">
+                          <ShieldCheck className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                          Commercial Milestone Terms (50% Advance)
+                        </div>
+                        <p className="text-[11px] text-indigo-700 dark:text-indigo-300">
+                          50% advance is required before work starts. Remaining 50% is billed upon verified completion.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-4 text-right">
+                        <div>
+                          <span className="text-[10px] uppercase font-bold text-indigo-500 block">50% Advance</span>
+                          <span className="text-sm font-extrabold text-indigo-800 dark:text-indigo-200">
+                            ₹{formatCurrency(totals.netPayable * 0.5)}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] uppercase font-bold text-gray-500 block">Final Balance</span>
+                          <span className="text-sm font-extrabold text-gray-700 dark:text-gray-300">
+                            ₹{formatCurrency(totals.netPayable - (totals.netPayable * 0.5))}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1138,14 +1206,14 @@ export default function QuotationBuilderModal({
                             </span>
                             <span className="font-medium text-gray-900 dark:text-gray-100">{item.name}</span>
                             <span className="text-gray-400 text-[11px] ml-2">
-                              ({item.quantity} {item.unit} @ ₹{item.unit_price})
+                              ({item.quantity} {item.unit} @ ₹{formatCurrency(item.unit_price)})
                             </span>
                           </div>
                           <span className="font-bold text-gray-900 dark:text-gray-100">
                             ₹
-                            {(
+                            {formatCurrency(
                               Math.max(0, (item.quantity || 1) * (item.unit_price || 0) - (item.discount_amount || 0))
-                            ).toLocaleString()}
+                            )}
                           </span>
                         </div>
                       ))}
@@ -1201,14 +1269,24 @@ export default function QuotationBuilderModal({
                 Close View
               </button>
             ) : (
-              <button
-                onClick={handleSendQuote}
-                disabled={sending || saving || items.length === 0}
-                className="inline-flex items-center gap-1.5 text-xs font-bold px-5 py-2 rounded-xl bg-green-600 text-white hover:bg-green-700 shadow-md shadow-green-600/20 disabled:opacity-50 cursor-pointer"
-              >
-                <Send className="w-4 h-4" />
-                {sending ? 'Sending to Customer...' : 'Send Quote to Customer'}
-              </button>
+              <>
+                <button
+                  onClick={handleSubmitToCRM}
+                  disabled={sending || saving || items.length === 0}
+                  className="inline-flex items-center gap-1.5 text-xs font-bold px-4 py-2 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 shadow-md shadow-indigo-600/20 disabled:opacity-50 cursor-pointer"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  {sending ? 'Submitting...' : 'Submit to CRM'}
+                </button>
+                <button
+                  onClick={handleSendQuote}
+                  disabled={sending || saving || items.length === 0}
+                  className="inline-flex items-center gap-1.5 text-xs font-bold px-5 py-2 rounded-xl bg-green-600 text-white hover:bg-green-700 shadow-md shadow-green-600/20 disabled:opacity-50 cursor-pointer"
+                >
+                  <Send className="w-4 h-4" />
+                  {sending ? 'Sending...' : 'Send Quote to Customer'}
+                </button>
+              </>
             )}
           </div>
         </div>

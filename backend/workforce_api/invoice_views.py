@@ -269,7 +269,7 @@ class QuotePendingApprovalView(APIView):
         company_id = request.query_params.get("company_id")
         if company_id:
             quotes = quotes.filter(company_id=company_id)
-        return Response([_serialize_quote(q) for q in quotes[:200]])
+        return Response([_serialize_quote(q, full=True) for q in quotes[:200]])
 
 
 class QuoteAdminReviewView(APIView):
@@ -580,7 +580,7 @@ class QuotePendingPreSendReviewView(APIView):
 
     def get(self, request):
         quotes = quotation_service.quotes_awaiting_pre_send_review()
-        return Response([_serialize_quote(q) for q in quotes[:200]])
+        return Response([_serialize_quote(q, full=True) for q in quotes[:200]])
 
 
 class QuotePreSendReleaseView(APIView):

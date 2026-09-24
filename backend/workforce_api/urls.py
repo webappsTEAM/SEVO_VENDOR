@@ -5,6 +5,7 @@ Route registrations for Workforce API (/api/workforce/*).
 from django.urls import include, path
 from . import quote_views
 from . import invoice_views
+from . import multiday_views
 from .views import (
     WorkforceDispatchRadarView,
     WorkforceDispatchHealthView,
@@ -515,6 +516,20 @@ urlpatterns = [
     path("public/checkout/", PublicGroceryCheckoutView.as_view(), name="workforce-public-checkout"),
     path("public/orders/<str:order_number>/", PublicGroceryOrderTrackingView.as_view(), name="workforce-public-order-tracking"),
     path("public/orders/<str:order_number>/review/", PublicGroceryOrderReviewView.as_view(), name="workforce-public-order-review"),
+
+    # ── Vendor Base Location & Dual-Radius Serviceability ─────────────────────
+    path("vendor/base-location/", multiday_views.WorkforceVendorBaseLocationView.as_view(), name="workforce-vendor-base-location"),
+    path("serviceability/check/", multiday_views.WorkforceServiceabilityCheckView.as_view(), name="workforce-serviceability-check"),
+
+    # ── Multi-Day Job Hold, Resume & Scope Reduction ─────────────────────────
+    path("jobs/<int:pk>/hold/", multiday_views.WorkforceJobHoldView.as_view(), name="workforce-job-hold"),
+    path("jobs/<int:pk>/resume/", multiday_views.WorkforceJobResumeView.as_view(), name="workforce-job-resume"),
+    path("jobs/<int:pk>/scope-reduction/", multiday_views.WorkforceJobScopeReductionView.as_view(), name="workforce-job-scope-reduction"),
+    path("scope-reduction/<int:pk>/review/", multiday_views.WorkforceAdminScopeReductionReviewView.as_view(), name="workforce-scope-reduction-review"),
+
+    # ── Mandatory CRM Quote Approval Gate ────────────────────────────────────
+    path("quotes/<int:pk>/submit-crm/", multiday_views.WorkforceQuoteSubmitCRMView.as_view(), name="workforce-quote-submit-crm"),
+    path("quotes/<int:pk>/crm-approve/", multiday_views.WorkforceQuoteCRMApproveView.as_view(), name="workforce-quote-crm-approve"),
 ]
 
 

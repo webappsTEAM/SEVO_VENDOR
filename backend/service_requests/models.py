@@ -1027,6 +1027,7 @@ class EstimationQuotation(models.Model):
     customer_rejected_at = models.DateTimeField(null=True, blank=True)
     rejection_reason = models.CharField(max_length=100, blank=True, default="")
     rejection_note = models.TextField(blank=True, default="")
+    admin_notes = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

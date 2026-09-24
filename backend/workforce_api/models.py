@@ -613,9 +613,13 @@ class PreServiceVerification(models.Model):
     def check_completion(self):
         # Work area photo and appliance photo are optional evidence.
         # Mandatory gates: arrival geofence check-in, customer OTP verification, and technician presence selfie.
+        if self.job and getattr(self.job, "otp_verified", False) and not self.otp_verified:
+            self.otp_verified = True
+            if getattr(self.job, "otp_verified_at", None) and not self.otp_verified_at:
+                self.otp_verified_at = self.job.otp_verified_at
         ready = bool(
             self.geofence_passed
-            and self.otp_verified
+            and (self.otp_verified or (self.job and getattr(self.job, "otp_verified", False)))
             and self.presence_photo
         )
         self.is_complete = ready
@@ -2368,6 +2372,7 @@ class WorkforceQuote(models.Model):
     advance_percent = models.DecimalField(
         max_digits=5, decimal_places=2, null=True, blank=True
     )
+    estimated_duration_days = models.PositiveIntegerField(default=1)
 
     status = models.CharField(
         max_length=30,
@@ -2594,6 +2599,7 @@ class WorkforcePaintingQuote(models.Model):
     waterproofing_needed = models.BooleanField(default=False)
     scaffolding_required = models.BooleanField(default=False)
     color_code = models.CharField(max_length=100, null=True, blank=True)
+    estimated_duration_days = models.PositiveIntegerField(default=1)
     notes = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -3057,6 +3063,10 @@ class WorkforceServicePricingPolicy(models.Model):
     beyond_radius_amount = models.DecimalField(
         max_digits=10, decimal_places=2, default=300.00,
         help_text="DISTANCE_BAND: charged when the site is beyond free_radius_km.",
+    )
+    max_service_radius_km = models.DecimalField(
+        max_digits=6, decimal_places=2, default=50.00,
+        help_text="Beyond this radius from the base/hub, service is rejected as non-serviceable.",
     )
     # Hosur central hub by default.
     hub_latitude = models.FloatField(default=12.7409)
@@ -3752,3 +3762,141 @@ class VendorStoreReview(models.Model):
 
     def __str__(self):
         return f"{self.rating}★ Review for {self.vendor_store.store_name} by {self.customer_name}"
+
+
+class WorkforceVendorBaseLocation(models.Model):
+    """
+    Authoritative registered operational base location for Vendor / Service Provider.
+    Anchors all dual-radius serviceability and dynamic distance fee calculations.
+    """
+    company = models.ForeignKey(
+        "companies.Company",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="base_locations",
+    )
+    employee = models.ForeignKey(
+        "employees.Employee",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="base_locations",
+    )
+    address = models.TextField(blank=True, default="")
+    area = models.CharField(max_length=150, blank=True, default="")
+    city = models.CharField(max_length=100, default="Hosur")
+    pincode = models.CharField(max_length=20, blank=True, default="")
+    base_latitude = models.FloatField(default=12.7409)
+    base_longitude = models.FloatField(default=77.8253)
+    max_service_radius_km = models.DecimalField(max_digits=6, decimal_places=2, default=50.00)
+    is_active = models.BooleanField(default=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "workforce_vendor_base_location"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        target = self.company.company_name if self.company else str(self.employee)
+        return f"BaseLocation for {target}: ({self.base_latitude}, {self.base_longitude}) - Max {self.max_service_radius_km}km"
+
+
+class WorkforceJobHold(models.Model):
+    """
+    Tracks multi-day job hold/pause events (e.g. rain/weather, emergency, client unavailability).
+    Frees technician availability while job is on hold; automatically extends completion deadline upon resumption.
+    """
+    class Status(models.TextChoices):
+        ACTIVE = "ACTIVE", "Active Hold"
+        RESUMED = "RESUMED", "Resumed"
+        CANCELLED = "CANCELLED", "Cancelled"
+
+    job = models.ForeignKey(
+        "service_requests.ServiceRequest",
+        on_delete=models.CASCADE,
+        related_name="job_holds",
+    )
+    employee = models.ForeignKey(
+        "employees.Employee",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="job_holds",
+    )
+    held_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_job_holds",
+    )
+    reason = models.CharField(max_length=100, default="WEATHER_DELAY")
+    notes = models.TextField(blank=True, default="")
+    hold_start = models.DateTimeField(auto_now_add=True)
+    hold_end = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "workforce_job_hold"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Hold #{self.id} for Job #{self.job_id} ({self.reason}) [{self.status}]"
+
+
+class WorkforceScopeReduction(models.Model):
+    """
+    Tracks formal mid-job scope reductions requiring CRM/Admin approval.
+    When approved, automatically recalculates remaining balance due while keeping historical advance records intact.
+    """
+    class Status(models.TextChoices):
+        REQUESTED = "REQUESTED", "Requested"
+        APPROVED = "APPROVED", "Approved"
+        REJECTED = "REJECTED", "Rejected"
+
+    job = models.ForeignKey(
+        "service_requests.ServiceRequest",
+        on_delete=models.CASCADE,
+        related_name="scope_reductions",
+    )
+    quote = models.ForeignKey(
+        WorkforceQuote,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="scope_reductions",
+    )
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="requested_scope_reductions",
+    )
+    original_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    reduction_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    revised_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    reason = models.TextField()
+    crm_status = models.CharField(max_length=20, choices=Status.choices, default=Status.REQUESTED, db_index=True)
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="approved_scope_reductions",
+    )
+    approved_at = models.DateTimeField(null=True, blank=True)
+    rejection_reason = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "workforce_scope_reduction"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Scope Reduction #{self.id} on Job #{self.job_id} (-₹{self.reduction_amount}) [{self.crm_status}]"

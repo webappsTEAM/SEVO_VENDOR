@@ -36,7 +36,7 @@ from workforce_api.models import (
     WorkforceQuoteItem,
     WorkforceQuoteMeasurement,
 )
-from workforce_api.permissions import IsApprovedTechnician
+from workforce_api.permissions import IsApprovedTechnician, IsWorkforceEmployee
 from workforce_api.services import pricing_policy, quotation_service
 
 logger = logging.getLogger(__name__)
@@ -147,6 +147,9 @@ def _serialize(q, full=False):
         "inspection_fee": _money(q.inspection_fee),
         "inspection_fee_adjusted": _money(q.inspection_fee_adjusted),
         "net_payable": _money(q.net_payable),
+        "advance_percent": float(q.advance_percent) if q.advance_percent is not None else 50.0,
+        "advance_amount": round(_money(q.net_payable) * ((float(q.advance_percent) if q.advance_percent is not None else 50.0) / 100.0), 2),
+        "balance_amount": round(_money(q.net_payable) - round(_money(q.net_payable) * ((float(q.advance_percent) if q.advance_percent is not None else 50.0) / 100.0), 2), 2),
         "structural_impact": q.structural_impact,
         "requires_structural_clearance": q.requires_structural_clearance,
         "is_structurally_cleared": q.is_structurally_cleared,
@@ -228,7 +231,7 @@ def _dec(value, field, default=None):
 # list / create
 # --------------------------------------------------------------------------- #
 class QuoteListCreateView(APIView):
-    permission_classes = [IsApprovedTechnician]
+    permission_classes = [IsWorkforceEmployee]
 
     def get(self, request):
         qs = _visible_quotes(request)

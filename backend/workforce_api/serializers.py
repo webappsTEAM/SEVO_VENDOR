@@ -514,6 +514,13 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
     active_quote_number = serializers.SerializerMethodField()
     active_quote_status = serializers.SerializerMethodField()
     active_quote_version = serializers.SerializerMethodField()
+    active_quote_total_amount = serializers.SerializerMethodField()
+    active_quote_net_payable = serializers.SerializerMethodField()
+    active_quote_advance_amount = serializers.SerializerMethodField()
+    active_quote_balance_amount = serializers.SerializerMethodField()
+    active_quote_customer_notes = serializers.SerializerMethodField()
+    active_quote_customer_decline_reason = serializers.SerializerMethodField()
+    active_quote_admin_rejection_reason = serializers.SerializerMethodField()
     # GT: the logistics half of a job. Without these the driver app can see
     # where to collect from but not where to deliver to, and has no idea
     # which leg of the trip it is on -- the leg/stop endpoints existed but
@@ -524,6 +531,7 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
     can_accept = serializers.SerializerMethodField()
     scheduled_window_open = serializers.SerializerMethodField()
     scheduled_hold_reason = serializers.SerializerMethodField()
+    clock_in_time = serializers.SerializerMethodField()
 
     class Meta:
         model = ServiceRequest
@@ -558,6 +566,8 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
             "otp_verified",
+            "otp_verified_at",
+            "clock_in_time",
             # Authoritative fields
             "job_status",
             "offer_status",
@@ -581,6 +591,13 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
             "active_quote_number",
             "active_quote_status",
             "active_quote_version",
+            "active_quote_total_amount",
+            "active_quote_net_payable",
+            "active_quote_advance_amount",
+            "active_quote_balance_amount",
+            "active_quote_customer_notes",
+            "active_quote_customer_decline_reason",
+            "active_quote_admin_rejection_reason",
             # Goods & Transport
             "is_logistics",
             "drop_address",
@@ -596,6 +613,19 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
             "scheduled_window_open",
             "scheduled_hold_reason",
         ]
+
+    def get_clock_in_time(self, obj):
+        emp = self._get_context_emp() or obj.assigned_employee
+        if emp:
+            from time_tracking.models import TimeLog
+            open_log = TimeLog.objects.filter(employee=emp, clock_out__isnull=True).order_by("-id").first()
+            if open_log and open_log.clock_in:
+                return open_log.clock_in.isoformat()
+        if getattr(obj, "started_at", None):
+            return obj.started_at.isoformat()
+        if obj.otp_verified_at:
+            return obj.otp_verified_at.isoformat()
+        return None
 
     def get_is_logistics(self, obj):
         from workforce_api.services.automatic_dispatch import LOGISTICS_SERVICE_CATEGORIES
@@ -1076,6 +1106,48 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
     def get_active_quote_version(self, obj):
         q = self._get_active_quote(obj)
         return q.quote_version if q else None
+
+    def get_active_quote_total_amount(self, obj):
+        q = self._get_active_quote(obj)
+        return float(q.total_amount) if (q and q.total_amount is not None) else None
+
+    def get_active_quote_net_payable(self, obj):
+        q = self._get_active_quote(obj)
+        return float(q.net_payable) if (q and q.net_payable is not None) else None
+
+    def get_active_quote_advance_amount(self, obj):
+        q = self._get_active_quote(obj)
+        if not q or q.net_payable is None:
+            return None
+        adv_pct = float(q.advance_percent) if q.advance_percent is not None else 50.0
+        return round(float(q.net_payable) * (adv_pct / 100.0), 2)
+
+    def get_active_quote_balance_amount(self, obj):
+        try:
+            from workforce_api.models import WorkforceInvoice
+            inv = WorkforceInvoice.objects.filter(job=obj).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
+            if inv:
+                return round(float(inv.balance_due), 2)
+        except Exception:
+            pass
+
+        q = self._get_active_quote(obj)
+        if not q or q.net_payable is None:
+            return None
+        adv = self.get_active_quote_advance_amount(obj)
+        return round(float(q.net_payable) - (adv or 0.0), 2)
+
+    def get_active_quote_customer_notes(self, obj):
+        q = self._get_active_quote(obj)
+        return getattr(q, "customer_notes", "") if q else ""
+
+    def get_active_quote_customer_decline_reason(self, obj):
+        q = self._get_active_quote(obj)
+        return getattr(q, "customer_decline_reason", "") if q else ""
+
+    def get_active_quote_admin_rejection_reason(self, obj):
+        q = self._get_active_quote(obj)
+        return (getattr(q, "admin_rejection_reason", "") or getattr(q, "admin_clearance_notes", "")) if q else ""
 
     def get_can_create_quote(self, obj):
         if not self._is_estimation_job(obj):

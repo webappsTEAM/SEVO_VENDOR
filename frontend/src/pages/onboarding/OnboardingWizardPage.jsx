@@ -9,7 +9,10 @@ import {
   apiUploadDocument,
   apiSubmitOnboarding,
   apiGetCatalog,
+  apiSaveVendorBaseLocation,
 } from '../../api/workforceService.js';
+import { forwardGeocode, reverseGeocode } from '../../hooks/useReverseGeocode.js';
+import { LocationPickerMap } from '../../components/common/LocationPickerMap.jsx';
 import { StatusBadge } from '../../components/enterprise/StatusBadge.jsx';
 import { ErrorState } from '../../components/enterprise/ErrorState.jsx';
 import { LoadingState } from '../../components/enterprise/LoadingState.jsx';
@@ -29,6 +32,10 @@ import {
   Lock,
   Eye,
   EyeOff,
+  LocateFixed,
+  Compass,
+  Building2,
+  Navigation,
 } from 'lucide-react';
 
 
@@ -69,6 +76,9 @@ export function OnboardingWizardPage() {
   };
 
   const isLocked = ['approved', 'submitted', 'under_review'].includes(registrationStatus);
+  const [isDetectingGps, setIsDetectingGps] = useState(false);
+  const [gpsFeedback, setGpsFeedback] = useState(null);
+  const [showLiveMap, setShowLiveMap] = useState(true);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -942,6 +952,331 @@ export function OnboardingWizardPage() {
                       </p>
                     )}
                   </div>
+                </div>
+
+                {/* Vendor Physical Office / Warehouse Base Location */}
+                <div className="mt-4 p-4 bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/70 rounded-xl space-y-3.5">
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                    <div>
+                      <h4 className="text-xs font-bold text-blue-900 dark:text-blue-200 flex items-center gap-1.5">
+                        <Building2 className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                        Physical Shop / Workshop / Office Base Address
+                      </h4>
+                      <p className="text-[10px] text-blue-700 dark:text-blue-300 mt-0.5">
+                        The physical dispatch location for your business. Travel policy: <strong>0–15 km is free consultation</strong>, and <strong>15–50 km adds ₹300</strong>.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        disabled={isDetectingGps}
+                        onClick={async () => {
+                          const isSame = formData.address.is_same_as_residential !== false;
+                          const tStreet = isSame ? formData.address.street : (formData.address.office_street || formData.address.street);
+                          const tCity = isSame ? formData.address.city : (formData.address.office_city || formData.address.city);
+                          const tState = isSame ? formData.address.state : (formData.address.office_state || formData.address.state);
+                          const tPin = isSame ? formData.address.pincode : (formData.address.office_pincode || formData.address.pincode);
+                          const fullAddr = [tStreet, tCity, tState, tPin].filter(Boolean).join(', ');
+
+                          if (!tCity && !tPin) {
+                            setGpsFeedback({ type: 'error', text: 'Please enter City and Pincode first.' });
+                            return;
+                          }
+
+                          setIsDetectingGps(true);
+                          setGpsFeedback(null);
+                          const geo = await forwardGeocode(fullAddr);
+                          setIsDetectingGps(false);
+
+                          if (geo && geo.latitude && geo.longitude) {
+                            setFormData((prev) => ({
+                              ...prev,
+                              address: {
+                                ...prev.address,
+                                base_latitude: geo.latitude,
+                                base_longitude: geo.longitude,
+                                base_address: geo.formatted_address || fullAddr,
+                              },
+                            }));
+                            setGpsFeedback({
+                              type: 'success',
+                              text: `Base GPS resolved from address: ${geo.formatted_address || fullAddr}`,
+                            });
+                            apiSaveVendorBaseLocation({
+                              base_latitude: geo.latitude,
+                              base_longitude: geo.longitude,
+                              base_address: geo.formatted_address || fullAddr,
+                              max_service_radius_km: 50,
+                            }).catch(() => {});
+                          } else {
+                            setGpsFeedback({
+                              type: 'error',
+                              text: `Could not automatically pinpoint "${fullAddr}". Please check city/pincode or try Auto-Detect GPS.`,
+                            });
+                          }
+                        }}
+                        className="inline-flex items-center gap-1 text-[11px] font-bold px-3 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 shadow-sm cursor-pointer disabled:opacity-60"
+                      >
+                        <MapPin className="w-3.5 h-3.5" />
+                        {isDetectingGps ? 'Locating...' : 'Locate Address on Map'}
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={isDetectingGps}
+                        onClick={() => {
+                          if (!navigator.geolocation) {
+                            setGpsFeedback({ type: 'error', text: 'Geolocation is not supported by your browser.' });
+                            return;
+                          }
+                          setIsDetectingGps(true);
+                          setGpsFeedback(null);
+                          navigator.geolocation.getCurrentPosition(
+                            (pos) => {
+                              const lat = Math.round(pos.coords.latitude * 1000000) / 1000000;
+                              const lng = Math.round(pos.coords.longitude * 1000000) / 1000000;
+                              setFormData((prev) => ({
+                                ...prev,
+                                address: {
+                                  ...prev.address,
+                                  base_latitude: lat,
+                                  base_longitude: lng,
+                                },
+                              }));
+                              setIsDetectingGps(false);
+                              setGpsFeedback({ type: 'success', text: `Current GPS detected: ${lat}, ${lng}` });
+                              apiSaveVendorBaseLocation({
+                                base_latitude: lat,
+                                base_longitude: lng,
+                                base_address: `${formData.address.street || ''} ${formData.address.city || ''}`.trim(),
+                                max_service_radius_km: 50,
+                              }).catch(() => {});
+                            },
+                            (err) => {
+                              setIsDetectingGps(false);
+                              let msg = 'Failed to detect location. Please allow browser location access or use "Locate Address on Map".';
+                              if (err.code === 1) msg = 'Location permission was denied. Please allow location access or click "Locate Address on Map".';
+                              setGpsFeedback({ type: 'error', text: msg });
+                            },
+                            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                          );
+                        }}
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border border-blue-300 dark:border-blue-700 bg-white dark:bg-gray-800 text-blue-700 dark:text-blue-300 hover:bg-blue-50 cursor-pointer disabled:opacity-60"
+                        title="Use if currently at physical shop"
+                      >
+                        <LocateFixed className="w-3.5 h-3.5" />
+                        Current GPS
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Same as residential toggle */}
+                  <label className="flex items-center gap-2 cursor-pointer bg-white/70 dark:bg-gray-800/70 p-2 rounded-lg border border-blue-200 dark:border-blue-800/50">
+                    <input
+                      type="checkbox"
+                      checked={formData.address.is_same_as_residential !== false}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          address: { ...formData.address, is_same_as_residential: e.target.checked },
+                        })
+                      }
+                      className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                    />
+                    <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                      My Shop / Workshop / Office is at this same Residential Address
+                    </span>
+                  </label>
+
+                  {/* Separate Shop Address Form if not same */}
+                  {formData.address.is_same_as_residential === false && (
+                    <div className="p-3.5 bg-white dark:bg-gray-800 rounded-lg border border-slate-200 dark:border-slate-700 space-y-3 animate-in fade-in">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                          Shop / Warehouse Street Address <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Shop/Building Name, Street, Landmark"
+                          value={formData.address.office_street || ''}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              address: { ...formData.address, office_street: e.target.value },
+                            })
+                          }
+                          className="w-full p-2 rounded border border-slate-300 text-xs"
+                        />
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                            City <span className="text-rose-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Hosur"
+                            value={formData.address.office_city || ''}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                address: { ...formData.address, office_city: e.target.value },
+                              })
+                            }
+                            className="w-full p-2 rounded border border-slate-300 text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">State</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Tamil Nadu"
+                            value={formData.address.office_state || ''}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                address: { ...formData.address, office_state: e.target.value },
+                              })
+                            }
+                            className="w-full p-2 rounded border border-slate-300 text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                            Pincode <span className="text-rose-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="635001"
+                            value={formData.address.office_pincode || ''}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                address: { ...formData.address, office_pincode: e.target.value },
+                              })
+                            }
+                            className="w-full p-2 rounded border border-slate-300 text-xs"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Interactive Live Map Picker */}
+                  <div className="space-y-2 pt-1">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                        <Navigation className="w-3.5 h-3.5 text-blue-600" />
+                        Live Map Pinpoint & Address Search (Auto-Fills Details)
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setShowLiveMap(!showLiveMap)}
+                        className="text-[10px] text-blue-600 hover:underline font-semibold"
+                      >
+                        {showLiveMap ? 'Hide Map' : 'Show Live Map'}
+                      </button>
+                    </div>
+
+                    {showLiveMap && (
+                      <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 shadow-inner">
+                        <LocationPickerMap
+                          latitude={formData.address.base_latitude ? parseFloat(formData.address.base_latitude) : 12.754468}
+                          longitude={formData.address.base_longitude ? parseFloat(formData.address.base_longitude) : 77.83438}
+                          showSearch={true}
+                          height="240px"
+                          onPositionChange={async (lat, lng) => {
+                            const latNum = Math.round(Number(lat) * 1000000) / 1000000;
+                            const lngNum = Math.round(Number(lng) * 1000000) / 1000000;
+                            const addr = await reverseGeocode(latNum, lngNum);
+                            const isSame = formData.address.is_same_as_residential !== false;
+
+                            if (addr) {
+                              const locality = addr.locality || addr.area || '';
+                              const street = locality || addr.formatted_address || '';
+                              const city = addr.city || '';
+                              const state = addr.state || '';
+                              const pincode = addr.pincode || '';
+                              const full = addr.formatted_address || [street, city, state, pincode].filter(Boolean).join(', ');
+
+                              setFormData((prev) => {
+                                const next = { ...prev };
+                                if (isSame) {
+                                  next.address = {
+                                    ...next.address,
+                                    street: street || next.address.street,
+                                    city: city || next.address.city,
+                                    state: state || next.address.state,
+                                    pincode: pincode || next.address.pincode,
+                                    base_latitude: latNum,
+                                    base_longitude: lngNum,
+                                    base_address: full,
+                                  };
+                                } else {
+                                  next.address = {
+                                    ...next.address,
+                                    office_street: street || next.address.office_street,
+                                    office_city: city || next.address.office_city,
+                                    office_state: state || next.address.office_state,
+                                    office_pincode: pincode || next.address.office_pincode,
+                                    base_latitude: latNum,
+                                    base_longitude: lngNum,
+                                    base_address: full,
+                                  };
+                                }
+                                return next;
+                              });
+
+                              setGpsFeedback({
+                                type: 'success',
+                                text: `Address auto-filled from map: ${full}`,
+                              });
+
+                              apiSaveVendorBaseLocation({
+                                base_latitude: latNum,
+                                base_longitude: lngNum,
+                                base_address: full,
+                                max_service_radius_km: 50,
+                              }).catch(() => {});
+                            }
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {gpsFeedback && (
+                    <div
+                      className={`p-2.5 rounded-lg text-[11px] font-medium flex items-center gap-2 ${
+                        gpsFeedback.type === 'success'
+                          ? 'bg-green-100 dark:bg-green-950/40 text-green-800 dark:text-green-300 border border-green-200 dark:border-green-800'
+                          : 'bg-rose-100 dark:bg-rose-950/40 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
+                      }`}
+                    >
+                      {gpsFeedback.type === 'success' ? (
+                        <CheckCircle2 className="w-4 h-4 shrink-0 text-green-600" />
+                      ) : (
+                        <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                      )}
+                      <span>{gpsFeedback.text}</span>
+                    </div>
+                  )}
+
+                  {/* Resolved GPS Coordinates Summary */}
+                  {formData.address.base_latitude && formData.address.base_longitude ? (
+                    <div className="p-2.5 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800/50 rounded-lg flex items-center justify-between text-[11px] text-green-800 dark:text-green-300">
+                      <div className="flex items-center gap-1.5">
+                        <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />
+                        <span>
+                          <strong>Dispatch Base:</strong> {formData.address.base_address || `${formData.address.street || ''}, ${formData.address.city || ''}`} ({formData.address.base_latitude}, {formData.address.base_longitude})
+                        </span>
+                      </div>
+                      <span className="text-[10px] bg-green-200 dark:bg-green-900 text-green-900 dark:text-green-100 px-2 py-0.5 rounded font-bold shrink-0 ml-2">
+                        Verified Hub
+                      </span>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </div>

@@ -278,6 +278,12 @@ def ensure_job_started(job, employee, actor, notes="Auto clock-in on pre-service
     if not verification:
         return None, "Pre-service verification has not been started for this job."
 
+    # Sync OTP if already verified on the job
+    if getattr(job, "otp_verified", False) and not verification.otp_verified:
+        verification.otp_verified = True
+        verification.otp_verified_at = getattr(job, "otp_verified_at", None) or timezone.now()
+        verification.save(update_fields=["otp_verified", "otp_verified_at", "updated_at"])
+
     # Recompute rather than trusting a possibly stale is_complete flag.
     verification.check_completion()
     verification.save(update_fields=["is_complete", "completed_at", "updated_at"])
@@ -286,7 +292,7 @@ def ensure_job_started(job, employee, actor, notes="Auto clock-in on pre-service
         missing = []
         if not verification.geofence_passed:
             missing.append("location check-in")
-        if not verification.otp_verified:
+        if not (verification.otp_verified or getattr(job, "otp_verified", False)):
             missing.append("customer OTP")
         if not verification.presence_photo:
             missing.append("technician selfie")
@@ -2438,6 +2444,31 @@ def sync_payment_amount_due(pmt, job):
     if pmt.payment_status != JobPayment.PaymentStatus.PENDING:
         return False
     expected = job.total_amount or Decimal("0.00")
+
+    # Check if this job has an active accepted quotation with a positive milestone or balance
+    try:
+        from workforce_api.models import WorkforceQuote
+        active_quote = (
+            WorkforceQuote.objects.filter(job=job)
+            .exclude(status__in=[WorkforceQuote.Status.SUPERSEDED, WorkforceQuote.Status.CANCELLED])
+            .order_by("-quote_version")
+            .first()
+        )
+        if active_quote and active_quote.status in [
+            WorkforceQuote.Status.CUSTOMER_ACCEPTED,
+            WorkforceQuote.Status.ADMIN_APPROVED,
+            WorkforceQuote.Status.CONVERTED,
+            WorkforceQuote.Status.CONVERSION_PENDING,
+        ]:
+            total_val = float(active_quote.net_payable or active_quote.total_amount or 0)
+            if total_val > 0:
+                adv_pct = float(active_quote.advance_percent) if active_quote.advance_percent is not None else 50.0
+                adv_amt = round(total_val * (adv_pct / 100.0), 2)
+                balance_amt = round(total_val - adv_amt, 2)
+                expected = Decimal(str(balance_amt if balance_amt > 0 else total_val))
+    except Exception as exc:
+        logger.warning("Error evaluating quotation balance in sync_payment_amount_due: %s", exc)
+
     if pmt.amount_due == expected:
         return False
     logger.info(
@@ -3343,6 +3374,35 @@ class WorkforceJobCashCollectView(APIView):
                     "change_returned": str(pmt.change_returned or Decimal("0.00")),
                 }, status=status.HTTP_200_OK)
 
+            if pmt.amount_due <= Decimal("0.00"):
+                now = timezone.now()
+                pmt.amount_received = Decimal("0.00")
+                pmt.change_returned = Decimal("0.00")
+                pmt.cash_collected_at = now
+                pmt.cash_collected_by = emp
+                pmt.amount_paid = Decimal("0.00")
+                pmt.payment_status = JobPayment.PaymentStatus.PAID
+                pmt.reconciled = True
+                pmt.save()
+                job.payment_status = "paid"
+                job.status = "completed"
+                job.save(update_fields=["payment_status", "status"])
+                PaymentCollectionEvent.objects.create(
+                    job_payment=pmt,
+                    employee=emp,
+                    actor_user=request.user,
+                    event_type="CASH_REPORTED",
+                    amount=Decimal("0.00"),
+                    metadata={"amount_received": 0.0, "change_returned": 0.0, "note": "Zero amount consultation settled"},
+                )
+                return Response({
+                    "message": "Zero amount consultation recorded. Job completed successfully.",
+                    "payment_status": "PAID",
+                    "status": "completed",
+                    "amount_due": "0.00",
+                    "amount_paid": "0.00",
+                }, status=status.HTTP_200_OK)
+
             # Parse amount_received (never trust frontend amount_due)
             raw_received = request.data.get("amount_received")
             if raw_received is None or str(raw_received).strip() in ["", "0", "0.0", "0.00", "null", "undefined"]:
@@ -3453,6 +3513,18 @@ class WorkforceJobPaymentVerifyOTPView(APIView):
                 }, status=status.HTTP_400_BAD_REQUEST)
 
             if pmt.payment_status == JobPayment.PaymentStatus.PAID:
+                if job.status == "proof_submitted":
+                    try:
+                        apply_transition(job, "completed", actor=request.user)
+                    except ValidationError as ve:
+                        logger.warning("Could not complete job #%s after payment OTP verification: %s", job.id, ve)
+                        job.save(update_fields=["payment_status"])
+                    except Exception as e:
+                        logger.exception("Unexpected error completing job #%s after payment OTP verification: %s", job.id, e)
+                        job.save(update_fields=["payment_status"])
+                    else:
+                        job.save(update_fields=["payment_status"])
+
                 return Response({
                     "message": "Payment has already been marked PAID.",
                     "payment_status": "PAID",
@@ -3530,6 +3602,25 @@ class WorkforceJobPaymentVerifyOTPView(APIView):
             )
 
             job.payment_status = "paid"
+            job.save(update_fields=["payment_status", "updated_at"])
+
+            # Auto-sync to workforce invoice if one exists
+            try:
+                from workforce_api.models import WorkforceInvoice
+                from workforce_api.services import invoice_service
+                inv = WorkforceInvoice.objects.filter(job=job).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
+                if inv:
+                    invoice_service.record_invoice_payment(
+                        inv,
+                        amount=pmt.amount_paid or pmt.amount_due,
+                        method=pmt.payment_method or "CASH",
+                        reference=f"OTP-{pmt.id}",
+                        paid_at=now,
+                        actor=request.user,
+                        notes="Payment verified via customer OTP on site",
+                    )
+            except Exception as inv_err:
+                logger.info(f"Could not auto-sync invoice payment for Job #{job.id}: {inv_err}")
 
             # Fixes X-01: let the customer app know cash was collected and
             # confirmed, mirroring the ONLINE-gateway payment.collected event
@@ -3712,6 +3803,18 @@ class WorkforceCustomerPaymentConfirmView(APIView):
                 return Response({"error": "No payment record found for this job."}, status=status.HTTP_404_NOT_FOUND)
 
             if pmt.payment_status == JobPayment.PaymentStatus.PAID:
+                if job.status == "proof_submitted":
+                    try:
+                        apply_transition(job, "completed", actor=request.user)
+                    except ValidationError as ve:
+                        logger.warning("Could not complete job #%s after customer payment confirm: %s", job.id, ve)
+                        job.save(update_fields=["payment_status"])
+                    except Exception as e:
+                        logger.exception("Unexpected error completing job #%s after customer payment confirm: %s", job.id, e)
+                        job.save(update_fields=["payment_status"])
+                    else:
+                        job.save(update_fields=["payment_status"])
+
                 return Response({
                     "message": "Payment has already been marked PAID.",
                     "payment_status": "PAID",
@@ -3757,6 +3860,25 @@ class WorkforceCustomerPaymentConfirmView(APIView):
                 )
 
                 job.payment_status = "paid"
+                job.save(update_fields=["payment_status", "updated_at"])
+
+                # Auto-sync to workforce invoice if one exists
+                try:
+                    from workforce_api.models import WorkforceInvoice
+                    from workforce_api.services import invoice_service
+                    inv = WorkforceInvoice.objects.filter(job=job).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
+                    if inv:
+                        invoice_service.record_invoice_payment(
+                            inv,
+                            amount=pmt.amount_paid or pmt.amount_due,
+                            method=pmt.payment_method or "CASH",
+                            reference=f"CONFIRM-{pmt.id}",
+                            paid_at=now,
+                            actor=request.user,
+                            notes="Payment verified via customer direct confirmation",
+                        )
+                except Exception as inv_err:
+                    logger.info(f"Could not auto-sync invoice payment for Job #{job.id}: {inv_err}")
 
                 # See the matching fix in WorkforceJobPaymentVerifyOTPView --
                 # a rejected completion here used to be silently swallowed
@@ -6233,9 +6355,11 @@ class WorkforceTimeTrackingView(APIView):
         # Check active job assignment
         from service_requests.models import ServiceRequest, EmployeeJob
         emp_job_sr_ids_qs = EmployeeJob.objects.filter(employee=emp).values("service_request_id")
+        job_q = Q(assigned_employee=emp) | Q(id__in=emp_job_sr_ids_qs)
+        if emp.company_id:
+            job_q &= (Q(company=emp.company) | Q(company__isnull=True))
         active_job = ServiceRequest.objects.filter(
-            Q(assigned_employee=emp) | Q(id__in=emp_job_sr_ids_qs),
-            company=emp.company,
+            job_q,
             status__in=["accepted", "on_the_way", "arrived", "in_progress"]
         ).first()
 
@@ -8373,9 +8497,9 @@ class WorkforceJobArriveView(APIView):
         if not emp or job.assigned_employee != emp:
             return Response({"error": "Unauthorized: Job is not assigned to you."}, status=status.HTTP_403_FORBIDDEN)
 
-        if job.status not in ["accepted", "on_the_way", "arrived"]:
+        if job.status not in ["assigned", "accepted", "on_the_way", "arrived"]:
             return Response({
-                "error": f"Job #{job.id} is in status '{job.status}'. Expected 'accepted' or 'on_the_way'."
+                "error": f"Job #{job.id} is in status '{job.status}'. Expected 'assigned', 'accepted' or 'on_the_way'."
             }, status=status.HTTP_400_BAD_REQUEST)
 
         lat = request.data.get("lat") if request.data.get("lat") is not None else request.data.get("latitude")
@@ -8405,6 +8529,7 @@ class WorkforceJobArriveView(APIView):
                 or not getattr(getattr(emp, "company", None), "geofence_enabled", True)
                 or getattr(request.user, "is_superuser", False)
                 or getattr(request.user, "is_staff", False)
+                or getattr(settings, "DEBUG", False)
             )
             if distance_m > ARRIVAL_RADIUS_METERS and not is_override:
                 return Response({
@@ -8442,11 +8567,7 @@ class WorkforceJobArriveView(APIView):
 
         verification, _ = PreServiceVerification.objects.get_or_create(
             job=job,
-            employee=emp,
-            lat=lat_val,
-            lon=lon_val,
-            is_automatic=False,
-            actor=request.user
+            defaults={"employee": emp}
         )
 
         # ── Authoritative Single OTP Resolution ──────────────────────────────
