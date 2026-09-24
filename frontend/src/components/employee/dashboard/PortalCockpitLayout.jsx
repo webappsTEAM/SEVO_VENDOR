@@ -814,9 +814,10 @@ export function PortalCockpitLayout({
                 )}
 
                 {/* ── COMMERCIAL ESTIMATION & QUOTATION WORKFLOW CARD ──
-                    Hide during active execution phases (IN_PROGRESS, PROOF_SUBMITTED, COMPLETED)
-                    so the quotation card doesn't compete with the completion button. */}
-                {isActiveAssignment && isEstimationJob && !isInProgress && !isProofSubmitted && !isCompleted && (
+                    Show for estimation jobs in all pre-completion phases, INCLUDING IN_PROGRESS,
+                    because the technician needs to draft the quotation after arrival selfie.
+                    Hide only when proof has been submitted or job is completed. */}
+                {isActiveAssignment && isEstimationJob && !isProofSubmitted && !isCompleted && (
                   <div className="p-4 bg-indigo-50/70 border border-indigo-200 rounded-xl space-y-3 shadow-xs">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div className="flex items-start gap-2.5">
@@ -936,6 +937,32 @@ export function PortalCockpitLayout({
                     <span>Service Proof Submitted • Under Review</span>
                   </div>
                 )
+              ) : isInProgress && isEstimationJob && activeQuoteStatus !== 'CUSTOMER_ACCEPTED' && activeQuoteStatus !== 'CONVERTED' ? (
+                // Estimation job in IN_PROGRESS without an accepted quote:
+                // show Quotation Builder — technician must draft & send quote before service execution
+                <button
+                  type="button"
+                  onClick={() => onOpenQuotationModal && onOpenQuotationModal(activeJob)}
+                  disabled={actionLoading || (!isAllPrerequisitesDone && !activeJob?.can_create_quote && !activeQuoteNumber)}
+                  className={`w-full py-3.5 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 ${
+                    isAllPrerequisitesDone || activeJob?.can_create_quote || activeQuoteNumber
+                      ? activeQuoteStatus === 'CHANGES_REQUESTED'
+                        ? 'bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white shadow-md cursor-pointer'
+                        : 'bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white shadow-md cursor-pointer'
+                      : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                  }`}
+                >
+                  <Calculator className="w-3.5 h-3.5 fill-current" />
+                  <span>
+                    {activeQuoteStatus === 'CHANGES_REQUESTED'
+                      ? `Draft Revised Quote (v${activeQuoteVersion})`
+                      : activeQuoteStatus === 'SENT_TO_CUSTOMER'
+                      ? `View Sent Quotation (v${activeQuoteVersion})`
+                      : activeQuoteNumber
+                      ? `Open Quotation Builder (v${activeQuoteVersion})`
+                      : 'Draft Quotation'}
+                  </span>
+                </button>
               ) : isInProgress ? (
                 <button
                   type="button"

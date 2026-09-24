@@ -1100,10 +1100,11 @@ export async function apiGetEstimationGate(jobId) {
   return await apiRequest(`/workforce/jobs/${jobId}/estimation-gate/`);
 }
 
-export async function apiGetRateCards(category = '', service = '') {
+export async function apiGetRateCards(category = '', service = '', jobId = null) {
   const params = new URLSearchParams();
   if (category) params.append('category', category);
   if (service) params.append('service', service);
+  if (jobId) params.append('job_id', String(jobId));
   const qStr = params.toString() ? `?${params.toString()}` : '';
   return await apiRequest(`/workforce/rate-cards/${qStr}`);
 }

@@ -397,6 +397,6 @@ SEVO_DISPUTE_HOLD_HOURS = os.getenv("SEVO_DISPUTE_HOLD_HOURS", "48")
 # ─── Authoritative Dispatch & GPS Freshness Configuration ───────────────────
 # Canonical GPS freshness requirement in seconds for dispatch candidate eligibility.
 # Technicians whose last GPS fix is older than this will not be considered fresh for dispatch.
-DISPATCH_MAX_GPS_AGE_SECONDS = int(os.getenv("DISPATCH_MAX_GPS_AGE_SECONDS", "300"))
+DISPATCH_MAX_GPS_AGE_SECONDS = int(os.getenv("DISPATCH_MAX_GPS_AGE_SECONDS", "14400"))
 DISPATCH_LOCATION_MAX_AGE_SECONDS = DISPATCH_MAX_GPS_AGE_SECONDS
 

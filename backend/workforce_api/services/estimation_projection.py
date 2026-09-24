@@ -108,12 +108,51 @@ def _project(quote):
     # copying quote_ref into quote_number. Projecting it back would create a
     # second EstimationQuotation with a doubled reference (QTE-...-V1-V1) and
     # the customer would see the same quotation twice.
-    if EstimationQuotation.objects.filter(quote_ref=quote.quote_number).exists():
-        logger.debug(
-            "Quote %s originated in the AC estimation path; its projection already exists.",
-            quote.quote_number,
+    existing_ac_quote = EstimationQuotation.objects.filter(quote_ref=quote.quote_number).first()
+    if existing_ac_quote:
+        with transaction.atomic():
+            ac_target_status = STATUS_MAP.get(quote.status)
+            if ac_target_status and existing_ac_quote.status != ac_target_status:
+                existing_ac_quote.status = ac_target_status
+                if quote.status == "SENT_TO_CUSTOMER":
+                    existing_ac_quote.valid_until = quote.valid_until.date() if quote.valid_until else existing_ac_quote.valid_until
+                existing_ac_quote.save(update_fields=["status", "updated_at"] + (["valid_until"] if quote.status == "SENT_TO_CUSTOMER" else []))
+
+            if existing_ac_quote.estimation:
+                est_target = ESTIMATION_STATUS_MAP.get(quote.status)
+                if est_target and existing_ac_quote.estimation.status != est_target:
+                    existing_ac_quote.estimation.status = est_target
+                    existing_ac_quote.estimation.save(update_fields=["status", "updated_at"])
+
+            if quote.status == "SENT_TO_CUSTOMER":
+                job.status = "quotation_sent"
+                job.quote_number = quote.quote_number
+                job.total_amount = quote.total_amount
+                job.subtotal_amount = quote.subtotal_amount
+                job.discount_amount = quote.discount_amount
+                job.final_amount = quote.total_amount
+                cart_items = []
+                for it in quote.items.all():
+                    cart_items.append({
+                        "title": it.name,
+                        "description": it.description or "",
+                        "quantity": float(it.quantity),
+                        "unit": it.unit,
+                        "unit_price": float(it.unit_price),
+                        "tax_rate": float(it.tax_rate),
+                        "line_total": float(it.total_amount),
+                        "type": str(it.section or "PART"),
+                    })
+                job.cart_data = cart_items
+                job.save(update_fields=[
+                    "status", "quote_number", "total_amount", "subtotal_amount",
+                    "discount_amount", "final_amount", "cart_data", "updated_at"
+                ])
+        logger.info(
+            "Synchronized existing AC quote %s to status %s on job #%s",
+            quote.quote_number, ac_target_status, job.id
         )
-        return None
+        return existing_ac_quote
 
     with transaction.atomic():
         estimation = _estimation_for(job, quote, Estimation)
@@ -169,6 +208,31 @@ def _project(quote):
         if target and estimation.status != target:
             estimation.status = target
             estimation.save(update_fields=["status", "updated_at"])
+
+        if quote.status == "SENT_TO_CUSTOMER":
+            job.status = "quotation_sent"
+            job.quote_number = quote.quote_number
+            job.total_amount = quote.total_amount
+            job.subtotal_amount = quote.subtotal_amount
+            job.discount_amount = quote.discount_amount
+            job.final_amount = quote.total_amount
+            cart_items = []
+            for it in quote.items.all().order_by("sort_order", "id"):
+                cart_items.append({
+                    "title": it.name,
+                    "description": it.description or "",
+                    "quantity": float(it.quantity),
+                    "unit": it.unit,
+                    "unit_price": float(it.unit_price),
+                    "tax_rate": float(it.tax_rate or 18),
+                    "line_total": float(it.total_amount),
+                    "type": str(it.section or "PART"),
+                })
+            job.cart_data = cart_items
+            job.save(update_fields=[
+                "status", "quote_number", "total_amount", "subtotal_amount",
+                "discount_amount", "final_amount", "cart_data", "updated_at"
+            ])
 
     logger.info(
         "Projected quote %s v%s -> EstimationQuotation %s (%s)",

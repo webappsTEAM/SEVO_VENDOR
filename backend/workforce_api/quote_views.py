@@ -138,6 +138,11 @@ def _serialize(q, full=False):
         "company_id": q.company_id,
         "customer_id": q.customer_id,
         "customer_name": (q.job.customer_name if q.job_id else "") or "",
+        "technician_name": (
+            (q.technician.user.get_full_name() or q.technician.user.username)
+            if q.technician and getattr(q.technician, "user", None)
+            else (f"Technician #{q.technician_id}" if q.technician_id else "")
+        ),
         "estimated_labor_cost": _money(q.estimated_labor_cost),
         "estimated_materials_cost": _money(q.estimated_materials_cost),
         "subtotal_amount": _money(q.subtotal_amount),
@@ -189,9 +194,30 @@ def _serialize(q, full=False):
                 "area": _money(m.area), "quantity": _money(m.quantity), "unit": m.unit,
                 "notes": m.notes,
             }
-            for m in q.measurements.all().order_by("id")
+            for m in q.measurements.all()
         ]
-    return data
+        if q.job_id:
+            try:
+                from service_requests.models import Estimation, CustomerInspection
+                est = Estimation.objects.filter(service_request_id=q.job_id).first()
+                if est:
+                    data["ac_details"] = {
+                        "ac_brand": est.ac_brand,
+                        "ac_type": est.ac_type,
+                        "ac_capacity": est.ac_capacity,
+                        "ac_quantity": est.ac_quantity,
+                        "customer_symptom": est.customer_symptom,
+                        "customer_notes": est.customer_notes,
+                    }
+                ci = CustomerInspection.objects.filter(service_request_id=q.job_id).first()
+                if ci:
+                    data["customer_inspection"] = {
+                        "inspection_name": ci.inspection_name_snapshot,
+                        "diagnostic_fee": float(ci.diagnostic_fee_snapshot),
+                    }
+            except Exception:
+                pass
+        return data
 
 
 def _advance_percent(data):
@@ -636,6 +662,15 @@ class QuoteSendView(APIView):
         try:
             quotation_service.send_quote_to_customer(quote.id, actor=request.user, valid_days=valid_days)
         except Exception as exc:
+            quote.refresh_from_db()
+            if quote.status == WorkforceQuote.Status.PENDING_REVIEW:
+                logger.info("[QUOTE_SEND] Quote %s held in PENDING_REVIEW: %s", quote.id, exc)
+                return Response({
+                    "status": quote.status,
+                    "held_reason": str(exc),
+                    "message": str(exc),
+                    "quote": _serialize(quote, full=True),
+                }, status=status.HTTP_200_OK)
             logger.warning("[QUOTE_SEND] refused for %s: %s", quote.id, exc)
             return Response({"error": str(exc)}, status=status.HTTP_409_CONFLICT)
         quote.refresh_from_db()

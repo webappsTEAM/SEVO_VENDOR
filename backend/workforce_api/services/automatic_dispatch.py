@@ -6,6 +6,7 @@ proximity evaluation, offer creation, fallback re-assignment, and cross-applicat
 job reconciliation across Workforce and Marketplace.
 """
 import logging
+import os
 import datetime
 from datetime import timedelta
 from decimal import Decimal
@@ -47,9 +48,9 @@ MAX_GPS_AGE_SECONDS = int(getattr(settings, "DISPATCH_MAX_GPS_AGE_SECONDS", 300)
 # Maximum geographic dispatch radius (50 km) before any widening kicks in.
 MAX_DISPATCH_RADIUS_KM = 50.0
 
-# ── Bounded Adaptive Offer Waves & 2-Minute Expiry (CalTrack Dispatch) ──────
-OFFER_TTL_SECONDS = 120  # 2 Minutes exact maximum lifetime per offer wave
-DEFAULT_OFFER_DURATION_MINUTES = 2
+# ── Bounded Adaptive Offer Waves & Expiry Configuration ──────
+OFFER_TTL_SECONDS = int(os.getenv("DISPATCH_OFFER_TTL_SECONDS", "600"))  # 10 Minutes default lifetime per offer wave
+DEFAULT_OFFER_DURATION_MINUTES = int(os.getenv("DISPATCH_DEFAULT_OFFER_DURATION_MINUTES", "10"))
 INITIAL_WAVE_SIZE = 5     # Wave 1: Ranks 1 to 5
 SECOND_WAVE_SIZE = 10     # Wave 2: Ranks 6 to 15
 THIRD_WAVE_SIZE = 20      # Wave 3: Ranks 16 to 35
@@ -69,10 +70,10 @@ def get_wave_size(wave_number: int) -> int:
 
 # ── Variable offer window (Booking Dispatch Framework) ──────────────────────
 DEFAULT_OFFER_WINDOW_MINUTES_BY_PRIORITY = {
-    "urgent": 2,
-    "high": 2,
-    "normal": 2,
-    "low": 2,
+    "urgent": 5,
+    "high": 5,
+    "normal": 10,
+    "low": 15,
 }
 THIN_POOL_CANDIDATE_THRESHOLD = 2
 DEEP_POOL_CANDIDATE_THRESHOLD = 8
@@ -91,8 +92,8 @@ def get_booking_discovery_scope(company=None):
     return Q(company=company)
 
 
-MIN_OFFER_WINDOW_MINUTES = 2
-MAX_OFFER_WINDOW_MINUTES = 15
+MIN_OFFER_WINDOW_MINUTES = 5
+MAX_OFFER_WINDOW_MINUTES = 30
 
 # ── X-11 / GT-B-02: rapid offer window for on-demand transport ────────────
 # The minute-scale window above is right for a scheduled home-services
@@ -152,7 +153,7 @@ MAX_WIDENED_DISPATCH_RADIUS_KM = 100.0
 CUSTOMER_DELAY_SIGNAL_AFTER_CYCLES = 2
 
 # Dispatchable database statuses
-DISPATCHABLE_STATUSES = ["draft", "new_request", "confirmed", "unassigned", "assigned", "redispatching"]
+DISPATCHABLE_STATUSES = ["draft", "new_request", "confirmed", "unassigned", "assigned", "redispatching", "requested", "received", "searching", "pending"]
 
 # GT-A-01/GT-A-02: service_name values that require a vehicle on file with
 # current insurance/permit/PUC (Gate 3). Mirrors
@@ -331,17 +332,25 @@ def get_scheduled_dispatch_window(job_obj, now=None) -> ScheduledDispatchWindow:
     naive_dt = datetime.datetime.combine(pref_date, slot_time)
     scheduled_dt = naive_dt.replace(tzinfo=operational_tz)
     window_open = scheduled_dt - datetime.timedelta(hours=1)
-    window_close = scheduled_dt
+    # Keep same-day scheduled dispatch window open generously (until end of day or 8h past slot)
+    # so active customer bookings waiting for technicians are not aborted prematurely.
+    if pref_date == today:
+        window_close = max(
+            scheduled_dt + datetime.timedelta(hours=8),
+            datetime.datetime.combine(today, datetime.time(23, 59, 59)).replace(tzinfo=operational_tz)
+        )
+    else:
+        window_close = scheduled_dt + datetime.timedelta(hours=4)
 
     if now < window_open:
         # Before window opens (1 hour before scheduled time): not dispatchable yet (held as future/upcoming)
         return ScheduledDispatchWindow(True, scheduled_dt, window_open, window_close, is_closed=False, is_eligible=False)
 
-    if now.replace(second=0, microsecond=0) > scheduled_dt:
-        # After scheduled time has passed: offer window closed; no new offers
+    if now.replace(second=0, microsecond=0) > window_close:
+        # After scheduled window close: offer window closed; no new offers
         return ScheduledDispatchWindow(False, scheduled_dt, window_open, window_close, is_closed=True, is_eligible=False)
 
-    # Within dispatch window (from 1 hour before scheduled time up to scheduled time): dispatchable / eligible for job offer
+    # Within dispatch window (from 1 hour before scheduled time up to window_close): dispatchable / eligible for job offer
     return ScheduledDispatchWindow(False, scheduled_dt, window_open, window_close, is_closed=False, is_eligible=True)
 
 
@@ -1533,12 +1542,15 @@ def _dispatch_job_two_phase(job_id, max_gps_age_seconds: int = MAX_GPS_AGE_SECON
             if active_offers:
                 return True, f"Active offer wave already pending for Job #{job_id}."
 
-        if state.dispatch_status in [
+        terminal_statuses = [
             WorkforceDispatchState.DispatchStatus.ASSIGNED,
             WorkforceDispatchState.DispatchStatus.COMPLETED,
             WorkforceDispatchState.DispatchStatus.CANCELLED,
-            WorkforceDispatchState.DispatchStatus.EXPIRED,
-        ]:
+        ]
+        if not force:
+            terminal_statuses.append(WorkforceDispatchState.DispatchStatus.EXPIRED)
+
+        if state.dispatch_status in terminal_statuses:
             return False, f"Job #{job_id} dispatch state is {state.dispatch_status}; skipping dispatch."
 
         # Backoff check: if retry_at > now and not force, abort
@@ -1579,15 +1591,19 @@ def _dispatch_job_two_phase(job_id, max_gps_age_seconds: int = MAX_GPS_AGE_SECON
         failed_cycle_count = _count_failed_offer_cycles(job_obj)
         effective_radius_km = get_effective_radius_km(failed_cycle_count)
 
-        # Explicitly aggregate all technicians who previously received offers or declined/rejected this job
+        # Explicitly aggregate technicians who explicitly declined/rejected this job or hold active unexpired offers
         declined_emp_ids = set()
         max_prev_wave = 0
         try:
             past_offers = list(WorkforceJobOffer.objects.filter(job_id=job_id))
             for o in past_offers:
                 emp_id = getattr(o, "employee_id", o if isinstance(o, (int, str)) else None)
+                # Only exclude if technician explicitly declined/rejected, or currently holds an active unexpired offer
                 if emp_id:
-                    declined_emp_ids.add(emp_id)
+                    if o.status in [WorkforceJobOffer.Status.REJECTED, WorkforceJobOffer.Status.DECLINED]:
+                        declined_emp_ids.add(emp_id)
+                    elif o.status == WorkforceJobOffer.Status.OFFERED and o.expires_at and o.expires_at > timezone.now():
+                        declined_emp_ids.add(emp_id)
                 w_num = getattr(o, "wave_number", None)
                 if w_num and w_num > max_prev_wave:
                     max_prev_wave = w_num
@@ -1803,7 +1819,7 @@ def _dispatch_job_two_phase(job_id, max_gps_age_seconds: int = MAX_GPS_AGE_SECON
         state.locked_at = None
         state.save(update_fields=["dispatch_status", "retry_at", "locked_at", "updated_at"])
 
-        if locked_job.status in ["draft", "new_request", "confirmed"]:
+        if locked_job.status in ["draft", "new_request", "confirmed", "requested", "received", "searching"]:
             apply_transition(locked_job, "unassigned")
 
     # Outside transaction: webhooks and notifications for all wave offers
@@ -1920,6 +1936,26 @@ def expire_and_reassign_offers() -> int:
                 )
                 j_obj = getattr(offer, "job", getattr(off_locked, "job", None))
                 jobs_to_redispatch[j_id] = j_obj
+
+    # Also recover any jobs stuck in OFFER_ACTIVE with zero active unexpired offers
+    stuck_active_states = list(
+        WorkforceDispatchState.objects.filter(
+            dispatch_status=WorkforceDispatchState.DispatchStatus.OFFER_ACTIVE
+        ).values_list("job_id", flat=True)
+    )
+    for j_id in stuck_active_states:
+        has_active = WorkforceJobOffer.objects.filter(
+            job_id=j_id,
+            status=WorkforceJobOffer.Status.OFFERED,
+            expires_at__gt=now,
+        ).exists()
+        if not has_active:
+            WorkforceDispatchState.objects.filter(job_id=j_id).update(
+                dispatch_status=WorkforceDispatchState.DispatchStatus.NEVER_ATTEMPTED,
+                locked_at=None,
+            )
+            if j_id not in jobs_to_redispatch:
+                jobs_to_redispatch[j_id] = ServiceRequest.objects.filter(pk=j_id).first()
 
     for job_id, job in jobs_to_redispatch.items():
         is_past_dated = False
@@ -2085,7 +2121,6 @@ def reconsider_jobs_for_employee(employee_or_id) -> int:
             WorkforceDispatchState.DispatchStatus.ASSIGNED,
             WorkforceDispatchState.DispatchStatus.CANCELLED,
             WorkforceDispatchState.DispatchStatus.COMPLETED,
-            WorkforceDispatchState.DispatchStatus.EXPIRED,
         ])
     ).distinct()
 
@@ -2095,7 +2130,7 @@ def reconsider_jobs_for_employee(employee_or_id) -> int:
         if win.is_future or getattr(win, "is_closed", False):
             continue
         logger.info(f"[DISPATCH_RECONSIDER_TRIGGER] Evaluating Job #{job.id} for Employee #{emp.id}.")
-        success, msg = dispatch_job(job)
+        success, msg = dispatch_job(job, force=True)
         if success:
             dispatched_count += 1
 
