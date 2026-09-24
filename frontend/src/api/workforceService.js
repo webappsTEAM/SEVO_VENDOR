@@ -1678,6 +1678,69 @@ export async function apiSellerOrderAdminOverride(orderId, action, reason) {
     json: { action, reason },
   });
 }
+
+export async function apiGetAvailableRiders(orderId) {
+  return await apiRequest(`/workforce/seller-hub/orders/${orderId}/available-riders/`);
+}
+
+export async function apiRetryOrderDispatch(orderId) {
+  return await apiRequest(`/workforce/seller-hub/orders/${orderId}/retry-dispatch/`, {
+    method: 'POST',
+    json: {},
+  });
+}
+
+// ── Phase T: Admin Warehouses & Seller Warehouse Assignment ───────────────────
+export async function apiAdminGetWarehouses(params = {}) {
+  const qs = new URLSearchParams();
+  if (params.search) qs.set('search', params.search);
+  if (params.city) qs.set('city', params.city);
+  if (params.is_active != null) qs.set('is_active', String(params.is_active));
+  const queryStr = qs.toString();
+  return await apiRequest(`/workforce/admin/warehouses/${queryStr ? `?${queryStr}` : ''}`);
+}
+
+export async function apiAdminGetWarehouseDetail(id) {
+  return await apiRequest(`/workforce/admin/warehouses/${id}/`);
+}
+
+export async function apiAdminCreateWarehouse(payload) {
+  return await apiRequest('/workforce/admin/warehouses/', {
+    method: 'POST',
+    json: payload,
+  });
+}
+
+export async function apiAdminUpdateWarehouse(id, payload) {
+  return await apiRequest(`/workforce/admin/warehouses/${id}/`, {
+    method: 'PATCH',
+    json: payload,
+  });
+}
+
+export async function apiAdminDeleteWarehouse(id) {
+  return await apiRequest(`/workforce/admin/warehouses/${id}/`, {
+    method: 'DELETE',
+  });
+}
+
+export async function apiAdminGetSellerWarehouse(sellerId) {
+  return await apiRequest(`/workforce/admin/sellers/${sellerId}/warehouse/`);
+}
+
+export async function apiAdminAssignSellerWarehouse(sellerId, warehouseId, notes = '') {
+  return await apiRequest(`/workforce/admin/sellers/${sellerId}/warehouse/`, {
+    method: 'POST',
+    json: { warehouse_id: warehouseId, notes },
+  });
+}
+
+export async function apiAdminUnassignSellerWarehouse(sellerId) {
+  return await apiRequest(`/workforce/admin/sellers/${sellerId}/warehouse/`, {
+    method: 'DELETE',
+  });
+}
+
 // Named object export for convenient namespace usage
 export const workforceService = {
   getGroceryOrders: apiGetGroceryOrders,
