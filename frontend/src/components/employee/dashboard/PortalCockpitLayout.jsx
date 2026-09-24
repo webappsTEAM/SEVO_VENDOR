@@ -25,6 +25,8 @@ import {
 } from 'lucide-react';
 import { TechnicianNavigationView } from '../navigation/TechnicianNavigationView.jsx';
 import { ACTIVE_QUEUE_STATUSES } from '../../../context/EmployeeRuntimeContext.jsx';
+import { LogisticsLegController } from '../logistics/LogisticsLegController.jsx';
+import { LogisticsStopManager } from '../logistics/LogisticsStopManager.jsx';
 
 /**
  * Real-time Countdown Badge for Offer Expiration & Cancellation Window
@@ -595,6 +597,22 @@ export function PortalCockpitLayout({
                       </div>
                     </div>
                   </div>
+                )}
+
+                {/* ── LOGISTICS JOURNEY & LEG PROGRESSION (P&M 13 Stages & GT 5 Stages) ── */}
+                {isActiveAssignment && activeJob && (
+                  <LogisticsLegController
+                    job={activeJob}
+                    onLegUpdated={() => onRefreshData && onRefreshData()}
+                  />
+                )}
+
+                {/* ── MULTI-STOP ROUTE ITINERARY (When trip stops exist) ── */}
+                {isActiveAssignment && activeJob && (
+                  <LogisticsStopManager
+                    job={activeJob}
+                    onStopsUpdated={() => onRefreshData && onRefreshData()}
+                  />
                 )}
 
                 {/* ── CASH PAYMENT CONFIRMATION SECTION (When proof is submitted & cash is pending) ── */}

@@ -17,6 +17,15 @@ jobs:
     name: Workforce Django System & Migration Checks
     runs-on: ubuntu-24.04
 
+    env:
+      DJANGO_SETTINGS_MODULE: workforce_core.settings
+      SECRET_KEY: ci-temporary-validation-secret-key-32-chars-minimum
+      DEBUG: "False"
+      DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1"
+
+      CUSTOMER_APP_BASE_URL: "https://customer-ci.invalid"
+      WORKFORCE_WEBHOOK_SECRET: "ci-temporary-webhook-secret"
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -37,21 +46,11 @@ jobs:
         run: |
           cd backend
           python manage.py check
-        env:
-          DJANGO_SETTINGS_MODULE: workforce_core.settings
-          SECRET_KEY: ci-temporary-validation-secret-key-32-chars-minimum
-          DEBUG: "False"
-          DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1"
 
       - name: Validate Migration Schema Consistency
         run: |
           cd backend
           python manage.py makemigrations --check --dry-run
-        env:
-          DJANGO_SETTINGS_MODULE: workforce_core.settings
-          SECRET_KEY: ci-temporary-validation-secret-key-32-chars-minimum
-          DEBUG: "False"
-          DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1"
 
       # Fixes gap: this workflow validated system checks and migration
       # schema consistency but never actually ran the test suite -- a
@@ -63,8 +62,3 @@ jobs:
         run: |
           cd backend
           python manage.py test
-        env:
-          DJANGO_SETTINGS_MODULE: workforce_core.settings
-          SECRET_KEY: ci-temporary-validation-secret-key-32-chars-minimum
-          DEBUG: "False"
-          DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1"
