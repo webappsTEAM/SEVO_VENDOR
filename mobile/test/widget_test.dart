@@ -23,16 +23,15 @@ void main() {
 
       // Splash Screen is actively rendering
       expect(find.byType(SplashScreen), findsOneWidget);
-      expect(find.text('SEVO'), findsOneWidget);
-      expect(find.text('WORKFORCE'), findsOneWidget);
+      expect(find.byType(Image), findsOneWidget);
 
       // Session restore and onboarding flag read from storage
       await tester.runAsync(() async {
         await Future.delayed(const Duration(milliseconds: 300));
       });
 
-      // Pump through the 7500ms splash animation duration
-      await tester.pump(const Duration(milliseconds: 7600));
+      // Pump through the 3000ms splash animation duration
+      await tester.pump(const Duration(milliseconds: 3100));
       await tester.pumpAndSettle();
 
       // On fresh launch without prior completion, routes to intro onboarding walkthrough

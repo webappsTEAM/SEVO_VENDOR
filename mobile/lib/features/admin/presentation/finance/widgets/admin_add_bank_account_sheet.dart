@@ -144,13 +144,13 @@ class _AdminAddBankAccountSheetState extends ConsumerState<AdminAddBankAccountSh
                         Container(
                           padding: const EdgeInsets.all(7),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF004E89).withValues(alpha: 0.1),
+                            color: const Color(0xFF005965).withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: const Icon(
                             Icons.account_balance_rounded,
                             size: 20,
-                            color: Color(0xFF004E89),
+                            color: Color(0xFF005965),
                           ),
                         ),
                         const SizedBox(width: AppSpacing.sm),
@@ -233,7 +233,7 @@ class _AdminAddBankAccountSheetState extends ConsumerState<AdminAddBankAccountSh
                         Expanded(
                           child: Text(
                             _serverError!,
-                            style: const TextStyle(fontSize: 12, color: Color(0xFF9F1239)),
+                            style: TextStyle(fontSize: 12, color: Color(0xFF9F1239)),
                           ),
                         ),
                       ],
@@ -299,7 +299,7 @@ class _AdminAddBankAccountSheetState extends ConsumerState<AdminAddBankAccountSh
                   controller: _accountNumberController,
                   keyboardType: TextInputType.number,
                   obscureText: _obscureAccountNumber,
-                  style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.w700),
+                  style: TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.w700),
                   decoration: InputDecoration(
                     hintText: 'Enter account number',
                     suffixIcon: IconButton(
@@ -338,7 +338,7 @@ class _AdminAddBankAccountSheetState extends ConsumerState<AdminAddBankAccountSh
                 TextFormField(
                   controller: _ifscController,
                   textCapitalization: TextCapitalization.characters,
-                  style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.w700),
+                  style: TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.w700),
                   decoration: const InputDecoration(
                     hintText: 'Enter IFSC code',
                   ),
@@ -370,11 +370,11 @@ class _AdminAddBankAccountSheetState extends ConsumerState<AdminAddBankAccountSh
                       child: ChoiceChip(
                         label: const Center(child: Text('Savings')),
                         selected: _accountType == 'SAVINGS',
-                        selectedColor: const Color(0xFF004E89),
+                        selectedColor: const Color(0xFF005965),
                         labelStyle: TextStyle(
                           fontSize: 12.5,
                           fontWeight: FontWeight.w800,
-                          color: _accountType == 'SAVINGS' ? Colors.white : const Color(0xFF475569),
+                          color: _accountType == 'SAVINGS' ? Colors.white : AppColors.textSecondary,
                         ),
                         onSelected: (selected) {
                           if (selected) setState(() => _accountType = 'SAVINGS');
@@ -386,11 +386,11 @@ class _AdminAddBankAccountSheetState extends ConsumerState<AdminAddBankAccountSh
                       child: ChoiceChip(
                         label: const Center(child: Text('Current')),
                         selected: _accountType == 'CURRENT',
-                        selectedColor: const Color(0xFF004E89),
+                        selectedColor: const Color(0xFF005965),
                         labelStyle: TextStyle(
                           fontSize: 12.5,
                           fontWeight: FontWeight.w800,
-                          color: _accountType == 'CURRENT' ? Colors.white : const Color(0xFF475569),
+                          color: _accountType == 'CURRENT' ? Colors.white : AppColors.textSecondary,
                         ),
                         onSelected: (selected) {
                           if (selected) setState(() => _accountType = 'CURRENT');
@@ -411,7 +411,7 @@ class _AdminAddBankAccountSheetState extends ConsumerState<AdminAddBankAccountSh
                           padding: const EdgeInsets.symmetric(vertical: 12),
                           minimumSize: const Size(0, 44),
                         ),
-                        child: const Text('Cancel', style: TextStyle(fontWeight: FontWeight.w700)),
+                        child: Text('Cancel', style: TextStyle(fontWeight: FontWeight.w700)),
                       ),
                     ),
                     const SizedBox(width: AppSpacing.md),
@@ -420,7 +420,7 @@ class _AdminAddBankAccountSheetState extends ConsumerState<AdminAddBankAccountSh
                       child: FilledButton.icon(
                         onPressed: _isSubmitting ? null : _submit,
                         style: FilledButton.styleFrom(
-                          backgroundColor: const Color(0xFF004E89), // Peacock Blue branding
+                          backgroundColor: const Color(0xFF005965), // Peacock Blue branding
                           padding: const EdgeInsets.symmetric(vertical: 12),
                           minimumSize: const Size(0, 44),
                         ),
@@ -434,7 +434,7 @@ class _AdminAddBankAccountSheetState extends ConsumerState<AdminAddBankAccountSh
                                 ),
                               )
                             : const Icon(Icons.add_rounded, size: 18),
-                        label: const Text(
+                        label: Text(
                           'Add Account',
                           style: TextStyle(fontWeight: FontWeight.w800),
                         ),

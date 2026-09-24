@@ -60,7 +60,9 @@ class _AdminApplicationsScreenState
     final changeRequestsAsync = ref.watch(adminChangeRequestsProvider);
 
     return Scaffold(
+      backgroundColor: AppColors.background,
       appBar: const WorkforceAppBar(
+        titleText: 'Candidate Applications',
         showStatusSubBar: false,
         showDrawerMenu: true,
       ),
@@ -69,7 +71,7 @@ class _AdminApplicationsScreenState
         children: [
           // ── Header Title & Subtitle ────────────────────────────────────────
           Container(
-            color: Colors.white,
+            color: AppColors.surface,
             padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -80,7 +82,7 @@ class _AdminApplicationsScreenState
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFEFF6FF),
+                        color: AppColors.infoBg,
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: const Icon(
@@ -90,7 +92,7 @@ class _AdminApplicationsScreenState
                       ),
                     ),
                     const SizedBox(width: 12),
-                    const Expanded(
+                    Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -99,7 +101,7 @@ class _AdminApplicationsScreenState
                             style: TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.w800,
-                              color: Color(0xFF0F172A),
+                              color: AppColors.textPrimary,
                             ),
                           ),
                           SizedBox(height: 2),
@@ -107,7 +109,7 @@ class _AdminApplicationsScreenState
                             'Inspect identity dossiers, audit trade qualifications, and review controlled field change requests',
                             style: TextStyle(
                               fontSize: 11.5,
-                              color: Color(0xFF64748B),
+                              color: AppColors.textSecondary,
                             ),
                           ),
                         ],
@@ -120,17 +122,17 @@ class _AdminApplicationsScreenState
                 // ── Tab Bar with Counts ──────────────────────────────────────
                 TabBar(
                   controller: _tabController,
-                  labelColor: const Color(0xFF2563EB),
-                  unselectedLabelColor: const Color(0xFF64748B),
-                  indicatorColor: const Color(0xFF2563EB),
+                  labelColor: AppColors.primary,
+                  unselectedLabelColor: AppColors.textSecondary,
+                  indicatorColor: AppColors.primary,
                   indicatorWeight: 3,
-                  labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+                  labelStyle: TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
                   tabs: [
                     Tab(
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Text('Applications'),
+                          Text('Applications'),
                           const SizedBox(width: 6),
                           applicationsAsync.maybeWhen(
                             data: (list) => _countBadge(list.length),
@@ -143,11 +145,11 @@ class _AdminApplicationsScreenState
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Text('Change Requests'),
+                          Text('Change Requests'),
                           const SizedBox(width: 6),
                           changeRequestsAsync.maybeWhen(
                             data: (list) => _countBadge(list.where((c) => c.isPending).length,
-                                color: const Color(0xFFFEF3C7), textColor: const Color(0xFF92400E)),
+                                color: AppColors.warningBg, textColor: AppColors.warningText),
                             orElse: () => const SizedBox.shrink(),
                           ),
                         ],
@@ -181,7 +183,7 @@ class _AdminApplicationsScreenState
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
       decoration: BoxDecoration(
-        color: color ?? const Color(0xFFEFF6FF),
+        color: color ?? AppColors.infoBg,
         borderRadius: BorderRadius.circular(10),
       ),
       child: Text(
@@ -189,7 +191,7 @@ class _AdminApplicationsScreenState
         style: TextStyle(
           fontSize: 10.5,
           fontWeight: FontWeight.w800,
-          color: textColor ?? const Color(0xFF2563EB),
+          color: textColor ?? AppColors.primary,
         ),
       ),
     );
@@ -207,7 +209,7 @@ class _AdminApplicationsScreenState
             const SizedBox(height: 12),
             FilledButton(
               onPressed: () => ref.invalidate(adminApplicationsListProvider(null)),
-              child: const Text('Retry'),
+              child: Text('Retry'),
             ),
           ],
         ),
@@ -283,8 +285,8 @@ class _AdminApplicationsScreenState
                 }),
                 decoration: InputDecoration(
                   hintText: 'Search candidate name, ID, or phone...',
-                  hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
-                  prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Color(0xFF64748B)),
+                  hintStyle: TextStyle(fontSize: 13, color: AppColors.textMuted),
+                  prefixIcon: Icon(Icons.search_rounded, size: 20, color: AppColors.textSecondary),
                   suffixIcon: _searchTerm.isNotEmpty
                       ? IconButton(
                           icon: const Icon(Icons.clear_rounded, size: 18),
@@ -298,15 +300,15 @@ class _AdminApplicationsScreenState
                         )
                       : null,
                   filled: true,
-                  fillColor: Colors.white,
+                  fillColor: AppColors.surface,
                   contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(AppRadius.input),
-                    borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                    borderSide: BorderSide(color: AppColors.border),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(AppRadius.input),
-                    borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                    borderSide: BorderSide(color: AppColors.border),
                   ),
                 ),
               ),
@@ -365,16 +367,12 @@ class _AdminApplicationsScreenState
                       icon: const Icon(Icons.filter_list_rounded, size: 16),
                       label: Text(
                         _selectedService == 'ALL' ? 'Filter by Service' : _selectedService,
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
                       ),
                       style: OutlinedButton.styleFrom(
-                        backgroundColor: _selectedService != 'ALL'
-                            ? const Color(0xFFEFF6FF)
-                            : Colors.white,
+                        backgroundColor: _selectedService != 'ALL' ? AppColors.infoBg : AppColors.surface,
                         side: BorderSide(
-                          color: _selectedService != 'ALL'
-                              ? const Color(0xFF2563EB)
-                              : const Color(0xFFCBD5E1),
+                          color: _selectedService != 'ALL' ? AppColors.primary : AppColors.border,
                         ),
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                         visualDensity: VisualDensity.compact,
@@ -405,9 +403,9 @@ class _AdminApplicationsScreenState
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: AppColors.surface,
                     borderRadius: BorderRadius.circular(AppRadius.card),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                    border: Border.all(color: AppColors.border),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -417,7 +415,7 @@ class _AdminApplicationsScreenState
                             ? () => setState(() => _currentPage = safePage - 1)
                             : null,
                         icon: const Icon(Icons.chevron_left_rounded, size: 18),
-                        label: const Text('Prev'),
+                        label: Text('Prev'),
                         style: OutlinedButton.styleFrom(
                           visualDensity: VisualDensity.compact,
                           padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -425,10 +423,10 @@ class _AdminApplicationsScreenState
                       ),
                       Text(
                         'Page $safePage of $totalPages ($totalCount)',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
-                          color: Color(0xFF475569),
+                          color: AppColors.textSecondary,
                         ),
                       ),
                       OutlinedButton(
@@ -439,7 +437,7 @@ class _AdminApplicationsScreenState
                           visualDensity: VisualDensity.compact,
                           padding: const EdgeInsets.symmetric(horizontal: 10),
                         ),
-                        child: const Row(
+                        child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text('Next'),
@@ -467,10 +465,10 @@ class _AdminApplicationsScreenState
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFFEFF6FF) : const Color(0xFFF8FAFC),
+          color: isSelected ? AppColors.infoBg : AppColors.surfaceMuted,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: isSelected ? const Color(0xFF004E89) : const Color(0xFFE2E8F0),
+            color: isSelected ? AppColors.primary : AppColors.border,
             width: isSelected ? 1.5 : 1.0,
           ),
         ),
@@ -479,7 +477,7 @@ class _AdminApplicationsScreenState
           style: TextStyle(
             fontSize: 11.5,
             fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-            color: isSelected ? const Color(0xFF004E89) : const Color(0xFF475569),
+            color: isSelected ? AppColors.primary : AppColors.textSecondary,
           ),
         ),
       ),
@@ -490,7 +488,7 @@ class _AdminApplicationsScreenState
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.card)),
       ),
@@ -506,7 +504,7 @@ class _AdminApplicationsScreenState
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
+                  Text(
                     'Filter by Service',
                     style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
                   ),
@@ -519,12 +517,12 @@ class _AdminApplicationsScreenState
                         });
                         Navigator.of(ctx).pop();
                       },
-                      child: const Text('Clear Filter'),
+                      child: Text('Clear Filter'),
                     ),
                 ],
               ),
             ),
-            const Divider(height: 1),
+            Divider(height: 1),
             Expanded(
               child: ListView.builder(
                 controller: scrollController,
@@ -533,9 +531,9 @@ class _AdminApplicationsScreenState
                   if (idx == 0) {
                     return ListTile(
                       dense: true,
-                      title: const Text('All Services', style: TextStyle(fontWeight: FontWeight.w700)),
+                      title: Text('All Services', style: TextStyle(fontWeight: FontWeight.w700)),
                       trailing: _selectedService == 'ALL'
-                          ? const Icon(Icons.check_rounded, color: Color(0xFF004E89))
+                          ? const Icon(Icons.check_rounded, color: AppColors.primary)
                           : null,
                       onTap: () {
                         setState(() {
@@ -552,7 +550,7 @@ class _AdminApplicationsScreenState
                     dense: true,
                     title: Text(serviceName, style: TextStyle(fontWeight: isSel ? FontWeight.w800 : FontWeight.w500)),
                     trailing: isSel
-                        ? const Icon(Icons.check_rounded, color: Color(0xFF004E89))
+                        ? const Icon(Icons.check_rounded, color: AppColors.primary)
                         : null,
                     onTap: () {
                       setState(() {
@@ -583,7 +581,7 @@ class _AdminApplicationsScreenState
             const SizedBox(height: 12),
             FilledButton(
               onPressed: () => ref.invalidate(adminChangeRequestsProvider),
-              child: const Text('Retry'),
+              child: Text('Retry'),
             ),
           ],
         ),
@@ -629,13 +627,13 @@ class _AdminApplicationsScreenState
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('Technician: ${cr.employeeName ?? 'Employee'} (${cr.employeeId ?? ''})',
-                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
             const SizedBox(height: 8),
             Text('Current Value: ${cr.oldValue ?? '—'}',
-                style: const TextStyle(color: Color(0xFF64748B), fontSize: 12.5)),
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 12.5)),
             const SizedBox(height: 2),
             Text('Requested Value: ${cr.newValue ?? '—'}',
-                style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF004E89), fontSize: 13)),
+                style: TextStyle(fontWeight: FontWeight.w800, color: AppColors.primary, fontSize: 13)),
             const SizedBox(height: 14),
             TextField(
               controller: notesController,
@@ -651,7 +649,7 @@ class _AdminApplicationsScreenState
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dlgCtx).pop(),
-            child: const Text('Cancel'),
+            child: Text('Cancel'),
           ),
           OutlinedButton(
             style: OutlinedButton.styleFrom(foregroundColor: const Color(0xFFDC2626)),
@@ -677,7 +675,7 @@ class _AdminApplicationsScreenState
                 }
               }
             },
-            child: const Text('Reject'),
+            child: Text('Reject'),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: const Color(0xFF059669)),
@@ -703,7 +701,7 @@ class _AdminApplicationsScreenState
                 }
               }
             },
-            child: const Text('Approve'),
+            child: Text('Approve'),
           ),
         ],
       ),
@@ -730,9 +728,9 @@ class _AdminApplicationCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppRadius.card),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: AppColors.border),
         boxShadow: const [
           BoxShadow(color: Color(0x060A2540), blurRadius: 4, offset: Offset(0, 1.5)),
         ],
@@ -749,8 +747,8 @@ class _AdminApplicationCard extends StatelessWidget {
                 initial: app.initial,
                 radius: 20,
                 fontSize: 15,
-                backgroundColor: const Color(0xFF004E89).withValues(alpha: 0.1),
-                foregroundColor: const Color(0xFF004E89),
+                backgroundColor: const Color(0xFF005965).withValues(alpha: 0.1),
+                foregroundColor: const Color(0xFF005965),
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -759,7 +757,7 @@ class _AdminApplicationCard extends StatelessWidget {
                   children: [
                     Text(
                       app.name ?? 'Technician #${app.id}',
-                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -769,14 +767,14 @@ class _AdminApplicationCard extends StatelessWidget {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFF1F5F9),
+                            color: AppColors.surfaceMuted,
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text(
                             app.employeeId ?? 'ID: Pending',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 11,
-                              color: Color(0xFF334155),
+                              color: AppColors.textSecondary,
                               fontFamily: 'monospace',
                               fontWeight: FontWeight.w700,
                             ),
@@ -787,9 +785,9 @@ class _AdminApplicationCard extends StatelessWidget {
                           Flexible(
                             child: Text(
                               app.phone!,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 11,
-                                color: Color(0xFF64748B),
+                                color: AppColors.textSecondary,
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -809,20 +807,20 @@ class _AdminApplicationCard extends StatelessWidget {
           // Services
           Row(
             children: [
-              const Text(
+              Text(
                 'Services: ',
-                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF475569)),
+                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.textSecondary),
               ),
               Text(
                 '${app.allRequestedServices.length} Selected',
-                style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Color(0xFF004E89)),
+                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: AppColors.primary),
               ),
             ],
           ),
           const SizedBox(height: 2),
           Text(
             services,
-            style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
+            style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
@@ -831,24 +829,24 @@ class _AdminApplicationCard extends StatelessWidget {
           // Documents & Recency
           Row(
             children: [
-              const Icon(Icons.description_outlined, size: 14, color: Color(0xFF64748B)),
+              Icon(Icons.description_outlined, size: 14, color: AppColors.textSecondary),
               const SizedBox(width: 4),
               Text(
                 'Documents: ${app.uploadedDocumentsCount} Uploaded',
-                style: const TextStyle(fontSize: 11.5, color: Color(0xFF475569), fontWeight: FontWeight.w600),
+                style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary, fontWeight: FontWeight.w600),
               ),
               if (app.pendingDocumentsCount > 0) ...[
                 const SizedBox(width: 8),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFEF3C7),
+                    color: AppColors.warningBg,
                     borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: const Color(0xFFFDE68A), width: 0.8),
+                    border: Border.all(color: AppColors.warningBorder, width: 0.8),
                   ),
                   child: Text(
                     '${app.pendingDocumentsCount} Pending',
-                    style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Color(0xFF92400E)),
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.warningText),
                   ),
                 ),
               ],
@@ -856,7 +854,7 @@ class _AdminApplicationCard extends StatelessWidget {
           ),
 
           const SizedBox(height: 10),
-          const Divider(height: 1, color: Color(0xFFF1F5F9)),
+          Divider(height: 1, color: AppColors.border),
           const SizedBox(height: 8),
 
           // Action
@@ -868,11 +866,11 @@ class _AdminApplicationCard extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFEFF6FF),
+                  color: AppColors.infoBg,
                   borderRadius: BorderRadius.circular(6),
                   border: Border.all(color: const Color(0xFFBFDBFE)),
                 ),
-                child: const Row(
+                child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
@@ -880,11 +878,11 @@ class _AdminApplicationCard extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF004E89),
+                        color: AppColors.primary,
                       ),
                     ),
                     SizedBox(width: 4),
-                    Icon(Icons.arrow_forward_rounded, size: 13, color: Color(0xFF004E89)),
+                    Icon(Icons.arrow_forward_rounded, size: 13, color: AppColors.primary),
                   ],
                 ),
               ),
@@ -911,9 +909,9 @@ class _AdminChangeRequestCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppRadius.card),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: AppColors.border),
         boxShadow: const [
           BoxShadow(color: Color(0x060A2540), blurRadius: 4, offset: Offset(0, 1.5)),
         ],
@@ -927,7 +925,7 @@ class _AdminChangeRequestCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   changeRequest.displayField,
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
                 ),
               ),
               StatusChip(status: changeRequest.status, dense: true),
@@ -936,15 +934,15 @@ class _AdminChangeRequestCard extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             '${changeRequest.employeeName ?? 'Employee'} • ${changeRequest.employeeId ?? ''}',
-            style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+            style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
           ),
           const SizedBox(height: 8),
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
+              color: AppColors.surfaceMuted,
               borderRadius: BorderRadius.circular(6),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
+              border: Border.all(color: AppColors.border),
             ),
             child: Row(
               children: [
@@ -952,21 +950,21 @@ class _AdminChangeRequestCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Current', style: TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
+                      Text('Current', style: TextStyle(fontSize: 10, color: AppColors.textMuted)),
                       Text(changeRequest.oldValue ?? '—',
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                     ],
                   ),
                 ),
-                const Icon(Icons.arrow_forward_rounded, size: 16, color: Color(0xFF94A3B8)),
+                Icon(Icons.arrow_forward_rounded, size: 16, color: AppColors.textMuted),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Requested', style: TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
+                      Text('Requested', style: TextStyle(fontSize: 10, color: AppColors.textMuted)),
                       Text(changeRequest.newValue ?? '—',
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF004E89))),
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.primary)),
                     ],
                   ),
                 ),
@@ -980,10 +978,10 @@ class _AdminChangeRequestCard extends StatelessWidget {
               child: FilledButton(
                 onPressed: onDecide,
                 style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF004E89),
+                  backgroundColor: AppColors.primary,
                   visualDensity: VisualDensity.compact,
                 ),
-                child: const Text('Review / Decide'),
+                child: Text('Review / Decide'),
               ),
             ),
           ],

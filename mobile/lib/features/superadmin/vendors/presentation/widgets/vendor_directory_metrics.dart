@@ -21,10 +21,10 @@ class VendorDirectoryMetricsCards extends StatelessWidget {
       children: [
         // Top Action: Manage All Workforce (Solo & Tied)
         Material(
-          color: const Color(0xFF004E89), // Peacock Blue
+          color: const Color(0xFF005965), // Peacock Blue
           borderRadius: BorderRadius.circular(AppRadius.card),
           elevation: 1,
-          shadowColor: const Color(0xFF004E89).withValues(alpha: 0.3),
+          shadowColor: const Color(0xFF005965).withValues(alpha: 0.3),
           child: InkWell(
             onTap: onManageWorkforce,
             borderRadius: BorderRadius.circular(AppRadius.card),
@@ -37,8 +37,8 @@ class VendorDirectoryMetricsCards extends StatelessWidget {
                 children: [
                   Container(
                     padding: const EdgeInsets.all(7),
-                    decoration: const BoxDecoration(
-                      color: Colors.white24,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.2),
                       shape: BoxShape.circle,
                     ),
                     child: const Icon(
@@ -94,7 +94,7 @@ class VendorDirectoryMetricsCards extends StatelessWidget {
               label: 'REGISTERED VENDORS',
               value: '${metrics.registeredVendors}',
               icon: Icons.business_rounded,
-              valueColor: const Color(0xFF0F172A),
+              valueColor: AppColors.textPrimary,
               accentColor: const Color(0xFF2563EB),
             );
 
@@ -133,14 +133,14 @@ class VendorDirectoryMetricsCards extends StatelessWidget {
           decoration: BoxDecoration(
             color: const Color(0xFFF8FAFC),
             borderRadius: BorderRadius.circular(AppRadius.card),
-            border: Border.all(color: const Color(0xFFE2E8F0)),
+            border: Border.all(color: AppColors.border),
           ),
           child: Row(
             children: [
               Icon(
                 Icons.shield_rounded,
                 size: 18,
-                color: Color(0xFF004E89),
+                color: Color(0xFF005965),
               ),
               SizedBox(width: 8),
               Expanded(
@@ -152,7 +152,7 @@ class VendorDirectoryMetricsCards extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 9.5,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF64748B),
+                        color: AppColors.textSecondary,
                         letterSpacing: 0.5,
                       ),
                     ),
@@ -162,7 +162,7 @@ class VendorDirectoryMetricsCards extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 12.5,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF004E89),
+                        color: Color(0xFF005965),
                       ),
                     ),
                   ],
@@ -170,11 +170,11 @@ class VendorDirectoryMetricsCards extends StatelessWidget {
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   color: Color(0xFFDCFCE7),
                   borderRadius: BorderRadius.all(Radius.circular(4)),
                 ),
-                child: const Text(
+                child: Text(
                   'LIVE',
                   style: TextStyle(
                     fontSize: 9,
@@ -212,9 +212,9 @@ class _MetricTile extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppRadius.card),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: AppColors.border),
         boxShadow: const [
           BoxShadow(
             color: Color(0x05000000),
@@ -232,10 +232,10 @@ class _MetricTile extends StatelessWidget {
               Flexible(
                 child: Text(
                   label,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 9,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF64748B),
+                    color: AppColors.textSecondary,
                     letterSpacing: 0.5,
                   ),
                   maxLines: 1,

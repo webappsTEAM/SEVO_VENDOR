@@ -125,8 +125,9 @@ class _AdminTransactionsScreenState
     final totalCount = transactionsAsync?.valueOrNull?.count ?? 0;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: AppColors.background,
       appBar: const WorkforceAppBar(
+        titleText: 'Financial Transactions',
         showStatusSubBar: false,
         showDrawerMenu: true,
       ),
@@ -134,7 +135,7 @@ class _AdminTransactionsScreenState
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: _refresh,
-          color: const Color(0xFF0F172A),
+          color: AppColors.textPrimary,
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.all(AppSpacing.md),
@@ -143,9 +144,9 @@ class _AdminTransactionsScreenState
               Container(
                 padding: const EdgeInsets.all(AppSpacing.md),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: AppColors.surface,
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                  border: Border.all(color: AppColors.border),
                   boxShadow: const [
                     BoxShadow(
                       color: Color(0x040F172A),
@@ -164,15 +165,15 @@ class _AdminTransactionsScreenState
                         vertical: 3,
                       ),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF1F5F9),
+                        color: AppColors.surfaceMuted,
                         borderRadius: BorderRadius.circular(6),
                       ),
-                      child: const Text(
+                      child: Text(
                         'Workforce → Home → Wallets → Ledger',
                         style: TextStyle(
                           fontSize: 10.5,
                           fontWeight: FontWeight.w800,
-                          color: Color(0xFF475569),
+                          color: AppColors.textSecondary,
                           letterSpacing: 0.3,
                         ),
                       ),
@@ -188,7 +189,7 @@ class _AdminTransactionsScreenState
                           height: 42,
                           decoration: BoxDecoration(
                             gradient: const LinearGradient(
-                              colors: [Color(0xFF004E89), Color(0xFF0284C7)],
+                              colors: [Color(0xFF005965), Color(0xFF0284C7)],
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                             ),
@@ -205,21 +206,21 @@ class _AdminTransactionsScreenState
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
+                              Text(
                                 'Transaction Ledger',
                                 style: TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.w900,
-                                  color: Color(0xFF0F172A),
+                                  color: AppColors.textPrimary,
                                   letterSpacing: -0.2,
                                 ),
                               ),
                               const SizedBox(height: 3),
                               Text(
                                 '$totalCount total records · immutable financial audit trail',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 12,
-                                  color: Color(0xFF64748B),
+                                  color: AppColors.textSecondary,
                                   height: 1.35,
                                 ),
                               ),
@@ -230,12 +231,12 @@ class _AdminTransactionsScreenState
                         OutlinedButton.icon(
                           onPressed: _refresh,
                           icon: const Icon(Icons.refresh_rounded, size: 15),
-                          label: const Text('Refresh'),
+                          label: Text('Refresh'),
                           style: OutlinedButton.styleFrom(
-                            foregroundColor: const Color(0xFF475569),
-                            side: const BorderSide(color: Color(0xFFCBD5E1)),
+                            foregroundColor: AppColors.textSecondary,
+                            side: BorderSide(color: AppColors.border),
                             visualDensity: VisualDensity.compact,
-                            textStyle: const TextStyle(
+                            textStyle: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
                             ),
@@ -253,21 +254,21 @@ class _AdminTransactionsScreenState
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: AppColors.surface,
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                  border: Border.all(color: AppColors.border),
                 ),
                 child: Row(
                   children: [
                     const Icon(Icons.person_outline_rounded,
-                        size: 18, color: Color(0xFF004E89)),
+                        size: 18, color: Color(0xFF005965)),
                     const SizedBox(width: 8),
-                    const Text(
+                    Text(
                       'Technician: ',
                       style: TextStyle(
                         fontWeight: FontWeight.w700,
                         fontSize: 12.5,
-                        color: Color(0xFF334155),
+                        color: AppColors.textSecondary,
                       ),
                     ),
                     Expanded(
@@ -275,17 +276,17 @@ class _AdminTransactionsScreenState
                         child: DropdownButton<int>(
                           isExpanded: true,
                           value: selectedTechnician?.employeeId,
-                          hint: const Text('Select Technician',
+                          hint: Text('Select Technician',
                               style: TextStyle(fontSize: 12.5)),
                           items: wallets.map((w) {
                             return DropdownMenuItem<int>(
                               value: w.employeeId,
                               child: Text(
                                 '${w.employeeName} (EMP-${w.employeeId})',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 12.5,
                                   fontWeight: FontWeight.w600,
-                                  color: Color(0xFF0F172A),
+                                  color: AppColors.textPrimary,
                                 ),
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -313,9 +314,9 @@ class _AdminTransactionsScreenState
               // ── 3. Search Bar ─────────────────────────────────────────────
               Container(
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: AppColors.surface,
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                  border: Border.all(color: AppColors.border),
                 ),
                 child: TextField(
                   controller: _searchController,
@@ -324,17 +325,17 @@ class _AdminTransactionsScreenState
                       _appliedSearchQuery = val.trim().toLowerCase();
                     });
                   },
-                  style: const TextStyle(fontSize: 13),
+                  style: TextStyle(fontSize: 13),
                   decoration: InputDecoration(
                     hintText: 'Search transaction, employee, reference...',
-                    hintStyle: const TextStyle(
+                    hintStyle: TextStyle(
                       fontSize: 12.5,
-                      color: Color(0xFF94A3B8),
+                      color: AppColors.textMuted,
                     ),
-                    prefixIcon: const Icon(
+                    prefixIcon: Icon(
                       Icons.search_rounded,
                       size: 18,
-                      color: Color(0xFF94A3B8),
+                      color: AppColors.textMuted,
                     ),
                     suffixIcon: _searchController.text.isNotEmpty
                         ? IconButton(
@@ -461,16 +462,16 @@ class _AdminTransactionsScreenState
                   FilledButton(
                     onPressed: _applyFilters,
                     style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF0F172A),
+                      backgroundColor: AppColors.textPrimary,
                       visualDensity: VisualDensity.compact,
                       padding: const EdgeInsets.symmetric(
                           horizontal: 14, vertical: 8),
-                      textStyle: const TextStyle(
+                      textStyle: TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
-                    child: const Text('Apply'),
+                    child: Text('Apply'),
                   ),
                 ],
               ),
@@ -479,18 +480,18 @@ class _AdminTransactionsScreenState
               // ── 5. Transaction Ledger List ────────────────────────────────
               if (transactionsAsync != null) ...[
                 transactionsAsync.when(
-                  loading: () => const Center(
+                  loading: () => Center(
                     child: Padding(
                       padding: EdgeInsets.all(AppSpacing.xxl),
                       child:
-                          CircularProgressIndicator(color: Color(0xFF0F172A)),
+                          CircularProgressIndicator(color: AppColors.textPrimary),
                     ),
                   ),
                   error: (error, stack) {
                     return Container(
                       padding: const EdgeInsets.all(AppSpacing.xl),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: AppColors.surface,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: const Color(0xFFFECDD3)),
                       ),
@@ -499,30 +500,30 @@ class _AdminTransactionsScreenState
                           const Icon(Icons.error_outline_rounded,
                               size: 36, color: Color(0xFFDC2626)),
                           const SizedBox(height: 12),
-                          const Text(
+                          Text(
                             'Failed to load transactions.',
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w700,
-                              color: Color(0xFF0F172A),
+                              color: AppColors.textPrimary,
                             ),
                           ),
                           const SizedBox(height: 4),
                           Text(
                             error.toString(),
                             textAlign: TextAlign.center,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
-                              color: Color(0xFF64748B),
+                              color: AppColors.textSecondary,
                             ),
                           ),
                           const SizedBox(height: 16),
                           FilledButton.icon(
                             onPressed: _refresh,
                             icon: const Icon(Icons.refresh_rounded, size: 16),
-                            label: const Text('Retry'),
+                            label: Text('Retry'),
                             style: FilledButton.styleFrom(
-                              backgroundColor: const Color(0xFF0F172A),
+                              backgroundColor: AppColors.textPrimary,
                             ),
                           ),
                         ],
@@ -590,9 +591,9 @@ class _AdminTransactionsScreenState
                         padding: const EdgeInsets.symmetric(
                             vertical: 40, horizontal: 16),
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: AppColors.surface,
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                          border: Border.all(color: AppColors.border),
                         ),
                         child: const EmptyState(
                           icon: Icons.receipt_long_outlined,
@@ -614,19 +615,19 @@ class _AdminTransactionsScreenState
                             children: [
                               Text(
                                 '${filteredResults.length} Filtered (${data.count} Total)',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 12.5,
                                   fontWeight: FontWeight.w800,
-                                  color: Color(0xFF0F172A),
+                                  color: AppColors.textPrimary,
                                 ),
                               ),
                               if (data.totalPages > 1)
                                 Text(
                                   'Page $_currentPage of ${data.totalPages}',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 11.5,
                                     fontWeight: FontWeight.w600,
-                                    color: Color(0xFF64748B),
+                                    color: AppColors.textSecondary,
                                   ),
                                 ),
                             ],
@@ -651,10 +652,10 @@ class _AdminTransactionsScreenState
                           Container(
                             padding: const EdgeInsets.all(AppSpacing.sm),
                             decoration: BoxDecoration(
-                              color: Colors.white,
+                              color: AppColors.surface,
                               borderRadius: BorderRadius.circular(10),
                               border:
-                                  Border.all(color: const Color(0xFFE2E8F0)),
+                                  Border.all(color: AppColors.border),
                             ),
                             child: Row(
                               mainAxisAlignment:
@@ -666,14 +667,14 @@ class _AdminTransactionsScreenState
                                       : null,
                                   icon: const Icon(Icons.arrow_back_rounded,
                                       size: 15),
-                                  label: const Text('Previous'),
+                                  label: Text('Previous'),
                                   style: OutlinedButton.styleFrom(
                                     visualDensity: VisualDensity.compact,
                                   ),
                                 ),
                                 Text(
                                   'Page $_currentPage / ${data.totalPages}',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.w700,
                                   ),
@@ -685,7 +686,7 @@ class _AdminTransactionsScreenState
                                   icon: const Icon(
                                       Icons.arrow_forward_rounded,
                                       size: 15),
-                                  label: const Text('Next'),
+                                  label: Text('Next'),
                                   style: OutlinedButton.styleFrom(
                                     visualDensity: VisualDensity.compact,
                                   ),
@@ -702,14 +703,14 @@ class _AdminTransactionsScreenState
                 Container(
                   padding: const EdgeInsets.all(32),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: AppColors.surface,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                    border: Border.all(color: AppColors.border),
                   ),
-                  child: const Center(
+                  child: Center(
                     child: Text(
                       'Please select a technician to view ledger transactions.',
-                      style: TextStyle(color: Color(0xFF64748B)),
+                      style: TextStyle(color: AppColors.textSecondary),
                     ),
                   ),
                 ),
@@ -741,12 +742,10 @@ class _DropdownFilterChip<T> extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
       decoration: BoxDecoration(
-        color: isSelected ? const Color(0xFFEFF6FF) : Colors.white,
+        color: isSelected ? AppColors.infoBg : AppColors.surface,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: isSelected
-              ? const Color(0xFF004E89)
-              : const Color(0xFFE2E8F0),
+          color: isSelected ? AppColors.primary : AppColors.border,
           width: isSelected ? 1.2 : 1.0,
         ),
       ),
@@ -759,9 +758,7 @@ class _DropdownFilterChip<T> extends StatelessWidget {
             style: TextStyle(
               fontSize: 11.5,
               fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-              color: isSelected
-                  ? const Color(0xFF004E89)
-                  : const Color(0xFF475569),
+              color: isSelected ? AppColors.primary : AppColors.textSecondary,
             ),
           ),
           items: items,
@@ -812,16 +809,16 @@ class _TransactionCard extends StatelessWidget {
   Color _statusColor(String status) {
     switch (status.toUpperCase()) {
       case 'COMPLETED':
-        return const Color(0xFF059669);
+        return AppColors.successText;
       case 'PENDING_SETTLEMENT':
       case 'PENDING SETTLEMENT':
-        return const Color(0xFFD97706);
+        return AppColors.warningText;
       case 'REVERSED':
-        return const Color(0xFF64748B);
+        return AppColors.textSecondary;
       case 'FAILED':
-        return const Color(0xFFDC2626);
+        return AppColors.errorText;
       default:
-        return const Color(0xFF475569);
+        return AppColors.textSecondary;
     }
   }
 
@@ -846,15 +843,15 @@ class _TransactionCard extends StatelessWidget {
     final isCredit = transaction.direction.toUpperCase() == 'CREDIT';
     final sign = isCredit ? '+' : '−';
     final amountColor =
-        isCredit ? const Color(0xFF059669) : const Color(0xFFDC2626);
+        isCredit ? AppColors.successText : AppColors.errorText;
     final statusColor = _statusColor(transaction.status);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: AppColors.border),
         boxShadow: const [
           BoxShadow(
             color: Color(0x030F172A),
@@ -878,9 +875,7 @@ class _TransactionCard extends StatelessWidget {
                     width: 32,
                     height: 32,
                     decoration: BoxDecoration(
-                      color: isCredit
-                          ? const Color(0xFFECFDF5)
-                          : const Color(0xFFFFF1F2),
+                      color: isCredit ? AppColors.successBg : AppColors.errorBg,
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Icon(
@@ -896,10 +891,10 @@ class _TransactionCard extends StatelessWidget {
                       children: [
                         Text(
                           transaction.displayTitle,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w800,
-                            color: Color(0xFF0F172A),
+                            color: AppColors.textPrimary,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -908,9 +903,9 @@ class _TransactionCard extends StatelessWidget {
                             transaction.description!.isNotEmpty)
                           Text(
                             transaction.description!,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 11.5,
-                              color: Color(0xFF475569),
+                              color: AppColors.textSecondary,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -919,10 +914,10 @@ class _TransactionCard extends StatelessWidget {
                             transaction.referenceId!.isNotEmpty)
                           Text(
                             'Ref: ${transaction.referenceId}',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 11,
                               fontFamily: 'monospace',
-                              color: Color(0xFF64748B),
+                              color: AppColors.textSecondary,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -951,9 +946,9 @@ class _TransactionCard extends StatelessWidget {
                       if (transaction.createdAt != null)
                         Text(
                           '${transaction.createdAt!.day.toString().padLeft(2, '0')}/${transaction.createdAt!.month.toString().padLeft(2, '0')}/${transaction.createdAt!.year}',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 10.5,
-                            color: Color(0xFF94A3B8),
+                            color: AppColors.textMuted,
                           ),
                         ),
                     ],
@@ -961,7 +956,7 @@ class _TransactionCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 8),
-              const Divider(height: 1, color: Color(0xFFF1F5F9)),
+              Divider(height: 1, color: AppColors.border),
               const SizedBox(height: 8),
 
               // Row 2: Badges (Direction & Status) + Technician Name & Details Hint
@@ -983,9 +978,7 @@ class _TransactionCard extends StatelessWidget {
                               : const Color(0xFFFFF1F2),
                           borderRadius: BorderRadius.circular(4),
                           border: Border.all(
-                            color: isCredit
-                                ? const Color(0xFFA7F3D0)
-                                : const Color(0xFFFECDD3),
+                            color: isCredit ? AppColors.successBorder : AppColors.errorBorder,
                             width: 0.8,
                           ),
                         ),
@@ -994,9 +987,7 @@ class _TransactionCard extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 9.5,
                             fontWeight: FontWeight.w800,
-                            color: isCredit
-                                ? const Color(0xFF059669)
-                                : const Color(0xFFDC2626),
+                            color: isCredit ? AppColors.successText : AppColors.errorText,
                           ),
                         ),
                       ),
@@ -1031,9 +1022,9 @@ class _TransactionCard extends StatelessWidget {
                       technicianName != null
                           ? '$technicianName (EMP-$employeeId)'
                           : 'TXN #${transaction.id}',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11,
-                        color: Color(0xFF64748B),
+                        color: AppColors.textSecondary,
                         fontWeight: FontWeight.w600,
                       ),
                       maxLines: 1,

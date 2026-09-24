@@ -123,9 +123,9 @@ const Map<String, _StatusStyle> _statusStyles = {
   ),
   'in_progress': _StatusStyle(
     'In Progress',
-    Color(0xFFFFFBEB),
-    Color(0xFF92400E),
-    Color(0xFFF59E0B),
+    Color(0xFFE0F2FE),
+    Color(0xFF0369A1),
+    Color(0xFF0284C7),
   ),
   'completed': _StatusStyle(
     'Completed',
@@ -195,6 +195,39 @@ class StatusChip extends StatelessWidget {
     final key = status.toLowerCase().trim().replaceAll(RegExp(r'[\s-]+'), '_');
     final style = _statusStyles[key] ?? _neutral;
     final text = label ?? (style.label.isNotEmpty ? style.label : status.replaceAll('_', ' '));
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    Color bg = style.background;
+    Color fg = style.foreground;
+    Color dot = style.dot;
+
+    if (isDark) {
+      if (key == 'offline' || key == 'not_started' || key == 'neutral' || style == _neutral) {
+        bg = const Color(0xFF1E293B);
+        fg = const Color(0xFFF1F5F9);
+        dot = const Color(0xFF94A3B8);
+      } else if (style.dot == const Color(0xFF10B981)) {
+        // Green
+        bg = const Color(0xFF059669).withValues(alpha: 0.2);
+        fg = const Color(0xFF6EE7B7);
+        dot = const Color(0xFF10B981);
+      } else if (style.dot == const Color(0xFF3B82F6)) {
+        // Blue
+        bg = const Color(0xFF2563EB).withValues(alpha: 0.2);
+        fg = const Color(0xFF93C5FD);
+        dot = const Color(0xFF3B82F6);
+      } else if (style.dot == const Color(0xFFF59E0B) || style.dot == const Color(0xFFF97316)) {
+        // Amber / Orange
+        bg = const Color(0xFFD97706).withValues(alpha: 0.2);
+        fg = const Color(0xFFFDE68A);
+        dot = const Color(0xFFF59E0B);
+      } else if (style.dot == const Color(0xFFF43F5E)) {
+        // Red
+        bg = const Color(0xFFDC2626).withValues(alpha: 0.2);
+        fg = const Color(0xFFFECDD3);
+        dot = const Color(0xFFF43F5E);
+      }
+    }
 
     return Container(
       padding: EdgeInsets.symmetric(
@@ -202,8 +235,9 @@ class StatusChip extends StatelessWidget {
         vertical: dense ? 2 : 4,
       ),
       decoration: BoxDecoration(
-        color: style.background,
+        color: bg,
         borderRadius: BorderRadius.circular(999),
+        border: isDark ? Border.all(color: dot.withValues(alpha: 0.3), width: 0.6) : null,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -211,7 +245,7 @@ class StatusChip extends StatelessWidget {
           Container(
             width: 6,
             height: 6,
-            decoration: BoxDecoration(color: style.dot, shape: BoxShape.circle),
+            decoration: BoxDecoration(color: dot, shape: BoxShape.circle),
           ),
           const SizedBox(width: 5),
           Flexible(
@@ -223,7 +257,7 @@ class StatusChip extends StatelessWidget {
                 fontSize: dense ? 9.5 : 10.5,
                 fontWeight: FontWeight.w800,
                 letterSpacing: 0.4,
-                color: style.foreground,
+                color: fg,
               ),
             ),
           ),

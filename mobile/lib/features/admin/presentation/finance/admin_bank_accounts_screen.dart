@@ -25,7 +25,9 @@ class _AdminBankAccountsScreenState extends ConsumerState<AdminBankAccountsScree
     final accountsAsync = ref.watch(adminBankAccountsProvider);
 
     return Scaffold(
+      backgroundColor: AppColors.background,
       appBar: const WorkforceAppBar(
+        titleText: 'Bank Account Verifications',
         showStatusSubBar: false,
         showDrawerMenu: true,
       ),
@@ -53,12 +55,12 @@ class _AdminBankAccountsScreenState extends ConsumerState<AdminBankAccountsScree
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'Bank Accounts',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w900,
-                          color: Color(0xFF0A2540),
+                          color: AppColors.textPrimary,
                         ),
                       ),
                       const SizedBox(height: 3),
@@ -81,12 +83,12 @@ class _AdminBankAccountsScreenState extends ConsumerState<AdminBankAccountsScree
             FilledButton.icon(
               onPressed: () => AdminAddBankAccountSheet.show(context),
               style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF004E89), // Peacock Blue branding
+                backgroundColor: AppColors.primary, // Peacock Blue branding
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
               icon: const Icon(Icons.add_rounded, size: 20),
-              label: const Text(
+              label: Text(
                 '+ Add Account',
                 style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5),
               ),
@@ -132,24 +134,24 @@ class _AdminBankAccountsScreenState extends ConsumerState<AdminBankAccountsScree
                         Container(
                           padding: const EdgeInsets.all(18),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF004E89).withValues(alpha: 0.08),
+                            color: const Color(0xFF005965).withValues(alpha: 0.08),
                             shape: BoxShape.circle,
                           ),
                           child: const Icon(
                             Icons.account_balance_outlined,
                             size: 52,
-                            color: Color(0xFF004E89),
+                            color: Color(0xFF005965),
                           ),
                         ),
                         const SizedBox(height: 16),
 
                         // Title
-                        const Text(
+                        Text(
                           'No bank accounts added',
                           style: TextStyle(
                             fontWeight: FontWeight.w800,
                             fontSize: 16.5,
-                            color: Color(0xFF0A2540),
+                            color: AppColors.textPrimary,
                           ),
                         ),
                         const SizedBox(height: 6),
@@ -169,25 +171,25 @@ class _AdminBankAccountsScreenState extends ConsumerState<AdminBankAccountsScree
                         Container(
                           padding: const EdgeInsets.all(AppSpacing.md),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFEFF6FF),
+                            color: AppColors.infoBg,
                             borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: const Color(0xFFBFDBFE)),
+                            border: Border.all(color: AppColors.infoBorder),
                           ),
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Icon(Icons.shield_outlined, size: 18, color: Color(0xFF1D4ED8)),
-                              const SizedBox(width: 10),
+                              Icon(Icons.shield_outlined, size: 18, color: AppColors.infoText),
+                              SizedBox(width: 10),
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: const [
+                                  children: [
                                     Text(
                                       'Security',
                                       style: TextStyle(
                                         fontSize: 12,
                                         fontWeight: FontWeight.w800,
-                                        color: Color(0xFF1E3A8A),
+                                        color: AppColors.infoText,
                                       ),
                                     ),
                                     SizedBox(height: 3),
@@ -195,7 +197,7 @@ class _AdminBankAccountsScreenState extends ConsumerState<AdminBankAccountsScree
                                       'Full account numbers are never stored in our system. Only the last 4 digits are displayed for identification. Newly added accounts are pending admin verification before they can be used for withdrawals.',
                                       style: TextStyle(
                                         fontSize: 11.5,
-                                        color: Color(0xFF1E40AF),
+                                        color: AppColors.infoText,
                                         height: 1.35,
                                       ),
                                     ),
@@ -233,11 +235,11 @@ class _AdminBankAccountsScreenState extends ConsumerState<AdminBankAccountsScree
           setState(() => _statusFilter = value);
         }
       },
-      selectedColor: const Color(0xFF004E89),
+      selectedColor: AppColors.primary,
       labelStyle: TextStyle(
         fontSize: 12,
         fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-        color: isSelected ? Colors.white : const Color(0xFF475569),
+        color: isSelected ? Colors.white : AppColors.textSecondary,
       ),
       backgroundColor: AppColors.surfaceMuted,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),

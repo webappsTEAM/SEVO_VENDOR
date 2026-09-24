@@ -39,12 +39,10 @@ class AdminPlaceholderScreen extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF004E89).withValues(alpha: 0.1),
+                    color: AppColors.primary.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(
-                    Icons.dashboard_customize_rounded,
-                    color: Color(0xFF004E89),
+                  child: Icon(Icons.dashboard_customize_rounded, color: AppColors.primary,
                     size: 24,
                   ),
                 ),
@@ -55,18 +53,18 @@ class AdminPlaceholderScreen extends StatelessWidget {
                     children: [
                       Text(
                         title,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w800,
-                          color: Color(0xFF0F172A),
+                          color: AppColors.textPrimary,
                         ),
                       ),
                       const SizedBox(height: 2),
                       Text(
                         description ?? 'Admin Module • $module',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
-                          color: Color(0xFF64748B),
+                          color: AppColors.textSecondary,
                         ),
                       ),
                     ],
@@ -80,9 +78,9 @@ class AdminPlaceholderScreen extends StatelessWidget {
                 child: Container(
                   padding: const EdgeInsets.all(AppSpacing.xl),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: AppColors.surface,
                     borderRadius: BorderRadius.circular(AppRadius.card),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                    border: Border.all(color: AppColors.border),
                   ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -91,31 +89,31 @@ class AdminPlaceholderScreen extends StatelessWidget {
                         width: 56,
                         height: 56,
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF1F5F9),
+                          color: AppColors.surfaceMuted,
                           borderRadius: BorderRadius.circular(28),
                         ),
-                        child: const Icon(
+                        child: Icon(
                           Icons.engineering_rounded,
-                          color: Color(0xFF64748B),
+                          color: AppColors.textSecondary,
                           size: 28,
                         ),
                       ),
                       const SizedBox(height: 14),
                       Text(
                         '$module Module',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w800,
-                          color: Color(0xFF0F172A),
+                          color: AppColors.textPrimary,
                         ),
                       ),
                       const SizedBox(height: 6),
                       Text(
                         'This screen is registered and connected to the Admin Navigation System. Full mobile workflows for $module are queued in subsequent fast-track batches.',
                         textAlign: TextAlign.center,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12.5,
-                          color: Color(0xFF64748B),
+                          color: AppColors.textSecondary,
                           height: 1.4,
                         ),
                       ),

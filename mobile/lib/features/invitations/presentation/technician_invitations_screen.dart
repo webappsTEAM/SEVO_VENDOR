@@ -6,6 +6,9 @@ import '../../../core/network/api_error.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/app_card.dart';
 import '../../../shared/widgets/empty_state.dart';
+import '../../../shared/widgets/module_header_card.dart';
+import '../../../shared/widgets/sevo_brand_mark.dart';
+import '../../../shared/widgets/theme_toggle_button.dart';
 import '../data/invitations_repository.dart';
 import '../domain/technician_invitation.dart';
 import 'invitations_providers.dart';
@@ -55,7 +58,7 @@ class _TechnicianInvitationsScreenState
         ),
         title: Row(
           children: const [
-            Icon(Icons.verified_user_rounded, color: Color(0xFF004E89), size: 22),
+            Icon(Icons.verified_user_rounded, color: AppColors.primary, size: 22),
             SizedBox(width: 8),
             Expanded(
               child: Text(
@@ -63,7 +66,7 @@ class _TechnicianInvitationsScreenState
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w800,
-                  color: Color(0xFF0A2540),
+                  color: AppColors.peacockNavy,
                 ),
               ),
             ),
@@ -125,7 +128,7 @@ class _TechnicianInvitationsScreenState
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF004E89),
+              backgroundColor: AppColors.primary,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
@@ -161,7 +164,7 @@ class _TechnicianInvitationsScreenState
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w800,
-                  color: Color(0xFF0A2540),
+                  color: AppColors.peacockNavy,
                 ),
               ),
             ),
@@ -285,20 +288,14 @@ class _TechnicianInvitationsScreenState
         flexibleSpace: Container(
           decoration: const BoxDecoration(
             gradient: AppColors.peacockGradient,
+            borderRadius: BorderRadius.vertical(bottom: Radius.circular(22)),
           ),
         ),
-        title: const Text(
-          'Vendor Invitations',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w800,
-            color: Colors.white,
-            letterSpacing: 0.2,
-          ),
+        title: const SevoHeaderTitle(
+          fontSize: 22,
         ),
         actions: [
+          const ThemeToggleButton(),
           IconButton(
             icon: const Icon(Icons.refresh_rounded, color: Colors.white, size: 22),
             tooltip: 'Refresh Invitations',
@@ -314,19 +311,16 @@ class _TechnicianInvitationsScreenState
         child: ListView(
           padding: const EdgeInsets.fromLTRB(
             AppSpacing.lg,
-            AppSpacing.sm,
+            AppSpacing.lg,
             AppSpacing.lg,
             AppSpacing.xxl,
           ),
           children: [
-            // ── Context Subtitle ───────────────────────────────────────────
-            Text(
-              'Private invitations received directly from verified service businesses.',
-              style: TextStyle(
-                fontSize: 12,
-                color: AppColors.textMuted,
-                height: 1.35,
-              ),
+            // ── Module Heading Card ─────────────────────────────────────────
+            const ModuleHeaderCard(
+              title: 'Vendor Invitations',
+              subtitle: 'Private invitations from verified businesses',
+              icon: Icons.mail_outline_rounded,
             ),
             const SizedBox(height: AppSpacing.md),
 
@@ -341,7 +335,7 @@ class _TechnicianInvitationsScreenState
                       children: [
                         const CircularProgressIndicator(
                           strokeWidth: 3,
-                          color: Color(0xFF004E89),
+                          color: AppColors.primary,
                         ),
                         const SizedBox(height: AppSpacing.md),
                         Text(
@@ -382,7 +376,7 @@ class _TechnicianInvitationsScreenState
                       FilledButton.icon(
                         onPressed: () => ref.invalidate(technicianInvitationsProvider),
                         style: FilledButton.styleFrom(
-                          backgroundColor: const Color(0xFF004E89),
+                          backgroundColor: AppColors.primary,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(8),
                           ),
@@ -423,7 +417,7 @@ class _TechnicianInvitationsScreenState
                         border: Border.all(
                           color: activeVendor != null
                               ? const Color(0xFF059669).withValues(alpha: 0.35)
-                              : const Color(0xFF004E89).withValues(alpha: 0.2),
+                              : AppColors.primary.withValues(alpha: 0.2),
                           width: 1.0,
                         ),
                         boxShadow: AppElevation.subtle,
@@ -446,7 +440,7 @@ class _TechnicianInvitationsScreenState
                               size: 22,
                               color: activeVendor != null
                                   ? const Color(0xFF059669)
-                                  : const Color(0xFF004E89),
+                                  : AppColors.primary,
                             ),
                           ),
                           const SizedBox(width: AppSpacing.md),
@@ -538,13 +532,13 @@ class _TechnicianInvitationsScreenState
                                       .state = tab['id']!;
                                 }
                               },
-                              selectedColor: const Color(0xFF004E89), // Peacock Blue
+                              selectedColor: AppColors.primary, // Peacock Blue
                               backgroundColor: AppColors.surface,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(8),
                                 side: BorderSide(
                                   color: isSelected
-                                      ? const Color(0xFF004E89)
+                                      ? AppColors.primary
                                       : AppColors.border,
                                 ),
                               ),

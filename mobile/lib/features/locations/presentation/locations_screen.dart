@@ -5,6 +5,9 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/async_value_view.dart';
 import '../../../shared/widgets/empty_state.dart';
+import '../../../shared/widgets/module_header_card.dart';
+import '../../../shared/widgets/sevo_brand_mark.dart';
+import '../../../shared/widgets/theme_toggle_button.dart';
 import '../domain/saved_location.dart';
 import 'locations_providers.dart';
 import 'widgets/location_picker_map.dart';
@@ -147,27 +150,36 @@ class _LocationsScreenState extends ConsumerState<LocationsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          _view == 'list'
-              ? 'My Saved Locations'
-              : (_view == 'add' ? 'Add New Location' : 'Edit Location'),
+        backgroundColor: AppColors.peacockNavy,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: false,
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            gradient: AppColors.peacockGradient,
+            borderRadius: BorderRadius.vertical(bottom: Radius.circular(22)),
+          ),
+        ),
+        title: const SevoHeaderTitle(
+          fontSize: 22,
         ),
         leading: _view != 'list'
             ? IconButton(
-                icon: const Icon(Icons.chevron_left_rounded, size: 28),
+                icon: const Icon(Icons.chevron_left_rounded, size: 28, color: Colors.white),
                 tooltip: 'Back to list',
                 onPressed: _closeForm,
               )
             : null,
         actions: [
+          const ThemeToggleButton(),
           if (_view == 'list') ...[
             IconButton(
-              icon: const Icon(Icons.add_location_alt_outlined),
+              icon: const Icon(Icons.add_location_alt_outlined, color: Colors.white),
               tooltip: 'Add Location',
               onPressed: _openAdd,
             ),
             IconButton(
-              icon: const Icon(Icons.refresh_rounded),
+              icon: const Icon(Icons.refresh_rounded, color: Colors.white),
               tooltip: 'Refresh locations',
               onPressed: () => ref.refresh(savedLocationsProvider.future),
             ),
@@ -198,7 +210,7 @@ class _LocationsScreenState extends ConsumerState<LocationsScreen> {
               AppSpacing.xxl,
             ),
             children: [
-              _LocationsHeader(onAdd: _openAdd),
+              _LocationsHeader(onAdd: _openAdd, locationCount: locations.length),
               const SizedBox(height: AppSpacing.md),
               if (locations.isEmpty)
                 const EmptyState(
@@ -792,81 +804,30 @@ class _LocationsScreenState extends ConsumerState<LocationsScreen> {
 // ── Locations Header ──────────────────────────────────────────────────────────
 
 class _LocationsHeader extends StatelessWidget {
-  const _LocationsHeader({required this.onAdd});
+  const _LocationsHeader({required this.onAdd, this.locationCount = 0});
 
   final VoidCallback onAdd;
+  final int locationCount;
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final isCompact = constraints.maxWidth < 340;
-
-        if (isCompact) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'My Saved Locations',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                'Manage your personal saved locations for quick access during jobs.',
-                style: TextStyle(fontSize: 11, color: AppColors.textMuted),
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              ElevatedButton.icon(
-                onPressed: onAdd,
-                icon: const Icon(Icons.add, size: 16),
-                label: const Text('Add Location', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  foregroundColor: Colors.white,
-                  minimumSize: const Size(0, 36),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  visualDensity: VisualDensity.compact,
-                ),
-              ),
-            ],
-          );
-        }
-
-        return Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'My Saved Locations',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Manage your personal saved locations for quick access during jobs.',
-                    style: TextStyle(fontSize: 11, color: AppColors.textMuted),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: AppSpacing.sm),
-            ElevatedButton.icon(
-              onPressed: onAdd,
-              icon: const Icon(Icons.add, size: 16),
-              label: const Text('Add Location', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
-                minimumSize: const Size(0, 36),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                visualDensity: VisualDensity.compact,
-              ),
-            ),
-          ],
-        );
-      },
+    return ModuleHeaderCard(
+      title: 'Saved Locations',
+      subtitle: '$locationCount Saved • Personal Work Locations',
+      icon: Icons.location_on_rounded,
+      trailing: ElevatedButton.icon(
+        onPressed: onAdd,
+        icon: const Icon(Icons.add_rounded, size: 16),
+        label: const Text('Add', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppColors.primary,
+          foregroundColor: Colors.white,
+          minimumSize: const Size(0, 36),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          visualDensity: VisualDensity.compact,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      ),
     );
   }
 }

@@ -77,14 +77,14 @@ class _EstimatesScreenState extends ConsumerState<EstimatesScreen> {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: const [
-                        Icon(Icons.arrow_back_rounded, size: 16, color: Color(0xFF004E89)),
+                        Icon(Icons.arrow_back_rounded, size: 16, color: AppColors.primary),
                         SizedBox(width: 4),
                         Text(
                           'Back',
                           style: TextStyle(
                             fontSize: 12.5,
                             fontWeight: FontWeight.w700,
-                            color: Color(0xFF004E89),
+                            color: AppColors.primary,
                           ),
                         ),
                       ],
@@ -128,14 +128,14 @@ class _EstimatesScreenState extends ConsumerState<EstimatesScreen> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: const [
-                          Icon(Icons.refresh_rounded, size: 15, color: Color(0xFF004E89)),
+                          Icon(Icons.refresh_rounded, size: 15, color: AppColors.primary),
                           SizedBox(width: 4),
                           Text(
                             'Refresh',
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
-                              color: Color(0xFF004E89),
+                              color: AppColors.primary,
                             ),
                           ),
                         ],
@@ -152,7 +152,7 @@ class _EstimatesScreenState extends ConsumerState<EstimatesScreen> {
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w900,
-                  color: Color(0xFF0A2540),
+                  color: AppColors.peacockNavy,
                 ),
               ),
               const SizedBox(height: 2),
@@ -175,7 +175,7 @@ class _EstimatesScreenState extends ConsumerState<EstimatesScreen> {
                       label: 'Total Leads',
                       value: '${metrics['total'] ?? 0}',
                       icon: Icons.calculate_outlined,
-                      color: const Color(0xFF004E89),
+                      color: AppColors.primary,
                     ),
                     _StatDivider(),
                     _SummaryStat(
@@ -239,7 +239,7 @@ class _EstimatesScreenState extends ConsumerState<EstimatesScreen> {
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(10),
-                          borderSide: const BorderSide(color: Color(0xFF004E89), width: 1.5),
+                          borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
                         ),
                       ),
                     ),
@@ -270,7 +270,7 @@ class _EstimatesScreenState extends ConsumerState<EstimatesScreen> {
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
                             color: selectedDate != null
-                                ? const Color(0xFF004E89)
+                                ? AppColors.primary
                                 : AppColors.border,
                             width: selectedDate != null ? 1.5 : 1,
                           ),
@@ -281,7 +281,7 @@ class _EstimatesScreenState extends ConsumerState<EstimatesScreen> {
                               Icons.calendar_today_rounded,
                               size: 14,
                               color: selectedDate != null
-                                  ? const Color(0xFF004E89)
+                                  ? AppColors.primary
                                   : AppColors.textMuted,
                             ),
                             const SizedBox(width: 4),
@@ -294,7 +294,7 @@ class _EstimatesScreenState extends ConsumerState<EstimatesScreen> {
                                       ? FontWeight.w700
                                       : FontWeight.w500,
                                   color: selectedDate != null
-                                      ? const Color(0xFF0A2540)
+                                      ? AppColors.peacockNavy
                                       : AppColors.textMuted,
                                 ),
                                 overflow: TextOverflow.ellipsis,
@@ -343,12 +343,12 @@ class _EstimatesScreenState extends ConsumerState<EstimatesScreen> {
                             ref.read(estimatesFilterTabProvider.notifier).state = tab['id']!;
                           }
                         },
-                        selectedColor: const Color(0xFF004E89),
+                        selectedColor: AppColors.primary,
                         backgroundColor: Colors.white,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8),
                           side: BorderSide(
-                            color: isSelected ? const Color(0xFF004E89) : AppColors.border,
+                            color: isSelected ? AppColors.primary : AppColors.border,
                           ),
                         ),
                       ),

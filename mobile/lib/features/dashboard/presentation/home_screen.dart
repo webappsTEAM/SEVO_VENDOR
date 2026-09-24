@@ -217,7 +217,7 @@ class _QuickActionsSection extends StatelessWidget {
       children: [
         _QuickActionTile(
           icon: Icons.work_outline_rounded,
-          color: const Color(0xFF004E89),
+          color: AppColors.primary,
           label: 'Jobs Queue',
           onTap: () => context.go(AppRoutes.jobs),
         ),

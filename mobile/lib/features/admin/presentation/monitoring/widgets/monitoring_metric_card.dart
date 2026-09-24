@@ -26,14 +26,14 @@ class MonitoringMetricCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final effectiveBadgeColor = badgeColor ?? const Color(0xFF059669);
-    final effectiveIconColor = iconColor ?? const Color(0xFF004E89);
+    final effectiveIconColor = iconColor ?? const Color(0xFF005965);
 
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: AppColors.border),
         boxShadow: const [
           BoxShadow(
             color: Color(0x040A2540),
@@ -103,10 +103,10 @@ class MonitoringMetricCard extends StatelessWidget {
             alignment: Alignment.centerLeft,
             child: Text(
               value,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.w900,
-                color: Color(0xFF0A2540),
+                color: Color(0xFF003B46),
                 letterSpacing: -0.4,
               ),
             ),

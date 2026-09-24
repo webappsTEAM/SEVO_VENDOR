@@ -49,7 +49,7 @@ class AdminProviderProfileScreen extends ConsumerWidget {
                   const SizedBox(height: 16),
                   FilledButton(
                     onPressed: () => ref.invalidate(adminProviderProfileProvider),
-                    child: const Text('Retry'),
+                    child: Text('Retry'),
                   ),
                 ],
               ),
@@ -64,9 +64,9 @@ class AdminProviderProfileScreen extends ConsumerWidget {
                 Container(
                   padding: const EdgeInsets.all(AppSpacing.md),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: AppColors.surface,
                     borderRadius: BorderRadius.circular(AppRadius.card),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                    border: Border.all(color: AppColors.border),
                     boxShadow: const [
                       BoxShadow(
                         color: Color(0x040A2540),
@@ -85,7 +85,7 @@ class AdminProviderProfileScreen extends ConsumerWidget {
                             width: 52,
                             height: 52,
                             decoration: BoxDecoration(
-                              color: const Color(0xFF004E89),
+                              color: const Color(0xFF005965),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: const Center(
@@ -106,10 +106,10 @@ class AdminProviderProfileScreen extends ConsumerWidget {
                                     Expanded(
                                       child: Text(
                                         profile.companyName,
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           fontSize: 16,
                                           fontWeight: FontWeight.w900,
-                                          color: Color(0xFF0F172A),
+                                          color: AppColors.textPrimary,
                                         ),
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
@@ -132,7 +132,7 @@ class AdminProviderProfileScreen extends ConsumerWidget {
                                           borderRadius: BorderRadius.circular(4),
                                           border: Border.all(color: const Color(0xFFA7F3D0)),
                                         ),
-                                        child: const Row(
+                                        child: Row(
                                           mainAxisSize: MainAxisSize.min,
                                           children: [
                                             Icon(Icons.verified_rounded, size: 12, color: Color(0xFF059669)),
@@ -156,7 +156,7 @@ class AdminProviderProfileScreen extends ConsumerWidget {
                         ],
                       ),
                       const SizedBox(height: 12),
-                      const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                      Divider(height: 1, color: Color(0xFFF1F5F9)),
                       const SizedBox(height: 12),
 
                       // Metric Strip
@@ -167,7 +167,7 @@ class AdminProviderProfileScreen extends ConsumerWidget {
                               label: 'Tied Technicians',
                               value: '${profile.tiedTechniciansCount}',
                               icon: Icons.groups_rounded,
-                              color: const Color(0xFF004E89),
+                              color: const Color(0xFF005965),
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -228,19 +228,19 @@ class AdminProviderProfileScreen extends ConsumerWidget {
                 Container(
                   padding: const EdgeInsets.all(AppSpacing.md),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: AppColors.surface,
                     borderRadius: BorderRadius.circular(AppRadius.card),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                    border: Border.all(color: AppColors.border),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'Quick Operations',
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w800,
-                          color: Color(0xFF0F172A),
+                          color: AppColors.textPrimary,
                         ),
                       ),
                       const SizedBox(height: 10),
@@ -249,13 +249,13 @@ class AdminProviderProfileScreen extends ConsumerWidget {
                         title: 'Tied Technicians Roster',
                         onTap: () => context.push(AppRoutes.adminTiedTechnicians),
                       ),
-                      const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                      Divider(height: 1, color: Color(0xFFF1F5F9)),
                       _buildNavRow(
                         icon: Icons.send_rounded,
                         title: 'Dispatch Radar Console',
                         onTap: () => context.push(AppRoutes.adminDispatch),
                       ),
-                      const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                      Divider(height: 1, color: Color(0xFFF1F5F9)),
                       _buildNavRow(
                         icon: Icons.account_balance_wallet_rounded,
                         title: 'Company Wallet & Ledger',
@@ -305,10 +305,10 @@ class AdminProviderProfileScreen extends ConsumerWidget {
                 ),
                 Text(
                   label,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF64748B),
+                    color: AppColors.textSecondary,
                   ),
                 ),
               ],
@@ -327,29 +327,29 @@ class AdminProviderProfileScreen extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppRadius.card),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: AppColors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(icon, size: 16, color: const Color(0xFF004E89)),
+              Icon(icon, size: 16, color: const Color(0xFF005965)),
               const SizedBox(width: 6),
               Text(
                 title,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w800,
-                  color: Color(0xFF0F172A),
+                  color: AppColors.textPrimary,
                 ),
               ),
             ],
           ),
           const SizedBox(height: 10),
-          const Divider(height: 1, color: Color(0xFFF1F5F9)),
+          Divider(height: 1, color: Color(0xFFF1F5F9)),
           const SizedBox(height: 8),
           ...children,
         ],
@@ -367,20 +367,20 @@ class AdminProviderProfileScreen extends ConsumerWidget {
             width: 130,
             child: Text(
               label,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 11.5,
                 fontWeight: FontWeight.w600,
-                color: Color(0xFF64748B),
+                color: AppColors.textSecondary,
               ),
             ),
           ),
           Expanded(
             child: Text(
               value,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
-                color: Color(0xFF0F172A),
+                color: AppColors.textPrimary,
               ),
             ),
           ),
@@ -400,19 +400,19 @@ class AdminProviderProfileScreen extends ConsumerWidget {
         padding: const EdgeInsets.symmetric(vertical: 8),
         child: Row(
           children: [
-            Icon(icon, size: 18, color: const Color(0xFF004E89)),
+            Icon(icon, size: 18, color: const Color(0xFF005965)),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
                 title,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 12.5,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF334155),
+                  color: AppColors.textSecondary,
                 ),
               ),
             ),
-            const Icon(Icons.chevron_right_rounded, size: 18, color: Color(0xFF94A3B8)),
+            Icon(Icons.chevron_right_rounded, size: 18, color: AppColors.textMuted),
           ],
         ),
       ),

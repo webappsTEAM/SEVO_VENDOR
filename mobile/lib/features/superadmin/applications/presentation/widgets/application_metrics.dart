@@ -24,10 +24,10 @@ class ApplicationMetrics extends StatelessWidget {
           subtitle: 'Waiting for review',
           count: metrics.pendingCount,
           icon: Icons.schedule_rounded,
-          badgeColor: const Color(0xFFFEF3C7),
-          textColor: const Color(0xFF92400E),
-          iconColor: const Color(0xFFD97706),
-          iconBgColor: const Color(0xFFFFFBEB),
+          badgeColor: AppColors.warningBg,
+          textColor: AppColors.warningText,
+          iconColor: AppColors.warningText,
+          iconBgColor: AppColors.warningBg,
           isSelected: selectedFilter == PlatformApplicationStatusFilter.pending,
           onTap: () => onSelectFilter(PlatformApplicationStatusFilter.pending),
         );
@@ -37,10 +37,10 @@ class ApplicationMetrics extends StatelessWidget {
           subtitle: 'Currently being reviewed',
           count: metrics.underReviewCount,
           icon: Icons.search_rounded,
-          badgeColor: const Color(0xFFDBEAFE),
-          textColor: const Color(0xFF1E40AF),
-          iconColor: const Color(0xFF2563EB),
-          iconBgColor: const Color(0xFFEFF6FF),
+          badgeColor: AppColors.infoBg,
+          textColor: AppColors.infoText,
+          iconColor: AppColors.infoText,
+          iconBgColor: AppColors.infoBg,
           isSelected: selectedFilter == PlatformApplicationStatusFilter.underReview,
           onTap: () => onSelectFilter(PlatformApplicationStatusFilter.underReview),
         );
@@ -50,10 +50,10 @@ class ApplicationMetrics extends StatelessWidget {
           subtitle: 'Successfully onboarded',
           count: metrics.approvedCount,
           icon: Icons.check_circle_outline_rounded,
-          badgeColor: const Color(0xFFD1FAE5),
-          textColor: const Color(0xFF065F46),
-          iconColor: const Color(0xFF059669),
-          iconBgColor: const Color(0xFFECFDF5),
+          badgeColor: AppColors.successBg,
+          textColor: AppColors.successText,
+          iconColor: AppColors.successText,
+          iconBgColor: AppColors.successBg,
           isSelected: selectedFilter == PlatformApplicationStatusFilter.approved,
           onTap: () => onSelectFilter(PlatformApplicationStatusFilter.approved),
         );
@@ -63,10 +63,10 @@ class ApplicationMetrics extends StatelessWidget {
           subtitle: 'Awaiting resubmission',
           count: metrics.correctionsRequiredCount,
           icon: Icons.edit_note_rounded,
-          badgeColor: const Color(0xFFFFEDD5),
-          textColor: const Color(0xFF9A3412),
-          iconColor: const Color(0xFFEA580C),
-          iconBgColor: const Color(0xFFFFF7ED),
+          badgeColor: AppColors.warningBg,
+          textColor: AppColors.warningText,
+          iconColor: AppColors.warningText,
+          iconBgColor: AppColors.warningBg,
           isSelected: selectedFilter == PlatformApplicationStatusFilter.correctionsRequired,
           onTap: () => onSelectFilter(PlatformApplicationStatusFilter.correctionsRequired),
         );
@@ -76,10 +76,10 @@ class ApplicationMetrics extends StatelessWidget {
           subtitle: 'Declined applications',
           count: metrics.rejectedCount,
           icon: Icons.cancel_outlined,
-          badgeColor: const Color(0xFFFEE2E2),
-          textColor: const Color(0xFF991B1B),
-          iconColor: const Color(0xFFDC2626),
-          iconBgColor: const Color(0xFFFEF2F2),
+          badgeColor: AppColors.errorBg,
+          textColor: AppColors.errorText,
+          iconColor: AppColors.errorText,
+          iconBgColor: AppColors.errorBg,
           isSelected: selectedFilter == PlatformApplicationStatusFilter.rejected,
           onTap: () => onSelectFilter(PlatformApplicationStatusFilter.rejected),
         );
@@ -181,8 +181,7 @@ class _MetricCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
+    return Material(color: AppColors.surface,
       borderRadius: BorderRadius.circular(AppRadius.card),
       child: InkWell(
         onTap: onTap,
@@ -190,10 +189,10 @@ class _MetricCard extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
-            color: isSelected ? const Color(0xFFF8FAFC) : Colors.white,
+            color: isSelected ? AppColors.surfaceMuted : AppColors.surface,
             borderRadius: BorderRadius.circular(AppRadius.card),
             border: Border.all(
-              color: isSelected ? iconColor : const Color(0xFFE2E8F0),
+              color: isSelected ? iconColor : AppColors.border,
               width: isSelected ? 1.8 : 1.0,
             ),
             boxShadow: [
@@ -247,16 +246,16 @@ class _MetricCard extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w800,
-                  color: isSelected ? const Color(0xFF0F172A) : const Color(0xFF334155),
+                  color: isSelected ? AppColors.textPrimary : AppColors.textSecondary,
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
               Text(
                 subtitle,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 10,
-                  color: Color(0xFF64748B),
+                  color: AppColors.textSecondary,
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,

@@ -85,12 +85,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      Color(0xFF0A2540), // Deep Peacock Navy
-                      Color(0xFF004E89), // Royal Peacock Blue
-                      Color(0xFF0D5C75), // Teal Accent
-                      Color(0xFF065F46), // Rich Emerald
+                      Color(0xFF003B46), // Deep SEVO Teal
+                      Color(0xFF005965), // SEVO Teal Primary
+                      Color(0xFF028090), // Cyan Accent
                     ],
-                    stops: [0.0, 0.45, 0.75, 1.0],
                   ),
                   borderRadius: BorderRadius.vertical(
                     bottom: Radius.circular(32),
@@ -275,7 +273,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                 decoration: InputDecoration(
                                   prefixIcon: Icon(
                                     Icons.badge_outlined,
-                                    color: const Color(0xFF004E89),
+                                    color: AppColors.primary,
                                     size: 20,
                                   ),
                                   hintText: 'e.g. zaynkishan@gmail.com',
@@ -300,7 +298,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                   focusedBorder: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(AppRadius.input),
                                     borderSide: const BorderSide(
-                                      color: Color(0xFF004E89),
+                                      color: Color(0xFF005965),
                                       width: 1.8,
                                     ),
                                   ),
@@ -325,7 +323,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                 decoration: InputDecoration(
                                   prefixIcon: Icon(
                                     Icons.lock_outline_rounded,
-                                    color: const Color(0xFF004E89),
+                                    color: AppColors.primary,
                                     size: 20,
                                   ),
                                   hintText: 'Enter account password',
@@ -350,7 +348,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                   focusedBorder: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(AppRadius.input),
                                     borderSide: const BorderSide(
-                                      color: Color(0xFF004E89),
+                                      color: Color(0xFF005965),
                                       width: 1.8,
                                     ),
                                   ),
@@ -369,20 +367,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                 ),
                               ),
                               const SizedBox(height: AppSpacing.xl),
-                              // Peacock Gradient Submit Button
+                              // SEVO Teal Gradient Submit Button
                               Container(
                                 height: 48,
                                 decoration: BoxDecoration(
                                   gradient: const LinearGradient(
                                     colors: [
-                                      Color(0xFF004E89), // Peacock Blue
-                                      Color(0xFF059669), // Emerald
+                                      Color(0xFF003B46), // Deep Teal
+                                      Color(0xFF005965), // SEVO Teal Primary
+                                      Color(0xFF028090), // Cyan Accent
                                     ],
                                   ),
                                   borderRadius: BorderRadius.circular(AppRadius.button),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: const Color(0xFF059669).withValues(alpha: 0.3),
+                                      color: const Color(0xFF005965).withValues(alpha: 0.3),
                                       blurRadius: 12,
                                       offset: const Offset(0, 4),
                                     ),
@@ -446,7 +445,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                         style: TextStyle(
                                           fontSize: 13.5,
                                           fontWeight: FontWeight.w800,
-                                          color: Color(0xFF004E89),
+                                          color: Color(0xFF005965),
                                         ),
                                       ),
                                     ),

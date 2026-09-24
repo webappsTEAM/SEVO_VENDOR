@@ -129,7 +129,6 @@ void main() {
       // 2. Technician Online/Offline status card & toggle
       expect(find.byType(DashboardStatusCard), findsOneWidget);
       expect(find.text('ONLINE • READY FOR DISPATCH'), findsOneWidget);
-      expect(find.text('Online — Available for Jobs'), findsOneWidget);
 
       // 3. Mobile-friendly Map & Radar section
       expect(find.byType(DashboardLiveMap), findsOneWidget);
@@ -175,7 +174,6 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('OFFLINE'), findsAtLeastNWidgets(1));
-      expect(find.text('Offline — Currently Unavailable'), findsOneWidget);
       expect(find.text('LOCATION PAUSED'), findsOneWidget);
     });
   });

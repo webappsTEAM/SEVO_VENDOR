@@ -144,10 +144,14 @@ class DashboardStatusCard extends ConsumerWidget {
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
                         decoration: BoxDecoration(
-                          color: (isOnline ? const Color(0xFFD1FAE5) : const Color(0xFFF1F5F9)),
+                          color: isOnline
+                              ? (AppColors.isDark ? const Color(0xFF064E3B) : const Color(0xFFD1FAE5))
+                              : (AppColors.isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9)),
                           borderRadius: BorderRadius.circular(6),
                           border: Border.all(
-                            color: (isOnline ? const Color(0xFF6EE7B7) : const Color(0xFFCBD5E1)),
+                            color: isOnline
+                                ? (AppColors.isDark ? const Color(0xFF059669) : const Color(0xFF6EE7B7))
+                                : (AppColors.isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1)),
                             width: 0.8,
                           ),
                         ),
@@ -169,7 +173,9 @@ class DashboardStatusCard extends ConsumerWidget {
                                 fontSize: 10,
                                 fontWeight: FontWeight.w800,
                                 letterSpacing: 0.5,
-                                color: isOnline ? const Color(0xFF065F46) : const Color(0xFF475569),
+                                color: isOnline
+                                    ? (AppColors.isDark ? const Color(0xFF6EE7B7) : const Color(0xFF065F46))
+                                    : (AppColors.isDark ? const Color(0xFF94A3B8) : const Color(0xFF475569)),
                               ),
                             ),
                           ],
@@ -187,44 +193,23 @@ class DashboardStatusCard extends ConsumerWidget {
                         scale: 0.85,
                         child: Switch.adaptive(
                           value: isOnline,
-                          activeThumbColor: const Color(0xFF004E89),
+                          activeThumbColor: AppColors.primary,
                           activeTrackColor: const Color(0xFF6EE7B7),
                           onChanged: (_) => _handleAvailabilityToggle(context, ref),
                         ),
                       ),
                   ],
                 ),
-                const SizedBox(height: AppSpacing.sm),
-                Text(
-                  isOnline
-                      ? 'Online — Available for Jobs'
-                      : 'Offline — Currently Unavailable',
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF0F172A),
-                    letterSpacing: -0.2,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  isOnline
-                      ? 'Available to receive new service requests. You will be alerted instantly when a booking is dispatched.'
-                      : 'Currently unavailable for new service requests. Switch online when ready for dispatch offers.',
-                  style: TextStyle(
-                    fontSize: 12,
-                    height: 1.4,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
                 if (availabilityState.errorMessage != null) ...[
                   const SizedBox(height: AppSpacing.sm),
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFFEF2F2),
+                      color: AppColors.isDark ? const Color(0xFF450A0A) : const Color(0xFFFEF2F2),
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: const Color(0xFFFCA5A5)),
+                      border: Border.all(
+                        color: AppColors.isDark ? const Color(0xFF991B1B) : const Color(0xFFFCA5A5),
+                      ),
                     ),
                     child: Row(
                       children: [
@@ -233,10 +218,10 @@ class DashboardStatusCard extends ConsumerWidget {
                         Expanded(
                           child: Text(
                             availabilityState.errorMessage!,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w600,
-                              color: Color(0xFF991B1B),
+                              color: AppColors.isDark ? const Color(0xFFFECDD3) : const Color(0xFF991B1B),
                             ),
                           ),
                         ),
@@ -262,13 +247,13 @@ class DashboardStatusCard extends ConsumerWidget {
                   decoration: BoxDecoration(
                     color: isClockedIn
                         ? const Color(0xFF059669).withValues(alpha: 0.12)
-                        : const Color(0xFF004E89).withValues(alpha: 0.1),
+                        : AppColors.primary.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Icon(
                     isClockedIn ? Icons.timer_outlined : Icons.schedule_rounded,
                     size: 19,
-                    color: isClockedIn ? const Color(0xFF059669) : const Color(0xFF004E89),
+                    color: isClockedIn ? const Color(0xFF059669) : AppColors.primary,
                   ),
                 ),
                 const SizedBox(width: AppSpacing.md),
@@ -280,10 +265,10 @@ class DashboardStatusCard extends ConsumerWidget {
                         children: [
                           Text(
                             isClockedIn ? 'Shift Active' : 'Shift Standby',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w800,
-                              color: Color(0xFF0F172A),
+                              color: AppColors.textPrimary,
                             ),
                           ),
                           if (isOnBreak) ...[
@@ -324,10 +309,14 @@ class DashboardStatusCard extends ConsumerWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                   decoration: BoxDecoration(
-                    color: isClockedIn ? const Color(0xFFECFDF5) : const Color(0xFFF1F5F9),
+                    color: isClockedIn
+                        ? (AppColors.isDark ? const Color(0xFF064E3B) : const Color(0xFFECFDF5))
+                        : AppColors.surfaceMuted,
                     borderRadius: BorderRadius.circular(6),
                     border: Border.all(
-                      color: isClockedIn ? const Color(0xFFA7F3D0) : const Color(0xFFE2E8F0),
+                      color: isClockedIn
+                          ? (AppColors.isDark ? const Color(0xFF059669) : const Color(0xFFA7F3D0))
+                          : AppColors.border,
                     ),
                   ),
                   child: Text(
@@ -336,7 +325,9 @@ class DashboardStatusCard extends ConsumerWidget {
                       fontSize: 9.5,
                       fontWeight: FontWeight.w800,
                       letterSpacing: 0.4,
-                      color: isClockedIn ? const Color(0xFF065F46) : const Color(0xFF64748B),
+                      color: isClockedIn
+                          ? (AppColors.isDark ? const Color(0xFF6EE7B7) : const Color(0xFF065F46))
+                          : AppColors.textSecondary,
                     ),
                   ),
                 ),
@@ -374,12 +365,12 @@ class DashboardStatusCard extends ConsumerWidget {
                     children: [
                       Row(
                         children: [
-                          const Text(
+                          Text(
                             'Availability State',
                             style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w800,
-                              color: Color(0xFF0F172A),
+                              color: AppColors.textPrimary,
                             ),
                           ),
                           const SizedBox(width: 6),
@@ -462,10 +453,10 @@ class DashboardStatusCard extends ConsumerWidget {
                                   : (isOnline ? 'Acquiring...' : 'Inactive'),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w800,
-                                color: Color(0xFF0F172A),
+                                color: AppColors.textPrimary,
                               ),
                             ),
                           ),
@@ -512,10 +503,10 @@ class DashboardStatusCard extends ConsumerWidget {
                                 '$completedJobsCount Job${completedJobsCount == 1 ? '' : 's'}',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w800,
-                                  color: Color(0xFF0F172A),
+                                  color: AppColors.textPrimary,
                                 ),
                               ),
                             ),

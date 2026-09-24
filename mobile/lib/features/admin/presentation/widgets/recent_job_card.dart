@@ -33,9 +33,9 @@ class RecentJobCard extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppRadius.card),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: AppColors.border),
         boxShadow: const [
           BoxShadow(
             color: Color(0x060A2540),
@@ -57,19 +57,28 @@ class RecentJobCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFEFF6FF),
+                    color: AppColors.isDark
+                        ? AppColors.surfaceMuted
+                        : const Color(0xFFE6F4F1),
                     borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: const Color(0xFFBFDBFE), width: 0.8),
+                    border: Border.all(
+                      color: AppColors.isDark
+                          ? AppColors.primaryLight
+                          : const Color(0xFFB2DFDB),
+                      width: 0.8,
+                    ),
                   ),
                   child: Text(
                     job.requestId,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontFamily: 'monospace',
                       fontSize: 12.5,
                       fontWeight: FontWeight.w900,
-                      color: Color(0xFF004E89),
+                      color: AppColors.isDark
+                          ? AppColors.primaryLight
+                          : AppColors.peacockBlue,
                       letterSpacing: 0.3,
                     ),
                   ),
@@ -79,16 +88,16 @@ class RecentJobCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 8),
-            const Divider(height: 1, color: Color(0xFFF1F5F9)),
+            Divider(height: 1, color: AppColors.border),
             const SizedBox(height: 8),
             // Customer & Service Title
             if (customer != null && customer.isNotEmpty) ...[
               Row(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.person_outline_rounded,
                     size: 15,
-                    color: Color(0xFF64748B),
+                    color: AppColors.textSecondary,
                   ),
                   const SizedBox(width: 6),
                   Expanded(
@@ -96,10 +105,10 @@ class RecentJobCard extends StatelessWidget {
                       customer,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFF0F172A),
+                        color: AppColors.textPrimary,
                       ),
                     ),
                   ),
@@ -121,7 +130,7 @@ class RecentJobCard extends StatelessWidget {
                       'Technician: ${job.technicianName!}${job.technicianPhone != null && job.technicianPhone!.isNotEmpty ? " • ${job.technicianPhone!}" : ""}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
                         color: Color(0xFF059669),
@@ -137,7 +146,7 @@ class RecentJobCard extends StatelessWidget {
                 const Icon(
                   Icons.build_circle_outlined,
                   size: 15,
-                  color: Color(0xFF004E89),
+                  color: AppColors.primaryLight,
                 ),
                 const SizedBox(width: 6),
                 Expanded(
@@ -145,10 +154,10 @@ class RecentJobCard extends StatelessWidget {
                     job.displayTitle,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12.5,
                       fontWeight: FontWeight.w700,
-                      color: Color(0xFF334155),
+                      color: AppColors.textPrimary,
                     ),
                   ),
                 ),
@@ -160,12 +169,12 @@ class RecentJobCard extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Padding(
-                    padding: EdgeInsets.only(top: 1),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 1),
                     child: Icon(
                       Icons.location_on_outlined,
                       size: 14,
-                      color: Color(0xFF94A3B8),
+                      color: AppColors.textMuted,
                     ),
                   ),
                   const SizedBox(width: 6),
@@ -174,10 +183,10 @@ class RecentJobCard extends StatelessWidget {
                       address,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w400,
-                        color: Color(0xFF64748B),
+                        color: AppColors.textSecondary,
                         height: 1.25,
                       ),
                     ),
@@ -189,10 +198,10 @@ class RecentJobCard extends StatelessWidget {
             // Scheduled Time
             Row(
               children: [
-                const Icon(
+                Icon(
                   Icons.schedule_rounded,
                   size: 14,
-                  color: Color(0xFF94A3B8),
+                  color: AppColors.textMuted,
                 ),
                 const SizedBox(width: 6),
                 Expanded(
@@ -200,11 +209,11 @@ class RecentJobCard extends StatelessWidget {
                     formattedSchedule,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 11.5,
                       fontFamily: 'monospace',
                       fontWeight: FontWeight.w500,
-                      color: Color(0xFF64748B),
+                      color: AppColors.textSecondary,
                     ),
                   ),
                 ),
@@ -223,11 +232,17 @@ class RecentJobCard extends StatelessWidget {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFEFF6FF),
+                      color: AppColors.isDark
+                          ? AppColors.surfaceMuted
+                          : const Color(0xFFE6F4F1),
                       borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: const Color(0xFFBFDBFE)),
+                      border: Border.all(
+                        color: AppColors.isDark
+                            ? AppColors.primaryLight
+                            : const Color(0xFFB2DFDB),
+                      ),
                     ),
-                    child: const Row(
+                    child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
@@ -235,14 +250,18 @@ class RecentJobCard extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 11.5,
                             fontWeight: FontWeight.w800,
-                            color: Color(0xFF004E89),
+                            color: AppColors.isDark
+                                ? AppColors.primaryLight
+                                : AppColors.peacockBlue,
                           ),
                         ),
-                        SizedBox(width: 4),
+                        const SizedBox(width: 4),
                         Icon(
                           Icons.arrow_forward_rounded,
                           size: 13,
-                          color: Color(0xFF004E89),
+                          color: AppColors.isDark
+                              ? AppColors.primaryLight
+                              : AppColors.peacockBlue,
                         ),
                       ],
                     ),

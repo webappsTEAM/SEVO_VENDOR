@@ -66,10 +66,18 @@ class ActionCenterSection extends StatelessWidget {
                   'Technician registrations requiring document review',
               count: data.pendingApplicationsCount,
               icon: Icons.assignment_ind_outlined,
-              badgeBgColor: const Color(0xFFFEF3C7),
-              badgeTextColor: const Color(0xFF92400E),
-              iconBgColor: const Color(0xFFFFFBEB),
-              iconColor: const Color(0xFFD97706),
+              badgeBgColor: AppColors.isDark
+                  ? const Color(0xFF78350F).withValues(alpha: 0.35)
+                  : const Color(0xFFFEF3C7),
+              badgeTextColor: AppColors.isDark
+                  ? const Color(0xFFFDE68A)
+                  : const Color(0xFF92400E),
+              iconBgColor: AppColors.isDark
+                  ? const Color(0xFF78350F).withValues(alpha: 0.2)
+                  : const Color(0xFFFFFBEB),
+              iconColor: AppColors.isDark
+                  ? const Color(0xFFFBBF24)
+                  : const Color(0xFFD97706),
               onTap: () => context.push(AppRoutes.adminApplications),
             );
 
@@ -77,12 +85,20 @@ class ActionCenterSection extends StatelessWidget {
               title: 'Active Technicians',
               description:
                   'Approved workforce field technicians',
-              count: data.approvedAndActiveCount,
+              count: data.activeTechniciansCount,
               icon: Icons.how_to_reg_outlined,
-              badgeBgColor: const Color(0xFFDCFCE7),
-              badgeTextColor: const Color(0xFF166534),
-              iconBgColor: const Color(0xFFF0FDF4),
-              iconColor: const Color(0xFF16A34A),
+              badgeBgColor: AppColors.isDark
+                  ? const Color(0xFF064E3B).withValues(alpha: 0.35)
+                  : const Color(0xFFDCFCE7),
+              badgeTextColor: AppColors.isDark
+                  ? const Color(0xFF86EFAC)
+                  : const Color(0xFF166534),
+              iconBgColor: AppColors.isDark
+                  ? const Color(0xFF064E3B).withValues(alpha: 0.2)
+                  : const Color(0xFFF0FDF4),
+              iconColor: AppColors.isDark
+                  ? const Color(0xFF34D399)
+                  : const Color(0xFF16A34A),
               onTap: () => context.push(AppRoutes.adminEmployees),
             );
 
@@ -92,10 +108,18 @@ class ActionCenterSection extends StatelessWidget {
                   'Customer bookings requiring technician dispatch',
               count: data.unassignedJobsCount,
               icon: Icons.send_outlined,
-              badgeBgColor: const Color(0xFFFFEDD5),
-              badgeTextColor: const Color(0xFF9A3412),
-              iconBgColor: const Color(0xFFFFF7ED),
-              iconColor: const Color(0xFFEA580C),
+              badgeBgColor: AppColors.isDark
+                  ? const Color(0xFF7C2D12).withValues(alpha: 0.35)
+                  : const Color(0xFFFFEDD5),
+              badgeTextColor: AppColors.isDark
+                  ? const Color(0xFFFDBA74)
+                  : const Color(0xFF9A3412),
+              iconBgColor: AppColors.isDark
+                  ? const Color(0xFF7C2D12).withValues(alpha: 0.2)
+                  : const Color(0xFFFFF7ED),
+              iconColor: AppColors.isDark
+                  ? const Color(0xFFFB923C)
+                  : const Color(0xFFEA580C),
               onTap: () => context.push(AppRoutes.adminDispatch),
             );
 
@@ -105,10 +129,10 @@ class ActionCenterSection extends StatelessWidget {
                   'Technicians notified to re-upload flagged files',
               count: data.correctionsPendingCount,
               icon: Icons.edit_note_rounded,
-              badgeBgColor: const Color(0xFFF1F5F9),
-              badgeTextColor: const Color(0xFF334155),
-              iconBgColor: const Color(0xFFF8FAFC),
-              iconColor: const Color(0xFF64748B),
+              badgeBgColor: AppColors.surfaceMuted,
+              badgeTextColor: AppColors.textPrimary,
+              iconBgColor: AppColors.surfaceMuted,
+              iconColor: AppColors.textSecondary,
               onTap: () => context.push(
                 '${AppRoutes.adminApplications}?status=correction_required',
               ),

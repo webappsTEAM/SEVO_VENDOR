@@ -25,9 +25,9 @@ class AdminTitleSection extends ConsumerWidget {
     final isAdmin = ref.watch(authControllerProvider).user?.isAdmin == true;
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppRadius.card),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: AppColors.border),
         boxShadow: const [
           BoxShadow(
             color: Color(0x040A2540),
@@ -47,13 +47,13 @@ class AdminTitleSection extends ConsumerWidget {
               Container(
                 padding: const EdgeInsets.all(7),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF004E89).withValues(alpha: 0.1),
+                  color: AppColors.primary.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Icon(
                   Icons.hub_rounded,
                   size: 20,
-                  color: Color(0xFF004E89),
+                  color: AppColors.primary,
                 ),
               ),
               const SizedBox(width: 10),
@@ -66,10 +66,10 @@ class AdminTitleSection extends ConsumerWidget {
                         Flexible(
                           child: Text(
                             'Workforce Operations Center',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w900,
-                              color: Color(0xFF0F172A),
+                              color: AppColors.textPrimary,
                               letterSpacing: -0.2,
                             ),
                             maxLines: 1,
@@ -80,16 +80,25 @@ class AdminTitleSection extends ConsumerWidget {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFECFDF5),
+                            color: AppColors.isDark
+                                ? const Color(0xFF064E3B).withValues(alpha: 0.35)
+                                : const Color(0xFFECFDF5),
                             borderRadius: BorderRadius.circular(4),
-                            border: Border.all(color: const Color(0xFFA7F3D0), width: 0.8),
+                            border: Border.all(
+                              color: AppColors.isDark
+                                  ? const Color(0xFF059669)
+                                  : const Color(0xFFA7F3D0),
+                              width: 0.8,
+                            ),
                           ),
-                          child: const Text(
+                          child: Text(
                             'LIVE',
                             style: TextStyle(
                               fontSize: 9.5,
                               fontWeight: FontWeight.w900,
-                              color: Color(0xFF059669),
+                              color: AppColors.isDark
+                                  ? const Color(0xFF34D399)
+                                  : const Color(0xFF059669),
                               letterSpacing: 0.5,
                             ),
                           ),
@@ -99,10 +108,10 @@ class AdminTitleSection extends ConsumerWidget {
                     const SizedBox(height: 2),
                     Text(
                       'Real-time personnel monitoring, dossier verifications, and dynamic dispatch',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w400,
-                        color: Color(0xFF64748B),
+                        color: AppColors.textSecondary,
                         height: 1.25,
                       ),
                       maxLines: 2,
@@ -114,7 +123,7 @@ class AdminTitleSection extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 12),
-          const Divider(height: 1, color: Color(0xFFF1F5F9)),
+          Divider(height: 1, color: AppColors.border),
           const SizedBox(height: 10),
           // Actions Row
           Wrap(
@@ -129,17 +138,17 @@ class AdminTitleSection extends ConsumerWidget {
                     ? const SizedBox(
                         width: 13,
                         height: 13,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF004E89)),
+                        child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
                       )
-                    : const Icon(Icons.refresh_rounded, size: 15, color: Color(0xFF004E89)),
-                label: const Text('Refresh Data'),
+                    : const Icon(Icons.refresh_rounded, size: 15, color: AppColors.primary),
+                label: Text('Refresh Data'),
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF0A2540),
-                  backgroundColor: const Color(0xFFF8FAFC),
-                  side: const BorderSide(color: Color(0xFFE2E8F0)),
+                  foregroundColor: AppColors.textPrimary,
+                  backgroundColor: AppColors.surfaceMuted,
+                  side: BorderSide(color: AppColors.border),
                   visualDensity: VisualDensity.compact,
                   padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
-                  textStyle: const TextStyle(
+                  textStyle: TextStyle(
                     fontSize: 11.5,
                     fontWeight: FontWeight.w700,
                   ),
@@ -152,15 +161,23 @@ class AdminTitleSection extends ConsumerWidget {
               if (isAdmin)
                 OutlinedButton.icon(
                   onPressed: () => context.push(AppRoutes.adminMonitoringDatabaseEgress),
-                  icon: const Icon(Icons.storage_rounded, size: 14, color: Color(0xFF059669)),
-                  label: const Text('Database Egress'),
+                  icon: Icon(
+                    Icons.storage_rounded,
+                    size: 14,
+                    color: AppColors.isDark ? const Color(0xFF34D399) : const Color(0xFF059669),
+                  ),
+                  label: Text('Database Egress'),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFF065F46),
-                    backgroundColor: const Color(0xFFECFDF5),
-                    side: const BorderSide(color: Color(0xFFA7F3D0)),
+                    foregroundColor: AppColors.isDark ? const Color(0xFF34D399) : const Color(0xFF065F46),
+                    backgroundColor: AppColors.isDark
+                        ? const Color(0xFF064E3B).withValues(alpha: 0.3)
+                        : const Color(0xFFECFDF5),
+                    side: BorderSide(
+                      color: AppColors.isDark ? const Color(0xFF059669) : const Color(0xFFA7F3D0),
+                    ),
                     visualDensity: VisualDensity.compact,
                     padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
-                    textStyle: const TextStyle(
+                    textStyle: TextStyle(
                       fontSize: 11.5,
                       fontWeight: FontWeight.w700,
                     ),
@@ -173,13 +190,13 @@ class AdminTitleSection extends ConsumerWidget {
               FilledButton.icon(
                 onPressed: () => context.push(AppRoutes.adminDispatch),
                 icon: const Icon(Icons.send_rounded, size: 13, color: Colors.white),
-                label: const Text('Open Dispatch Console'),
+                label: Text('Open Dispatch Console'),
                 style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF004E89),
+                  backgroundColor: AppColors.primary,
                   foregroundColor: Colors.white,
                   visualDensity: VisualDensity.compact,
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                  textStyle: const TextStyle(
+                  textStyle: TextStyle(
                     fontSize: 11.5,
                     fontWeight: FontWeight.w800,
                   ),

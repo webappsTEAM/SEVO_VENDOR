@@ -24,7 +24,7 @@ class IndexTableFilterSheet extends StatefulWidget {
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.card)),
       ),
@@ -81,7 +81,7 @@ class _IndexTableFilterSheetState extends State<IndexTableFilterSheet> {
                 width: 36,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFCBD5E1),
+                  color: AppColors.border,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -92,12 +92,12 @@ class _IndexTableFilterSheetState extends State<IndexTableFilterSheet> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
+                Text(
                   'Filter by Table',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF0A2540),
+                    color: Color(0xFF003B46),
                   ),
                 ),
                 IconButton(
@@ -135,20 +135,20 @@ class _IndexTableFilterSheetState extends State<IndexTableFilterSheet> {
             // "All Tables" Default Option
             ListTile(
               dense: true,
-              leading: const Icon(Icons.all_inclusive_rounded, size: 18, color: Color(0xFF004E89)),
-              title: const Text(
+              leading: const Icon(Icons.all_inclusive_rounded, size: 18, color: Color(0xFF005965)),
+              title: Text(
                 'All Tables',
                 style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
               ),
               trailing: widget.selectedTable == 'ALL'
-                  ? const Icon(Icons.check_rounded, color: Color(0xFF004E89), size: 18)
+                  ? const Icon(Icons.check_rounded, color: Color(0xFF005965), size: 18)
                   : null,
               onTap: () {
                 widget.onSelected('ALL');
                 Navigator.of(context).pop();
               },
             ),
-            const Divider(height: 1),
+            Divider(height: 1),
 
             // Filtered Tables List
             Expanded(
@@ -173,11 +173,11 @@ class _IndexTableFilterSheetState extends State<IndexTableFilterSheet> {
                               fontFamily: 'monospace',
                               fontSize: 12.5,
                               fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
-                              color: isSelected ? const Color(0xFF004E89) : const Color(0xFF1E293B),
+                              color: isSelected ? const Color(0xFF005965) : AppColors.textPrimary,
                             ),
                           ),
                           trailing: isSelected
-                              ? const Icon(Icons.check_rounded, color: Color(0xFF004E89), size: 18)
+                              ? const Icon(Icons.check_rounded, color: Color(0xFF005965), size: 18)
                               : null,
                           onTap: () {
                             widget.onSelected(tbl);

@@ -37,13 +37,13 @@ class QuoteCard extends StatelessWidget {
                         Container(
                           padding: const EdgeInsets.all(7),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF004E89).withValues(alpha: 0.1),
+                            color: AppColors.primary.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: const Icon(
                             Icons.calculate_outlined,
                             size: 18,
-                            color: Color(0xFF004E89),
+                            color: AppColors.primary,
                           ),
                         ),
                         const SizedBox(width: AppSpacing.sm),
@@ -57,7 +57,7 @@ class QuoteCard extends StatelessWidget {
                                   fontSize: 14,
                                   fontWeight: FontWeight.w800,
                                   fontFamily: 'monospace',
-                                  color: Color(0xFF0A2540),
+                                  color: AppColors.peacockNavy,
                                 ),
                               ),
                               const SizedBox(height: 1),
@@ -162,7 +162,7 @@ class QuoteCard extends StatelessWidget {
                           fontSize: 16,
                           fontWeight: FontWeight.w900,
                           fontFamily: 'monospace',
-                          color: Color(0xFF004E89),
+                          color: AppColors.primary,
                         ),
                       ),
                     ],
@@ -291,7 +291,7 @@ class QuoteCard extends StatelessWidget {
                 child: FilledButton(
                   onPressed: () => Navigator.of(ctx).pop(),
                   style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF004E89),
+                    backgroundColor: AppColors.primary,
                     padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
                   child: const Text('Close'),
@@ -328,7 +328,7 @@ class _DetailRow extends StatelessWidget {
             style: TextStyle(
               fontSize: isBold ? 14 : 12.5,
               fontWeight: isBold ? FontWeight.w800 : FontWeight.w500,
-              color: isBold ? const Color(0xFF0A2540) : AppColors.textMuted,
+              color: isBold ? AppColors.peacockNavy : AppColors.textMuted,
             ),
           ),
           Text(
@@ -337,7 +337,7 @@ class _DetailRow extends StatelessWidget {
               fontSize: isBold ? 15 : 13,
               fontWeight: isBold ? FontWeight.w900 : FontWeight.w700,
               fontFamily: 'monospace',
-              color: isBold ? const Color(0xFF004E89) : const Color(0xFF0A2540),
+              color: isBold ? AppColors.primary : AppColors.peacockNavy,
             ),
           ),
         ],

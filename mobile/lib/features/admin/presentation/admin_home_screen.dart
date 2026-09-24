@@ -26,6 +26,7 @@ class AdminHomeScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: const WorkforceAppBar(
+        titleText: 'Admin Cockpit',
         showStatusSubBar: false,
         showDrawerMenu: true,
       ),

@@ -28,9 +28,9 @@ class _IndexCardState extends State<IndexCard> {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: AppColors.border),
         boxShadow: const [
           BoxShadow(
             color: Color(0x040A2540),
@@ -63,11 +63,11 @@ class _IndexCardState extends State<IndexCard> {
                           idx.tableName,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 10.5,
                             fontFamily: 'monospace',
                             fontWeight: FontWeight.w700,
-                            color: Color(0xFF475569),
+                            color: AppColors.textSecondary,
                           ),
                         ),
                       ),
@@ -92,7 +92,7 @@ class _IndexCardState extends State<IndexCard> {
                         border: Border.all(
                           color: isUsed
                               ? const Color(0xFFA7F3D0)
-                              : const Color(0xFFE2E8F0),
+                              : AppColors.border,
                           width: 0.8,
                         ),
                       ),
@@ -103,7 +103,7 @@ class _IndexCardState extends State<IndexCard> {
                           fontWeight: FontWeight.w800,
                           color: isUsed
                               ? const Color(0xFF059669)
-                              : const Color(0xFF64748B),
+                              : AppColors.textSecondary,
                         ),
                       ),
                     ),
@@ -117,11 +117,11 @@ class _IndexCardState extends State<IndexCard> {
                         idx.indexName,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 13,
                           fontFamily: 'monospace',
                           fontWeight: FontWeight.w800,
-                          color: Color(0xFF0A2540),
+                          color: Color(0xFF003B46),
                         ),
                       ),
                     ),
@@ -133,10 +133,10 @@ class _IndexCardState extends State<IndexCard> {
                         const SizedBox(width: 2),
                         Text(
                           '${idx.cumulativeScans} scans',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
-                            color: Color(0xFF0A2540),
+                            color: Color(0xFF003B46),
                           ),
                         ),
                       ],
@@ -147,7 +147,7 @@ class _IndexCardState extends State<IndexCard> {
                 // Expanded Details
                 if (_isExpanded) ...[
                   const SizedBox(height: AppSpacing.sm),
-                  const Divider(height: 1, color: Color(0xFFE2E8F0)),
+                  Divider(height: 1, color: AppColors.border),
                   const SizedBox(height: AppSpacing.sm),
 
                   // Metrics Grid
@@ -194,15 +194,15 @@ class _IndexCardState extends State<IndexCard> {
                             Icon(
                               _showSql ? Icons.expand_less_rounded : Icons.code_rounded,
                               size: 14,
-                              color: const Color(0xFF004E89),
+                              color: const Color(0xFF005965),
                             ),
                             const SizedBox(width: 4),
                             Text(
                               _showSql ? 'Hide SQL Definition' : 'View SQL Definition',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w700,
-                                color: Color(0xFF004E89),
+                                color: Color(0xFF005965),
                               ),
                             ),
                           ],
@@ -215,12 +215,12 @@ class _IndexCardState extends State<IndexCard> {
                         width: double.infinity,
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF0A2540),
+                          color: const Color(0xFF003B46),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: SelectableText(
                           idx.indexDefinition,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontFamily: 'monospace',
                             fontSize: 10.5,
                             color: Color(0xFF93C5FD),
@@ -255,11 +255,11 @@ class _IndexCardState extends State<IndexCard> {
           const SizedBox(height: 2),
           Text(
             value,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
               fontFamily: 'monospace',
               fontWeight: FontWeight.w800,
-              color: Color(0xFF0A2540),
+              color: Color(0xFF003B46),
             ),
           ),
         ],

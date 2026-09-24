@@ -103,24 +103,29 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                           _imageAssets[index],
                           fit: BoxFit.contain,
                           alignment: Alignment.center,
-                          errorBuilder: (context, error, stackTrace) => Container(
-                            color: const Color(0xFF01172E),
+                          errorBuilder: (context, error, stackTrace) => Image.asset(
+                            'assets/images/${_imageAssets[index]}',
+                            fit: BoxFit.contain,
                             alignment: Alignment.center,
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(
-                                  Icons.broken_image_rounded,
-                                  color: Colors.white54,
-                                  size: 48,
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  'Missing asset: ${_imageAssets[index]}',
-                                  style: const TextStyle(color: Colors.white70, fontSize: 12),
-                                ),
-                              ],
+                            errorBuilder: (context, error, stackTrace) => Container(
+                              color: const Color(0xFF01172E),
+                              alignment: Alignment.center,
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(
+                                    Icons.broken_image_rounded,
+                                    color: Colors.white54,
+                                    size: 48,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Missing asset: ${_imageAssets[index]}',
+                                    style: const TextStyle(color: Colors.white70, fontSize: 12),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ),

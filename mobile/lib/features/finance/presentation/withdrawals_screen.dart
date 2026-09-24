@@ -139,15 +139,15 @@ class _WithdrawalsScreenState extends ConsumerState<WithdrawalsScreen> {
                 padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
-                  children: const [
-                    Icon(Icons.arrow_back_rounded, size: 16, color: Color(0xFF004E89)),
-                    SizedBox(width: 4),
+                  children: [
+                    Icon(Icons.arrow_back_rounded, size: 16, color: AppColors.primary),
+                    const SizedBox(width: 4),
                     Text(
                       'Back to Wallet',
                       style: TextStyle(
                         fontSize: 12.5,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFF004E89),
+                        color: AppColors.primary,
                       ),
                     ),
                   ],
@@ -157,12 +157,12 @@ class _WithdrawalsScreenState extends ConsumerState<WithdrawalsScreen> {
             const SizedBox(height: 6),
 
             // ── Screen Title & Subtitle ─────────────────────────────────────
-            const Text(
+            Text(
               'Payouts & Withdrawals',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w900,
-                color: Color(0xFF0A2540),
+                color: AppColors.peacockNavy,
               ),
             ),
             const SizedBox(height: 2),
@@ -209,7 +209,7 @@ class _WithdrawalsScreenState extends ConsumerState<WithdrawalsScreen> {
                       child: Text('New Payout Request', style: TextStyle(fontWeight: FontWeight.w800)),
                     ),
                     style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF004E89),
+                      backgroundColor: AppColors.primary,
                       padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     ),
@@ -305,7 +305,7 @@ class _WithdrawalsScreenState extends ConsumerState<WithdrawalsScreen> {
                   height: 12,
                   margin: const EdgeInsets.only(right: 6),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF004E89),
+                    color: AppColors.primary,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -376,7 +376,7 @@ class _WithdrawalsScreenState extends ConsumerState<WithdrawalsScreen> {
                           icon: const Icon(Icons.add_rounded, size: 16),
                           label: const Text('New Payout Request'),
                           style: FilledButton.styleFrom(
-                            backgroundColor: const Color(0xFF004E89),
+                            backgroundColor: AppColors.primary,
                             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                           ),

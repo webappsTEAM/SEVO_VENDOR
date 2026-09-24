@@ -106,6 +106,7 @@ class _AdminReportsScreenState extends ConsumerState<AdminReportsScreen> {
 
     return Scaffold(
       appBar: const WorkforceAppBar(
+        titleText: 'Business Analytics & Reports',
         showStatusSubBar: false,
         showDrawerMenu: true,
       ),
@@ -121,9 +122,9 @@ class _AdminReportsScreenState extends ConsumerState<AdminReportsScreen> {
             Container(
               padding: const EdgeInsets.all(AppSpacing.md),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: AppColors.surface,
                 borderRadius: BorderRadius.circular(AppRadius.card),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
+                border: Border.all(color: AppColors.border),
                 boxShadow: const [
                   BoxShadow(color: Color(0x060A2540), blurRadius: 4, offset: Offset(0, 1.5)),
                 ],
@@ -137,17 +138,17 @@ class _AdminReportsScreenState extends ConsumerState<AdminReportsScreen> {
                       Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF004E89).withValues(alpha: 0.1),
+                          color: const Color(0xFF005965).withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: const Icon(
                           Icons.bar_chart_rounded,
-                          color: Color(0xFF004E89),
+                          color: Color(0xFF005965),
                           size: 24,
                         ),
                       ),
                       const SizedBox(width: 12),
-                      const Expanded(
+                      Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -156,7 +157,7 @@ class _AdminReportsScreenState extends ConsumerState<AdminReportsScreen> {
                               style: TextStyle(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w800,
-                                color: Color(0xFF0F172A),
+                                color: AppColors.textPrimary,
                               ),
                             ),
                             SizedBox(height: 2),
@@ -164,7 +165,7 @@ class _AdminReportsScreenState extends ConsumerState<AdminReportsScreen> {
                               'Query real database aggregations with multi-dimensional filtering across workforce operations.',
                               style: TextStyle(
                                 fontSize: 11.5,
-                                color: Color(0xFF64748B),
+                                color: AppColors.textSecondary,
                                 height: 1.3,
                               ),
                             ),
@@ -183,11 +184,11 @@ class _AdminReportsScreenState extends ConsumerState<AdminReportsScreen> {
                               ? null
                               : () => _exportCSV(reportData),
                           icon: const Icon(Icons.download_rounded, size: 15),
-                          label: const Text('Export CSV'),
+                          label: Text('Export CSV'),
                           style: FilledButton.styleFrom(
                             backgroundColor: const Color(0xFF059669),
                             visualDensity: VisualDensity.compact,
-                            textStyle: const TextStyle(
+                            textStyle: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
                             ),
@@ -206,9 +207,9 @@ class _AdminReportsScreenState extends ConsumerState<AdminReportsScreen> {
             Container(
               padding: const EdgeInsets.all(AppSpacing.md),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: AppColors.surface,
                 borderRadius: BorderRadius.circular(AppRadius.card),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
+                border: Border.all(color: AppColors.border),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -243,20 +244,20 @@ class _AdminReportsScreenState extends ConsumerState<AdminReportsScreen> {
                       ],
                     ),
                   ),
-                  const Divider(height: 20),
+                  Divider(height: 20),
 
                   // Filter Controls
-                  const Row(
+                  Row(
                     children: [
                       Icon(Icons.filter_list_rounded,
-                          size: 15, color: Color(0xFF475569)),
+                          size: 15, color: AppColors.textSecondary),
                       SizedBox(width: 6),
                       Text(
                         'Query Filters',
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w800,
-                          color: Color(0xFF1E293B),
+                          color: AppColors.textPrimary,
                         ),
                       ),
                     ],
@@ -291,12 +292,12 @@ class _AdminReportsScreenState extends ConsumerState<AdminReportsScreen> {
                       FilledButton.icon(
                         onPressed: _applyQuery,
                         icon: const Icon(Icons.refresh_rounded, size: 15),
-                        label: const Text('Apply Query'),
+                        label: Text('Apply Query'),
                         style: FilledButton.styleFrom(
-                          backgroundColor: const Color(0xFF0F172A),
+                          backgroundColor: AppColors.textPrimary,
                           padding: const EdgeInsets.symmetric(
                               horizontal: 14, vertical: 12),
-                          textStyle: const TextStyle(
+                          textStyle: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w800,
                           ),
@@ -314,11 +315,11 @@ class _AdminReportsScreenState extends ConsumerState<AdminReportsScreen> {
               loading: () => Container(
                 padding: const EdgeInsets.all(AppSpacing.xl),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: AppColors.surface,
                   borderRadius: BorderRadius.circular(AppRadius.card),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                  border: Border.all(color: AppColors.border),
                 ),
-                child: const Center(
+                child: Center(
                   child: Column(
                     children: [
                       SizedBox(
@@ -330,7 +331,7 @@ class _AdminReportsScreenState extends ConsumerState<AdminReportsScreen> {
                       Text(
                         'Executing database aggregation query...',
                         style:
-                            TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                            TextStyle(fontSize: 12, color: AppColors.textSecondary),
                       ),
                     ],
                   ),
@@ -351,14 +352,14 @@ class _AdminReportsScreenState extends ConsumerState<AdminReportsScreen> {
                     Text(
                       'Failed to execute report query: $err',
                       textAlign: TextAlign.center,
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 12, color: Color(0xFF991B1B)),
                     ),
                     const SizedBox(height: 10),
                     OutlinedButton(
                       onPressed: () =>
                           ref.invalidate(adminReportProvider(_activeParams)),
-                      child: const Text('Retry Query'),
+                      child: Text('Retry Query'),
                     ),
                   ],
                 ),
@@ -366,9 +367,9 @@ class _AdminReportsScreenState extends ConsumerState<AdminReportsScreen> {
               data: (reportData) {
                 return Container(
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: AppColors.surface,
                     borderRadius: BorderRadius.circular(AppRadius.card),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                    border: Border.all(color: AppColors.border),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -377,12 +378,12 @@ class _AdminReportsScreenState extends ConsumerState<AdminReportsScreen> {
                       Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: AppSpacing.md, vertical: 10),
-                        decoration: const BoxDecoration(
+                        decoration: BoxDecoration(
                           color: Color(0xFFF8FAFC),
                           borderRadius:
                               BorderRadius.vertical(top: Radius.circular(10)),
                           border: Border(
-                              bottom: BorderSide(color: Color(0xFFE2E8F0))),
+                              bottom: BorderSide(color: AppColors.border)),
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -392,10 +393,10 @@ class _AdminReportsScreenState extends ConsumerState<AdminReportsScreen> {
                                 '${reportData.reportType.toUpperCase()} REPORT (${reportData.totalRecords} RECORDS)',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 11.5,
                                   fontWeight: FontWeight.w800,
-                                  color: Color(0xFF1E293B),
+                                  color: AppColors.textPrimary,
                                   letterSpacing: 0.3,
                                 ),
                               ),
@@ -408,13 +409,13 @@ class _AdminReportsScreenState extends ConsumerState<AdminReportsScreen> {
                                 color: const Color(0xFFF1F5F9),
                                 borderRadius: BorderRadius.circular(4),
                               ),
-                              child: const Text(
+                              child: Text(
                                 'System Report',
                                 style: TextStyle(
                                   fontSize: 10,
                                   fontWeight: FontWeight.w700,
                                   fontFamily: 'monospace',
-                                  color: Color(0xFF64748B),
+                                  color: AppColors.textSecondary,
                                 ),
                               ),
                             ),
@@ -439,7 +440,7 @@ class _AdminReportsScreenState extends ConsumerState<AdminReportsScreen> {
                           physics: const NeverScrollableScrollPhysics(),
                           itemCount: reportData.rows.length,
                           separatorBuilder: (_, _) =>
-                              const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                              Divider(height: 1, color: Color(0xFFF1F5F9)),
                           itemBuilder: (ctx, idx) {
                             final row = reportData.rows[idx];
                             return _ReportRowCard(
@@ -482,12 +483,12 @@ class _ReportTypeChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF004E89) : const Color(0xFFF1F5F9),
+          color: isSelected ? const Color(0xFF005965) : const Color(0xFFF1F5F9),
           borderRadius: BorderRadius.circular(8),
           boxShadow: isSelected
               ? const [
                   BoxShadow(
-                    color: Color(0x20004E89),
+                    color: Color(0x20005965),
                     blurRadius: 3,
                     offset: Offset(0, 1),
                   ),
@@ -499,7 +500,7 @@ class _ReportTypeChip extends StatelessWidget {
           style: TextStyle(
             fontSize: 12,
             fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-            color: isSelected ? Colors.white : const Color(0xFF334155),
+            color: isSelected ? Colors.white : AppColors.textSecondary,
           ),
         ),
       ),
@@ -538,10 +539,10 @@ class _ReportRowCard extends StatelessWidget {
                 child: Center(
                   child: Text(
                     '$rowIndex',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w800,
-                      color: Color(0xFF64748B),
+                      color: AppColors.textSecondary,
                     ),
                   ),
                 ),
@@ -552,10 +553,10 @@ class _ReportRowCard extends StatelessWidget {
                   _getTitle(row),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF0F172A),
+                    color: AppColors.textPrimary,
                   ),
                 ),
               ),
@@ -570,7 +571,7 @@ class _ReportRowCard extends StatelessWidget {
                   ),
                   child: Text(
                     row['status']?.toString().toUpperCase() ?? '',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w800,
                       color: Color(0xFF2563EB),
@@ -601,10 +602,10 @@ class _ReportRowCard extends StatelessWidget {
 
               return Text(
                 '$formattedKey: $formattedVal',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 11,
                   fontFamily: 'monospace',
-                  color: Color(0xFF475569),
+                  color: AppColors.textSecondary,
                 ),
               );
             }).toList(),

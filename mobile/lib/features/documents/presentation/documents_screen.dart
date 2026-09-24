@@ -5,6 +5,9 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/async_value_view.dart';
+import '../../../shared/widgets/module_header_card.dart';
+import '../../../shared/widgets/sevo_brand_mark.dart';
+import '../../../shared/widgets/theme_toggle_button.dart';
 import '../../profile/domain/employee_profile.dart';
 import '../../profile/presentation/profile_providers.dart';
 import 'documents_providers.dart';
@@ -116,20 +119,14 @@ class DocumentsScreen extends ConsumerWidget {
         flexibleSpace: Container(
           decoration: const BoxDecoration(
             gradient: AppColors.peacockGradient,
+            borderRadius: BorderRadius.vertical(bottom: Radius.circular(22)),
           ),
         ),
-        title: const Text(
-          'Documents & Identity',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w800,
-            color: Colors.white,
-            letterSpacing: 0.2,
-          ),
+        title: const SevoHeaderTitle(
+          fontSize: 22,
         ),
         actions: [
+          const ThemeToggleButton(),
           IconButton(
             icon: const Icon(Icons.refresh_rounded, color: Colors.white, size: 22),
             tooltip: 'Refresh Documents',
@@ -202,19 +199,17 @@ class DocumentsScreen extends ConsumerWidget {
             return ListView(
               padding: const EdgeInsets.fromLTRB(
                 AppSpacing.lg,
-                AppSpacing.sm,
+                AppSpacing.lg,
                 AppSpacing.lg,
                 AppSpacing.xxl,
               ),
               children: [
-                // ── Subtitle Context ─────────────────────────────────────────
-                Text(
-                  'Manage your identity credentials, trade certifications, and compliance verification files',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: AppColors.textMuted,
-                    height: 1.35,
-                  ),
+                // ── Module Heading Card ──────────────────────────────────────
+                ModuleHeaderCard(
+                  title: 'Documents & Identity',
+                  subtitle:
+                      'Manage your identity credentials, trade certifications, and compliance verification files',
+                  icon: Icons.verified_user_rounded,
                 ),
                 const SizedBox(height: AppSpacing.md),
 

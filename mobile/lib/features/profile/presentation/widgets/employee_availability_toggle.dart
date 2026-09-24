@@ -9,20 +9,20 @@ Future<bool> showGoingOfflineDialog(BuildContext context) async {
   final result = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
-      title: const Text(
+      title: Text(
         'Going Offline?',
         style: TextStyle(
           fontWeight: FontWeight.w800,
           fontSize: 17,
-          color: Color(0xFF0F172A),
+          color: AppColors.textPrimary,
         ),
       ),
-      content: const Text(
+      content: Text(
         'You may stop receiving new service offers while you are offline.',
         style: TextStyle(
           fontSize: 13.5,
           height: 1.4,
-          color: Color(0xFF334155),
+          color: AppColors.textSecondary,
         ),
       ),
       actions: [
@@ -54,7 +54,7 @@ Future<void> showAvailabilitySelectorSheet(
 }) async {
   await showModalBottomSheet<void>(
     context: context,
-    backgroundColor: Colors.white,
+    backgroundColor: AppColors.surface,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.card)),
     ),
@@ -110,12 +110,12 @@ class _AvailabilitySelectorModal extends ConsumerWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
+                Text(
                   'Update Availability Status',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF0F172A),
+                    color: AppColors.textPrimary,
                   ),
                 ),
                 IconButton(
@@ -137,8 +137,8 @@ class _AvailabilitySelectorModal extends ConsumerWidget {
               subtitle: 'Available to receive new service requests',
               isSelected: isOnline,
               accentColor: const Color(0xFF059669),
-              bgColor: const Color(0xFFECFDF5),
-              borderColor: isOnline ? const Color(0xFF10B981) : const Color(0xFFE2E8F0),
+              bgColor: isOnline ? const Color(0xFF059669).withValues(alpha: 0.15) : AppColors.surface,
+              borderColor: isOnline ? const Color(0xFF10B981) : AppColors.border,
               icon: Icons.check_circle_rounded,
               onTap: isLoading || isOnline
                   ? null
@@ -184,8 +184,8 @@ class _AvailabilitySelectorModal extends ConsumerWidget {
               subtitle: 'Currently unavailable for new service requests',
               isSelected: !isOnline,
               accentColor: const Color(0xFF64748B),
-              bgColor: const Color(0xFFF8FAFC),
-              borderColor: !isOnline ? const Color(0xFF94A3B8) : const Color(0xFFE2E8F0),
+              bgColor: !isOnline ? AppColors.surfaceMuted : AppColors.surface,
+              borderColor: !isOnline ? const Color(0xFF94A3B8) : AppColors.border,
               icon: Icons.power_settings_new_rounded,
               onTap: isLoading || !isOnline
                   ? null
@@ -293,7 +293,7 @@ class _AvailabilityOptionTile extends StatelessWidget {
               decoration: BoxDecoration(
                 color: isSelected
                     ? accentColor.withValues(alpha: 0.15)
-                    : Colors.white,
+                    : AppColors.surfaceMuted,
                 shape: BoxShape.circle,
               ),
               child: Icon(icon, size: 20, color: accentColor),
@@ -308,7 +308,7 @@ class _AvailabilityOptionTile extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w800,
-                      color: isSelected ? const Color(0xFF0F172A) : AppColors.textSecondary,
+                      color: isSelected ? AppColors.textPrimary : AppColors.textSecondary,
                     ),
                   ),
                   const SizedBox(height: 2),

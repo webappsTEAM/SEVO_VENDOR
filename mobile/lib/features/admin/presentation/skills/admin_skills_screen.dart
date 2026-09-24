@@ -41,6 +41,7 @@ class _AdminSkillsScreenState extends ConsumerState<AdminSkillsScreen> {
 
     return Scaffold(
       appBar: const WorkforceAppBar(
+        titleText: 'Skills & Capabilities',
         showStatusSubBar: false,
         showDrawerMenu: true,
       ),
@@ -59,7 +60,7 @@ class _AdminSkillsScreenState extends ConsumerState<AdminSkillsScreen> {
                 const SizedBox(height: 16),
                 FilledButton(
                   onPressed: () => ref.invalidate(adminSkillsProvider),
-                  child: const Text('Retry'),
+                  child: Text('Retry'),
                 ),
               ],
             ),
@@ -111,17 +112,17 @@ class _AdminSkillsScreenState extends ConsumerState<AdminSkillsScreen> {
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFEFF6FF),
+                        color: AppColors.isDark
+                            ? AppColors.surfaceMuted
+                            : const Color(0xFFE6F4F1),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: const Icon(
-                        Icons.military_tech_rounded,
-                        color: Color(0xFF2563EB),
+                      child: Icon(Icons.military_tech_rounded, color: AppColors.primaryLight,
                         size: 24,
                       ),
                     ),
                     const SizedBox(width: 12),
-                    const Expanded(
+                    Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -130,15 +131,15 @@ class _AdminSkillsScreenState extends ConsumerState<AdminSkillsScreen> {
                             style: TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.w800,
-                              color: Color(0xFF0F172A),
+                              color: AppColors.textPrimary,
                             ),
                           ),
-                          SizedBox(height: 2),
+                          const SizedBox(height: 2),
                           Text(
                             'Manage skill certifications and verify technician service proficiency for dispatch qualification.',
                             style: TextStyle(
                               fontSize: 11.5,
-                              color: Color(0xFF64748B),
+                              color: AppColors.textSecondary,
                             ),
                           ),
                         ],
@@ -155,9 +156,9 @@ class _AdminSkillsScreenState extends ConsumerState<AdminSkillsScreen> {
                       child: FilledButton.icon(
                         onPressed: () => _openNewSkillSheet(context),
                         icon: const Icon(Icons.add_rounded, size: 18),
-                        label: const Text('New Skill'),
+                        label: Text('New Skill'),
                         style: FilledButton.styleFrom(
-                          backgroundColor: const Color(0xFF2563EB),
+                          backgroundColor: AppColors.primary,
                           padding: const EdgeInsets.symmetric(vertical: 10),
                         ),
                       ),
@@ -171,7 +172,7 @@ class _AdminSkillsScreenState extends ConsumerState<AdminSkillsScreen> {
                           techniciansAsync.valueOrNull ?? [],
                         ),
                         icon: const Icon(Icons.verified_user_rounded, size: 18),
-                        label: const Text('Assign Skill'),
+                        label: Text('Assign Skill'),
                         style: FilledButton.styleFrom(
                           backgroundColor: const Color(0xFF059669),
                           padding: const EdgeInsets.symmetric(vertical: 10),
@@ -191,8 +192,8 @@ class _AdminSkillsScreenState extends ConsumerState<AdminSkillsScreen> {
                   }),
                   decoration: InputDecoration(
                     hintText: 'Search skills catalog (${allSkills.length} skills)...',
-                    hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
-                    prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Color(0xFF64748B)),
+                    hintStyle: TextStyle(fontSize: 13, color: AppColors.textMuted),
+                    prefixIcon: Icon(Icons.search_rounded, size: 20, color: AppColors.textSecondary),
                     suffixIcon: _searchTerm.isNotEmpty
                         ? IconButton(
                             icon: const Icon(Icons.clear_rounded, size: 18),
@@ -206,15 +207,15 @@ class _AdminSkillsScreenState extends ConsumerState<AdminSkillsScreen> {
                           )
                         : null,
                     filled: true,
-                    fillColor: Colors.white,
+                    fillColor: AppColors.surface,
                     contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(AppRadius.input),
-                      borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                      borderSide: BorderSide(color: AppColors.border),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(AppRadius.input),
-                      borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                      borderSide: BorderSide(color: AppColors.border),
                     ),
                   ),
                 ),
@@ -261,9 +262,9 @@ class _AdminSkillsScreenState extends ConsumerState<AdminSkillsScreen> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: AppColors.surface,
                       borderRadius: BorderRadius.circular(AppRadius.card),
-                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                      border: Border.all(color: AppColors.border),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -273,7 +274,7 @@ class _AdminSkillsScreenState extends ConsumerState<AdminSkillsScreen> {
                               ? () => setState(() => _currentPage = safePage - 1)
                               : null,
                           icon: const Icon(Icons.chevron_left_rounded, size: 18),
-                          label: const Text('Prev'),
+                          label: Text('Prev'),
                           style: OutlinedButton.styleFrom(
                             visualDensity: VisualDensity.compact,
                             padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -281,10 +282,10 @@ class _AdminSkillsScreenState extends ConsumerState<AdminSkillsScreen> {
                         ),
                         Text(
                           'Page $safePage of $totalPages ($totalCount)',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
-                            color: Color(0xFF475569),
+                            color: AppColors.textSecondary,
                           ),
                         ),
                         OutlinedButton(
@@ -295,7 +296,7 @@ class _AdminSkillsScreenState extends ConsumerState<AdminSkillsScreen> {
                             visualDensity: VisualDensity.compact,
                             padding: const EdgeInsets.symmetric(horizontal: 10),
                           ),
-                          child: const Row(
+                          child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text('Next'),
@@ -324,10 +325,18 @@ class _AdminSkillsScreenState extends ConsumerState<AdminSkillsScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFFEFF6FF) : const Color(0xFFF1F5F9),
+          color: isSelected
+              ? (AppColors.isDark
+                  ? const Color(0xFF003B46).withValues(alpha: 0.5)
+                  : const Color(0xFFE6F4F1))
+              : AppColors.surfaceMuted,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: isSelected ? const Color(0xFF2563EB) : const Color(0xFFE2E8F0),
+            color: isSelected
+                ? (AppColors.isDark
+                    ? const Color(0xFF028090).withValues(alpha: 0.5)
+                    : const Color(0xFFB2DFDB))
+                : AppColors.border,
             width: isSelected ? 1.5 : 1.0,
           ),
         ),
@@ -336,7 +345,9 @@ class _AdminSkillsScreenState extends ConsumerState<AdminSkillsScreen> {
           style: TextStyle(
             fontSize: 11.5,
             fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
-            color: isSelected ? const Color(0xFF2563EB) : const Color(0xFF475569),
+            color: isSelected
+                ? (AppColors.isDark ? const Color(0xFF6EE7B7) : AppColors.peacockBlue)
+                : AppColors.textSecondary,
           ),
         ),
       ),
@@ -351,7 +362,7 @@ class _AdminSkillsScreenState extends ConsumerState<AdminSkillsScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.card)),
       ),
@@ -366,9 +377,9 @@ class _AdminSkillsScreenState extends ConsumerState<AdminSkillsScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'Add New Master Skill',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
             ),
             const SizedBox(height: 12),
             TextField(
@@ -438,10 +449,10 @@ class _AdminSkillsScreenState extends ConsumerState<AdminSkillsScreen> {
                 }
               },
               style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF2563EB),
+                backgroundColor: AppColors.primary,
                 minimumSize: const Size.fromHeight(44),
               ),
-              child: const Text('Create Skill'),
+              child: Text('Create Skill'),
             ),
           ],
         ),
@@ -468,7 +479,7 @@ class _AdminSkillsScreenState extends ConsumerState<AdminSkillsScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.card)),
       ),
@@ -484,13 +495,14 @@ class _AdminSkillsScreenState extends ConsumerState<AdminSkillsScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'Assign & Verify Skill for Technician',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<int>(
                 initialValue: selectedEmpId,
+                dropdownColor: AppColors.surface,
                 decoration: const InputDecoration(
                   labelText: 'Select Technician',
                   border: OutlineInputBorder(),
@@ -509,6 +521,7 @@ class _AdminSkillsScreenState extends ConsumerState<AdminSkillsScreen> {
               const SizedBox(height: 10),
               DropdownButtonFormField<int>(
                 initialValue: selectedSkillId,
+                dropdownColor: AppColors.surface,
                 decoration: const InputDecoration(
                   labelText: 'Select Skill',
                   border: OutlineInputBorder(),
@@ -527,6 +540,7 @@ class _AdminSkillsScreenState extends ConsumerState<AdminSkillsScreen> {
               const SizedBox(height: 10),
               DropdownButtonFormField<String>(
                 initialValue: proficiency,
+                dropdownColor: AppColors.surface,
                 decoration: const InputDecoration(
                   labelText: 'Proficiency Level',
                   border: OutlineInputBorder(),
@@ -574,7 +588,7 @@ class _AdminSkillsScreenState extends ConsumerState<AdminSkillsScreen> {
                   backgroundColor: const Color(0xFF059669),
                   minimumSize: const Size.fromHeight(44),
                 ),
-                child: const Text('Confirm Skill Assignment'),
+                child: Text('Confirm Skill Assignment'),
               ),
             ],
           ),
@@ -595,9 +609,9 @@ class _AdminSkillCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppRadius.card),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: AppColors.border),
         boxShadow: const [
           BoxShadow(color: Color(0x06000000), blurRadius: 4, offset: Offset(0, 1)),
         ],
@@ -608,12 +622,12 @@ class _AdminSkillCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: const Color(0xFFEFF6FF),
+              color: AppColors.isDark
+                  ? AppColors.surfaceMuted
+                  : const Color(0xFFE6F4F1),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: const Icon(
-              Icons.military_tech_rounded,
-              color: Color(0xFF2563EB),
+            child: Icon(Icons.military_tech_rounded, color: AppColors.primaryLight,
               size: 20,
             ),
           ),
@@ -628,10 +642,10 @@ class _AdminSkillCard extends StatelessWidget {
                     Expanded(
                       child: Text(
                         skill.name,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 13.5,
                           fontWeight: FontWeight.w800,
-                          color: Color(0xFF0F172A),
+                          color: AppColors.textPrimary,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -640,15 +654,15 @@ class _AdminSkillCard extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF1F5F9),
+                        color: AppColors.surfaceMuted,
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
                         skill.category.toUpperCase(),
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 9.5,
                           fontWeight: FontWeight.w800,
-                          color: Color(0xFF475569),
+                          color: AppColors.textSecondary,
                         ),
                       ),
                     ),
@@ -659,9 +673,9 @@ class _AdminSkillCard extends StatelessWidget {
                   skill.description != null && skill.description!.isNotEmpty
                       ? skill.description!
                       : 'Master catalog trade qualification.',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 11.5,
-                    color: Color(0xFF64748B),
+                    color: AppColors.textSecondary,
                   ),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,

@@ -82,7 +82,7 @@ class AdminTransactionTile extends StatelessWidget {
                       Expanded(
                         child: Text(
                           transaction.displayTitle,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w700,
                           ),
@@ -95,15 +95,16 @@ class AdminTransactionTile extends StatelessWidget {
                           margin: const EdgeInsets.only(left: 6),
                           padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFFEF3C7),
+                            color: AppColors.warningBg,
                             borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: AppColors.warningBorder, width: 0.5),
                           ),
-                          child: const Text(
+                          child: Text(
                             'T+7 HOLD',
                             style: TextStyle(
                               fontSize: 9,
                               fontWeight: FontWeight.w800,
-                              color: Color(0xFF92400E),
+                              color: AppColors.warningText,
                             ),
                           ),
                         ),

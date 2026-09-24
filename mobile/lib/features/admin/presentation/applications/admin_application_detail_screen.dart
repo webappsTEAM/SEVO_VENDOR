@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/theme/app_theme.dart';
+import '../../../../shared/widgets/sevo_brand_mark.dart';
 import '../../../../shared/widgets/status_chip.dart';
 import '../../../../shared/widgets/workforce_avatar.dart';
 import '../../data/admin_dashboard_api.dart';
@@ -113,7 +114,7 @@ class _AdminApplicationDetailScreenState
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Reject Document'),
+          title: Text('Reject Document'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -133,12 +134,12 @@ class _AdminApplicationDetailScreenState
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('Cancel'),
+              child: Text('Cancel'),
             ),
             FilledButton(
               style: FilledButton.styleFrom(backgroundColor: const Color(0xFFDC2626)),
               onPressed: () => Navigator.of(ctx).pop(true),
-              child: const Text('Reject Document'),
+              child: Text('Reject Document'),
             ),
           ],
         ),
@@ -188,12 +189,12 @@ class _AdminApplicationDetailScreenState
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Reject Selected Documents'),
+          title: Text('Reject Selected Documents'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Enter specific reason for rejecting the selected document(s):'),
+              Text('Enter specific reason for rejecting the selected document(s):'),
               const SizedBox(height: 10),
               TextField(
                 controller: reasonCtrl,
@@ -208,12 +209,12 @@ class _AdminApplicationDetailScreenState
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('Cancel'),
+              child: Text('Cancel'),
             ),
             FilledButton(
               style: FilledButton.styleFrom(backgroundColor: const Color(0xFFDC2626)),
               onPressed: () => Navigator.of(ctx).pop(true),
-              child: const Text('Confirm Rejection'),
+              child: Text('Confirm Rejection'),
             ),
           ],
         ),
@@ -260,12 +261,12 @@ class _AdminApplicationDetailScreenState
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Reject Service Authorization'),
+          title: Text('Reject Service Authorization'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Enter reason for declining this service authorization:'),
+              Text('Enter reason for declining this service authorization:'),
               const SizedBox(height: 10),
               TextField(
                 controller: reasonCtrl,
@@ -280,12 +281,12 @@ class _AdminApplicationDetailScreenState
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('Cancel'),
+              child: Text('Cancel'),
             ),
             FilledButton(
               style: FilledButton.styleFrom(backgroundColor: const Color(0xFFDC2626)),
               onPressed: () => Navigator.of(ctx).pop(true),
-              child: const Text('Reject Service'),
+              child: Text('Reject Service'),
             ),
           ],
         ),
@@ -331,12 +332,12 @@ class _AdminApplicationDetailScreenState
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Reject Selected Services'),
+          title: Text('Reject Selected Services'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Enter reason for declining selected service authorizations:'),
+              Text('Enter reason for declining selected service authorizations:'),
               const SizedBox(height: 10),
               TextField(
                 controller: reasonCtrl,
@@ -351,12 +352,12 @@ class _AdminApplicationDetailScreenState
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('Cancel'),
+              child: Text('Cancel'),
             ),
             FilledButton(
               style: FilledButton.styleFrom(backgroundColor: const Color(0xFFDC2626)),
               onPressed: () => Navigator.of(ctx).pop(true),
-              child: const Text('Confirm Rejection'),
+              child: Text('Confirm Rejection'),
             ),
           ],
         ),
@@ -401,7 +402,7 @@ class _AdminApplicationDetailScreenState
       final proceed = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Row(
+          title: Row(
             children: [
               Icon(Icons.warning_amber_rounded, color: Color(0xFFD97706), size: 24),
               SizedBox(width: 8),
@@ -412,35 +413,35 @@ class _AdminApplicationDetailScreenState
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'The backend requires all submitted documents to be verified and at least one service to be approved before final approval.',
                 style: TextStyle(fontSize: 13),
               ),
               const SizedBox(height: 12),
               if (unapprovedDocs.isNotEmpty) ...[
-                const Text('Unapproved Documents:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                ...unapprovedDocs.map((d) => Text(' • $d', style: const TextStyle(fontSize: 11.5, color: Color(0xFFDC2626)))),
+                Text('Unapproved Documents:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                ...unapprovedDocs.map((d) => Text(' • $d', style: TextStyle(fontSize: 11.5, color: Color(0xFFDC2626)))),
                 const SizedBox(height: 8),
               ],
               if (!hasApprovedService) ...[
-                const Text('• No services are currently approved.', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFFDC2626))),
+                Text('• No services are currently approved.', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFFDC2626))),
                 const SizedBox(height: 8),
               ],
-              const Text(
+              Text(
                 'Would you like to proceed with approval attempt anyway?',
-                style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
               ),
             ],
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('Review Items First'),
+              child: Text('Review Items First'),
             ),
             FilledButton(
               style: FilledButton.styleFrom(backgroundColor: const Color(0xFF059669)),
               onPressed: () => Navigator.of(ctx).pop(true),
-              child: const Text('Proceed'),
+              child: Text('Proceed'),
             ),
           ],
         ),
@@ -450,19 +451,19 @@ class _AdminApplicationDetailScreenState
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Approve Technician?'),
+          title: Text('Approve Technician?'),
           content: Text(
             'Are you sure you want to approve ${app.name}? They will be authorized for workforce operations and ready for field dispatch.',
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('Cancel'),
+              child: Text('Cancel'),
             ),
             FilledButton(
               style: FilledButton.styleFrom(backgroundColor: const Color(0xFF059669)),
               onPressed: () => Navigator.of(ctx).pop(true),
-              child: const Text('Approve Technician'),
+              child: Text('Approve Technician'),
             ),
           ],
         ),
@@ -492,14 +493,14 @@ class _AdminApplicationDetailScreenState
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Request Application Correction'),
+        title: Text('Request Application Correction'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'Enter specific instructions for the technician. They will be notified to correct flagged documents/fields and resubmit.',
-              style: TextStyle(fontSize: 12.5, color: Color(0xFF475569)),
+              style: TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
             ),
             const SizedBox(height: 12),
             TextField(
@@ -515,12 +516,12 @@ class _AdminApplicationDetailScreenState
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
+            child: Text('Cancel'),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: const Color(0xFFD97706)),
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Send Request'),
+            child: Text('Send Request'),
           ),
         ],
       ),
@@ -555,14 +556,14 @@ class _AdminApplicationDetailScreenState
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Reject Candidate Application'),
+        title: Text('Reject Candidate Application'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'Provide formal rationale for declining this applicant:',
-              style: TextStyle(fontSize: 12.5, color: Color(0xFF475569)),
+              style: TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
             ),
             const SizedBox(height: 12),
             TextField(
@@ -578,12 +579,12 @@ class _AdminApplicationDetailScreenState
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
+            child: Text('Cancel'),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: const Color(0xFFDC2626)),
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Confirm Rejection'),
+            child: Text('Confirm Rejection'),
           ),
         ],
       ),
@@ -618,20 +619,30 @@ class _AdminApplicationDetailScreenState
         backgroundColor: Colors.transparent,
         elevation: 0,
         flexibleSpace: Container(
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                Color(0xFF0A2540), // Deep Peacock Navy
-                Color(0xFF004E89), // Peacock Blue
+                Color(0xFF003B46), // Deep Peacock Navy
+                Color(0xFF005965), // Peacock Blue
               ],
             ),
           ),
         ),
-        title: Text(
-          'Dossier #${widget.applicationId}',
-          style: const TextStyle(fontWeight: FontWeight.w800, color: Colors.white, fontSize: 16),
+        title: Row(
+          children: [
+            const SevoBrandMark(size: 24),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                'Dossier #${widget.applicationId}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontWeight: FontWeight.w800, color: Colors.white, fontSize: 16),
+              ),
+            ),
+          ],
         ),
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
@@ -656,7 +667,7 @@ class _AdminApplicationDetailScreenState
                 const SizedBox(height: 16),
                 FilledButton(
                   onPressed: _refreshDossier,
-                  child: const Text('Retry'),
+                  child: Text('Retry'),
                 ),
               ],
             ),
@@ -676,11 +687,11 @@ class _AdminApplicationDetailScreenState
                 child: TabBar(
                   controller: _tabController,
                   isScrollable: true,
-                  labelColor: const Color(0xFF004E89),
-                  unselectedLabelColor: const Color(0xFF64748B),
-                  indicatorColor: const Color(0xFF004E89),
+                  labelColor: AppColors.primary,
+                  unselectedLabelColor: AppColors.textSecondary,
+                  indicatorColor: AppColors.primary,
                   indicatorWeight: 3,
-                  labelStyle: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800),
+                  labelStyle: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800),
                   tabAlignment: TabAlignment.start,
                   tabs: [
                     const Tab(
@@ -695,10 +706,10 @@ class _AdminApplicationDetailScreenState
                       icon: const Icon(Icons.handyman_outlined, size: 18),
                       child: Row(
                         children: [
-                          const Text('Services'),
+                          Text('Services'),
                           const SizedBox(width: 4),
                           _badge(app.requestedServicesCount.toString(),
-                              color: const Color(0xFFEFF6FF), textColor: const Color(0xFF004E89)),
+                              color: AppColors.infoBg, textColor: AppColors.primary),
                         ],
                       ),
                     ),
@@ -706,10 +717,10 @@ class _AdminApplicationDetailScreenState
                       icon: const Icon(Icons.shield_outlined, size: 18),
                       child: Row(
                         children: [
-                          const Text('Documents'),
+                          Text('Documents'),
                           const SizedBox(width: 4),
                           _badge(app.uploadedDocumentsCount.toString(),
-                              color: const Color(0xFFEFF6FF), textColor: const Color(0xFF004E89)),
+                              color: AppColors.infoBg, textColor: AppColors.primary),
                         ],
                       ),
                     ),
@@ -732,7 +743,7 @@ class _AdminApplicationDetailScreenState
               // ── Action Loading Banner ─────────────────────────────────────
               if (_isProcessing)
                 Container(
-                  color: const Color(0xFFEFF6FF),
+                  color: AppColors.infoBg,
                   padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -740,12 +751,12 @@ class _AdminApplicationDetailScreenState
                       const SizedBox(
                         width: 16,
                         height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF2563EB)),
+                        child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
                       ),
                       const SizedBox(width: 10),
                       Text(
                         _processingActionMsg ?? 'Processing request...',
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF1E40AF)),
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF1E40AF)),
                       ),
                     ],
                   ),
@@ -804,9 +815,9 @@ class _AdminApplicationDetailScreenState
 
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        border: Border(bottom: BorderSide(color: AppColors.border)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -820,8 +831,8 @@ class _AdminApplicationDetailScreenState
                 initial: app.initial,
                 radius: 24,
                 fontSize: 18,
-                backgroundColor: const Color(0xFF004E89).withValues(alpha: 0.1),
-                foregroundColor: const Color(0xFF004E89),
+                backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+                foregroundColor: AppColors.primary,
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -833,7 +844,7 @@ class _AdminApplicationDetailScreenState
                         Flexible(
                           child: Text(
                             app.name ?? 'Technician #${app.id}',
-                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: AppColors.textPrimary),
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -844,10 +855,10 @@ class _AdminApplicationDetailScreenState
                     const SizedBox(height: 2),
                     Text(
                       'ID: ${app.employeeId ?? 'PENDING'}${app.phone != null ? ' • ${app.phone}' : ''}${app.email != null ? ' • ${app.email}' : ''}',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11,
                         fontFamily: 'monospace',
-                        color: Color(0xFF64748B),
+                        color: AppColors.textSecondary,
                         fontWeight: FontWeight.w600,
                       ),
                       overflow: TextOverflow.ellipsis,
@@ -865,7 +876,7 @@ class _AdminApplicationDetailScreenState
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4.5),
                   decoration: BoxDecoration(
-                    color: approvedServices > 0 ? const Color(0xFFECFDF5) : const Color(0xFFFFFBEB),
+                    color: approvedServices > 0 ? AppColors.successBg : AppColors.warningBg,
                     borderRadius: BorderRadius.circular(6),
                     border: Border.all(
                       color: approvedServices > 0 ? const Color(0xFFA7F3D0) : const Color(0xFFFDE68A),
@@ -908,7 +919,7 @@ class _AdminApplicationDetailScreenState
                     border: Border.all(
                       color: (totalDocs > 0 && approvedDocs == totalDocs)
                           ? const Color(0xFFA7F3D0)
-                          : const Color(0xFFE2E8F0),
+                          : AppColors.border,
                       width: 0.8,
                     ),
                   ),
@@ -921,7 +932,7 @@ class _AdminApplicationDetailScreenState
                         size: 13,
                         color: (totalDocs > 0 && approvedDocs == totalDocs)
                             ? const Color(0xFF059669)
-                            : const Color(0xFF475569),
+                            : AppColors.textSecondary,
                       ),
                       const SizedBox(width: 5),
                       Flexible(
@@ -934,7 +945,7 @@ class _AdminApplicationDetailScreenState
                             fontWeight: FontWeight.w700,
                             color: (totalDocs > 0 && approvedDocs == totalDocs)
                                 ? const Color(0xFF065F46)
-                                : const Color(0xFF334155),
+                                : AppColors.textSecondary,
                           ),
                         ),
                       ),
@@ -959,30 +970,30 @@ class _AdminApplicationDetailScreenState
         Container(
           padding: const EdgeInsets.all(AppSpacing.md),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: AppColors.surface,
             borderRadius: BorderRadius.circular(AppRadius.card),
-            border: Border.all(color: const Color(0xFFE2E8F0)),
+            border: Border.all(color: AppColors.border),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Row(
+              Row(
                 children: [
-                  Icon(Icons.person_pin_rounded, color: Color(0xFF2563EB), size: 18),
+                  Icon(Icons.person_pin_rounded, color: AppColors.primary, size: 18),
                   SizedBox(width: 8),
                   Text(
                     'CANDIDATE DETAILS',
-                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Color(0xFF334155), letterSpacing: 0.5),
+                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: AppColors.textSecondary, letterSpacing: 0.5),
                   ),
                 ],
               ),
               const SizedBox(height: AppSpacing.sm),
-              const Divider(height: 1),
+              Divider(height: 1),
               const SizedBox(height: AppSpacing.sm),
               _dataRow('Phone', app.phone ?? '—', isMono: true),
               _dataRow('Email', app.email ?? '—'),
               _dataRow('City / Territory', app.city),
-              _dataRow('Service Radius', app.serviceRadius, isBold: true, highlightColor: const Color(0xFF2563EB)),
+              _dataRow('Service Radius', app.serviceRadius, isBold: true, highlightColor: AppColors.primary),
             ],
           ),
         ),
@@ -992,9 +1003,9 @@ class _AdminApplicationDetailScreenState
         Container(
           padding: const EdgeInsets.all(AppSpacing.md),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: AppColors.surface,
             borderRadius: BorderRadius.circular(AppRadius.card),
-            border: Border.all(color: const Color(0xFFE2E8F0)),
+            border: Border.all(color: AppColors.border),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1002,25 +1013,25 @@ class _AdminApplicationDetailScreenState
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Row(
+                  Row(
                     children: [
                       Icon(Icons.handyman_outlined, color: Color(0xFF059669), size: 18),
                       SizedBox(width: 8),
                       Text(
                         'SERVICES SUMMARY',
-                        style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Color(0xFF334155), letterSpacing: 0.5),
+                        style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: AppColors.textSecondary, letterSpacing: 0.5),
                       ),
                     ],
                   ),
                   TextButton(
                     onPressed: () => _tabController.animateTo(2),
                     style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
-                    child: const Text('Review Services →', style: TextStyle(fontSize: 11.5)),
+                    child: Text('Review Services →', style: TextStyle(fontSize: 11.5)),
                   ),
                 ],
               ),
               const SizedBox(height: 4),
-              const Divider(height: 1),
+              Divider(height: 1),
               const SizedBox(height: AppSpacing.sm),
               _dataRow('Requested Services', '${app.requestedServicesCount} services'),
               _dataRow('Approved Services', '${app.approvedServicesCount}',
@@ -1039,9 +1050,9 @@ class _AdminApplicationDetailScreenState
         Container(
           padding: const EdgeInsets.all(AppSpacing.md),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: AppColors.surface,
             borderRadius: BorderRadius.circular(AppRadius.card),
-            border: Border.all(color: const Color(0xFFE2E8F0)),
+            border: Border.all(color: AppColors.border),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1049,25 +1060,25 @@ class _AdminApplicationDetailScreenState
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Row(
+                  Row(
                     children: [
-                      Icon(Icons.shield_outlined, color: Color(0xFF2563EB), size: 18),
+                      Icon(Icons.shield_outlined, color: AppColors.primary, size: 18),
                       SizedBox(width: 8),
                       Text(
                         'DOCUMENTS LODGED',
-                        style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Color(0xFF334155), letterSpacing: 0.5),
+                        style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: AppColors.textSecondary, letterSpacing: 0.5),
                       ),
                     ],
                   ),
                   TextButton(
                     onPressed: () => _tabController.animateTo(3),
                     style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
-                    child: const Text('Review Docs →', style: TextStyle(fontSize: 11.5)),
+                    child: Text('Review Docs →', style: TextStyle(fontSize: 11.5)),
                   ),
                 ],
               ),
               const SizedBox(height: 4),
-              const Divider(height: 1),
+              Divider(height: 1),
               const SizedBox(height: AppSpacing.sm),
               _dataRow('Total Uploads', '${app.uploadedDocumentsCount} files'),
               _dataRow('Verified & Approved', '${app.verifiedDocumentsCount}',
@@ -1095,25 +1106,25 @@ class _AdminApplicationDetailScreenState
         Container(
           padding: const EdgeInsets.all(AppSpacing.md),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: AppColors.surface,
             borderRadius: BorderRadius.circular(AppRadius.card),
-            border: Border.all(color: const Color(0xFFE2E8F0)),
+            border: Border.all(color: AppColors.border),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Row(
+              Row(
                 children: [
-                  Icon(Icons.badge_outlined, color: Color(0xFF2563EB), size: 18),
+                  Icon(Icons.badge_outlined, color: AppColors.primary, size: 18),
                   SizedBox(width: 8),
                   Text(
                     'PERSONAL INFORMATION',
-                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Color(0xFF334155), letterSpacing: 0.5),
+                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: AppColors.textSecondary, letterSpacing: 0.5),
                   ),
                 ],
               ),
               const SizedBox(height: AppSpacing.sm),
-              const Divider(height: 1),
+              Divider(height: 1),
               const SizedBox(height: AppSpacing.sm),
               _dataRow('Date of Birth', app.dob),
               _dataRow('Gender', app.gender),
@@ -1128,30 +1139,30 @@ class _AdminApplicationDetailScreenState
         Container(
           padding: const EdgeInsets.all(AppSpacing.md),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: AppColors.surface,
             borderRadius: BorderRadius.circular(AppRadius.card),
-            border: Border.all(color: const Color(0xFFE2E8F0)),
+            border: Border.all(color: AppColors.border),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Row(
+              Row(
                 children: [
                   Icon(Icons.map_outlined, color: Color(0xFF059669), size: 18),
                   SizedBox(width: 8),
                   Text(
                     'ADDRESS & DISPATCH TERRITORY',
-                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Color(0xFF334155), letterSpacing: 0.5),
+                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: AppColors.textSecondary, letterSpacing: 0.5),
                   ),
                 ],
               ),
               const SizedBox(height: AppSpacing.sm),
-              const Divider(height: 1),
+              Divider(height: 1),
               const SizedBox(height: AppSpacing.sm),
               _dataRow('Street Address', app.streetAddress),
               _dataRow('City / State', '${app.city}, ${app.state}'),
               _dataRow('Pincode', app.pincode, isMono: true),
-              _dataRow('Max Dispatch Radius', app.serviceRadius, isBold: true, highlightColor: const Color(0xFF2563EB)),
+              _dataRow('Max Dispatch Radius', app.serviceRadius, isBold: true, highlightColor: AppColors.primary),
             ],
           ),
         ),
@@ -1174,24 +1185,24 @@ class _AdminApplicationDetailScreenState
         Container(
           padding: const EdgeInsets.all(AppSpacing.md),
           decoration: BoxDecoration(
-            color: const Color(0xFFF8FAFC),
+            color: AppColors.surfaceMuted,
             borderRadius: BorderRadius.circular(AppRadius.card),
-            border: Border.all(color: const Color(0xFFE2E8F0)),
+            border: Border.all(color: AppColors.border),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'PER-SERVICE AUTHORIZATION MATRIX',
-                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Color(0xFF1E293B), letterSpacing: 0.5),
+                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: AppColors.textPrimary, letterSpacing: 0.5),
               ),
               const SizedBox(height: 2),
-              const Text(
+              Text(
                 'Technicians can ONLY be dispatched jobs for services explicitly marked as APPROVED.',
-                style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
               ),
               const SizedBox(height: AppSpacing.sm),
-              const Divider(height: 1),
+              Divider(height: 1),
               const SizedBox(height: AppSpacing.sm),
 
               // Bulk Controls
@@ -1204,13 +1215,13 @@ class _AdminApplicationDetailScreenState
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFEFF6FF),
+                        color: AppColors.infoBg,
                         borderRadius: BorderRadius.circular(6),
                         border: Border.all(color: const Color(0xFFBFDBFE)),
                       ),
                       child: Text(
                         '${_selectedServiceIds.length} Selected',
-                        style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Color(0xFF2563EB)),
+                        style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: AppColors.primary),
                       ),
                     ),
                     FilledButton.icon(
@@ -1220,7 +1231,7 @@ class _AdminApplicationDetailScreenState
                       style: FilledButton.styleFrom(
                         backgroundColor: const Color(0xFF059669),
                         visualDensity: VisualDensity.compact,
-                        textStyle: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
+                        textStyle: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
                       ),
                     ),
                     FilledButton.icon(
@@ -1230,7 +1241,7 @@ class _AdminApplicationDetailScreenState
                       style: FilledButton.styleFrom(
                         backgroundColor: const Color(0xFFDC2626),
                         visualDensity: VisualDensity.compact,
-                        textStyle: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
+                        textStyle: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
                       ),
                     ),
                   ] else ...[
@@ -1238,20 +1249,20 @@ class _AdminApplicationDetailScreenState
                       OutlinedButton.icon(
                         onPressed: _isProcessing ? null : () => _handleBulkServiceAction('approve', allPending: true),
                         icon: const Icon(Icons.done_all_rounded, size: 15, color: Color(0xFF059669)),
-                        label: Text('Approve All Pending (${allPending.length})', style: const TextStyle(fontSize: 11.5, color: Color(0xFF059669), fontWeight: FontWeight.w700)),
+                        label: Text('Approve All Pending (${allPending.length})', style: TextStyle(fontSize: 11.5, color: Color(0xFF059669), fontWeight: FontWeight.w700)),
                         style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: Color(0xFFA7F3D0)),
-                          backgroundColor: const Color(0xFFECFDF5),
+                          side: BorderSide(color: Color(0xFFA7F3D0)),
+                          backgroundColor: AppColors.successBg,
                           visualDensity: VisualDensity.compact,
                         ),
                       ),
                       OutlinedButton.icon(
                         onPressed: _isProcessing ? null : () => _handleBulkServiceAction('reject', allPending: true),
                         icon: const Icon(Icons.remove_circle_outline_rounded, size: 15, color: Color(0xFFDC2626)),
-                        label: Text('Reject All Pending (${allPending.length})', style: const TextStyle(fontSize: 11.5, color: Color(0xFFDC2626), fontWeight: FontWeight.w700)),
+                        label: Text('Reject All Pending (${allPending.length})', style: TextStyle(fontSize: 11.5, color: Color(0xFFDC2626), fontWeight: FontWeight.w700)),
                         style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: Color(0xFFFECDD3)),
-                          backgroundColor: const Color(0xFFFFF1F2),
+                          side: BorderSide(color: Color(0xFFFECDD3)),
+                          backgroundColor: AppColors.errorBg,
                           visualDensity: VisualDensity.compact,
                         ),
                       ),
@@ -1272,7 +1283,7 @@ class _AdminApplicationDetailScreenState
               children: [
                 Checkbox(
                   value: allSelected,
-                  activeColor: const Color(0xFF2563EB),
+                  activeColor: AppColors.primary,
                   onChanged: (val) {
                     setState(() {
                       if (allSelected) {
@@ -1285,7 +1296,7 @@ class _AdminApplicationDetailScreenState
                 ),
                 Text(
                   allSelected ? 'Deselect All Services' : 'Select All Services (${services.length})',
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF475569)),
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textSecondary),
                 ),
               ],
             ),
@@ -1296,14 +1307,14 @@ class _AdminApplicationDetailScreenState
           Container(
             padding: const EdgeInsets.all(AppSpacing.xl),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: AppColors.surface,
               borderRadius: BorderRadius.circular(AppRadius.card),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
+              border: Border.all(color: AppColors.border),
             ),
-            child: const Center(
+            child: Center(
               child: Text(
                 'No services requested in this application dossier.',
-                style: TextStyle(fontSize: 12.5, color: Color(0xFF94A3B8)),
+                style: TextStyle(fontSize: 12.5, color: AppColors.textMuted),
               ),
             ),
           )
@@ -1314,10 +1325,10 @@ class _AdminApplicationDetailScreenState
               margin: const EdgeInsets.only(bottom: 8),
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: isChecked ? const Color(0xFFEFF6FF).withValues(alpha: 0.5) : Colors.white,
+                color: isChecked ? AppColors.infoBg : AppColors.surface,
                 borderRadius: BorderRadius.circular(AppRadius.card),
                 border: Border.all(
-                  color: isChecked ? const Color(0xFF93C5FD) : const Color(0xFFE2E8F0),
+                  color: isChecked ? const Color(0xFF93C5FD) : AppColors.border,
                   width: isChecked ? 1.5 : 1.0,
                 ),
               ),
@@ -1328,7 +1339,7 @@ class _AdminApplicationDetailScreenState
                     children: [
                       Checkbox(
                         value: isChecked,
-                        activeColor: const Color(0xFF2563EB),
+                        activeColor: AppColors.primary,
                         onChanged: (val) {
                           setState(() {
                             if (val == true) {
@@ -1345,12 +1356,12 @@ class _AdminApplicationDetailScreenState
                           children: [
                             Text(
                               svc.name,
-                              style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                              style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
                             ),
                             const SizedBox(height: 1),
                             Text(
                               'Category: ${svc.category ?? 'General'} • ID: #${svc.id}',
-                              style: const TextStyle(fontSize: 11, color: Color(0xFF64748B), fontFamily: 'monospace'),
+                              style: TextStyle(fontSize: 11, color: AppColors.textSecondary, fontFamily: 'monospace'),
                             ),
                           ],
                         ),
@@ -1364,7 +1375,7 @@ class _AdminApplicationDetailScreenState
                       padding: const EdgeInsets.only(left: 48),
                       child: Text(
                         'Reason: ${svc.rejectionReason}',
-                        style: const TextStyle(fontSize: 11, color: Color(0xFFDC2626), fontWeight: FontWeight.w600),
+                        style: TextStyle(fontSize: 11, color: Color(0xFFDC2626), fontWeight: FontWeight.w600),
                       ),
                     ),
                   ],
@@ -1382,7 +1393,7 @@ class _AdminApplicationDetailScreenState
                           disabledForegroundColor: const Color(0xFF065F46),
                           visualDensity: VisualDensity.compact,
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                          textStyle: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
+                          textStyle: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
                         ),
                         child: Text(svc.isApproved ? 'Approved ✓' : 'Approve'),
                       ),
@@ -1393,11 +1404,11 @@ class _AdminApplicationDetailScreenState
                             : () => _handleServiceAction(svc.id, 'reject'),
                         style: OutlinedButton.styleFrom(
                           side: BorderSide(color: svc.isRejected ? const Color(0xFFFECDD3) : const Color(0xFFFDA4AF)),
-                          backgroundColor: svc.isRejected ? const Color(0xFFFFF1F2) : Colors.white,
+                          backgroundColor: svc.isRejected ? AppColors.errorBg : AppColors.surface,
                           foregroundColor: const Color(0xFFDC2626),
                           visualDensity: VisualDensity.compact,
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                          textStyle: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
+                          textStyle: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
                         ),
                         child: Text(svc.isRejected ? 'Rejected ✗' : 'Reject'),
                       ),
@@ -1426,24 +1437,24 @@ class _AdminApplicationDetailScreenState
         Container(
           padding: const EdgeInsets.all(AppSpacing.md),
           decoration: BoxDecoration(
-            color: const Color(0xFFF8FAFC),
+            color: AppColors.surfaceMuted,
             borderRadius: BorderRadius.circular(AppRadius.card),
-            border: Border.all(color: const Color(0xFFE2E8F0)),
+            border: Border.all(color: AppColors.border),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'UPLOADED IDENTIFICATION & COMPLIANCE FILES',
-                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Color(0xFF1E293B), letterSpacing: 0.5),
+                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: AppColors.textPrimary, letterSpacing: 0.5),
               ),
               const SizedBox(height: 2),
-              const Text(
+              Text(
                 'Verify mandatory government IDs, trade qualifications, address proofs, and banking credentials.',
-                style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
               ),
               const SizedBox(height: AppSpacing.sm),
-              const Divider(height: 1),
+              Divider(height: 1),
               const SizedBox(height: AppSpacing.sm),
 
               // Bulk Controls
@@ -1456,13 +1467,13 @@ class _AdminApplicationDetailScreenState
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFEFF6FF),
+                        color: AppColors.infoBg,
                         borderRadius: BorderRadius.circular(6),
                         border: Border.all(color: const Color(0xFFBFDBFE)),
                       ),
                       child: Text(
                         '${_selectedDocCategories.length} Selected',
-                        style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Color(0xFF2563EB)),
+                        style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: AppColors.primary),
                       ),
                     ),
                     FilledButton.icon(
@@ -1472,7 +1483,7 @@ class _AdminApplicationDetailScreenState
                       style: FilledButton.styleFrom(
                         backgroundColor: const Color(0xFF059669),
                         visualDensity: VisualDensity.compact,
-                        textStyle: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
+                        textStyle: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
                       ),
                     ),
                     FilledButton.icon(
@@ -1482,7 +1493,7 @@ class _AdminApplicationDetailScreenState
                       style: FilledButton.styleFrom(
                         backgroundColor: const Color(0xFFDC2626),
                         visualDensity: VisualDensity.compact,
-                        textStyle: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
+                        textStyle: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
                       ),
                     ),
                   ] else ...[
@@ -1490,20 +1501,20 @@ class _AdminApplicationDetailScreenState
                       OutlinedButton.icon(
                         onPressed: _isProcessing ? null : () => _handleBulkDocumentAction('approve', allPending: true),
                         icon: const Icon(Icons.done_all_rounded, size: 15, color: Color(0xFF059669)),
-                        label: Text('Approve All Pending (${allPending.length})', style: const TextStyle(fontSize: 11.5, color: Color(0xFF059669), fontWeight: FontWeight.w700)),
+                        label: Text('Approve All Pending (${allPending.length})', style: TextStyle(fontSize: 11.5, color: Color(0xFF059669), fontWeight: FontWeight.w700)),
                         style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: Color(0xFFA7F3D0)),
-                          backgroundColor: const Color(0xFFECFDF5),
+                          side: BorderSide(color: Color(0xFFA7F3D0)),
+                          backgroundColor: AppColors.successBg,
                           visualDensity: VisualDensity.compact,
                         ),
                       ),
                       OutlinedButton.icon(
                         onPressed: _isProcessing ? null : () => _handleBulkDocumentAction('reject', allPending: true),
                         icon: const Icon(Icons.remove_circle_outline_rounded, size: 15, color: Color(0xFFDC2626)),
-                        label: Text('Reject All Pending (${allPending.length})', style: const TextStyle(fontSize: 11.5, color: Color(0xFFDC2626), fontWeight: FontWeight.w700)),
+                        label: Text('Reject All Pending (${allPending.length})', style: TextStyle(fontSize: 11.5, color: Color(0xFFDC2626), fontWeight: FontWeight.w700)),
                         style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: Color(0xFFFECDD3)),
-                          backgroundColor: const Color(0xFFFFF1F2),
+                          side: BorderSide(color: Color(0xFFFECDD3)),
+                          backgroundColor: AppColors.errorBg,
                           visualDensity: VisualDensity.compact,
                         ),
                       ),
@@ -1524,7 +1535,7 @@ class _AdminApplicationDetailScreenState
               children: [
                 Checkbox(
                   value: allSelected,
-                  activeColor: const Color(0xFF2563EB),
+                  activeColor: AppColors.primary,
                   onChanged: (val) {
                     setState(() {
                       if (allSelected) {
@@ -1537,7 +1548,7 @@ class _AdminApplicationDetailScreenState
                 ),
                 Text(
                   allSelected ? 'Deselect All Documents' : 'Select All Documents (${docs.length})',
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF475569)),
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textSecondary),
                 ),
               ],
             ),
@@ -1548,14 +1559,14 @@ class _AdminApplicationDetailScreenState
           Container(
             padding: const EdgeInsets.all(AppSpacing.xl),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: AppColors.surface,
               borderRadius: BorderRadius.circular(AppRadius.card),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
+              border: Border.all(color: AppColors.border),
             ),
-            child: const Center(
+            child: Center(
               child: Text(
                 'No documents uploaded in this application dossier.',
-                style: TextStyle(fontSize: 12.5, color: Color(0xFF94A3B8)),
+                style: TextStyle(fontSize: 12.5, color: AppColors.textMuted),
               ),
             ),
           )
@@ -1566,10 +1577,10 @@ class _AdminApplicationDetailScreenState
               margin: const EdgeInsets.only(bottom: 8),
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: isChecked ? const Color(0xFFEFF6FF).withValues(alpha: 0.5) : Colors.white,
+                color: isChecked ? AppColors.infoBg : AppColors.surface,
                 borderRadius: BorderRadius.circular(AppRadius.card),
                 border: Border.all(
-                  color: isChecked ? const Color(0xFF93C5FD) : const Color(0xFFE2E8F0),
+                  color: isChecked ? const Color(0xFF93C5FD) : AppColors.border,
                   width: isChecked ? 1.5 : 1.0,
                 ),
               ),
@@ -1580,7 +1591,7 @@ class _AdminApplicationDetailScreenState
                     children: [
                       Checkbox(
                         value: isChecked,
-                        activeColor: const Color(0xFF2563EB),
+                        activeColor: AppColors.primary,
                         onChanged: (val) {
                           setState(() {
                             if (val == true) {
@@ -1591,7 +1602,7 @@ class _AdminApplicationDetailScreenState
                           });
                         },
                       ),
-                      const Icon(Icons.file_present_rounded, color: Color(0xFF2563EB), size: 22),
+                      const Icon(Icons.file_present_rounded, color: AppColors.primary, size: 22),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Column(
@@ -1599,12 +1610,12 @@ class _AdminApplicationDetailScreenState
                           children: [
                             Text(
                               doc.title,
-                              style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                              style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
                             ),
                             const SizedBox(height: 1),
                             Text(
                               'Category: ${doc.category.toUpperCase()}',
-                              style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                              style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
                             ),
                           ],
                         ),
@@ -1618,7 +1629,7 @@ class _AdminApplicationDetailScreenState
                       padding: const EdgeInsets.only(left: 48),
                       child: Text(
                         'Document No: ${doc.documentNumber}',
-                        style: const TextStyle(fontSize: 11.5, fontFamily: 'monospace', color: Color(0xFF334155)),
+                        style: TextStyle(fontSize: 11.5, fontFamily: 'monospace', color: AppColors.textSecondary),
                       ),
                     ),
                   ],
@@ -1628,7 +1639,7 @@ class _AdminApplicationDetailScreenState
                       padding: const EdgeInsets.only(left: 48),
                       child: Text(
                         'Rejection Flag: ${doc.rejectionReason}',
-                        style: const TextStyle(fontSize: 11, color: Color(0xFFDC2626), fontWeight: FontWeight.w600),
+                        style: TextStyle(fontSize: 11, color: Color(0xFFDC2626), fontWeight: FontWeight.w600),
                       ),
                     ),
                   ],
@@ -1640,12 +1651,12 @@ class _AdminApplicationDetailScreenState
                         OutlinedButton.icon(
                           onPressed: () => _viewDocument(doc.fileUrl),
                           icon: const Icon(Icons.open_in_new_rounded, size: 14),
-                          label: const Text('View File'),
+                          label: Text('View File'),
                           style: OutlinedButton.styleFrom(
-                            side: const BorderSide(color: Color(0xFFCBD5E1)),
+                            side: BorderSide(color: AppColors.border),
                             visualDensity: VisualDensity.compact,
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            textStyle: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
+                            textStyle: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
                           ),
                         ),
                       const SizedBox(width: 8),
@@ -1659,7 +1670,7 @@ class _AdminApplicationDetailScreenState
                           disabledForegroundColor: const Color(0xFF065F46),
                           visualDensity: VisualDensity.compact,
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                          textStyle: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
+                          textStyle: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
                         ),
                         child: Text(doc.isApproved ? 'Verified ✓' : 'Verify'),
                       ),
@@ -1670,11 +1681,11 @@ class _AdminApplicationDetailScreenState
                             : () => _handleDocAction(doc.category, 'reject'),
                         style: OutlinedButton.styleFrom(
                           side: BorderSide(color: doc.isRejected ? const Color(0xFFFECDD3) : const Color(0xFFFDA4AF)),
-                          backgroundColor: doc.isRejected ? const Color(0xFFFFF1F2) : Colors.white,
+                          backgroundColor: doc.isRejected ? AppColors.errorBg : AppColors.surface,
                           foregroundColor: const Color(0xFFDC2626),
                           visualDensity: VisualDensity.compact,
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                          textStyle: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
+                          textStyle: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
                         ),
                         child: Text(doc.isRejected ? 'Rejected ✗' : 'Reject'),
                       ),
@@ -1698,25 +1709,25 @@ class _AdminApplicationDetailScreenState
         Container(
           padding: const EdgeInsets.all(AppSpacing.md),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: AppColors.surface,
             borderRadius: BorderRadius.circular(AppRadius.card),
-            border: Border.all(color: const Color(0xFFE2E8F0)),
+            border: Border.all(color: AppColors.border),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Row(
+              Row(
                 children: [
-                  Icon(Icons.military_tech_outlined, color: Color(0xFF2563EB), size: 18),
+                  Icon(Icons.military_tech_outlined, color: AppColors.primary, size: 18),
                   SizedBox(width: 8),
                   Text(
                     'PROFESSIONAL EXPERIENCE & EQUIPMENT',
-                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Color(0xFF334155), letterSpacing: 0.5),
+                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: AppColors.textSecondary, letterSpacing: 0.5),
                   ),
                 ],
               ),
               const SizedBox(height: AppSpacing.sm),
-              const Divider(height: 1),
+              Divider(height: 1),
               const SizedBox(height: AppSpacing.sm),
               _dataRow('Years of Experience', app.experienceYears, isBold: true),
               _dataRow('Vehicle Transport', app.vehicleType.toUpperCase()),
@@ -1738,25 +1749,25 @@ class _AdminApplicationDetailScreenState
         Container(
           padding: const EdgeInsets.all(AppSpacing.md),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: AppColors.surface,
             borderRadius: BorderRadius.circular(AppRadius.card),
-            border: Border.all(color: const Color(0xFFE2E8F0)),
+            border: Border.all(color: AppColors.border),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Row(
+              Row(
                 children: [
                   Icon(Icons.account_balance_outlined, color: Color(0xFF059669), size: 18),
                   SizedBox(width: 8),
                   Text(
                     'DIRECT DEPOSIT & PAYOUT CREDENTIALS',
-                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Color(0xFF334155), letterSpacing: 0.5),
+                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: AppColors.textSecondary, letterSpacing: 0.5),
                   ),
                 ],
               ),
               const SizedBox(height: AppSpacing.sm),
-              const Divider(height: 1),
+              Divider(height: 1),
               const SizedBox(height: AppSpacing.sm),
               _dataRow('Account Holder', app.bankAccountHolder),
               _dataRow('Account Number', app.maskedBankAccount, isMono: true, isBold: true),
@@ -1766,17 +1777,17 @@ class _AdminApplicationDetailScreenState
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF1F5F9),
+                  color: AppColors.surfaceMuted,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Row(
+                child: Row(
                   children: [
-                    Icon(Icons.lock_outline_rounded, size: 16, color: Color(0xFF64748B)),
+                    Icon(Icons.lock_outline_rounded, size: 16, color: AppColors.textSecondary),
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         'Direct deposit credentials are encrypted and restricted to authorized workforce administrators.',
-                        style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                        style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
                       ),
                     ),
                   ],
@@ -1799,20 +1810,20 @@ class _AdminApplicationDetailScreenState
         Container(
           padding: const EdgeInsets.all(AppSpacing.md),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: AppColors.surface,
             borderRadius: BorderRadius.circular(AppRadius.card),
-            border: Border.all(color: const Color(0xFFE2E8F0)),
+            border: Border.all(color: AppColors.border),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Row(
+              Row(
                 children: [
-                  Icon(Icons.history_rounded, color: Color(0xFF2563EB), size: 18),
+                  Icon(Icons.history_rounded, color: AppColors.primary, size: 18),
                   SizedBox(width: 8),
                   Text(
                     'DOSSIER AUDIT & VERIFICATION TIMELINE',
-                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Color(0xFF334155), letterSpacing: 0.5),
+                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: AppColors.textSecondary, letterSpacing: 0.5),
                   ),
                 ],
               ),
@@ -1857,7 +1868,7 @@ class _AdminApplicationDetailScreenState
     return Container(
       padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.sm, AppSpacing.md, AppSpacing.md),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.06),
@@ -1874,13 +1885,13 @@ class _AdminApplicationDetailScreenState
               child: OutlinedButton.icon(
                 onPressed: _isProcessing ? null : _handleRequestCorrection,
                 icon: const Icon(Icons.edit_note_rounded, size: 16),
-                label: const Text('Correction'),
+                label: Text('Correction'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: const Color(0xFFD97706),
-                  side: const BorderSide(color: Color(0xFFFCD34D)),
-                  backgroundColor: const Color(0xFFFEF3C7),
+                  side: BorderSide(color: Color(0xFFFCD34D)),
+                  backgroundColor: AppColors.warningBg,
                   padding: const EdgeInsets.symmetric(vertical: 12),
-                  textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                  textStyle: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
                 ),
               ),
             ),
@@ -1889,13 +1900,13 @@ class _AdminApplicationDetailScreenState
               child: OutlinedButton.icon(
                 onPressed: _isProcessing ? null : _handleFinalReject,
                 icon: const Icon(Icons.cancel_outlined, size: 16),
-                label: const Text('Reject'),
+                label: Text('Reject'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: const Color(0xFFDC2626),
-                  side: const BorderSide(color: Color(0xFFFECDD3)),
-                  backgroundColor: const Color(0xFFFFF1F2),
+                  side: BorderSide(color: Color(0xFFFECDD3)),
+                  backgroundColor: AppColors.errorBg,
                   padding: const EdgeInsets.symmetric(vertical: 12),
-                  textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                  textStyle: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
                 ),
               ),
             ),
@@ -1905,11 +1916,11 @@ class _AdminApplicationDetailScreenState
               child: FilledButton.icon(
                 onPressed: _isProcessing ? null : () => _handleFinalApprove(app),
                 icon: const Icon(Icons.check_circle_outline_rounded, size: 17),
-                label: const Text('Approve Technician'),
+                label: Text('Approve Technician'),
                 style: FilledButton.styleFrom(
                   backgroundColor: const Color(0xFF059669),
                   padding: const EdgeInsets.symmetric(vertical: 12),
-                  textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                  textStyle: TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
                 ),
               ),
             ),
@@ -1927,7 +1938,7 @@ class _AdminApplicationDetailScreenState
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+          Text(label, style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
           const SizedBox(width: 8),
           Flexible(
             child: Text(
@@ -1937,7 +1948,7 @@ class _AdminApplicationDetailScreenState
                 fontSize: 12.5,
                 fontWeight: isBold ? FontWeight.w800 : FontWeight.w600,
                 fontFamily: isMono ? 'monospace' : null,
-                color: highlightColor ?? const Color(0xFF0F172A),
+                color: highlightColor ?? AppColors.textPrimary,
               ),
             ),
           ),
@@ -1961,10 +1972,10 @@ class _AdminApplicationDetailScreenState
           radius: 14,
           backgroundColor: isActive
               ? const Color(0xFF059669)
-              : (isPending ? const Color(0xFFD97706) : const Color(0xFF94A3B8)),
+              : (isPending ? const Color(0xFFD97706) : AppColors.textMuted),
           child: Text(
             step,
-            style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800),
+            style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800),
           ),
         ),
         const SizedBox(width: 12),
@@ -1975,12 +1986,12 @@ class _AdminApplicationDetailScreenState
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
-                  Text(timestamp, style: const TextStyle(fontSize: 10.5, color: Color(0xFF94A3B8))),
+                  Text(title, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+                  Text(timestamp, style: TextStyle(fontSize: 10.5, color: AppColors.textMuted)),
                 ],
               ),
               const SizedBox(height: 2),
-              Text(subtitle, style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B))),
+              Text(subtitle, style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary)),
             ],
           ),
         ),

@@ -20,12 +20,12 @@ class SupabaseEgressSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // ── Section Title & Subtitle ─────────────────────────────────────
-        const Text(
+        Text(
           'Supabase Platform Egress',
           style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w900,
-            color: Color(0xFF0A2540),
+            color: Color(0xFF003B46),
             letterSpacing: -0.3,
           ),
         ),
@@ -45,9 +45,9 @@ class SupabaseEgressSection extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(AppSpacing.md),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: AppColors.surface,
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: const Color(0xFFE2E8F0)),
+            border: Border.all(color: AppColors.border),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -72,12 +72,12 @@ class SupabaseEgressSection extends StatelessWidget {
                       color: const Color(0xFFF1F5F9),
                       borderRadius: BorderRadius.circular(4),
                     ),
-                    child: const Text(
+                    child: Text(
                       'HISTORICAL',
                       style: TextStyle(
                         fontSize: 9,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF64748B),
+                        color: AppColors.textSecondary,
                       ),
                     ),
                   ),
@@ -86,10 +86,10 @@ class SupabaseEgressSection extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 egress.historicalPeriodEgress,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w800,
-                  color: Color(0xFF0A2540),
+                  color: Color(0xFF003B46),
                 ),
               ),
             ],
@@ -101,9 +101,9 @@ class SupabaseEgressSection extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(AppSpacing.md),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: AppColors.surface,
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: const Color(0xFFE2E8F0)),
+            border: Border.all(color: AppColors.border),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -129,7 +129,7 @@ class SupabaseEgressSection extends StatelessWidget {
                       borderRadius: BorderRadius.circular(4),
                       border: Border.all(color: const Color(0xFFFDE68A)),
                     ),
-                    child: const Text(
+                    child: Text(
                       'NOT MEASURED',
                       style: TextStyle(
                         fontSize: 9,
@@ -160,9 +160,9 @@ class SupabaseEgressSection extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(AppSpacing.md),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: AppColors.surface,
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: const Color(0xFFE2E8F0)),
+            border: Border.all(color: AppColors.border),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -188,7 +188,7 @@ class SupabaseEgressSection extends StatelessWidget {
                       borderRadius: BorderRadius.circular(4),
                       border: Border.all(color: const Color(0xFFFDE68A)),
                     ),
-                    child: const Text(
+                    child: Text(
                       'NOT MEASURED',
                       style: TextStyle(
                         fontSize: 9,
@@ -219,21 +219,21 @@ class SupabaseEgressSection extends StatelessWidget {
           decoration: BoxDecoration(
             color: const Color(0xFFF1F5F9),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: const Color(0xFFCBD5E1)),
+            border: Border.all(color: AppColors.border),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: const [
-                  Icon(Icons.info_outline_rounded, size: 16, color: Color(0xFF004E89)),
+                  Icon(Icons.info_outline_rounded, size: 16, color: Color(0xFF005965)),
                   SizedBox(width: 6),
                   Text(
                     'How Egress Works',
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w800,
-                      color: Color(0xFF0A2540),
+                      color: Color(0xFF003B46),
                     ),
                   ),
                 ],
@@ -243,7 +243,7 @@ class SupabaseEgressSection extends StatelessWidget {
                 'Internal PostgreSQL database statistics measure disk storage and memory/buffer activity. WAN network egress transmitted to clients is infrastructure-level telemetry and may require platform/provider measurement.',
                 style: TextStyle(
                   fontSize: 11.5,
-                  color: const Color(0xFF334155),
+                  color: AppColors.textSecondary,
                   height: 1.35,
                 ),
               ),

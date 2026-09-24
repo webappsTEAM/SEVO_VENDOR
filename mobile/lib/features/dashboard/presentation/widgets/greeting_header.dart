@@ -63,18 +63,19 @@ class GreetingHeader extends ConsumerWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            Color(0xFF0A2540), // Deep Navy
-            Color(0xFF004E89), // Royal Navy Blue
+            Color(0xFF003B46), // Deep rich teal
+            Color(0xFF005965), // Teal
+            Color(0xFF028090), // Cyan accent
           ],
         ),
         borderRadius: BorderRadius.circular(AppRadius.cardStandard),
         border: Border.all(
-          color: const Color(0xFF1E3A8A).withValues(alpha: 0.4),
+          color: const Color(0xFF005965).withValues(alpha: 0.4),
           width: 1,
         ),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x1A0A2540),
+            color: Color(0x12003B46),
             blurRadius: 10,
             offset: Offset(0, 3),
           ),

@@ -90,7 +90,7 @@ void main() {
   }
 
   group('Task 1: Profile Icon Dropdown / Menu Tests', () {
-    testWidgets('Admin user sees dynamic name, ADMIN badge, and Database Egress option', (tester) async {
+    testWidgets('Admin user sees dynamic name, ADMIN badge, and menu options', (tester) async {
       await tester.pumpWidget(
         createSubject(
           user: adminUser,
@@ -105,25 +105,18 @@ void main() {
       await tester.pumpAndSettle();
 
       // Tap Profile avatar in header
-      final avatarFinder = find.byType(InkWell).last;
+      final avatarFinder = find.byType(PopupMenuButton<String>);
       await tester.tap(avatarFinder);
       await tester.pumpAndSettle();
 
       // Verify Menu Header
       expect(find.text('John Doe'), findsOneWidget);
       expect(find.text('ADMIN'), findsOneWidget);
-      expect(find.text('admin@calservices.com'), findsOneWidget);
 
-      // Verify Menu Options
+      // Verify Menu Options (Name, Role, My Profile, Settings, Sign out)
       expect(find.text('My Profile'), findsOneWidget);
       expect(find.text('Settings'), findsOneWidget);
-      expect(find.text('Database Egress'), findsOneWidget);
-      expect(find.text('Log Out'), findsOneWidget);
-
-      // Verify Database Egress navigation
-      await tester.tap(find.text('Database Egress'));
-      await tester.pumpAndSettle();
-      expect(find.text('Database Egress Target'), findsOneWidget);
+      expect(find.text('Sign out'), findsOneWidget);
     });
 
     testWidgets('Admin user can navigate to My Profile from popup menu', (tester) async {
@@ -140,7 +133,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final avatarFinder = find.byType(InkWell).last;
+      final avatarFinder = find.byType(PopupMenuButton<String>);
       await tester.tap(avatarFinder);
       await tester.pumpAndSettle();
 
@@ -163,7 +156,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final avatarFinder = find.byType(InkWell).last;
+      final avatarFinder = find.byType(PopupMenuButton<String>);
       await tester.tap(avatarFinder);
       await tester.pumpAndSettle();
 
@@ -172,7 +165,7 @@ void main() {
       expect(find.text('Settings Screen Target'), findsOneWidget);
     });
 
-    testWidgets('Technician user sees TECHNICIAN badge and does NOT see Database Egress', (tester) async {
+    testWidgets('Technician user sees TECHNICIAN badge and only required options', (tester) async {
       await tester.pumpWidget(
         createSubject(
           user: technicianUser,
@@ -187,22 +180,18 @@ void main() {
       await tester.pumpAndSettle();
 
       // Tap Profile avatar in header
-      final avatarFinder = find.byType(InkWell).last;
+      final avatarFinder = find.byType(PopupMenuButton<String>);
       await tester.tap(avatarFinder);
       await tester.pumpAndSettle();
 
       // Verify Menu Header
       expect(find.text('Mani S'), findsOneWidget);
       expect(find.text('TECHNICIAN'), findsOneWidget);
-      expect(find.text('mani@calservices.com'), findsOneWidget);
 
       // Verify Menu Options
       expect(find.text('My Profile'), findsOneWidget);
       expect(find.text('Settings'), findsOneWidget);
-      expect(find.text('Log Out'), findsOneWidget);
-
-      // STRICT RULE: Database Egress MUST NOT be visible for technician
-      expect(find.text('Database Egress'), findsNothing);
+      expect(find.text('Sign out'), findsOneWidget);
     });
   });
 

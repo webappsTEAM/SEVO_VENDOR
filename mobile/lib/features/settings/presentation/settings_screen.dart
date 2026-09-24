@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../../shared/widgets/module_header_card.dart';
 import '../../../shared/widgets/workforce_app_bar.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -10,6 +11,7 @@ class SettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.background,
       appBar: const WorkforceAppBar(
         titleText: 'Settings',
         showBrand: false,
@@ -17,6 +19,12 @@ class SettingsScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.lg),
         children: [
+          const ModuleHeaderCard(
+            title: 'Settings & Preferences',
+            subtitle: 'Account security, appearance & notifications',
+            icon: Icons.settings_rounded,
+          ),
+          const SizedBox(height: AppSpacing.md),
           _SettingsMenuCard(
             icon: Icons.lock_outline_rounded,
             iconColor: const Color(0xFF2563EB),

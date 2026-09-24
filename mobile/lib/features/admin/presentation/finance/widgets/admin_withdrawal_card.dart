@@ -29,7 +29,7 @@ class AdminWithdrawalCard extends ConsumerWidget {
         return const Color(0xFFDC2626); // Rose
       case 'CANCELLED':
       default:
-        return const Color(0xFF64748B); // Slate
+        return AppColors.textSecondary; // Slate
     }
   }
 
@@ -37,19 +37,19 @@ class AdminWithdrawalCard extends ConsumerWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Start Processing Payout'),
+        title: Text('Start Processing Payout'),
         content: Text(
           'Mark payout #${withdrawal.id} for ${withdrawal.employeeName} (₹${withdrawal.amount.toStringAsFixed(2)}) as PROCESSING?\n\nThis indicates you have initiated the NEFT/IMPS bank transfer.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
+            child: Text('Cancel'),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: const Color(0xFF2563EB)),
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Start Processing'),
+            child: Text('Start Processing'),
           ),
         ],
       ),
@@ -111,7 +111,7 @@ class AdminWithdrawalCard extends ConsumerWidget {
                       ),
                       child: Text(
                         'REQ #${withdrawal.id}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 11.5,
                           fontWeight: FontWeight.w800,
                           fontFamily: 'monospace',
@@ -161,7 +161,7 @@ class AdminWithdrawalCard extends ConsumerWidget {
                         withdrawal.employeeName,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w800,
                         ),
@@ -181,11 +181,11 @@ class AdminWithdrawalCard extends ConsumerWidget {
                 const SizedBox(width: 10),
                 Text(
                   '₹${withdrawal.amount.toStringAsFixed(2)}',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 20,
                     fontFamily: 'monospace',
                     fontWeight: FontWeight.w900,
-                    color: Color(0xFF004E89),
+                    color: AppColors.primary,
                   ),
                 ),
               ],
@@ -204,17 +204,17 @@ class AdminWithdrawalCard extends ConsumerWidget {
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.account_balance_rounded, size: 15, color: Color(0xFF004E89)),
+                      const Icon(Icons.account_balance_rounded, size: 15, color: Color(0xFF005965)),
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
                           account?.bankName ?? 'Direct Bank Transfer',
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
                         ),
                       ),
                       Text(
                         account?.maskedAccountDisplay ?? '••••',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
                           fontFamily: 'monospace',
                           fontWeight: FontWeight.w800,
@@ -239,9 +239,9 @@ class AdminWithdrawalCard extends ConsumerWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFECFDF5),
+                  color: AppColors.successBg,
                   borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: const Color(0xFFA7F3D0)),
+                  border: Border.all(color: AppColors.successBorder),
                 ),
                 child: Row(
                   children: [
@@ -250,11 +250,11 @@ class AdminWithdrawalCard extends ConsumerWidget {
                     Expanded(
                       child: Text(
                         'UTR / Bank Ref: ${withdrawal.bankTransactionId}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 11.5,
                           fontFamily: 'monospace',
                           fontWeight: FontWeight.w700,
-                          color: Color(0xFF065F46),
+                          color: AppColors.successText,
                         ),
                       ),
                     ),
@@ -268,9 +268,9 @@ class AdminWithdrawalCard extends ConsumerWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFFF1F2),
+                  color: AppColors.errorBg,
                   borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: const Color(0xFFFECDD3)),
+                  border: Border.all(color: AppColors.errorBorder),
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -280,7 +280,7 @@ class AdminWithdrawalCard extends ConsumerWidget {
                     Expanded(
                       child: Text(
                         'Reason: ${withdrawal.failureReason}',
-                        style: const TextStyle(fontSize: 11.5, color: Color(0xFF9F1239)),
+                        style: TextStyle(fontSize: 11.5, color: Color(0xFF9F1239)),
                       ),
                     ),
                   ],
@@ -297,12 +297,12 @@ class AdminWithdrawalCard extends ConsumerWidget {
                     child: OutlinedButton(
                       onPressed: () => AdminFailPayoutDialog.show(context, withdrawal),
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFFDC2626),
-                        side: const BorderSide(color: Color(0xFFFECDD3)),
+                        foregroundColor: AppColors.errorText,
+                        side: BorderSide(color: AppColors.errorBorder),
                         padding: const EdgeInsets.symmetric(vertical: 8),
                         minimumSize: const Size(0, 36),
                       ),
-                      child: const Text('Reject / Fail', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                      child: Text('Reject / Fail', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -316,7 +316,7 @@ class AdminWithdrawalCard extends ConsumerWidget {
                         minimumSize: const Size(0, 36),
                       ),
                       icon: const Icon(Icons.sync_rounded, size: 14),
-                      label: const Text('Start Processing', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                      label: Text('Start Processing', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
                     ),
                   ),
                 ],
@@ -329,12 +329,12 @@ class AdminWithdrawalCard extends ConsumerWidget {
                     child: OutlinedButton(
                       onPressed: () => AdminFailPayoutDialog.show(context, withdrawal),
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFFDC2626),
-                        side: const BorderSide(color: Color(0xFFFECDD3)),
+                        foregroundColor: AppColors.errorText,
+                        side: BorderSide(color: AppColors.errorBorder),
                         padding: const EdgeInsets.symmetric(vertical: 8),
                         minimumSize: const Size(0, 36),
                       ),
-                      child: const Text('Mark Failed', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                      child: Text('Mark Failed', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -348,7 +348,7 @@ class AdminWithdrawalCard extends ConsumerWidget {
                         minimumSize: const Size(0, 36),
                       ),
                       icon: const Icon(Icons.check_circle_rounded, size: 14),
-                      label: const Text('Complete Payout (UTR)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                      label: Text('Complete Payout (UTR)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
                     ),
                   ),
                 ],

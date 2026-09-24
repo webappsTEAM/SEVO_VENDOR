@@ -29,9 +29,9 @@ class ApplicationCard extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppRadius.card),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: AppColors.border),
         boxShadow: const [
           BoxShadow(
             color: Color(0x040A2540),
@@ -61,8 +61,8 @@ class ApplicationCard extends StatelessWidget {
                       initial: application.initial,
                       radius: 20,
                       fontSize: 14,
-                      backgroundColor: const Color(0xFF004E89).withValues(alpha: 0.1),
-                      foregroundColor: const Color(0xFF004E89),
+                      backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+                      foregroundColor: AppColors.primary,
                     ),
                     const SizedBox(width: 10),
                     Expanded(
@@ -71,10 +71,10 @@ class ApplicationCard extends StatelessWidget {
                         children: [
                           Text(
                             application.name ?? 'Technician #${application.id}',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w800,
-                              color: Color(0xFF0F172A),
+                              color: AppColors.textPrimary,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -91,16 +91,16 @@ class ApplicationCard extends StatelessWidget {
                                   vertical: 1.5,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFFF1F5F9),
+                                  color: AppColors.surfaceMuted,
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: Text(
                                   application.employeeId ?? 'APP-#${application.id}',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 10.5,
                                     fontFamily: 'monospace',
                                     fontWeight: FontWeight.w700,
-                                    color: Color(0xFF334155),
+                                    color: AppColors.textSecondary,
                                   ),
                                 ),
                               ),
@@ -111,18 +111,18 @@ class ApplicationCard extends StatelessWidget {
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      const Icon(
+                                      Icon(
                                         Icons.business_rounded,
                                         size: 12,
-                                        color: Color(0xFF64748B),
+                                        color: AppColors.textSecondary,
                                       ),
                                       const SizedBox(width: 3),
                                       Flexible(
                                         child: Text(
                                           application.companyName!,
-                                          style: const TextStyle(
+                                          style: TextStyle(
                                             fontSize: 11,
-                                            color: Color(0xFF64748B),
+                                            color: AppColors.textSecondary,
                                             fontWeight: FontWeight.w600,
                                           ),
                                           maxLines: 1,
@@ -156,13 +156,13 @@ class ApplicationCard extends StatelessWidget {
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.phone_outlined, size: 12, color: Color(0xFF64748B)),
+                          Icon(Icons.phone_outlined, size: 12, color: AppColors.textSecondary),
                           const SizedBox(width: 4),
                           Text(
                             application.phone!,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 11.5,
-                              color: Color(0xFF475569),
+                              color: AppColors.textSecondary,
                               fontFamily: 'monospace',
                             ),
                           ),
@@ -174,14 +174,14 @@ class ApplicationCard extends StatelessWidget {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.email_outlined, size: 12, color: Color(0xFF64748B)),
+                            Icon(Icons.email_outlined, size: 12, color: AppColors.textSecondary),
                             const SizedBox(width: 4),
                             Flexible(
                               child: Text(
                                 application.email!,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 11.5,
-                                  color: Color(0xFF475569),
+                                  color: AppColors.textSecondary,
                                 ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
@@ -194,13 +194,13 @@ class ApplicationCard extends StatelessWidget {
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.calendar_today_outlined, size: 12, color: Color(0xFF64748B)),
+                          Icon(Icons.calendar_today_outlined, size: 12, color: AppColors.textSecondary),
                           const SizedBox(width: 4),
                           Text(
                             'Applied: $appliedDateFormatted',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 11,
-                              color: Color(0xFF64748B),
+                              color: AppColors.textSecondary,
                             ),
                           ),
                         ],
@@ -209,7 +209,7 @@ class ApplicationCard extends StatelessWidget {
                 ),
 
                 const SizedBox(height: 10),
-                const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                Divider(height: 1, color: AppColors.border),
                 const SizedBox(height: 8),
 
                 // Footer Row: Document Verification Badge + "View Application →"
@@ -228,14 +228,10 @@ class ApplicationCard extends StatelessWidget {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
-                            color: (docsCount > 0 && verifiedDocsCount == docsCount)
-                                ? const Color(0xFFECFDF5)
-                                : const Color(0xFFF8FAFC),
+                            color: (docsCount > 0 && verifiedDocsCount == docsCount) ? AppColors.successBg : AppColors.surfaceMuted,
                             borderRadius: BorderRadius.circular(4),
                             border: Border.all(
-                              color: (docsCount > 0 && verifiedDocsCount == docsCount)
-                                  ? const Color(0xFFA7F3D0)
-                                  : const Color(0xFFE2E8F0),
+                              color: (docsCount > 0 && verifiedDocsCount == docsCount) ? AppColors.successBorder : AppColors.border,
                             ),
                           ),
                           child: Text.rich(
@@ -250,9 +246,7 @@ class ApplicationCard extends StatelessWidget {
                                           ? Icons.check_circle_rounded
                                           : Icons.description_outlined,
                                       size: 12,
-                                      color: (docsCount > 0 && verifiedDocsCount == docsCount)
-                                          ? const Color(0xFF059669)
-                                          : const Color(0xFF64748B),
+                                      color: (docsCount > 0 && verifiedDocsCount == docsCount) ? AppColors.successText : AppColors.textSecondary,
                                     ),
                                   ),
                                 ),
@@ -261,9 +255,7 @@ class ApplicationCard extends StatelessWidget {
                                   style: TextStyle(
                                     fontSize: 10.5,
                                     fontWeight: FontWeight.w700,
-                                    color: (docsCount > 0 && verifiedDocsCount == docsCount)
-                                        ? const Color(0xFF065F46)
-                                        : const Color(0xFF475569),
+                                    color: (docsCount > 0 && verifiedDocsCount == docsCount) ? AppColors.successText : AppColors.textSecondary,
                                   ),
                                 ),
                               ],
@@ -274,16 +266,16 @@ class ApplicationCard extends StatelessWidget {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFF8FAFC),
+                              color: AppColors.surfaceMuted,
                               borderRadius: BorderRadius.circular(4),
-                              border: Border.all(color: const Color(0xFFE2E8F0)),
+                              border: Border.all(color: AppColors.border),
                             ),
                             child: Text(
                               '$servicesCount Services',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 10.5,
                                 fontWeight: FontWeight.w600,
-                                color: Color(0xFF475569),
+                                color: AppColors.textSecondary,
                               ),
                             ),
                           ),
@@ -294,11 +286,11 @@ class ApplicationCard extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFEFF6FF),
+                        color: AppColors.infoBg,
                         borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: const Color(0xFFBFDBFE)),
+                        border: Border.all(color: AppColors.infoBorder),
                       ),
-                      child: const Row(
+                      child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
@@ -306,14 +298,14 @@ class ApplicationCard extends StatelessWidget {
                             style: TextStyle(
                               fontSize: 11.5,
                               fontWeight: FontWeight.w800,
-                              color: Color(0xFF004E89),
+                              color: AppColors.primary,
                             ),
                           ),
                           SizedBox(width: 4),
                           Icon(
                             Icons.arrow_forward_rounded,
                             size: 13,
-                            color: Color(0xFF004E89),
+                            color: AppColors.primary,
                           ),
                         ],
                       ),
@@ -328,4 +320,3 @@ class ApplicationCard extends StatelessWidget {
     );
   }
 }
-

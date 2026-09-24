@@ -43,7 +43,7 @@ class _JobCardSkeletonState extends State<JobCardSkeleton>
             margin: const EdgeInsets.only(bottom: AppSpacing.md),
             padding: const EdgeInsets.all(AppSpacing.md),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: AppColors.surface,
               borderRadius: BorderRadius.circular(AppRadius.cardStandard),
               border: Border.all(color: AppColors.border),
             ),
@@ -86,8 +86,8 @@ class _JobCardSkeletonState extends State<JobCardSkeleton>
                     Container(
                       width: 28,
                       height: 28,
-                      decoration: const BoxDecoration(
-                        color: Color(0xFFE2E8F0),
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceMuted,
                         shape: BoxShape.circle,
                       ),
                     ),
@@ -125,7 +125,7 @@ class _JobCardSkeletonState extends State<JobCardSkeleton>
       width: width,
       height: height,
       decoration: BoxDecoration(
-        color: const Color(0xFFE2E8F0),
+        color: AppColors.surfaceMuted,
         borderRadius: BorderRadius.circular(radius),
       ),
     );

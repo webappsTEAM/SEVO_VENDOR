@@ -57,7 +57,8 @@ void main() {
       await tester.pumpAndSettle();
 
       // Verify Header
-      expect(find.text('My Saved Locations'), findsNWidgets(2));
+      expect(find.text('Saved Locations'), findsOneWidget);
+      expect(find.text('My Saved Locations'), findsOneWidget);
       expect(find.text('Add Location'), findsOneWidget);
 
       // Verify Location 1 (Default)

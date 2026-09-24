@@ -26,9 +26,9 @@ class WorkforceMetricCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppRadius.card),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: AppColors.border),
         boxShadow: const [
           BoxShadow(
             color: Color(0x040A2540),
@@ -50,10 +50,10 @@ class WorkforceMetricCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   label,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 11.5,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF64748B),
+                    color: AppColors.textSecondary,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -78,10 +78,10 @@ class WorkforceMetricCard extends StatelessWidget {
           // Subtext Context
           Text(
             subtext,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 10.5,
               fontWeight: FontWeight.w400,
-              color: Color(0xFF94A3B8),
+              color: AppColors.textMuted,
             ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -118,7 +118,7 @@ class SuperAdminWorkforceOverviewSection extends StatelessWidget {
             const Icon(
               Icons.people_alt_rounded,
               size: 15,
-              color: Color(0xFF004E89),
+              color: Color(0xFF005965),
             ),
             const SizedBox(width: 6),
             Text(
@@ -153,8 +153,8 @@ class SuperAdminWorkforceOverviewSection extends StatelessWidget {
               value: data.totalRegisteredCount,
               subtext: 'Technicians on roster',
               icon: Icons.people_alt_rounded,
-              iconColor: const Color(0xFF004E89),
-              valueColor: const Color(0xFF0F172A),
+              iconColor: const Color(0xFF005965),
+              valueColor: AppColors.textPrimary,
             );
 
             final card2 = WorkforceMetricCard(
@@ -171,8 +171,8 @@ class SuperAdminWorkforceOverviewSection extends StatelessWidget {
               value: data.onlineAndAvailableCount,
               subtext: 'Ready for dispatch',
               icon: Icons.sensors_rounded,
-              iconColor: const Color(0xFF004E89), // Peacock Blue
-              valueColor: const Color(0xFF004E89),
+              iconColor: const Color(0xFF005965), // Peacock Blue
+              valueColor: const Color(0xFF005965),
             );
 
             final card4 = WorkforceMetricCard(

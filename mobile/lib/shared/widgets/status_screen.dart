@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_theme.dart';
+import 'sevo_brand_mark.dart';
+import 'theme_toggle_button.dart';
 
 /// Generic full-screen status message (icon + title + explanation), used for
 /// every "you can't go further yet" screen: pending review, corrections
@@ -26,7 +28,25 @@ class StatusScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('CalServices Vendor')),
+      backgroundColor: AppColors.background,
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF003B46),
+        foregroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: false,
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            gradient: AppColors.peacockGradient,
+            borderRadius: BorderRadius.vertical(bottom: Radius.circular(22)),
+          ),
+        ),
+        title: const SevoHeaderTitle(
+          fontSize: 22,
+        ),
+        actions: const [
+          ThemeToggleButton(),
+        ],
+      ),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(

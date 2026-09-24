@@ -34,7 +34,7 @@ class StorageAnalyticsSection extends StatelessWidget {
       _StorageCategoryItem(
         label: 'Audit Logs',
         rawKey: 'Logs & Audit History',
-        color: const Color(0xFF004E89),
+        color: const Color(0xFF005965),
         icon: Icons.history_edu_rounded,
         bytes: analytics.categoryStorageBytes['Logs & Audit History'] ?? 0,
         totalBytes: totalBytes,
@@ -74,7 +74,7 @@ class StorageAnalyticsSection extends StatelessWidget {
       _StorageCategoryItem(
         label: 'System Tables',
         rawKey: 'Other System Tables',
-        color: const Color(0xFF64748B),
+        color: AppColors.textSecondary,
         icon: Icons.table_chart_rounded,
         bytes: analytics.categoryStorageBytes['Other System Tables'] ?? 0,
         totalBytes: totalBytes,
@@ -85,12 +85,12 @@ class StorageAnalyticsSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Section Header
-        const Text(
+        Text(
           'Where is my Database Space Being Used?',
           style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w900,
-            color: Color(0xFF0A2540),
+            color: Color(0xFF003B46),
             letterSpacing: -0.3,
           ),
         ),
@@ -111,17 +111,17 @@ class StorageAnalyticsSection extends StatelessWidget {
           decoration: BoxDecoration(
             color: const Color(0xFFF8FAFC),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFFE2E8F0)),
+            border: Border.all(color: AppColors.border),
           ),
           child: Row(
             children: [
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF004E89).withValues(alpha: 0.1),
+                  color: const Color(0xFF005965).withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.pie_chart_rounded, size: 20, color: Color(0xFF004E89)),
+                child: const Icon(Icons.pie_chart_rounded, size: 20, color: Color(0xFF005965)),
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -139,10 +139,10 @@ class StorageAnalyticsSection extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       dbSize,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w900,
-                        color: Color(0xFF0A2540),
+                        color: Color(0xFF003B46),
                       ),
                     ),
                   ],
@@ -154,7 +154,7 @@ class StorageAnalyticsSection extends StatelessWidget {
                   color: const Color(0xFF059669).withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(999),
                 ),
-                child: const Text(
+                child: Text(
                   'PostgreSQL',
                   style: TextStyle(
                     fontSize: 10,
@@ -187,9 +187,9 @@ class StorageAnalyticsSection extends StatelessWidget {
               margin: const EdgeInsets.only(bottom: 8),
               padding: const EdgeInsets.all(AppSpacing.md),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: AppColors.surface,
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
+                border: Border.all(color: AppColors.border),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -203,21 +203,21 @@ class StorageAnalyticsSection extends StatelessWidget {
                           cat.label,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12.5,
                             fontWeight: FontWeight.w800,
-                            color: Color(0xFF0A2540),
+                            color: Color(0xFF003B46),
                           ),
                         ),
                       ),
                       const SizedBox(width: 4),
                       Text(
                         formattedSize,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w900,
                           fontFamily: 'monospace',
-                          color: Color(0xFF0A2540),
+                          color: Color(0xFF003B46),
                         ),
                       ),
                       const SizedBox(width: 6),

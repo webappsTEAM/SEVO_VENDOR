@@ -45,15 +45,15 @@ class _AdminSocialSecurityScreenState
         ),
         title: Text(
           'Record Portal Submission for ${reg.employeeName}',
-          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'Enter the Shram Suvidha / e-Shram portal reference or acknowledgment number:',
-              style: TextStyle(fontSize: 12.5, color: Color(0xFF475569)),
+              style: TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
             ),
             const SizedBox(height: 12),
             TextField(
@@ -69,14 +69,14 @@ class _AdminSocialSecurityScreenState
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
+            child: Text('Cancel'),
           ),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF0F172A),
+              backgroundColor: AppColors.textPrimary,
             ),
-            child: const Text('Record Submission'),
+            child: Text('Record Submission'),
           ),
         ],
       ),
@@ -116,24 +116,24 @@ class _AdminSocialSecurityScreenState
   Color _getStatusBg(String status) {
     switch (status) {
       case 'REGISTERED':
-        return const Color(0xFFECFDF5);
+        return AppColors.successBg;
       case 'ELIGIBLE_PENDING':
-        return const Color(0xFFFEF3C7);
+        return AppColors.warningBg;
       case 'NOT_YET_ELIGIBLE':
       default:
-        return const Color(0xFFF1F5F9);
+        return AppColors.surfaceMuted;
     }
   }
 
   Color _getStatusTextColor(String status) {
     switch (status) {
       case 'REGISTERED':
-        return const Color(0xFF047857);
+        return AppColors.successText;
       case 'ELIGIBLE_PENDING':
-        return const Color(0xFF92400E);
+        return AppColors.warningText;
       case 'NOT_YET_ELIGIBLE':
       default:
-        return const Color(0xFF475569);
+        return AppColors.textSecondary;
     }
   }
 
@@ -144,8 +144,9 @@ class _AdminSocialSecurityScreenState
     final totalCount = registrationsAsync.valueOrNull?.length ?? 0;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: AppColors.background,
       appBar: const WorkforceAppBar(
+        titleText: 'Social Security & Insurance',
         showStatusSubBar: false,
         showDrawerMenu: true,
       ),
@@ -153,7 +154,7 @@ class _AdminSocialSecurityScreenState
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: _refresh,
-          color: const Color(0xFF0F172A),
+          color: AppColors.primary,
           child: ListView(
             padding: const EdgeInsets.all(AppSpacing.md),
             children: [
@@ -161,9 +162,9 @@ class _AdminSocialSecurityScreenState
               Container(
                 padding: const EdgeInsets.all(AppSpacing.md),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: AppColors.surface,
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                  border: Border.all(color: AppColors.border),
                   boxShadow: const [
                     BoxShadow(
                       color: Color(0x040F172A),
@@ -196,7 +197,7 @@ class _AdminSocialSecurityScreenState
                           ),
                         ),
                         const SizedBox(width: 12),
-                        const Expanded(
+                        Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -205,7 +206,7 @@ class _AdminSocialSecurityScreenState
                                 style: TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.w800,
-                                  color: Color(0xFF0F172A),
+                                  color: AppColors.textPrimary,
                                   letterSpacing: -0.2,
                                 ),
                               ),
@@ -214,7 +215,7 @@ class _AdminSocialSecurityScreenState
                                 'Compliance tracking under the Code on Social Security, 2020.',
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color: Color(0xFF64748B),
+                                  color: AppColors.textSecondary,
                                   height: 1.35,
                                 ),
                               ),
@@ -224,7 +225,7 @@ class _AdminSocialSecurityScreenState
                       ],
                     ),
                     const SizedBox(height: 12),
-                    const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                    Divider(height: 1, color: AppColors.border),
                     const SizedBox(height: 10),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
@@ -232,12 +233,12 @@ class _AdminSocialSecurityScreenState
                         OutlinedButton.icon(
                           onPressed: _refresh,
                           icon: const Icon(Icons.refresh_rounded, size: 15),
-                          label: const Text('Refresh'),
+                          label: Text('Refresh'),
                           style: OutlinedButton.styleFrom(
-                            foregroundColor: const Color(0xFF475569),
-                            side: const BorderSide(color: Color(0xFFCBD5E1)),
+                            foregroundColor: AppColors.textSecondary,
+                            side: BorderSide(color: AppColors.border),
                             visualDensity: VisualDensity.compact,
-                            textStyle: const TextStyle(
+                            textStyle: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
                             ),
@@ -254,17 +255,17 @@ class _AdminSocialSecurityScreenState
               Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFEFF6FF),
+                  color: AppColors.infoBg,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFBFDBFE)),
+                  border: Border.all(color: AppColors.infoBorder),
                 ),
-                child: const Column(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
                         Icon(Icons.info_outline_rounded,
-                            size: 17, color: Color(0xFF1D4ED8)),
+                            size: 17, color: AppColors.infoText),
                         SizedBox(width: 8),
                         Expanded(
                           child: Text(
@@ -272,7 +273,7 @@ class _AdminSocialSecurityScreenState
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
-                              color: Color(0xFF1E40AF),
+                              color: AppColors.infoText,
                               height: 1.35,
                             ),
                           ),
@@ -284,7 +285,7 @@ class _AdminSocialSecurityScreenState
                       'This page tracks eligibility (90+ days worked this financial year) and records that the manual portal submission actually happened; it does not submit anything automatically.',
                       style: TextStyle(
                         fontSize: 11.5,
-                        color: Color(0xFF1E3A8A),
+                        color: AppColors.textSecondary,
                         height: 1.35,
                       ),
                     ),
@@ -296,10 +297,10 @@ class _AdminSocialSecurityScreenState
               // ── Main Section Heading: Registrations Count ──────────────────
               Text(
                 'Social Security Code Registrations ($totalCount)',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w800,
-                  color: Color(0xFF0F172A),
+                  color: AppColors.textPrimary,
                 ),
               ),
               const SizedBox(height: AppSpacing.sm),
@@ -331,19 +332,19 @@ class _AdminSocialSecurityScreenState
                                 .state = st['id']!;
                           }
                         },
-                        selectedColor: const Color(0xFF0F172A),
+                        selectedColor: AppColors.primary,
                         labelStyle: TextStyle(
                           color: isSelected
                               ? Colors.white
-                              : const Color(0xFF334155),
+                              : AppColors.textSecondary,
                         ),
-                        backgroundColor: Colors.white,
+                        backgroundColor: AppColors.surface,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8),
                           side: BorderSide(
                             color: isSelected
-                                ? const Color(0xFF0F172A)
-                                : const Color(0xFFE2E8F0),
+                                ? AppColors.primary
+                                : AppColors.border,
                           ),
                         ),
                       ),
@@ -355,10 +356,10 @@ class _AdminSocialSecurityScreenState
 
               // ── Registrations List ─────────────────────────────────────────
               registrationsAsync.when(
-                loading: () => const Center(
+                loading: () => Center(
                   child: Padding(
                     padding: EdgeInsets.all(AppSpacing.xxl),
-                    child: CircularProgressIndicator(color: Color(0xFF0F172A)),
+                    child: CircularProgressIndicator(color: AppColors.primary),
                   ),
                 ),
                 error: (err, _) => AppCard(
@@ -371,30 +372,30 @@ class _AdminSocialSecurityScreenState
                         size: 36,
                       ),
                       const SizedBox(height: 12),
-                      const Text(
+                      Text(
                         'Unable to load registrations',
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
-                          color: Color(0xFF0F172A),
+                          color: AppColors.textPrimary,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         err.toString(),
                         textAlign: TextAlign.center,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
-                          color: Color(0xFF64748B),
+                          color: AppColors.textSecondary,
                         ),
                       ),
                       const SizedBox(height: 16),
                       FilledButton.icon(
                         onPressed: _refresh,
                         icon: const Icon(Icons.refresh_rounded, size: 16),
-                        label: const Text('Try again'),
+                        label: Text('Try again'),
                         style: FilledButton.styleFrom(
-                          backgroundColor: const Color(0xFF0F172A),
+                          backgroundColor: AppColors.primary,
                         ),
                       ),
                     ],
@@ -455,9 +456,9 @@ class _RegistrationCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: AppSpacing.sm),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: AppColors.border),
         boxShadow: const [
           BoxShadow(
             color: Color(0x040F172A),
@@ -479,18 +480,18 @@ class _RegistrationCard extends StatelessWidget {
                   children: [
                     Text(
                       registration.employeeName,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF0F172A),
+                        color: AppColors.textPrimary,
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       'Worker ID: #${registration.employeeId} · Reg #${registration.registrationId}',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11.5,
-                        color: Color(0xFF64748B),
+                        color: AppColors.textSecondary,
                         fontFamily: 'monospace',
                       ),
                     ),
@@ -516,20 +517,20 @@ class _RegistrationCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          const Divider(height: 1, color: Color(0xFFF1F5F9)),
+          Divider(height: 1, color: AppColors.border),
           const SizedBox(height: 10),
 
           // Days Worked Progress
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Expanded(
+              Expanded(
                 child: Text(
                   'FY Days Worked (90d statutory threshold)',
                   style: TextStyle(
                     fontSize: 11.5,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF475569),
+                    color: AppColors.textSecondary,
                   ),
                 ),
               ),
@@ -541,7 +542,7 @@ class _RegistrationCard extends StatelessWidget {
                   fontWeight: FontWeight.w800,
                   color: days >= 90
                       ? const Color(0xFF059669)
-                      : const Color(0xFF0F172A),
+                      : AppColors.textPrimary,
                 ),
               ),
             ],
@@ -552,7 +553,7 @@ class _RegistrationCard extends StatelessWidget {
             child: LinearProgressIndicator(
               value: progress,
               minHeight: 6,
-              backgroundColor: const Color(0xFFE2E8F0),
+              backgroundColor: AppColors.border,
               color: days >= 90
                   ? const Color(0xFF059669)
                   : const Color(0xFF3B82F6),
@@ -565,9 +566,9 @@ class _RegistrationCard extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
+                color: AppColors.surfaceMuted,
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0xFFF1F5F9)),
+                border: Border.all(color: AppColors.border, width: 0.5),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -575,19 +576,19 @@ class _RegistrationCard extends StatelessWidget {
                   if (registration.portalReferenceId.isNotEmpty)
                     Text(
                       'Portal Reference: ${registration.portalReferenceId}',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFF0F172A),
+                        color: AppColors.textPrimary,
                         fontFamily: 'monospace',
                       ),
                     ),
                   if (registration.registeredAt != null)
                     Text(
                       'Registered on ${registration.registeredAt!.day.toString().padLeft(2, '0')}/${registration.registeredAt!.month.toString().padLeft(2, '0')}/${registration.registeredAt!.year}${registration.registeredBy.isNotEmpty ? ' by ${registration.registeredBy}' : ''}',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11,
-                        color: Color(0xFF64748B),
+                        color: AppColors.textSecondary,
                       ),
                     ),
                 ],
@@ -599,12 +600,12 @@ class _RegistrationCard extends StatelessWidget {
               child: OutlinedButton.icon(
                 onPressed: onRecordSubmission,
                 icon: const Icon(Icons.edit_note_rounded, size: 16),
-                label: const Text('Mark as Registered'),
+                label: Text('Mark as Registered'),
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF0F172A),
-                  side: const BorderSide(color: Color(0xFFCBD5E1)),
+                  foregroundColor: AppColors.textPrimary,
+                  side: BorderSide(color: AppColors.border),
                   padding: const EdgeInsets.symmetric(vertical: 9),
-                  textStyle: const TextStyle(
+                  textStyle: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
                   ),

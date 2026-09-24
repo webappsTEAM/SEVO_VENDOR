@@ -532,9 +532,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Online — Available for Jobs'), findsOneWidget);
       expect(find.text('ONLINE • READY FOR DISPATCH'), findsOneWidget);
-      expect(find.text('Available to receive new service requests. You will be alerted instantly when a booking is dispatched.'), findsOneWidget);
 
       // Tap status badge to directly toggle availability
       await tester.tap(find.text('ONLINE • READY FOR DISPATCH'));
@@ -570,9 +568,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Offline — Currently Unavailable'), findsOneWidget);
       expect(find.text('OFFLINE'), findsWidgets);
-      expect(find.text('Currently unavailable for new service requests. Switch online when ready for dispatch offers.'), findsOneWidget);
     });
   });
 }

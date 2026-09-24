@@ -34,22 +34,24 @@ class AuthorizedServicesCard extends StatelessWidget {
                       width: 28,
                       height: 28,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF004E89).withValues(alpha: 0.1),
+                        color: AppColors.isDark
+                            ? AppColors.surfaceMuted
+                            : const Color(0xFFE6F4F1),
                         borderRadius: BorderRadius.circular(7),
                       ),
                       child: const Icon(
                         Icons.handyman_outlined,
                         size: 15,
-                        color: Color(0xFF004E89),
+                        color: AppColors.primaryLight,
                       ),
                     ),
                     const SizedBox(width: 8),
-                    const Text(
+                    Text(
                       'Authorized Service Capabilities',
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF0F172A),
+                        color: AppColors.textPrimary,
                       ),
                     ),
                   ],
@@ -57,16 +59,24 @@ class AuthorizedServicesCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFD1FAE5),
+                    color: AppColors.isDark
+                        ? const Color(0xFF064E3B).withValues(alpha: 0.4)
+                        : const Color(0xFFD1FAE5),
                     borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: const Color(0xFF6EE7B7)),
+                    border: Border.all(
+                      color: AppColors.isDark
+                          ? const Color(0xFF059669)
+                          : const Color(0xFF6EE7B7),
+                    ),
                   ),
                   child: Text(
                     '${approvedServices.length} Approved',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w800,
-                      color: Color(0xFF065F46),
+                      color: AppColors.isDark
+                          ? const Color(0xFF6EE7B7)
+                          : const Color(0xFF065F46),
                     ),
                   ),
                 ),
@@ -82,7 +92,7 @@ class AuthorizedServicesCard extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4.5),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
+                        color: AppColors.surfaceMuted,
                         borderRadius: BorderRadius.circular(6),
                         border: Border.all(color: AppColors.border),
                       ),
@@ -97,10 +107,10 @@ class AuthorizedServicesCard extends StatelessWidget {
                           const SizedBox(width: 4),
                           Text(
                             service.name,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w600,
-                              color: Color(0xFF1E293B),
+                              color: AppColors.textPrimary,
                             ),
                           ),
                         ],
@@ -110,15 +120,15 @@ class AuthorizedServicesCard extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4.5),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF1F5F9),
+                        color: AppColors.surfaceMuted,
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
                         '+${approvedServices.length - 6} more',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
-                          color: Color(0xFF64748B),
+                          color: AppColors.textSecondary,
                         ),
                       ),
                     ),
@@ -149,13 +159,13 @@ class AuthorizedServicesCard extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFF004E89),
+                        color: AppColors.primaryLight,
                       ),
                     ),
                     Icon(
                       Icons.arrow_forward_ios_rounded,
                       size: 11,
-                      color: Color(0xFF004E89),
+                      color: AppColors.primaryLight,
                     ),
                   ],
                 ),

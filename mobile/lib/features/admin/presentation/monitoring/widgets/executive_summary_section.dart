@@ -37,12 +37,12 @@ class ExecutiveSummarySection extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'Executive System Summary',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w900,
-                      color: Color(0xFF0A2540),
+                      color: Color(0xFF003B46),
                       letterSpacing: -0.3,
                     ),
                   ),
@@ -153,9 +153,9 @@ class ExecutiveSummarySection extends StatelessWidget {
           title: 'Network Guardrails',
           value: activeGuards,
           badgeText: 'Active',
-          badgeColor: const Color(0xFF004E89),
+          badgeColor: const Color(0xFF005965),
           icon: Icons.shield_rounded,
-          iconColor: const Color(0xFF004E89),
+          iconColor: const Color(0xFF005965),
           explanation: summary.optimizationsHeadline.isNotEmpty
               ? summary.optimizationsHeadline
               : '4 network guardrails are active, eliminating duplicate queries and stopping background GPS polling.',

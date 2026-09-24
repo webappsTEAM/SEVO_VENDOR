@@ -11,15 +11,12 @@ import '../../domain/job_presentation.dart';
 import '../jobs_providers.dart';
 import 'category_helper.dart';
 import 'job_customer_row.dart';
-import 'job_status_badge.dart';
 
-/// Classic, premium Workforce Job Card adhering to the design specification:
-/// 1. Top Row: Service Category Icon + Name (left) | Status Badge (right)
-/// 2. Second Row: Job Request ID (left) | Earnings & "Earn on finish" (right)
-/// 3. Job Title with (+N other items) suffix
-/// 4. Compact Info Rows: 📅 Date & Time | 📍 Location (with graceful overflow)
-/// 5. Customer Section: Avatar initial + Name + Quick Call & Directions buttons
-/// 6. Bottom Action Bar: Status-dependent actions (Accept / Decline / Continue / Completed / View Details)
+/// Modern SEVO Job Card precisely matching the reference UI:
+/// 1. Top Section: Category Icon Square + Category Name & Job Title (left) | Status Pill & Earnings (right)
+/// 2. Schedule & Location Details: 📅 Date & Time | 📍 Address & Distance Pill
+/// 3. Customer Row: Avatar Initial + Customer Name + Circular Call & Chat buttons
+/// 4. Action Bar: Outlined [ 👁 View Details ] + Filled [ Continue Job ➔ ] / [ ✔ Mark as Completed ] / [ Accept / Decline ]
 class JobCard extends ConsumerStatefulWidget {
   const JobCard({
     super.key,
@@ -61,7 +58,7 @@ class _JobCardState extends ConsumerState<JobCard> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Job offer accepted! Heading to customer site.'),
-            backgroundColor: Color(0xFF059669),
+            backgroundColor: Color(0xFF005965),
           ),
         );
       }
@@ -128,7 +125,7 @@ class _JobCardState extends ConsumerState<JobCard> {
     return showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.card)),
       ),
@@ -263,7 +260,7 @@ class _JobCardState extends ConsumerState<JobCard> {
     final categoryName = widget.job.serviceCategory ?? 'Service Request';
     final categoryIcon = iconForCategory(widget.job.serviceCategory ?? widget.job.displayTitle);
 
-    // Additional items suffix if cartData has > 1 items
+    // Extra items count & subtitle
     final extraItemsCount = widget.job.cartData.length > 1 ? widget.job.cartData.length - 1 : 0;
     final extraItemsSuffix = extraItemsCount > 0
         ? ' (+$extraItemsCount other item${extraItemsCount > 1 ? 's' : ''})'
@@ -277,7 +274,7 @@ class _JobCardState extends ConsumerState<JobCard> {
     // Amount text
     final formattedAmount = widget.job.totalAmount != null
         ? '₹${widget.job.totalAmount! >= 1000 ? widget.job.totalAmount!.toStringAsFixed(2) : widget.job.totalAmount!.toStringAsFixed(0)}'
-        : '₹—';
+        : '₹0';
 
     final isOffer = presentation.isOffer;
     final isCompleted = widget.job.status.toLowerCase() == 'completed' ||
@@ -285,240 +282,290 @@ class _JobCardState extends ConsumerState<JobCard> {
     final isCancelled = ['cancelled', 'rejected', 'declined'].contains(widget.job.status.toLowerCase());
     final isInProgress = !isOffer && !isCompleted && !isCancelled;
 
-    return Card(
+    // Status pill badge color styles
+    final Color badgeBgColor;
+    final Color badgeTextColor;
+    final String badgeLabel;
+
+    if (isCompleted) {
+      badgeBgColor = AppColors.isDark
+          ? const Color(0xFF064E3B).withValues(alpha: 0.4)
+          : const Color(0xFFDCFCE7);
+      badgeTextColor = AppColors.isDark
+          ? const Color(0xFF34D399)
+          : const Color(0xFF15803D);
+      badgeLabel = 'Completed';
+    } else if (isInProgress) {
+      badgeBgColor = AppColors.isDark
+          ? const Color(0xFF0369A1).withValues(alpha: 0.4)
+          : const Color(0xFFE0F2FE);
+      badgeTextColor = AppColors.isDark
+          ? const Color(0xFF38BDF8)
+          : const Color(0xFF0369A1);
+      badgeLabel = 'In Progress';
+    } else if (isOffer) {
+      badgeBgColor = AppColors.isDark
+          ? const Color(0xFFB45309).withValues(alpha: 0.4)
+          : const Color(0xFFFEF3C7);
+      badgeTextColor = AppColors.isDark
+          ? const Color(0xFFFBBF24)
+          : const Color(0xFFB45309);
+      badgeLabel = 'Available';
+    } else {
+      badgeBgColor = AppColors.isDark
+          ? const Color(0xFF334155).withValues(alpha: 0.5)
+          : const Color(0xFFF1F5F9);
+      badgeTextColor = AppColors.isDark
+          ? const Color(0xFF94A3B8)
+          : const Color(0xFF64748B);
+      badgeLabel = presentation.displayStatus;
+    }
+
+    return Container(
       margin: const EdgeInsets.only(bottom: AppSpacing.md),
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppRadius.cardStandard),
-        side: BorderSide(
-          color: isOffer ? const Color(0xFFFBBF24) : AppColors.border,
-          width: isOffer ? 1.4 : 1,
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: AppColors.border,
+          width: 1.0,
         ),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x060A2540),
+            blurRadius: 8,
+            offset: Offset(0, 2),
+          ),
+        ],
       ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(AppRadius.cardStandard),
-        onTap: () => context.push('/jobs/${widget.job.id}'),
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.md),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // ── 1. Top Row: Category (Left) + Status Badge (Right) ─────────
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Expanded(
-                    child: Row(
-                      children: [
-                        Icon(categoryIcon, size: 16, color: AppColors.peacockBlue),
-                        const SizedBox(width: 6),
-                        Flexible(
-                          child: Text(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () => context.push('/jobs/${widget.job.id}'),
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // ── 1. Top Section: Category Icon + Title + Status Pill + Price ─
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Category Icon Square (44x44, light teal bg)
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: AppColors.isDark
+                            ? const Color(0xFF005965).withValues(alpha: 0.3)
+                            : const Color(0xFFE6F4F1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      alignment: Alignment.center,
+                      child: Icon(
+                        categoryIcon,
+                        size: 22,
+                        color: AppColors.isDark ? const Color(0xFF38BDF8) : const Color(0xFF005965),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    // Title & Category Column
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
                             categoryName,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
-                              color: Color(0xFF334155),
+                              color: AppColors.isDark ? const Color(0xFF2DD4BF) : const Color(0xFF0D9488),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
-                  JobStatusBadge(
-                    status: presentation.badgeStatus,
-                    label: presentation.displayStatus,
-                  ),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.sm),
-
-              // ── 2. Second Row: Job Request ID + Earnings Amount ────────────
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        widget.job.requestId,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontFamily: 'monospace',
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF004E89),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        formattedAmount,
-                        style: const TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w900,
-                          color: Color(0xFF0F172A),
-                          fontFamily: 'monospace',
-                          height: 1.1,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      const Text(
-                        'Earn on finish',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF64748B),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-
-              // ── 3. Job Title ───────────────────────────────────────────────
-              Text.rich(
-                TextSpan(
-                  text: widget.job.displayTitle,
-                  style: const TextStyle(
-                    fontSize: 14.5,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF0F172A),
-                    height: 1.3,
-                  ),
-                  children: [
-                    if (extraItemsSuffix.isNotEmpty)
-                      TextSpan(
-                        text: extraItemsSuffix,
-                        style: const TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF2563EB),
-                        ),
-                      ),
-                  ],
-                ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: AppSpacing.sm),
-
-              // ── 4. Information Section: Date/Time + Location ───────────────
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.circular(AppRadius.chip),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.calendar_today_rounded, size: 13, color: Color(0xFF64748B)),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            scheduleText,
-                            maxLines: 1,
+                          const SizedBox(height: 2),
+                          Text(
+                            widget.job.displayTitle,
+                            maxLines: 2,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w600,
-                              color: Color(0xFF334155),
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.textPrimary,
+                              height: 1.25,
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                    if (widget.job.address != null && widget.job.address!.isNotEmpty) ...[
-                      const SizedBox(height: 5),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Padding(
-                            padding: EdgeInsets.only(top: 1.5),
-                            child: Icon(Icons.place_rounded, size: 13, color: Color(0xFF64748B)),
-                          ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              widget.job.address!,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
+                          if (extraItemsSuffix.isNotEmpty) ...[
+                            const SizedBox(height: 1),
+                            Text(
+                              extraItemsSuffix,
                               style: const TextStyle(
-                                fontSize: 11.5,
-                                color: Color(0xFF475569),
-                                height: 1.3,
-                              ),
-                            ),
-                          ),
-                          if (widget.job.distanceKm != null) ...[
-                            const SizedBox(width: 6),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFEFF6FF),
-                                borderRadius: BorderRadius.circular(4),
-                                border: Border.all(color: const Color(0xFFBFDBFE), width: 0.8),
-                              ),
-                              child: Text(
-                                '${widget.job.distanceKm!.toStringAsFixed(1)} km',
-                                style: const TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w700,
-                                  color: Color(0xFF1D4ED8),
-                                ),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF2563EB),
                               ),
                             ),
                           ],
                         ],
                       ),
-                    ],
+                    ),
+                    const SizedBox(width: 10),
+                    // Right: Status Badge & Earnings
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3.5),
+                          decoration: BoxDecoration(
+                            color: badgeBgColor,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Text(
+                            badgeLabel,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: badgeTextColor,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          formattedAmount,
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                            color: AppColors.textPrimary,
+                            fontFamily: 'monospace',
+                            height: 1.1,
+                          ),
+                        ),
+                        const SizedBox(height: 1),
+                        Text(
+                          'Earn on finish',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
-              ),
-              const SizedBox(height: AppSpacing.sm),
+                const SizedBox(height: 12),
 
-              // ── 5. Customer Section ────────────────────────────────────────
-              JobCustomerRow(job: widget.job),
-
-              if (_inlineError != null) ...[
-                const SizedBox(height: AppSpacing.xs),
-                Text(
-                  _inlineError!,
-                  style: const TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFFDC2626),
+                // ── 2. Schedule, Address, and Distance ──────────────────────────
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.calendar_today_outlined,
+                      size: 14,
+                      color: AppColors.textPrimary,
+                    ),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        scheduleText,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                if (widget.job.address != null && widget.job.address!.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        Icons.place_rounded,
+                        size: 14,
+                        color: Color(0xFF64748B),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          widget.job.address!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 11.5,
+                            color: Color(0xFF64748B),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // Distance Pill
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppColors.isDark
+                              ? const Color(0xFF0284C7).withValues(alpha: 0.2)
+                              : const Color(0xFFE0F2FE),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.place_rounded,
+                              size: 11,
+                              color: AppColors.isDark ? const Color(0xFF38BDF8) : const Color(0xFF0284C7),
+                            ),
+                            const SizedBox(width: 3),
+                            Text(
+                              '${(widget.job.distanceKm ?? 0.0).toStringAsFixed(1)} km',
+                              style: TextStyle(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.isDark ? const Color(0xFF38BDF8) : const Color(0xFF0284C7),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
+                ],
+                const SizedBox(height: 12),
+
+                // ── 3. Customer Row with Call & Chat buttons ───────────────────
+                JobCustomerRow(job: widget.job),
+
+                if (_inlineError != null) ...[
+                  const SizedBox(height: AppSpacing.xs),
+                  Text(
+                    _inlineError!,
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFFDC2626),
+                    ),
+                  ),
+                ],
+
+                const SizedBox(height: 14),
+
+                // ── 4. Bottom Action Bar ───────────────────────────────────────
+                _buildActionBar(
+                  context,
+                  isOffer: isOffer,
+                  isCompleted: isCompleted,
+                  isCancelled: isCancelled,
+                  isInProgress: isInProgress,
+                  amountText: formattedAmount,
                 ),
               ],
-
-              const SizedBox(height: AppSpacing.sm),
-              const Divider(height: 1, color: Color(0xFFE2E8F0)),
-              const SizedBox(height: AppSpacing.sm),
-
-              // ── 6. Bottom Action Bar ───────────────────────────────────────
-              _buildActionBar(
-                context,
-                isOffer: isOffer,
-                isCompleted: isCompleted,
-                isCancelled: isCancelled,
-                isInProgress: isInProgress,
-                amountText: formattedAmount,
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -542,11 +589,13 @@ class _JobCardState extends ConsumerState<JobCard> {
               onPressed: (_isAccepting || _isDeclining) ? null : _decline,
               style: OutlinedButton.styleFrom(
                 foregroundColor: const Color(0xFFDC2626),
-                side: const BorderSide(color: Color(0xFFFECDD3)),
-                backgroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 4),
-                textStyle: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.chip)),
+                side: BorderSide(
+                  color: AppColors.isDark ? const Color(0xFF991B1B) : const Color(0xFFFECDD3),
+                ),
+                backgroundColor: AppColors.isDark ? const Color(0xFF450A0A).withValues(alpha: 0.3) : AppColors.surface,
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
+                textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
               child: _isDeclining
                   ? const SizedBox(
@@ -566,11 +615,11 @@ class _JobCardState extends ConsumerState<JobCard> {
             child: ElevatedButton(
               onPressed: (_isAccepting || _isDeclining) ? null : _accept,
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.peacockBlue,
+                backgroundColor: const Color(0xFF005965),
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 6),
-                textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 0.3),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.chip)),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
+                textStyle: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, letterSpacing: 0.2),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 elevation: 0,
               ),
               child: _isAccepting
@@ -591,41 +640,81 @@ class _JobCardState extends ConsumerState<JobCard> {
 
     if (isCompleted) {
       return Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          OutlinedButton.icon(
-            onPressed: () => context.push('/jobs/${widget.job.id}'),
-            icon: const Icon(Icons.visibility_outlined, size: 15),
-            label: const FittedBox(fit: BoxFit.scaleDown, child: Text('View Details')),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.peacockNavy,
-              side: const BorderSide(color: Color(0xFFCBD5E1)),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-              textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.chip)),
+          Expanded(
+            flex: 1,
+            child: OutlinedButton(
+              onPressed: () => context.push('/jobs/${widget.job.id}'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.isDark ? const Color(0xFF38BDF8) : const Color(0xFF005965),
+                side: BorderSide(
+                  color: AppColors.isDark ? const Color(0xFF028090) : const Color(0xFF005965),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.visibility_outlined,
+                    size: 15,
+                    color: AppColors.isDark ? const Color(0xFF38BDF8) : const Color(0xFF005965),
+                  ),
+                  const SizedBox(width: 4),
+                  Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        'View Details',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.isDark ? const Color(0xFF38BDF8) : const Color(0xFF005965),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: const Color(0xFFECFDF5),
-              borderRadius: BorderRadius.circular(AppRadius.chip),
-              border: Border.all(color: const Color(0xFFA7F3D0)),
-            ),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.check_circle_rounded, size: 14, color: Color(0xFF059669)),
-                SizedBox(width: 4),
-                Text(
-                  'Completed',
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF065F46),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            flex: 1,
+            child: Container(
+              height: 42,
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              decoration: BoxDecoration(
+                color: AppColors.isDark
+                    ? const Color(0xFF005965).withValues(alpha: 0.3)
+                    : const Color(0xFFE6F4F1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.check_circle_rounded,
+                    size: 16,
+                    color: AppColors.isDark ? const Color(0xFF38BDF8) : const Color(0xFF005965),
                   ),
-                ),
-              ],
+                  const SizedBox(width: 4),
+                  Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        'Mark as Completed',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.isDark ? const Color(0xFF38BDF8) : const Color(0xFF005965),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -634,32 +723,35 @@ class _JobCardState extends ConsumerState<JobCard> {
 
     if (isCancelled) {
       return Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          OutlinedButton(
-            onPressed: () => context.push('/jobs/${widget.job.id}'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.textSecondary,
-              side: const BorderSide(color: Color(0xFFCBD5E1)),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-              textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.chip)),
-            ),
-            child: const FittedBox(fit: BoxFit.scaleDown, child: Text('View Details')),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.circular(AppRadius.chip),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
-            ),
-            child: const Text(
-              'Cancelled',
-              style: TextStyle(
-                fontSize: 11.5,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF64748B),
+          Expanded(
+            child: OutlinedButton(
+              onPressed: () => context.push('/jobs/${widget.job.id}'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFF64748B),
+                side: const BorderSide(color: Color(0xFFCBD5E1)),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.visibility_outlined, size: 15, color: Color(0xFF64748B)),
+                  SizedBox(width: 4),
+                  Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        'View Details',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF64748B),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -675,13 +767,37 @@ class _JobCardState extends ConsumerState<JobCard> {
           child: OutlinedButton(
             onPressed: () => context.push('/jobs/${widget.job.id}'),
             style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.peacockNavy,
-              side: const BorderSide(color: Color(0xFFCBD5E1)),
-              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-              textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.chip)),
+              foregroundColor: AppColors.isDark ? const Color(0xFF38BDF8) : const Color(0xFF005965),
+              side: BorderSide(
+                color: AppColors.isDark ? const Color(0xFF028090) : const Color(0xFF005965),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
-            child: const FittedBox(fit: BoxFit.scaleDown, child: Text('View Details')),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.visibility_outlined,
+                  size: 15,
+                  color: AppColors.isDark ? const Color(0xFF38BDF8) : const Color(0xFF005965),
+                ),
+                const SizedBox(width: 4),
+                Flexible(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      'View Details',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.isDark ? const Color(0xFF38BDF8) : const Color(0xFF005965),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
         const SizedBox(width: AppSpacing.sm),
@@ -690,23 +806,25 @@ class _JobCardState extends ConsumerState<JobCard> {
           child: ElevatedButton(
             onPressed: () => context.push('/jobs/${widget.job.id}'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.peacockNavy,
+              backgroundColor: const Color(0xFF005965),
               foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-              textStyle: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.chip)),
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
+              textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               elevation: 0,
             ),
-            child: const FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text('Continue Job'),
-                  SizedBox(width: 4),
-                  Icon(Icons.arrow_forward_rounded, size: 14),
-                ],
-              ),
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Flexible(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text('Continue Job'),
+                  ),
+                ),
+                SizedBox(width: 4),
+                Icon(Icons.arrow_forward_rounded, size: 16),
+              ],
             ),
           ),
         ),

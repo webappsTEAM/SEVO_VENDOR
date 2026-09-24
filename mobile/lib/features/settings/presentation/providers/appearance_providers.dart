@@ -30,8 +30,22 @@ class AppearanceController extends AsyncNotifier<AppearancePreferences> {
   }
 
   Future<void> save(AppearancePreferences preferences) async {
-    final saved = await ref.read(appearanceRepositoryProvider).savePreferences(preferences);
-    state = AsyncData(saved);
+    state = AsyncData(preferences);
+    try {
+      final saved = await ref.read(appearanceRepositoryProvider).savePreferences(preferences);
+      state = AsyncData(saved);
+    } catch (_) {
+      // Keep local state if server fails/offline
+    }
+  }
+
+  Future<void> toggleThemeMode() async {
+    final current = state.valueOrNull ?? AppearancePreferences.defaults;
+    final nextMode = (current.theme == AppThemeMode.dark)
+        ? AppThemeMode.light
+        : AppThemeMode.dark;
+    final updated = current.copyWith(theme: nextMode);
+    await save(updated);
   }
 }
 

@@ -78,7 +78,7 @@ void main() {
       await tester.pumpWidget(buildTestWidget());
       await tester.pumpAndSettle();
 
-      expect(find.text('Quotation Approvals'), findsOneWidget);
+      expect(find.text('Quotation Approvals'), findsWidgets);
       expect(
         find.text(
           'The customer has accepted. Approving creates the work booking and issues the invoice.',
@@ -185,7 +185,7 @@ void main() {
         await tester.pumpWidget(buildTestWidget());
         await tester.pumpAndSettle();
 
-        expect(find.text('Quotation Approvals'), findsOneWidget);
+        expect(find.text('Quotation Approvals'), findsWidgets);
         expect(find.text('QT-20260908-0001'), findsOneWidget);
         expect(tester.takeException(), isNull);
       });

@@ -23,7 +23,7 @@ class _AuthorizedServicesCardState extends ConsumerState<AuthorizedServicesCard>
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: AppColors.border),
         boxShadow: const [
@@ -44,10 +44,10 @@ class _AuthorizedServicesCardState extends ConsumerState<AuthorizedServicesCard>
               Expanded(
                 child: Text(
                   'Your Authorized Dispatch Services (${approvedServices.length})',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF1E293B),
+                    color: AppColors.textPrimary,
                   ),
                 ),
               ),
@@ -84,13 +84,13 @@ class _AuthorizedServicesCardState extends ConsumerState<AuthorizedServicesCard>
             Container(
               padding: const EdgeInsets.all(AppSpacing.sm),
               decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
+                color: AppColors.surfaceMuted,
                 borderRadius: BorderRadius.circular(AppRadius.chip),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
+                border: Border.all(color: AppColors.border),
               ),
-              child: const Text(
+              child: Text(
                 'Awaiting Admin service authorizations.',
-                style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
+                style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
               ),
             ),
           ] else ...[
@@ -102,9 +102,9 @@ class _AuthorizedServicesCardState extends ConsumerState<AuthorizedServicesCard>
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF8FAFC),
+                      color: AppColors.surfaceMuted,
                       borderRadius: BorderRadius.circular(AppRadius.chip),
-                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                      border: Border.all(color: AppColors.border),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -116,10 +116,10 @@ class _AuthorizedServicesCardState extends ConsumerState<AuthorizedServicesCard>
                             svc.name,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w600,
-                              color: Color(0xFF1E293B),
+                              color: AppColors.textPrimary,
                             ),
                           ),
                         ),
@@ -132,16 +132,24 @@ class _AuthorizedServicesCardState extends ConsumerState<AuthorizedServicesCard>
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFEFF6FF),
+                        color: AppColors.isDark
+                            ? AppColors.surfaceMuted
+                            : const Color(0xFFE6F4F1),
                         borderRadius: BorderRadius.circular(AppRadius.chip),
-                        border: Border.all(color: const Color(0xFFBFDBFE)),
+                        border: Border.all(
+                          color: AppColors.isDark
+                              ? AppColors.primaryLight
+                              : const Color(0xFFB2DFDB),
+                        ),
                       ),
                       child: Text(
                         '+${approvedServices.length - 6} more',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w800,
-                          color: Color(0xFF1D4ED8),
+                          color: AppColors.isDark
+                              ? AppColors.primaryLight
+                              : AppColors.primary,
                         ),
                       ),
                     ),

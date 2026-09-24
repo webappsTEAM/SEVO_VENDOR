@@ -16,11 +16,11 @@ class ApplicationActionDialog {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppRadius.card),
         ),
-        title: const Row(
+        title: Row(
           children: [
             Icon(
               Icons.check_circle_rounded,
-              color: Color(0xFF059669),
+              color: AppColors.successText,
               size: 22,
             ),
             SizedBox(width: 8),
@@ -30,7 +30,7 @@ class ApplicationActionDialog {
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w800,
-                  color: Color(0xFF0F172A),
+                  color: AppColors.textPrimary,
                 ),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
@@ -44,9 +44,9 @@ class ApplicationActionDialog {
           children: [
             Text(
               'This technician ($technicianName) will be approved for platform onboarding.',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12.5,
-                color: Color(0xFF475569),
+                color: AppColors.textSecondary,
                 height: 1.4,
               ),
             ),
@@ -54,18 +54,18 @@ class ApplicationActionDialog {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: const Color(0xFFECFDF5),
+                color: AppColors.successBg,
                 borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: const Color(0xFFA7F3D0)),
+                border: Border.all(color: AppColors.successBorder),
               ),
-              child: const Row(
+              child: Row(
                 children: [
-                  Icon(Icons.info_outline_rounded, size: 15, color: Color(0xFF065F46)),
+                  Icon(Icons.info_outline_rounded, size: 15, color: AppColors.successText),
                   SizedBox(width: 6),
                   Expanded(
                     child: Text(
                       'The technician will receive operational status and become ready for field dispatch.',
-                      style: TextStyle(fontSize: 10.5, color: Color(0xFF065F46)),
+                      style: TextStyle(fontSize: 10.5, color: AppColors.successText),
                     ),
                   ),
                 ],
@@ -76,14 +76,14 @@ class ApplicationActionDialog {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
+            child: Text('Cancel'),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF059669),
+              backgroundColor: AppColors.successText,
             ),
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Approve'),
+            child: Text('Approve'),
           ),
         ],
       ),
@@ -104,11 +104,11 @@ class ApplicationActionDialog {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppRadius.card),
         ),
-        title: const Row(
+        title: Row(
           children: [
             Icon(
               Icons.cancel_rounded,
-              color: Color(0xFFDC2626),
+              color: AppColors.errorText,
               size: 22,
             ),
             SizedBox(width: 8),
@@ -118,7 +118,7 @@ class ApplicationActionDialog {
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w800,
-                  color: Color(0xFF0F172A),
+                  color: AppColors.textPrimary,
                 ),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
@@ -134,7 +134,7 @@ class ApplicationActionDialog {
             children: [
               Text(
                 'Reject candidate application for $technicianName:',
-                style: const TextStyle(fontSize: 12, color: Color(0xFF475569)),
+                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
               ),
               const SizedBox(height: 10),
               TextFormField(
@@ -159,18 +159,18 @@ class ApplicationActionDialog {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(null),
-            child: const Text('Cancel'),
+            child: Text('Cancel'),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFFDC2626),
+              backgroundColor: AppColors.errorText,
             ),
             onPressed: () {
               if (formKey.currentState?.validate() == true) {
                 Navigator.of(ctx).pop(reasonController.text.trim());
               }
             },
-            child: const Text('Reject'),
+            child: Text('Reject'),
           ),
         ],
       ),
@@ -191,11 +191,11 @@ class ApplicationActionDialog {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppRadius.card),
         ),
-        title: const Row(
+        title: Row(
           children: [
             Icon(
               Icons.edit_note_rounded,
-              color: Color(0xFFD97706),
+              color: AppColors.warningText,
               size: 22,
             ),
             SizedBox(width: 8),
@@ -205,7 +205,7 @@ class ApplicationActionDialog {
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w800,
-                  color: Color(0xFF0F172A),
+                  color: AppColors.textPrimary,
                 ),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
@@ -221,7 +221,7 @@ class ApplicationActionDialog {
             children: [
               Text(
                 'Request corrections from $technicianName:',
-                style: const TextStyle(fontSize: 12, color: Color(0xFF475569)),
+                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
               ),
               const SizedBox(height: 10),
               TextFormField(
@@ -246,18 +246,18 @@ class ApplicationActionDialog {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(null),
-            child: const Text('Cancel'),
+            child: Text('Cancel'),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFFD97706),
+              backgroundColor: AppColors.warningText,
             ),
             onPressed: () {
               if (formKey.currentState?.validate() == true) {
                 Navigator.of(ctx).pop(notesController.text.trim());
               }
             },
-            child: const Text('Send Request'),
+            child: Text('Send Request'),
           ),
         ],
       ),

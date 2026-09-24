@@ -23,9 +23,9 @@ class VendorCard extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppRadius.card),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: AppColors.border),
         boxShadow: const [
           BoxShadow(
             color: Color(0x06000000),
@@ -52,8 +52,8 @@ class VendorCard extends StatelessWidget {
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                       colors: [
-                        Color(0xFF004E89),
-                        Color(0xFF0A2540),
+                        Color(0xFF005965),
+                        Color(0xFF003B46),
                       ],
                     ),
                     borderRadius: BorderRadius.circular(10),
@@ -61,7 +61,7 @@ class VendorCard extends StatelessWidget {
                   child: Center(
                     child: Text(
                       vendor.initial,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: Colors.white,
                         fontSize: 18,
                         fontWeight: FontWeight.w900,
@@ -78,10 +78,10 @@ class VendorCard extends StatelessWidget {
                     children: [
                       Text(
                         vendor.displayName,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w800,
-                          color: Color(0xFF0F172A),
+                          color: AppColors.textPrimary,
                           letterSpacing: -0.3,
                         ),
                         maxLines: 1,
@@ -95,10 +95,10 @@ class VendorCard extends StatelessWidget {
                               vendor.slug.isNotEmpty
                                   ? 'ID: #${vendor.id} • ${vendor.slug}'
                                   : 'ID: #${vendor.id}',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w600,
-                                color: Color(0xFF64748B),
+                                color: AppColors.textSecondary,
                                 fontFamily: 'monospace',
                               ),
                               maxLines: 1,
@@ -121,25 +121,25 @@ class VendorCard extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: const Color(0xFFF1F5F9),
                       borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                      border: Border.all(color: AppColors.border),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.location_on_outlined,
                           size: 12,
-                          color: Color(0xFF64748B),
+                          color: AppColors.textSecondary,
                         ),
                         const SizedBox(width: 3),
                         ConstrainedBox(
                           constraints: const BoxConstraints(maxWidth: 85),
                           child: Text(
                             vendor.effectiveLocation,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 10.5,
                               fontWeight: FontWeight.w700,
-                              color: Color(0xFF475569),
+                              color: AppColors.textSecondary,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -152,7 +152,7 @@ class VendorCard extends StatelessWidget {
             ),
           ),
 
-          const Divider(height: 1, color: Color(0xFFF1F5F9)),
+          Divider(height: 1, color: Color(0xFFF1F5F9)),
 
           // ── 2. Owner / Contact Info ───────────────────────────────────────
           if (hasOwnerContact)
@@ -166,19 +166,19 @@ class VendorCard extends StatelessWidget {
                       padding: const EdgeInsets.only(bottom: 4),
                       child: Row(
                         children: [
-                          const Icon(
+                          Icon(
                             Icons.person_outline_rounded,
                             size: 13,
-                            color: Color(0xFF64748B),
+                            color: AppColors.textSecondary,
                           ),
                           const SizedBox(width: 5),
                           Expanded(
                             child: Text(
                               vendor.ownerName,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w700,
-                                color: Color(0xFF334155),
+                                color: AppColors.textSecondary,
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -195,17 +195,17 @@ class VendorCard extends StatelessWidget {
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(
+                            Icon(
                               Icons.email_outlined,
                               size: 12,
-                              color: Color(0xFF94A3B8),
+                              color: AppColors.textMuted,
                             ),
                             const SizedBox(width: 4),
                             Text(
                               vendor.ownerEmail,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 11,
-                                color: Color(0xFF64748B),
+                                color: AppColors.textSecondary,
                               ),
                             ),
                           ],
@@ -214,17 +214,17 @@ class VendorCard extends StatelessWidget {
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(
+                            Icon(
                               Icons.phone_outlined,
                               size: 12,
-                              color: Color(0xFF94A3B8),
+                              color: AppColors.textMuted,
                             ),
                             const SizedBox(width: 4),
                             Text(
                               vendor.ownerPhone,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 11,
-                                color: Color(0xFF64748B),
+                                color: AppColors.textSecondary,
                               ),
                             ),
                           ],
@@ -235,7 +235,7 @@ class VendorCard extends StatelessWidget {
               ),
             ),
 
-          const Divider(height: 1, color: Color(0xFFF1F5F9)),
+          Divider(height: 1, color: Color(0xFFF1F5F9)),
 
           // ── 3. Footer: Tied Workers Pill, Pending Invites, View Workers ────
           Padding(
@@ -274,7 +274,7 @@ class VendorCard extends StatelessWidget {
                           const SizedBox(width: 4),
                           Text(
                             '${vendor.tiedWorkersCount} active',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 10.5,
                               fontWeight: FontWeight.w800,
                               color: Color(0xFF065F46),
@@ -301,7 +301,7 @@ class VendorCard extends StatelessWidget {
                         ),
                         child: Text(
                           '${vendor.pendingInvitationsCount} invites',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.w800,
                             color: Color(0xFF92400E),
@@ -329,7 +329,7 @@ class VendorCard extends StatelessWidget {
                           width: 0.8,
                         ),
                       ),
-                      child: const Row(
+                      child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(

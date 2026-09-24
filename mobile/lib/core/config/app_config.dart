@@ -3,7 +3,7 @@ class AppConfig {
   AppConfig._();
 
   static const String productionApiBaseUrl =
-      'https://vendor.caldimservices.online/api';
+      'https://vendor.sevo.co.in/api';
 
   /// The API base URL the app talks to.
   ///
@@ -14,7 +14,7 @@ class AppConfig {
     defaultValue: productionApiBaseUrl,
   );
 
-  /// Root host/origin of the backend (e.g. `https://vendor.caldimservices.online`
+  /// Root host/origin of the backend (e.g. `https://vendor.sevo.co.in`
   /// or `http://192.168.1.100:8001`), derived by stripping the API path.
   static String get backendBaseUrl {
     final trimmed = apiBaseUrl.trim();
@@ -38,8 +38,8 @@ class AppConfig {
   /// Examples:
   /// - `null` or `""` -> `null`
   /// - `"https://example.com/avatar.jpg"` -> `"https://example.com/avatar.jpg"`
-  /// - `"/media/avatars/u1.jpg"` -> `"https://vendor.caldimservices.online/media/avatars/u1.jpg"`
-  /// - `"media/avatars/u1.jpg"` -> `"https://vendor.caldimservices.online/media/avatars/u1.jpg"`
+  /// - `"/media/avatars/u1.jpg"` -> `"https://vendor.sevo.co.in/media/avatars/u1.jpg"`
+  /// - `"media/avatars/u1.jpg"` -> `"https://vendor.sevo.co.in/media/avatars/u1.jpg"`
   static String? resolveMediaUrl(String? path) {
     if (path == null) return null;
     final trimmed = path.trim();

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/async_value_view.dart';
 import '../../../shared/widgets/empty_state.dart';
+import '../../../shared/widgets/module_header_card.dart';
 import '../../../shared/widgets/workforce_app_bar.dart';
 import '../domain/performance_summary.dart';
 import 'performance_providers.dart';
@@ -18,6 +19,7 @@ class PerformanceScreen extends ConsumerWidget {
     final summaryAsync = ref.watch(performanceProvider);
 
     return Scaffold(
+      backgroundColor: AppColors.background,
       appBar: const WorkforceAppBar(
         titleText: 'Performance',
         showBrand: false,
@@ -35,6 +37,12 @@ class PerformanceScreen extends ConsumerWidget {
               AppSpacing.xxl,
             ),
             children: [
+              const ModuleHeaderCard(
+                title: 'Technician Performance',
+                subtitle: 'Job completion rate, ratings & customer feedback',
+                icon: Icons.insights_rounded,
+              ),
+              const SizedBox(height: AppSpacing.md),
               _MetricsSection(metrics: summary.metrics),
               const SizedBox(height: AppSpacing.lg),
               _RatingDistributionCard(

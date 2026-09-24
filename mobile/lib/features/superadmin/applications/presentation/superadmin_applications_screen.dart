@@ -284,10 +284,10 @@ class _SuperAdminApplicationsScreenState
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         title: Text(
           'Review: ${cr.displayField}',
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w800,
-            color: Color(0xFF0F172A),
+            color: AppColors.textPrimary,
           ),
         ),
         content: SingleChildScrollView(
@@ -297,10 +297,10 @@ class _SuperAdminApplicationsScreenState
             children: [
               Text(
                 'Technician: ${cr.employeeName ?? "Technician"}${cr.employeeId != null && cr.employeeId!.isNotEmpty ? " (${cr.employeeId})" : ""}',
-                style: const TextStyle(
+                style: TextStyle(
                   fontWeight: FontWeight.w700,
                   fontSize: 13,
-                  color: Color(0xFF1E293B),
+                  color: AppColors.textPrimary,
                 ),
               ),
               const SizedBox(height: 8),
@@ -308,9 +308,9 @@ class _SuperAdminApplicationsScreenState
                 width: double.infinity,
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAFC),
+                  color: AppColors.surfaceMuted,
                   borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                  border: Border.all(color: AppColors.border),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -318,12 +318,12 @@ class _SuperAdminApplicationsScreenState
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           'Current Value: ',
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
-                            color: Color(0xFF64748B),
+                            color: AppColors.textSecondary,
                           ),
                         ),
                         Expanded(
@@ -331,9 +331,9 @@ class _SuperAdminApplicationsScreenState
                             cr.oldValue?.isNotEmpty == true
                                 ? cr.oldValue!
                                 : '—',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
-                              color: Color(0xFF334155),
+                              color: AppColors.textSecondary,
                             ),
                           ),
                         ),
@@ -343,12 +343,12 @@ class _SuperAdminApplicationsScreenState
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           'Requested Value: ',
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
-                            color: Color(0xFF004E89),
+                            color: AppColors.primary,
                           ),
                         ),
                         Expanded(
@@ -356,10 +356,10 @@ class _SuperAdminApplicationsScreenState
                             cr.newValue?.isNotEmpty == true
                                 ? cr.newValue!
                                 : '—',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w800,
-                              color: Color(0xFF004E89),
+                              color: AppColors.primary,
                             ),
                           ),
                         ),
@@ -375,26 +375,26 @@ class _SuperAdminApplicationsScreenState
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF1F5F9),
+                    color: AppColors.surfaceMuted,
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'Reason: ',
                         style: TextStyle(
                           fontSize: 11.5,
                           fontWeight: FontWeight.w700,
-                          color: Color(0xFF475569),
+                          color: AppColors.textSecondary,
                         ),
                       ),
                       Expanded(
                         child: Text(
                           cr.reason!,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 11.5,
-                            color: Color(0xFF334155),
+                            color: AppColors.textSecondary,
                           ),
                         ),
                       ),
@@ -419,12 +419,12 @@ class _SuperAdminApplicationsScreenState
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dlgCtx).pop(),
-            child: const Text('Cancel'),
+            child: Text('Cancel'),
           ),
           OutlinedButton(
             style: OutlinedButton.styleFrom(
               foregroundColor: const Color(0xFFDC2626),
-              side: const BorderSide(color: Color(0xFFDC2626)),
+              side: BorderSide(color: Color(0xFFDC2626)),
             ),
             onPressed: () async {
               Navigator.of(dlgCtx).pop();
@@ -434,7 +434,7 @@ class _SuperAdminApplicationsScreenState
                 notesController.text.trim(),
               );
             },
-            child: const Text('Reject'),
+            child: Text('Reject'),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
@@ -448,7 +448,7 @@ class _SuperAdminApplicationsScreenState
                 notesController.text.trim(),
               );
             },
-            child: const Text('Approve'),
+            child: Text('Approve'),
           ),
         ],
       ),
@@ -467,7 +467,9 @@ class _SuperAdminApplicationsScreenState
         ref.watch(superAdminPendingChangeRequestsCountProvider);
 
     return Scaffold(
+      backgroundColor: AppColors.background,
       appBar: const WorkforceAppBar(
+        titleText: 'Partner Applications',
         showStatusSubBar: false,
         showDrawerMenu: true,
       ),
@@ -505,20 +507,20 @@ class _SuperAdminApplicationsScreenState
                                   vertical: 2,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF004E89)
+                                  color: AppColors.primary
                                       .withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(4),
                                   border: Border.all(
-                                    color: const Color(0xFF004E89)
+                                    color: AppColors.primary
                                         .withValues(alpha: 0.25),
                                   ),
                                 ),
-                                child: const Text(
+                                child: Text(
                                   'PLATFORM GOVERNANCE',
                                   style: TextStyle(
                                     fontSize: 9,
                                     fontWeight: FontWeight.w900,
-                                    color: Color(0xFF004E89),
+                                    color: AppColors.primary,
                                     letterSpacing: 0.6,
                                   ),
                                 ),
@@ -526,22 +528,22 @@ class _SuperAdminApplicationsScreenState
                             ],
                           ),
                           const SizedBox(height: 4),
-                          const Text(
+                          Text(
                             'Applications Approval',
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.w900,
-                              color: Color(0xFF0F172A),
+                              color: AppColors.textPrimary,
                               letterSpacing: -0.4,
                             ),
                           ),
                           const SizedBox(height: 2),
-                          const Text(
+                          Text(
                             'SEVO Platform Admin: Review technician onboarding applications, verify submitted documents, and manage approval decisions across the platform.',
                             style: TextStyle(
                               fontSize: 11.5,
                               fontWeight: FontWeight.w400,
-                              color: Color(0xFF64748B),
+                              color: AppColors.textSecondary,
                             ),
                           ),
                         ],
@@ -549,7 +551,7 @@ class _SuperAdminApplicationsScreenState
                     ),
                     IconButton(
                       icon: const Icon(Icons.refresh_rounded, size: 20),
-                      color: const Color(0xFF004E89),
+                      color: AppColors.primary,
                       tooltip: 'Refresh Applications',
                       onPressed: _refreshApplications,
                     ),
@@ -590,7 +592,7 @@ class _SuperAdminApplicationsScreenState
                           count: metrics.totalCount,
                           isSelected: selectedFilter ==
                               PlatformApplicationStatusFilter.all,
-                          activeColor: const Color(0xFF004E89),
+                          activeColor: AppColors.primary,
                           onTap: () => ref
                               .read(applicationStatusFilterProvider.notifier)
                               .state = PlatformApplicationStatusFilter.all,
@@ -663,33 +665,33 @@ class _SuperAdminApplicationsScreenState
                   Container(
                     height: 40,
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: AppColors.surface,
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                      border: Border.all(color: AppColors.border),
                     ),
                     child: Row(
                       children: [
-                        const Padding(
+                        Padding(
                           padding: EdgeInsets.only(left: 10, right: 6),
                           child: Icon(
                             Icons.search_rounded,
                             size: 18,
-                            color: Color(0xFF94A3B8),
+                            color: AppColors.textMuted,
                           ),
                         ),
                         Expanded(
                           child: TextField(
                             controller: _searchController,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12.5,
-                              color: Color(0xFF0F172A),
+                              color: AppColors.textPrimary,
                             ),
-                            decoration: const InputDecoration(
+                            decoration: InputDecoration(
                               hintText:
                                   'Search by technician name, ID, email, or mobile number...',
                               hintStyle: TextStyle(
                                 fontSize: 12,
-                                color: Color(0xFF94A3B8),
+                                color: AppColors.textMuted,
                               ),
                               border: InputBorder.none,
                               isDense: true,
@@ -701,7 +703,7 @@ class _SuperAdminApplicationsScreenState
                         if (_searchController.text.isNotEmpty)
                           IconButton(
                             icon: const Icon(Icons.clear_rounded, size: 16),
-                            color: const Color(0xFF94A3B8),
+                            color: AppColors.textMuted,
                             onPressed: () {
                               _searchController.clear();
                               _onSearchChanged('');
@@ -816,10 +818,10 @@ class _SectionTabButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const activeColor = Color(0xFF004E89);
+    const activeColor = Color(0xFF005965);
 
     return Material(
-      color: isSelected ? activeColor : Colors.white,
+      color: isSelected ? activeColor : AppColors.surface,
       borderRadius: BorderRadius.circular(8),
       elevation: isSelected ? 1 : 0,
       child: InkWell(
@@ -830,7 +832,7 @@ class _SectionTabButton extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-              color: isSelected ? activeColor : const Color(0xFFCBD5E1),
+              color: isSelected ? activeColor : AppColors.border,
               width: isSelected ? 1.4 : 1.0,
             ),
           ),
@@ -839,7 +841,7 @@ class _SectionTabButton extends StatelessWidget {
             style: TextStyle(
               fontSize: 12.5,
               fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-              color: isSelected ? Colors.white : const Color(0xFF334155),
+              color: isSelected ? Colors.white : AppColors.textSecondary,
             ),
           ),
         ),
@@ -866,7 +868,7 @@ class _FilterTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: isSelected ? activeColor : Colors.white,
+      color: isSelected ? activeColor : AppColors.surface,
       borderRadius: BorderRadius.circular(8),
       child: InkWell(
         onTap: onTap,
@@ -876,7 +878,7 @@ class _FilterTab extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-              color: isSelected ? activeColor : const Color(0xFFCBD5E1),
+              color: isSelected ? activeColor : AppColors.border,
               width: isSelected ? 1.2 : 1.0,
             ),
           ),
@@ -888,16 +890,14 @@ class _FilterTab extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 11.5,
                   fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                  color: isSelected ? Colors.white : const Color(0xFF334155),
+                  color: isSelected ? Colors.white : AppColors.textSecondary,
                 ),
               ),
               const SizedBox(width: 5),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                 decoration: BoxDecoration(
-                  color: isSelected
-                      ? Colors.white.withValues(alpha: 0.25)
-                      : const Color(0xFFF1F5F9),
+                  color: isSelected ? Colors.white.withValues(alpha: 0.25) : AppColors.surfaceMuted,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
@@ -905,7 +905,7 @@ class _FilterTab extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.w800,
-                    color: isSelected ? Colors.white : const Color(0xFF475569),
+                    color: isSelected ? Colors.white : AppColors.textSecondary,
                   ),
                 ),
               ),
@@ -970,34 +970,34 @@ class _EmptyApplicationsView extends StatelessWidget {
       ),
       margin: const EdgeInsets.only(top: AppSpacing.md),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppRadius.card),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: AppColors.border),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(
+          Icon(
             Icons.folder_open_rounded,
             size: 40,
-            color: Color(0xFF94A3B8),
+            color: AppColors.textMuted,
           ),
           const SizedBox(height: 12),
           Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14.5,
               fontWeight: FontWeight.w800,
-              color: Color(0xFF0F172A),
+              color: AppColors.textPrimary,
             ),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 4),
           Text(
             message,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
-              color: Color(0xFF64748B),
+              color: AppColors.textSecondary,
               height: 1.3,
             ),
             textAlign: TextAlign.center,
@@ -1021,17 +1021,17 @@ class _EmptyProfileChangeRequestsView extends StatelessWidget {
       ),
       margin: const EdgeInsets.only(top: AppSpacing.sm),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppRadius.card),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: AppColors.border),
       ),
-      child: const Column(
+      child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
             Icons.lock_reset_rounded,
             size: 40,
-            color: Color(0xFF94A3B8),
+            color: AppColors.textMuted,
           ),
           SizedBox(height: 12),
           Text(
@@ -1039,7 +1039,7 @@ class _EmptyProfileChangeRequestsView extends StatelessWidget {
             style: TextStyle(
               fontSize: 13.5,
               fontWeight: FontWeight.w700,
-              color: Color(0xFF0F172A),
+              color: AppColors.textPrimary,
             ),
             textAlign: TextAlign.center,
           ),
@@ -1048,7 +1048,7 @@ class _EmptyProfileChangeRequestsView extends StatelessWidget {
             'All technician profile modification requests across the platform have been processed.',
             style: TextStyle(
               fontSize: 12,
-              color: Color(0xFF64748B),
+              color: AppColors.textSecondary,
               height: 1.3,
             ),
             textAlign: TextAlign.center,

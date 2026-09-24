@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../../../core/location/navigation_launcher.dart';
 import '../../../../core/theme/app_theme.dart';
-import '../../../../shared/widgets/workforce_avatar.dart';
 import '../../domain/job.dart';
 
-/// Customer row inside a job card featuring the circular avatar/initial,
-/// customer name, and quick Call and Directions icon buttons.
+/// Customer row inside a job card matching the SEVO design:
+/// Circular avatar initial, customer name, and quick Call & Chat icon buttons.
 class JobCustomerRow extends StatelessWidget {
   const JobCustomerRow({
     super.key,
@@ -34,30 +32,20 @@ class JobCustomerRow extends StatelessWidget {
     }
   }
 
-  Future<void> _navigateCustomer(BuildContext context) async {
-    if (job.hasCoordinates) {
-      final launched = await launchNavigation(
-        destinationLat: job.latitude!,
-        destinationLon: job.longitude!,
+  Future<void> _messageCustomer(BuildContext context) async {
+    final phone = job.phone;
+    if (phone == null || phone.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Customer contact not available for messaging.')),
       );
-      if (!launched && context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open navigation application.')),
-        );
-      }
-    } else if (job.address != null && job.address!.trim().isNotEmpty) {
-      final query = Uri.encodeComponent(job.address!.trim());
-      final uri = Uri.parse('https://www.google.com/maps/search/?api=1&query=$query');
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      } else if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open map search for address.')),
-        );
-      }
+      return;
+    }
+    final uri = Uri(scheme: 'sms', path: phone.trim());
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
     } else if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Location coordinates or address not available.')),
+        SnackBar(content: Text('Could not open SMS for $phone')),
       );
     }
   }
@@ -69,21 +57,27 @@ class JobCustomerRow extends StatelessWidget {
         : 'Customer';
     final initial = name.isNotEmpty ? name[0].toUpperCase() : 'C';
 
-    final hasPhone = job.phone != null && job.phone!.trim().isNotEmpty;
-    final hasLocation = job.hasCoordinates || (job.address != null && job.address!.trim().isNotEmpty);
-
     return Row(
       children: [
-        WorkforceAvatar(
-          imageUrl: null,
-          name: name,
-          initial: initial,
-          radius: 14,
-          fontSize: 12,
-          backgroundColor: const Color(0xFFF1F5F9),
-          foregroundColor: const Color(0xFF1E293B),
-          borderColor: const Color(0xFFCBD5E1),
-          borderWidth: 1,
+        // Avatar circle with initial
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: AppColors.isDark
+                ? const Color(0xFF005965).withValues(alpha: 0.3)
+                : const Color(0xFFE6F4F1),
+            shape: BoxShape.circle,
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            initial,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+              color: AppColors.isDark ? const Color(0xFF38BDF8) : const Color(0xFF005965),
+            ),
+          ),
         ),
         const SizedBox(width: AppSpacing.sm),
         Expanded(
@@ -91,45 +85,38 @@ class JobCustomerRow extends StatelessWidget {
             name,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 12.5,
+            style: TextStyle(
+              fontSize: 13.5,
               fontWeight: FontWeight.w700,
-              color: Color(0xFF1E293B),
+              color: AppColors.textPrimary,
             ),
           ),
         ),
-        // Quick Action Icon Buttons
-        if (hasPhone) ...[
-          _QuickIconButton(
-            icon: Icons.phone_rounded,
-            color: AppColors.peacockBlue,
-            tooltip: 'Call customer',
-            onTap: () => _callCustomer(context),
-          ),
-          const SizedBox(width: 6),
-        ],
-        if (hasLocation)
-          _QuickIconButton(
-            icon: Icons.directions_rounded,
-            color: const Color(0xFF059669),
-            tooltip: 'Navigate',
-            onTap: () => _navigateCustomer(context),
-          ),
+        // Quick Action Icon Buttons: Call & Chat
+        _QuickCircularButton(
+          icon: Icons.phone_rounded,
+          tooltip: 'Call customer',
+          onTap: () => _callCustomer(context),
+        ),
+        const SizedBox(width: 8),
+        _QuickCircularButton(
+          icon: Icons.chat_bubble_rounded,
+          tooltip: 'Message customer',
+          onTap: () => _messageCustomer(context),
+        ),
       ],
     );
   }
 }
 
-class _QuickIconButton extends StatelessWidget {
-  const _QuickIconButton({
+class _QuickCircularButton extends StatelessWidget {
+  const _QuickCircularButton({
     required this.icon,
-    required this.color,
     required this.tooltip,
     required this.onTap,
   });
 
   final IconData icon;
-  final Color color;
   final String tooltip;
   final VoidCallback onTap;
 
@@ -139,17 +126,22 @@ class _QuickIconButton extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(AppRadius.pill),
+        borderRadius: BorderRadius.circular(18),
         child: Container(
-          width: 32,
-          height: 32,
+          width: 36,
+          height: 36,
           decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.1),
+            color: AppColors.isDark
+                ? const Color(0xFF005965).withValues(alpha: 0.3)
+                : const Color(0xFFE6F4F1),
             shape: BoxShape.circle,
-            border: Border.all(color: color.withValues(alpha: 0.25), width: 0.8),
           ),
           alignment: Alignment.center,
-          child: Icon(icon, size: 16, color: color),
+          child: Icon(
+            icon,
+            size: 17,
+            color: AppColors.isDark ? const Color(0xFF38BDF8) : const Color(0xFF005965),
+          ),
         ),
       ),
     );

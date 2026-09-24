@@ -30,12 +30,15 @@ class AdminDashboardData {
     return totalDocs > 0 ? totalDocs : pendingApplicationsCount;
   }
 
-  /// Customer bookings requiring technician dispatch (unassigned / status == 'assigned' with no employee).
+  /// Customer bookings requiring technician dispatch (unassigned / status == 'assigned' with no technician).
   int get unassignedJobsCount => jobs.where((j) {
         final st = j.status.toLowerCase();
         return st == 'unassigned' ||
-            (st == 'assigned' && !j.isAssignedToCurrentEmployee) ||
-            st == 'new_request';
+            st == 'confirmed' ||
+            st == 'pending' ||
+            st == 'requested' ||
+            st == 'new_request' ||
+            (st == 'assigned' && j.technicianId == null);
       }).length;
 
   /// Technicians notified to re-upload flagged files (correction_required).
@@ -46,6 +49,10 @@ class AdminDashboardData {
 
   /// Total technicians on roster.
   int get totalRegisteredCount => applications.length;
+
+  /// Active technicians on roster (is_active == true).
+  int get activeTechniciansCount =>
+      applications.where((a) => a.isActive).length;
 
   /// Technicians approved & authorized for jobs.
   int get approvedAndActiveCount =>

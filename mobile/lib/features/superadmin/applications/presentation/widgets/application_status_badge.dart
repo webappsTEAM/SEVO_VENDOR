@@ -1,3 +1,4 @@
+import '../../../../../core/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 
 /// Semantic status badge for platform application statuses.
@@ -68,8 +69,8 @@ class ApplicationStatusBadge extends StatelessWidget {
         break;
       default:
         bgColor = const Color(0xFFF1F5F9);
-        textColor = const Color(0xFF475569);
-        borderColor = const Color(0xFFE2E8F0);
+        textColor = AppColors.textSecondary;
+        borderColor = AppColors.border;
         displayLabel = normalized.replaceAll('_', ' ').toUpperCase();
         icon = Icons.info_outline_rounded;
     }

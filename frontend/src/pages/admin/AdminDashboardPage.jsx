@@ -36,12 +36,14 @@ export function AdminDashboardPage() {
   const loadData = async () => {
     try {
       setIsLoading(true);
-      const [appsData, jobsData] = await Promise.all([
+      const [appsData, jobsData, fleetData] = await Promise.all([
         apiGetAdminApplications().catch(() => []),
-        apiGetWorkforceJobs().catch(() => []),
+        apiGetWorkforceJobs('all').catch(() => []),
+        apiGetFleetMap().catch(() => []),
       ]);
       setApplications(appsData || []);
       setJobs(jobsData || []);
+      setFleet(fleetData || []);
     } catch (_) {
     } finally {
       setIsLoading(false);
@@ -64,8 +66,14 @@ export function AdminDashboardPage() {
   const correctionApps = applications.filter(
     (a) => (a.registration_status || '').toLowerCase() === 'correction_required'
   );
-  const unassignedJobs = jobs.filter((j) => (j.status || '').toLowerCase() === 'assigned' && !j.employee_id);
-  const onlineFleet = fleet.filter((f) => f.is_online);
+  const unassignedJobs = jobs.filter((j) => {
+    const st = (j.status || '').toLowerCase();
+    return (
+      ['unassigned', 'confirmed', 'pending', 'requested', 'new_request'].includes(st) ||
+      (st === 'assigned' && !j.employee_id && !j.assigned_employee_id)
+    );
+  });
+  const onlineFleet = fleet.filter((f) => f.is_online && !f.active_job);
   const busyFleet = fleet.filter((f) => f.is_online && f.active_job);
 
   // Documents requiring verification count across all applications
@@ -80,7 +88,7 @@ export function AdminDashboardPage() {
   const actionItems = [
     {
       title: 'Pending Applications',
-      count: applications.filter(a => a.status === 'SUBMITTED' || a.status === 'UNDER_REVIEW').length,
+      count: pendingApps.length,
       description: 'Technician registrations requiring document review',
       to: '/workforce/admin/applications',
       badgeClass: 'bg-amber-50 text-amber-900 border border-amber-200',

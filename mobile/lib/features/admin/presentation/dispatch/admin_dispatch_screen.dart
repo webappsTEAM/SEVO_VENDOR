@@ -116,7 +116,7 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppRadius.card)),
-        title: const Text('Confirm Dispatch Offer',
+        title: Text('Confirm Dispatch Offer',
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -127,23 +127,23 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: const Color(0xFFF1F5F9),
+                color: AppColors.surfaceMuted,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('Service: ${job.displayTitle}',
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 12, fontWeight: FontWeight.w600)),
                   if (job.customerName != null)
                     Text('Customer: ${job.customerName}',
-                        style: const TextStyle(
-                            fontSize: 12, color: Color(0xFF475569))),
+                        style: TextStyle(
+                            fontSize: 12, color: AppColors.textSecondary)),
                   if (tech.employeeId != null)
                     Text('Technician ID: ${tech.employeeId}',
-                        style: const TextStyle(
-                            fontSize: 12, color: Color(0xFF475569))),
+                        style: TextStyle(
+                            fontSize: 12, color: AppColors.textSecondary)),
                 ],
               ),
             ),
@@ -152,14 +152,14 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
+            child: Text('Cancel'),
           ),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFF059669),
             ),
-            child: const Text('Dispatch Offer'),
+            child: Text('Dispatch Offer'),
           ),
         ],
       ),
@@ -230,7 +230,7 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
         builder: (ctx) => AlertDialog(
           shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(AppRadius.card)),
-          title: const Text('Approve Scope Extension',
+          title: Text('Approve Scope Extension',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -252,12 +252,12 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('Cancel'),
+              child: Text('Cancel'),
             ),
             FilledButton(
               onPressed: () => Navigator.of(ctx).pop(true),
               style: FilledButton.styleFrom(backgroundColor: const Color(0xFF059669)),
-              child: const Text('Approve Extension'),
+              child: Text('Approve Extension'),
             ),
           ],
         ),
@@ -273,13 +273,13 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
         builder: (ctx) => AlertDialog(
           shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(AppRadius.card)),
-          title: const Text('Reject Scope Extension',
+          title: Text('Reject Scope Extension',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Enter rejection reason for technician:'),
+              Text('Enter rejection reason for technician:'),
               const SizedBox(height: 12),
               TextField(
                 controller: reasonController,
@@ -294,12 +294,12 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('Cancel'),
+              child: Text('Cancel'),
             ),
             FilledButton(
               onPressed: () => Navigator.of(ctx).pop(true),
               style: FilledButton.styleFrom(backgroundColor: const Color(0xFFDC2626)),
-              child: const Text('Reject Extension'),
+              child: Text('Reject Extension'),
             ),
           ],
         ),
@@ -359,7 +359,7 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
         builder: (ctx) => AlertDialog(
           shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(AppRadius.card)),
-          title: const Text('Reject Service Authorization',
+          title: Text('Reject Service Authorization',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -377,12 +377,12 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('Cancel'),
+              child: Text('Cancel'),
             ),
             FilledButton(
               onPressed: () => Navigator.of(ctx).pop(true),
               style: FilledButton.styleFrom(backgroundColor: const Color(0xFFDC2626)),
-              child: const Text('Reject Request'),
+              child: Text('Reject Request'),
             ),
           ],
         ),
@@ -450,7 +450,7 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppRadius.card)),
-        title: const Text('Delete Location?',
+        title: Text('Delete Location?',
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
         content: Text(
           'Delete "${loc.name}"? This removes the authorized boundary. Historical shift records referencing this location remain intact.',
@@ -458,12 +458,12 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
+            child: Text('Cancel'),
           ),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             style: FilledButton.styleFrom(backgroundColor: const Color(0xFFDC2626)),
-            child: const Text('Delete Location'),
+            child: Text('Delete Location'),
           ),
         ],
       ),
@@ -524,8 +524,9 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
     final locationsAsync = ref.watch(adminLocationsProvider);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: AppColors.background,
       appBar: const WorkforceAppBar(
+        titleText: 'Dispatch Console',
         showStatusSubBar: false,
         showDrawerMenu: true,
       ),
@@ -533,7 +534,7 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
       body: dashboardAsync.when(
         loading: () => const Center(
           child: CircularProgressIndicator(
-            color: Color(0xFF004E89),
+            color: Color(0xFF005965),
           ),
         ),
         error: (err, _) => Center(
@@ -544,8 +545,8 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
               children: [
                 Container(
                   padding: const EdgeInsets.all(12),
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFFEF2F2),
+                  decoration: BoxDecoration(
+                    color: AppColors.errorBg,
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(Icons.error_outline_rounded,
@@ -555,18 +556,18 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                 Text(
                   'Unable to load operations data: $err',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 13,
-                    color: Color(0xFF64748B),
+                    color: AppColors.textSecondary,
                   ),
                 ),
                 const SizedBox(height: 16),
                 FilledButton.icon(
                   onPressed: _refreshAll,
                   icon: const Icon(Icons.refresh_rounded, size: 16),
-                  label: const Text('Retry'),
+                  label: Text('Retry'),
                   style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF004E89),
+                    backgroundColor: const Color(0xFF005965),
                   ),
                 ),
               ],
@@ -606,7 +607,7 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
 
           return RefreshIndicator(
             onRefresh: _refreshAll,
-            color: const Color(0xFF004E89),
+            color: const Color(0xFF005965),
             child: ListView(
               padding: const EdgeInsets.all(AppSpacing.md),
               children: [
@@ -614,9 +615,9 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                 Container(
                   padding: const EdgeInsets.all(AppSpacing.md),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: AppColors.surface,
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                    border: Border.all(color: AppColors.border),
                     boxShadow: const [
                       BoxShadow(
                         color: Color(0x060F172A),
@@ -636,14 +637,14 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                             height: 42,
                             decoration: BoxDecoration(
                               gradient: const LinearGradient(
-                                colors: [Color(0xFF004E89), Color(0xFF2563EB)],
+                                colors: [Color(0xFF005965), Color(0xFF2563EB)],
                                 begin: Alignment.topLeft,
                                 end: Alignment.bottomRight,
                               ),
                               borderRadius: BorderRadius.circular(11),
                               boxShadow: const [
                                 BoxShadow(
-                                  color: Color(0x28004E89),
+                                  color: Color(0x28005965),
                                   blurRadius: 6,
                                   offset: Offset(0, 2),
                                 ),
@@ -662,13 +663,13 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                               children: [
                                 Row(
                                   children: [
-                                    const Expanded(
+                                    Expanded(
                                       child: Text(
                                         'Dynamic Dispatch & Fleet Operations',
                                         style: TextStyle(
                                           fontSize: 14.5,
                                           fontWeight: FontWeight.w800,
-                                          color: Color(0xFF0F172A),
+                                          color: AppColors.textPrimary,
                                           letterSpacing: -0.2,
                                         ),
                                       ),
@@ -677,7 +678,7 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                                       padding: const EdgeInsets.symmetric(
                                           horizontal: 7, vertical: 2.5),
                                       decoration: BoxDecoration(
-                                        color: const Color(0xFFECFDF5),
+                                        color: AppColors.successBg,
                                         borderRadius: BorderRadius.circular(20),
                                         border: Border.all(
                                             color: const Color(0xFFA7F3D0)),
@@ -688,13 +689,13 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                                           Container(
                                             width: 6,
                                             height: 6,
-                                            decoration: const BoxDecoration(
+                                            decoration: BoxDecoration(
                                               color: Color(0xFF10B981),
                                               shape: BoxShape.circle,
                                             ),
                                           ),
                                           const SizedBox(width: 4),
-                                          const Text(
+                                          Text(
                                             'LIVE',
                                             style: TextStyle(
                                               fontSize: 9.5,
@@ -709,11 +710,11 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                                   ],
                                 ),
                                 const SizedBox(height: 3),
-                                const Text(
+                                Text(
                                   'Skill-based technician matching and real-time GPS telemetry radar',
                                   style: TextStyle(
                                     fontSize: 11.5,
-                                    color: Color(0xFF64748B),
+                                    color: AppColors.textSecondary,
                                     height: 1.3,
                                   ),
                                 ),
@@ -723,7 +724,7 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                         ],
                       ),
                       const SizedBox(height: 12),
-                      const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                      Divider(height: 1, color: AppColors.border),
                       const SizedBox(height: 10),
                       Wrap(
                         alignment: WrapAlignment.spaceBetween,
@@ -731,12 +732,12 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                         spacing: 8,
                         runSpacing: 8,
                         children: [
-                          const Text(
+                          Text(
                             'Authoritative Geodesic Haversine',
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w600,
-                              color: Color(0xFF94A3B8),
+                              color: AppColors.textMuted,
                             ),
                           ),
                           InkWell(
@@ -746,9 +747,9 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 10, vertical: 5),
                               decoration: BoxDecoration(
-                                color: const Color(0xFFF8FAFC),
+                                color: AppColors.surfaceMuted,
                                 borderRadius: BorderRadius.circular(6),
-                                border: Border.all(color: const Color(0xFFCBD5E1)),
+                                border: Border.all(color: AppColors.border),
                               ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
@@ -761,14 +762,14 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                                               strokeWidth: 2),
                                         )
                                       : const Icon(Icons.refresh_rounded,
-                                          size: 14, color: Color(0xFF004E89)),
+                                          size: 14, color: Color(0xFF005965)),
                                   const SizedBox(width: 5),
-                                  const Text(
+                                  Text(
                                     'Refresh Fleet Data',
                                     style: TextStyle(
                                       fontSize: 11.5,
                                       fontWeight: FontWeight.w700,
-                                      color: Color(0xFF004E89),
+                                      color: Color(0xFF005965),
                                     ),
                                   ),
                                 ],
@@ -795,26 +796,26 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                 Container(
                   padding: const EdgeInsets.all(3),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF1F5F9),
+                    color: AppColors.surfaceMuted,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                    border: Border.all(color: AppColors.border),
                   ),
                   child: TabBar(
                     controller: _tabController,
                     isScrollable: true,
                     tabAlignment: TabAlignment.start,
-                    labelColor: const Color(0xFF004E89),
-                    unselectedLabelColor: const Color(0xFF64748B),
-                    labelStyle: const TextStyle(
+                    labelColor: const Color(0xFF005965),
+                    unselectedLabelColor: AppColors.textSecondary,
+                    labelStyle: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w800,
                     ),
-                    unselectedLabelStyle: const TextStyle(
+                    unselectedLabelStyle: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                     ),
                     indicator: BoxDecoration(
-                      color: Colors.white,
+                      color: AppColors.surface,
                       borderRadius: BorderRadius.circular(9),
                       boxShadow: const [
                         BoxShadow(
@@ -892,8 +893,8 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
               value: '$totalFleet',
               subtitle: 'Total technicians/workforce tracked by dispatch.',
               icon: Icons.groups_rounded,
-              color: const Color(0xFF004E89),
-              badgeBg: const Color(0xFFEFF6FF),
+              color: const Color(0xFF005965),
+              badgeBg: AppColors.infoBg,
               width: cardWidth,
             ),
             _MetricCard(
@@ -902,7 +903,7 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
               subtitle: 'Available for work',
               icon: Icons.check_circle_rounded,
               color: const Color(0xFF059669),
-              badgeBg: const Color(0xFFECFDF5),
+              badgeBg: AppColors.successBg,
               width: cardWidth,
             ),
             _MetricCard(
@@ -910,8 +911,8 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
               value: '$offlineCount',
               subtitle: 'Off duty / break',
               icon: Icons.pause_circle_rounded,
-              color: const Color(0xFF64748B),
-              badgeBg: const Color(0xFFF1F5F9),
+              color: AppColors.textSecondary,
+              badgeBg: AppColors.surfaceMuted,
               width: cardWidth,
             ),
             _MetricCard(
@@ -920,7 +921,7 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
               subtitle: 'In queue / assigned',
               icon: Icons.work_outline_rounded,
               color: const Color(0xFFD97706),
-              badgeBg: const Color(0xFFFEF3C7),
+              badgeBg: AppColors.warningBg,
               width: cardWidth,
             ),
           ],
@@ -976,9 +977,9 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: AppColors.surface,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
+              border: Border.all(color: AppColors.border),
               boxShadow: const [
                 BoxShadow(
                   color: Color(0x040F172A),
@@ -1003,7 +1004,7 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                   ),
                 ),
                 const SizedBox(width: 14),
-                const Expanded(
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -1012,7 +1013,7 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                         style: TextStyle(
                           fontSize: 13.5,
                           fontWeight: FontWeight.w700,
-                          color: Color(0xFF0F172A),
+                          color: AppColors.textPrimary,
                         ),
                       ),
                       SizedBox(height: 2),
@@ -1020,7 +1021,7 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                         'No active service bookings in queue.',
                         style: TextStyle(
                           fontSize: 11.5,
-                          color: Color(0xFF64748B),
+                          color: AppColors.textSecondary,
                         ),
                       ),
                     ],
@@ -1060,9 +1061,9 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
 
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: AppColors.border),
         boxShadow: const [
           BoxShadow(
             color: Color(0x060F172A),
@@ -1081,9 +1082,9 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
               horizontal: 14,
               vertical: 12,
             ),
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               color: Color(0xFFFAFAFC),
-              border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
+              border: Border(bottom: BorderSide(color: AppColors.border)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1093,13 +1094,13 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                     Container(
                       padding: const EdgeInsets.all(7),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFEFF6FF),
+                        color: AppColors.infoBg,
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(color: const Color(0xFFDBEAFE)),
                       ),
                       child: const Icon(
                         Icons.radar_rounded,
-                        color: Color(0xFF004E89),
+                        color: Color(0xFF005965),
                         size: 18,
                       ),
                     ),
@@ -1108,12 +1109,12 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
+                          Text(
                             'Autonomous Dispatch Active',
                             style: TextStyle(
                               fontSize: 13.5,
                               fontWeight: FontWeight.w800,
-                              color: Color(0xFF0A2540),
+                              color: Color(0xFF003B46),
                               letterSpacing: -0.1,
                             ),
                           ),
@@ -1121,10 +1122,10 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                           Text.rich(
                             TextSpan(
                               text: 'Inspecting Job: ',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 11.5,
                                 fontWeight: FontWeight.w500,
-                                color: Color(0xFF64748B),
+                                color: AppColors.textSecondary,
                               ),
                               children: [
                                 TextSpan(
@@ -1137,8 +1138,8 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                                     fontWeight: FontWeight.w800,
                                     fontFamily: 'monospace',
                                     color: selectedJob != null
-                                        ? const Color(0xFF004E89)
-                                        : const Color(0xFF0F172A),
+                                        ? const Color(0xFF005965)
+                                        : AppColors.textPrimary,
                                   ),
                                 ),
                                 if (selectedJob != null &&
@@ -1146,7 +1147,7 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                                   TextSpan(
                                     text:
                                         ' (${selectedJob.status.toUpperCase()})',
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontWeight: FontWeight.w700,
                                       fontSize: 10.5,
                                       color: Color(0xFF059669),
@@ -1180,7 +1181,7 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                                     child: Text.rich(
                                       TextSpan(
                                         text: 'Assigned: ',
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           fontSize: 11.5,
                                           fontWeight: FontWeight.w600,
                                           color: Color(0xFF166534),
@@ -1188,9 +1189,9 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                                         children: [
                                           TextSpan(
                                             text: selectedJob.technicianName!,
-                                            style: const TextStyle(
+                                            style: TextStyle(
                                               fontWeight: FontWeight.w800,
-                                              color: Color(0xFF0F172A),
+                                              color: AppColors.textPrimary,
                                             ),
                                           ),
                                           if (selectedJob.technicianPhone !=
@@ -1200,7 +1201,7 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                                             TextSpan(
                                               text:
                                                   ' • ${selectedJob.technicianPhone!}',
-                                              style: const TextStyle(
+                                              style: TextStyle(
                                                 fontFamily: 'monospace',
                                                 color: Color(0xFF166534),
                                               ),
@@ -1212,7 +1213,7 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                                             TextSpan(
                                               text:
                                                   ' • ${selectedJob.technicianEmail!}',
-                                              style: const TextStyle(
+                                              style: TextStyle(
                                                 fontFamily: 'monospace',
                                                 color: Color(0xFF166534),
                                               ),
@@ -1242,16 +1243,16 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                             OutlinedButton.icon(
                               onPressed: () => _openJobTimeline(selectedJob),
                               icon: const Icon(Icons.history_rounded, size: 14),
-                              label: const Text('Timeline'),
+                              label: Text('Timeline'),
                               style: OutlinedButton.styleFrom(
                                 visualDensity: VisualDensity.compact,
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 10, vertical: 7),
-                                textStyle: const TextStyle(
+                                textStyle: TextStyle(
                                   fontSize: 11.5,
                                   fontWeight: FontWeight.w700,
                                 ),
-                                side: const BorderSide(color: Color(0xFFCBD5E1)),
+                                side: BorderSide(color: AppColors.border),
                               ),
                             ),
                             const SizedBox(height: 6),
@@ -1260,13 +1261,13 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                                   ? null
                                   : () => _triggerAutoDispatch(selectedJob),
                               icon: const Icon(Icons.auto_awesome_rounded, size: 14),
-                              label: const Text('Re-evaluate Auto-Dispatch'),
+                              label: Text('Re-evaluate Auto-Dispatch'),
                               style: FilledButton.styleFrom(
-                                backgroundColor: const Color(0xFF004E89),
+                                backgroundColor: const Color(0xFF005965),
                                 visualDensity: VisualDensity.compact,
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 10, vertical: 7),
-                                textStyle: const TextStyle(
+                                textStyle: TextStyle(
                                   fontSize: 11.5,
                                   fontWeight: FontWeight.w700,
                                 ),
@@ -1281,16 +1282,16 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                             child: OutlinedButton.icon(
                               onPressed: () => _openJobTimeline(selectedJob),
                               icon: const Icon(Icons.history_rounded, size: 14),
-                              label: const Text('Timeline'),
+                              label: Text('Timeline'),
                               style: OutlinedButton.styleFrom(
                                 visualDensity: VisualDensity.compact,
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 10, vertical: 7),
-                                textStyle: const TextStyle(
+                                textStyle: TextStyle(
                                   fontSize: 11.5,
                                   fontWeight: FontWeight.w700,
                                 ),
-                                side: const BorderSide(color: Color(0xFFCBD5E1)),
+                                side: BorderSide(color: AppColors.border),
                               ),
                             ),
                           ),
@@ -1301,13 +1302,13 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                                   ? null
                                   : () => _triggerAutoDispatch(selectedJob),
                               icon: const Icon(Icons.auto_awesome_rounded, size: 14),
-                              label: const Text('Re-evaluate Auto-Dispatch'),
+                              label: Text('Re-evaluate Auto-Dispatch'),
                               style: FilledButton.styleFrom(
-                                backgroundColor: const Color(0xFF004E89),
+                                backgroundColor: const Color(0xFF005965),
                                 visualDensity: VisualDensity.compact,
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 10, vertical: 7),
-                                textStyle: const TextStyle(
+                                textStyle: TextStyle(
                                   fontSize: 11.5,
                                   fontWeight: FontWeight.w700,
                                 ),
@@ -1326,14 +1327,14 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
           // ── Autonomous Dispatch Information Banner ───────────────────
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               color: Color(0xFFF0FDF4),
               border: Border(
                 top: BorderSide(color: Color(0xFFDCFCE7)),
                 bottom: BorderSide(color: Color(0xFFDCFCE7)),
               ),
             ),
-            child: const Row(
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Padding(
@@ -1377,20 +1378,20 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
           // ── Distance Rings Strip ──────────────────────────────────
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              border: Border(bottom: BorderSide(color: AppColors.border)),
             ),
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: [
-                  const Text(
+                  Text(
                     'Distance Rings:',
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w800,
-                      color: Color(0xFF64748B),
+                      color: AppColors.textSecondary,
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -1416,18 +1417,18 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                               horizontal: 10, vertical: 4.5),
                           decoration: BoxDecoration(
                             color: isSelected
-                                ? const Color(0xFF004E89)
-                                : const Color(0xFFF8FAFC),
+                                ? const Color(0xFF005965)
+                                : AppColors.surfaceMuted,
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
                               color: isSelected
-                                  ? const Color(0xFF004E89)
-                                  : const Color(0xFFE2E8F0),
+                                  ? const Color(0xFF005965)
+                                  : AppColors.border,
                             ),
                             boxShadow: isSelected
                                 ? const [
                                     BoxShadow(
-                                      color: Color(0x28004E89),
+                                      color: Color(0x28005965),
                                       blurRadius: 4,
                                       offset: Offset(0, 1.5),
                                     ),
@@ -1443,7 +1444,7 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                                   : FontWeight.w600,
                               color: isSelected
                                   ? Colors.white
-                                  : const Color(0xFF475569),
+                                  : AppColors.textSecondary,
                             ),
                           ),
                         ),
@@ -1467,14 +1468,14 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                   children: [
                     Container(
                       padding: const EdgeInsets.all(8),
-                      decoration: const BoxDecoration(
-                        color: Color(0xFFF1F5F9),
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceMuted,
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(
+                      child: Icon(
                         Icons.search_off_rounded,
                         size: 22,
-                        color: Color(0xFF94A3B8),
+                        color: AppColors.textMuted,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -1483,10 +1484,10 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                           ? 'No qualified technicians currently found within the 20 km operational radius for this service request.'
                           : 'No qualified technicians currently found in the $_selectedBand distance ring.',
                       textAlign: TextAlign.center,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
-                        color: Color(0xFF64748B),
+                        color: AppColors.textSecondary,
                         height: 1.4,
                       ),
                     ),
@@ -1508,7 +1509,7 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
     return candidatesAsync.when(
       loading: () => Container(
         padding: const EdgeInsets.all(AppSpacing.xl),
-        child: const Center(
+        child: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -1517,13 +1518,13 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                 height: 22,
                 child: CircularProgressIndicator(
                   strokeWidth: 2.5,
-                  color: Color(0xFF004E89),
+                  color: Color(0xFF005965),
                 ),
               ),
               SizedBox(height: 12),
               Text(
                 'Scanning 20 km candidate pool across all directions...',
-                style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
               ),
             ],
           ),
@@ -1531,19 +1532,19 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
       ),
       error: (err, _) => Container(
         padding: const EdgeInsets.all(AppSpacing.md),
-        color: const Color(0xFFFEF2F2),
+        color: AppColors.errorBg,
         child: Column(
           children: [
             Text(
               'Failed to scan candidates: $err',
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 12, color: Color(0xFF991B1B)),
+              style: TextStyle(fontSize: 12, color: Color(0xFF991B1B)),
             ),
             const SizedBox(height: 8),
             OutlinedButton(
               onPressed: () => ref.invalidate(
                   adminEligibleTechniciansProvider(selectedJob.id)),
-              child: const Text('Retry Scan'),
+              child: Text('Retry Scan'),
             ),
           ],
         ),
@@ -1582,10 +1583,10 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                     ? 'No qualified technicians currently found within the 20 km operational radius for this service request.'
                     : 'No qualified technicians currently found in the $_selectedBand distance ring.',
                 textAlign: TextAlign.center,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
-                  color: Color(0xFF64748B),
+                  color: AppColors.textSecondary,
                   height: 1.4,
                 ),
               ),
@@ -1624,7 +1625,7 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Expanded(
+            Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1633,13 +1634,13 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                     style: TextStyle(
                       fontSize: 13.5,
                       fontWeight: FontWeight.w800,
-                      color: Color(0xFF0F172A),
+                      color: AppColors.textPrimary,
                     ),
                   ),
                   SizedBox(height: 2),
                   Text(
                     'Live coordinate locations and dispatch statuses',
-                    style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
+                    style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
                   ),
                 ],
               ),
@@ -1647,13 +1648,13 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
-                color: const Color(0xFFECFDF5),
+                color: AppColors.successBg,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: const Color(0xFFA7F3D0)),
               ),
               child: Text(
                 '${withGps.length}/${fleet.length} GPS Active',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w800,
                   color: Color(0xFF065F46),
@@ -1668,9 +1669,9 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
         Container(
           height: 260,
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: AppColors.surface,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFFE2E8F0)),
+            border: Border.all(color: AppColors.border),
             boxShadow: const [
               BoxShadow(
                 color: Color(0x060F172A),
@@ -1682,18 +1683,18 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
           clipBehavior: Clip.antiAlias,
           child: withGps.isEmpty
               ? Container(
-                  color: const Color(0xFFF8FAFC),
-                  child: const Center(
+                  color: AppColors.surfaceMuted,
+                  child: Center(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(Icons.location_off_rounded,
-                            size: 32, color: Color(0xFF94A3B8)),
+                            size: 32, color: AppColors.textMuted),
                         SizedBox(height: 8),
                         Text(
                           'No live GPS coordinates reported yet.',
                           style: TextStyle(
-                              fontSize: 12, color: Color(0xFF64748B)),
+                              fontSize: 12, color: AppColors.textSecondary),
                         ),
                       ],
                     ),
@@ -1730,7 +1731,7 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                                 shape: BoxShape.circle,
                                 color: isOnline
                                     ? const Color(0xFF10B981)
-                                    : const Color(0xFF94A3B8),
+                                    : AppColors.textMuted,
                                 border: Border.all(color: Colors.white, width: 2.5),
                                 boxShadow: const [
                                   BoxShadow(
@@ -1745,7 +1746,7 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                                   member.name.isNotEmpty
                                       ? member.name[0].toUpperCase()
                                       : 'T',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     color: Colors.white,
                                     fontSize: 13,
                                     fontWeight: FontWeight.w900,
@@ -1768,29 +1769,29 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
             Container(
               width: 8,
               height: 8,
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: Color(0xFF10B981),
               ),
             ),
             const SizedBox(width: 4),
-            const Text('Online',
-                style: TextStyle(fontSize: 11, color: Color(0xFF475569))),
+            Text('Online',
+                style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
             const SizedBox(width: 12),
             Container(
               width: 8,
               height: 8,
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Color(0xFF94A3B8),
+                color: AppColors.textMuted,
               ),
             ),
             const SizedBox(width: 4),
-            const Text('Offline',
-                style: TextStyle(fontSize: 11, color: Color(0xFF475569))),
+            Text('Offline',
+                style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
             const Spacer(),
-            const Text('Auto-refreshes on tab focus',
-                style: TextStyle(fontSize: 10.5, color: Color(0xFF94A3B8))),
+            Text('Auto-refreshes on tab focus',
+                style: TextStyle(fontSize: 10.5, color: AppColors.textMuted)),
           ],
         ),
 
@@ -1800,7 +1801,7 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
           Container(
             padding: const EdgeInsets.all(AppSpacing.md),
             decoration: BoxDecoration(
-              color: const Color(0xFFEFF6FF),
+              color: AppColors.infoBg,
               borderRadius: BorderRadius.circular(10),
               border: Border.all(color: const Color(0xFFBFDBFE)),
             ),
@@ -1812,17 +1813,17 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                     children: [
                       Text(
                         _selectedMapMember!.name,
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 13, fontWeight: FontWeight.w800),
                       ),
                       Text(
                         'ID: ${_selectedMapMember!.employeeId ?? '—'} • ${_selectedMapMember!.isOnline ? 'Online' : 'Offline'}',
-                        style: const TextStyle(fontSize: 11, color: Color(0xFF2563EB)),
+                        style: TextStyle(fontSize: 11, color: Color(0xFF2563EB)),
                       ),
                       if (_selectedMapMember!.activeJob != null)
                         Text(
                           'Job: ${_selectedMapMember!.activeJob}',
-                          style: const TextStyle(
+                          style: TextStyle(
                               fontSize: 11, fontWeight: FontWeight.w700),
                         ),
                     ],
@@ -1926,7 +1927,7 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Expanded(
+            Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1935,13 +1936,13 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                     style: TextStyle(
                       fontSize: 13.5,
                       fontWeight: FontWeight.w800,
-                      color: Color(0xFF0F172A),
+                      color: AppColors.textPrimary,
                     ),
                   ),
                   SizedBox(height: 2),
                   Text(
                     'Configured shift sites & geofence boundaries',
-                    style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
+                    style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
                   ),
                 ],
               ),
@@ -1949,11 +1950,11 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
             FilledButton.icon(
               onPressed: () => _openLocationFormModal(),
               icon: const Icon(Icons.add_location_alt_rounded, size: 15),
-              label: const Text('Add Location'),
+              label: Text('Add Location'),
               style: FilledButton.styleFrom(
                 backgroundColor: const Color(0xFF2563EB),
                 visualDensity: VisualDensity.compact,
-                textStyle: const TextStyle(
+                textStyle: TextStyle(
                     fontSize: 11.5, fontWeight: FontWeight.w800),
               ),
             ),
@@ -1988,15 +1989,15 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
   }) {
     return Row(
       children: [
-        Icon(icon, size: 18, color: const Color(0xFF1E293B)),
+        Icon(icon, size: 18, color: AppColors.textPrimary),
         const SizedBox(width: 6),
         Expanded(
           child: Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 13.5,
               fontWeight: FontWeight.w800,
-              color: Color(0xFF0F172A),
+              color: AppColors.textPrimary,
               letterSpacing: 0.2,
             ),
           ),
@@ -2006,16 +2007,16 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
             decoration: BoxDecoration(
-              color: const Color(0xFFF1F5F9),
+              color: AppColors.surfaceMuted,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFCBD5E1)),
+              border: Border.all(color: AppColors.border),
             ),
             child: Text(
               badgeText,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
-                color: Color(0xFF475569),
+                color: AppColors.textSecondary,
               ),
             ),
           ),
@@ -2057,9 +2058,9 @@ class _MetricCard extends StatelessWidget {
       width: width,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: AppColors.border),
         boxShadow: const [
           BoxShadow(
             color: Color(0x050F172A),
@@ -2077,10 +2078,10 @@ class _MetricCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 11.5,
                     fontWeight: FontWeight.w700,
-                    color: Color(0xFF64748B),
+                    color: AppColors.textSecondary,
                     letterSpacing: 0.1,
                   ),
                 ),
@@ -2110,10 +2111,10 @@ class _MetricCard extends StatelessWidget {
             subtitle,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w500,
-              color: Color(0xFF94A3B8),
+              color: AppColors.textMuted,
             ),
           ),
         ],
@@ -2157,19 +2158,19 @@ class _DispatchJobItemCard extends StatelessWidget {
     }
 
     String dispatchMode = 'Auto-Dispatch Active';
-    Color dispatchModeBg = const Color(0xFFEFF6FF);
+    Color dispatchModeBg = AppColors.infoBg;
     Color dispatchModeFg = const Color(0xFF1E40AF);
     if (job.technicianName != null && job.technicianName!.isNotEmpty) {
       dispatchMode = 'Assigned: ${job.technicianName}';
-      dispatchModeBg = const Color(0xFFECFDF5);
+      dispatchModeBg = AppColors.successBg;
       dispatchModeFg = const Color(0xFF065F46);
     } else if (job.isOffer || (job.activeOffer != null && !job.activeOffer!.isExpired)) {
       dispatchMode = 'Offer Active (Awaiting Acceptance)';
-      dispatchModeBg = const Color(0xFFFEF3C7);
+      dispatchModeBg = AppColors.warningBg;
       dispatchModeFg = const Color(0xFFB45309);
     } else if (job.status.toLowerCase() == 'assigned' || job.status.toLowerCase() == 'in_progress') {
       dispatchMode = 'Assigned';
-      dispatchModeBg = const Color(0xFFECFDF5);
+      dispatchModeBg = AppColors.successBg;
       dispatchModeFg = const Color(0xFF065F46);
     }
 
@@ -2185,10 +2186,10 @@ class _DispatchJobItemCard extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.all(AppSpacing.md),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFFEFF6FF) : Colors.white,
+          color: isSelected ? AppColors.infoBg : AppColors.surface,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: isSelected ? const Color(0xFF2563EB) : const Color(0xFFE2E8F0),
+            color: isSelected ? const Color(0xFF2563EB) : AppColors.border,
             width: isSelected ? 1.5 : 1.0,
           ),
           boxShadow: isSelected
@@ -2223,7 +2224,7 @@ class _DispatchJobItemCard extends StatelessWidget {
                         size: 16,
                         color: isSelected
                             ? const Color(0xFF2563EB)
-                            : const Color(0xFF94A3B8),
+                            : AppColors.textMuted,
                       ),
                       const SizedBox(width: 6),
                       Flexible(
@@ -2254,10 +2255,10 @@ class _DispatchJobItemCard extends StatelessWidget {
                 customer,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF0F172A),
+                  color: AppColors.textPrimary,
                 ),
               ),
               const SizedBox(height: 2),
@@ -2266,10 +2267,10 @@ class _DispatchJobItemCard extends StatelessWidget {
               job.displayTitle,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12.5,
                 fontWeight: FontWeight.w600,
-                color: Color(0xFF334155),
+                color: AppColors.textSecondary,
               ),
             ),
             if (displayLocation != null && displayLocation.isNotEmpty) ...[
@@ -2277,10 +2278,10 @@ class _DispatchJobItemCard extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Padding(
+                  Padding(
                     padding: EdgeInsets.only(top: 1),
                     child: Icon(Icons.location_on_outlined,
-                        size: 13, color: Color(0xFF94A3B8)),
+                        size: 13, color: AppColors.textMuted),
                   ),
                   const SizedBox(width: 4),
                   Expanded(
@@ -2288,9 +2289,9 @@ class _DispatchJobItemCard extends StatelessWidget {
                       displayLocation,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11.5,
-                        color: Color(0xFF64748B),
+                        color: AppColors.textSecondary,
                       ),
                     ),
                   ),
@@ -2316,7 +2317,7 @@ class _DispatchJobItemCard extends StatelessWidget {
                       'Technician: ${job.technicianName!}${job.technicianPhone != null && job.technicianPhone!.isNotEmpty ? " • ${job.technicianPhone!}" : ""}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w700,
                         color: Color(0xFF059669),
@@ -2350,15 +2351,15 @@ class _DispatchJobItemCard extends StatelessWidget {
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.calendar_today_outlined,
-                        size: 11, color: Color(0xFF94A3B8)),
+                    Icon(Icons.calendar_today_outlined,
+                        size: 11, color: AppColors.textMuted),
                     const SizedBox(width: 4),
                     Text(
                       displayDate,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11,
                         fontFamily: 'monospace',
-                        color: Color(0xFF64748B),
+                        color: AppColors.textSecondary,
                       ),
                     ),
                   ],
@@ -2386,9 +2387,9 @@ class _FleetMemberTelemetryCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: AppColors.border),
         boxShadow: const [
           BoxShadow(
             color: Color(0x040F172A),
@@ -2408,13 +2409,13 @@ class _FleetMemberTelemetryCard extends StatelessWidget {
                 height: 34,
                 decoration: BoxDecoration(
                   color: member.isOnline
-                      ? const Color(0xFFECFDF5)
-                      : const Color(0xFFF1F5F9),
+                      ? AppColors.successBg
+                      : AppColors.surfaceMuted,
                   shape: BoxShape.circle,
                   border: Border.all(
                     color: member.isOnline
                         ? const Color(0xFFA7F3D0)
-                        : const Color(0xFFCBD5E1),
+                        : AppColors.border,
                   ),
                 ),
                 child: Center(
@@ -2425,7 +2426,7 @@ class _FleetMemberTelemetryCard extends StatelessWidget {
                       fontWeight: FontWeight.w900,
                       color: member.isOnline
                           ? const Color(0xFF065F46)
-                          : const Color(0xFF64748B),
+                          : AppColors.textSecondary,
                     ),
                   ),
                 ),
@@ -2439,19 +2440,19 @@ class _FleetMemberTelemetryCard extends StatelessWidget {
                       member.name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 13.5,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFF0F172A),
+                        color: AppColors.textPrimary,
                       ),
                     ),
                     if (member.employeeId != null)
                       Text(
                         member.employeeId!,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 11,
                           fontFamily: 'monospace',
-                          color: Color(0xFF64748B),
+                          color: AppColors.textSecondary,
                         ),
                       ),
                   ],
@@ -2466,7 +2467,7 @@ class _FleetMemberTelemetryCard extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: const Color(0xFFEFF6FF),
+                color: AppColors.infoBg,
                 borderRadius: BorderRadius.circular(6),
                 border: Border.all(color: const Color(0xFFDBEAFE)),
               ),
@@ -2478,7 +2479,7 @@ class _FleetMemberTelemetryCard extends StatelessWidget {
                   const SizedBox(width: 4),
                   Text(
                     'Active Job: ${member.activeJob}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
                       color: Color(0xFF1E40AF),
@@ -2498,7 +2499,7 @@ class _FleetMemberTelemetryCard extends StatelessWidget {
                 size: 13,
                 color: member.hasLocation
                     ? const Color(0xFF059669)
-                    : const Color(0xFF94A3B8),
+                    : AppColors.textMuted,
               ),
               const SizedBox(width: 4),
               Expanded(
@@ -2510,10 +2511,10 @@ class _FleetMemberTelemetryCard extends StatelessWidget {
                       : (member.locationStatus ?? 'Location unavailable'),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 11,
                     fontFamily: 'monospace',
-                    color: Color(0xFF64748B),
+                    color: AppColors.textSecondary,
                   ),
                 ),
               ),
@@ -2528,17 +2529,17 @@ class _FleetMemberTelemetryCard extends StatelessWidget {
     final isOnline = member.isOnline;
     final isBusy = member.isOnActiveJob;
 
-    Color bg = const Color(0xFFF1F5F9);
-    Color fg = const Color(0xFF475569);
+    Color bg = AppColors.surfaceMuted;
+    Color fg = AppColors.textSecondary;
     String label = 'Offline';
 
     if (isOnline) {
       if (isBusy) {
-        bg = const Color(0xFFEFF6FF);
+        bg = AppColors.infoBg;
         fg = const Color(0xFF1E40AF);
         label = 'Busy (On Job)';
       } else {
-        bg = const Color(0xFFECFDF5);
+        bg = AppColors.successBg;
         fg = const Color(0xFF065F46);
         label = 'Online & Ready';
       }
@@ -2582,12 +2583,12 @@ class _EligibleTechnicianCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: technician.isDispatchReady
               ? const Color(0xFFBFDBFE)
-              : const Color(0xFFE2E8F0),
+              : AppColors.border,
         ),
         boxShadow: const [
           BoxShadow(
@@ -2607,17 +2608,17 @@ class _EligibleTechnicianCard extends StatelessWidget {
                 width: 34,
                 height: 34,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFEFF6FF),
+                  color: AppColors.infoBg,
                   shape: BoxShape.circle,
                   border: Border.all(color: const Color(0xFFBFDBFE)),
                 ),
                 child: Center(
                   child: Text(
                     initial,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w900,
-                      color: Color(0xFF004E89),
+                      color: Color(0xFF005965),
                     ),
                   ),
                 ),
@@ -2634,10 +2635,10 @@ class _EligibleTechnicianCard extends StatelessWidget {
                       children: [
                         Text(
                           technician.name,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 13.5,
                             fontWeight: FontWeight.w700,
-                            color: Color(0xFF0F172A),
+                            color: AppColors.textPrimary,
                           ),
                         ),
                         Container(
@@ -2645,8 +2646,8 @@ class _EligibleTechnicianCard extends StatelessWidget {
                               horizontal: 6, vertical: 1.5),
                           decoration: BoxDecoration(
                             color: technician.isOnline
-                                ? const Color(0xFFECFDF5)
-                                : const Color(0xFFF1F5F9),
+                                ? AppColors.successBg
+                                : AppColors.surfaceMuted,
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text(
@@ -2656,7 +2657,7 @@ class _EligibleTechnicianCard extends StatelessWidget {
                               fontWeight: FontWeight.w700,
                               color: technician.isOnline
                                   ? const Color(0xFF065F46)
-                                  : const Color(0xFF64748B),
+                                  : AppColors.textSecondary,
                             ),
                           ),
                         ),
@@ -2665,10 +2666,10 @@ class _EligibleTechnicianCard extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       '${technician.employeeId ?? 'Tech'} • ${technician.phone ?? 'No phone'}',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11,
                         fontFamily: 'monospace',
-                        color: Color(0xFF64748B),
+                        color: AppColors.textSecondary,
                       ),
                     ),
                   ],
@@ -2683,7 +2684,7 @@ class _EligibleTechnicianCard extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
                 color: technician.isDispatchReady
-                    ? const Color(0xFFECFDF5)
+                    ? AppColors.successBg
                     : const Color(0xFFFFF7ED),
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -2714,14 +2715,14 @@ class _EligibleTechnicianCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFEFF6FF),
+                  color: AppColors.infoBg,
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
                   technician.distanceKm != null
                       ? '${technician.distanceKm!.toStringAsFixed(1)} km away'
                       : 'Proximity Pending GPS',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
                     color: Color(0xFF1E40AF),
@@ -2733,15 +2734,15 @@ class _EligibleTechnicianCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF1F5F9),
+                    color: AppColors.surfaceMuted,
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(
                     'Ring: ${technician.distanceBand}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFF475569),
+                      color: AppColors.textSecondary,
                     ),
                   ),
                 ),
@@ -2750,8 +2751,8 @@ class _EligibleTechnicianCard extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
                     color: technician.gpsFreshness == 'LIVE'
-                        ? const Color(0xFFECFDF5)
-                        : const Color(0xFFFFFBEB),
+                        ? AppColors.successBg
+                        : AppColors.warningBg,
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(
@@ -2767,7 +2768,7 @@ class _EligibleTechnicianCard extends StatelessWidget {
                 ),
               Text(
                 'Match Score: ${technician.score.toStringAsFixed(0)}',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 11.5,
                   fontWeight: FontWeight.w800,
                   color: Color(0xFF2563EB),
@@ -2787,8 +2788,8 @@ class _EligibleTechnicianCard extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
                   decoration: BoxDecoration(
                     color: g.passed
-                        ? const Color(0xFFECFDF5)
-                        : const Color(0xFFFEF2F2),
+                        ? AppColors.successBg
+                        : AppColors.errorBg,
                     borderRadius: BorderRadius.circular(4),
                     border: Border.all(
                       color: g.passed
@@ -2816,7 +2817,7 @@ class _EligibleTechnicianCard extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               'Ineligible: ${technician.ineligibilityReason}',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
                 color: Color(0xFFDC2626),
@@ -2832,13 +2833,13 @@ class _EligibleTechnicianCard extends StatelessWidget {
                 FilledButton.icon(
                   onPressed: isAssigning ? null : onAssign,
                   icon: const Icon(Icons.send_rounded, size: 14),
-                  label: const Text('Dispatch Offer'),
+                  label: Text('Dispatch Offer'),
                   style: FilledButton.styleFrom(
                     backgroundColor: const Color(0xFF059669),
                     visualDensity: VisualDensity.compact,
                     padding: const EdgeInsets.symmetric(
                         horizontal: 12, vertical: 6),
-                    textStyle: const TextStyle(
+                    textStyle: TextStyle(
                       fontSize: 11.5,
                       fontWeight: FontWeight.w800,
                     ),
@@ -2873,9 +2874,9 @@ class _ScopeExtensionCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: AppColors.border),
         boxShadow: const [
           BoxShadow(
             color: Color(0x040F172A),
@@ -2893,7 +2894,7 @@ class _ScopeExtensionCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   'Job #${extension.requestId ?? extension.jobId}',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontFamily: 'monospace',
                     fontSize: 13,
                     fontWeight: FontWeight.w800,
@@ -2905,11 +2906,11 @@ class _ScopeExtensionCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFEF2F2),
+                    color: AppColors.errorBg,
                     borderRadius: BorderRadius.circular(4),
                     border: Border.all(color: const Color(0xFFFECACA)),
                   ),
-                  child: const Text(
+                  child: Text(
                     'CRITICAL',
                     style: TextStyle(
                       fontSize: 10,
@@ -2923,11 +2924,11 @@ class _ScopeExtensionCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFFFBEB),
+                    color: AppColors.warningBg,
                     borderRadius: BorderRadius.circular(4),
                     border: Border.all(color: const Color(0xFFFDE68A)),
                   ),
-                  child: const Text(
+                  child: Text(
                     'SPECIALIST',
                     style: TextStyle(
                       fontSize: 10,
@@ -2942,26 +2943,26 @@ class _ScopeExtensionCard extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             extension.title,
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
           ),
           if (extension.reason.isNotEmpty)
             Text(
               'Reason: ${extension.reason}',
-              style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
+              style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
             ),
           const SizedBox(height: 6),
           Row(
             children: [
               Text(
                 'Labor: ₹${extension.additionalLaborCost.toStringAsFixed(2)} • Materials: ₹${extension.additionalMaterialsCost.toStringAsFixed(2)}',
-                style: const TextStyle(fontSize: 11, color: Color(0xFF475569)),
+                style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
               ),
             ],
           ),
           const SizedBox(height: 2),
           Text(
             'Total Requested: ₹${extension.requestedAmount.toStringAsFixed(2)}',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w800,
               color: Color(0xFF059669),
@@ -2976,9 +2977,9 @@ class _ScopeExtensionCard extends StatelessWidget {
                 style: OutlinedButton.styleFrom(
                   visualDensity: VisualDensity.compact,
                   foregroundColor: const Color(0xFFDC2626),
-                  side: const BorderSide(color: Color(0xFFFECACA)),
+                  side: BorderSide(color: Color(0xFFFECACA)),
                 ),
-                child: const Text('Reject'),
+                child: Text('Reject'),
               ),
               const SizedBox(width: 8),
               FilledButton(
@@ -2987,7 +2988,7 @@ class _ScopeExtensionCard extends StatelessWidget {
                   backgroundColor: const Color(0xFF059669),
                   visualDensity: VisualDensity.compact,
                 ),
-                child: const Text('Approve'),
+                child: Text('Approve'),
               ),
             ],
           ),
@@ -3017,9 +3018,9 @@ class _ServiceRequestItemCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: AppColors.border),
         boxShadow: const [
           BoxShadow(
             color: Color(0x040F172A),
@@ -3040,16 +3041,16 @@ class _ServiceRequestItemCard extends StatelessWidget {
                   children: [
                     Text(
                       item.employeeName,
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 13, fontWeight: FontWeight.w800),
                     ),
                     if (item.employeeCode != null)
                       Text(
                         item.employeeCode!,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 11,
                           fontFamily: 'monospace',
-                          color: Color(0xFF64748B),
+                          color: AppColors.textSecondary,
                         ),
                       ),
                   ],
@@ -3059,8 +3060,8 @@ class _ServiceRequestItemCard extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
                   color: item.isRemoval
-                      ? const Color(0xFFFEF2F2)
-                      : const Color(0xFFEFF6FF),
+                      ? AppColors.errorBg
+                      : AppColors.infoBg,
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
@@ -3079,7 +3080,7 @@ class _ServiceRequestItemCard extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             'Service: ${item.serviceName} (ID #${item.serviceId})',
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 8),
           Row(
@@ -3090,9 +3091,9 @@ class _ServiceRequestItemCard extends StatelessWidget {
                 style: OutlinedButton.styleFrom(
                   visualDensity: VisualDensity.compact,
                   foregroundColor: const Color(0xFFDC2626),
-                  side: const BorderSide(color: Color(0xFFFECACA)),
+                  side: BorderSide(color: Color(0xFFFECACA)),
                 ),
-                child: const Text('Reject'),
+                child: Text('Reject'),
               ),
               const SizedBox(width: 8),
               FilledButton(
@@ -3101,7 +3102,7 @@ class _ServiceRequestItemCard extends StatelessWidget {
                   backgroundColor: const Color(0xFF059669),
                   visualDensity: VisualDensity.compact,
                 ),
-                child: const Text('Approve'),
+                child: Text('Approve'),
               ),
             ],
           ),
@@ -3131,9 +3132,9 @@ class _WorkLocationCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: AppColors.border),
         boxShadow: const [
           BoxShadow(
             color: Color(0x040F172A),
@@ -3151,7 +3152,7 @@ class _WorkLocationCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   location.name,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 13.5, fontWeight: FontWeight.w800),
                 ),
               ),
@@ -3159,8 +3160,8 @@ class _WorkLocationCard extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
                   color: location.isActive
-                      ? const Color(0xFFECFDF5)
-                      : const Color(0xFFF1F5F9),
+                      ? AppColors.successBg
+                      : AppColors.surfaceMuted,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
@@ -3170,7 +3171,7 @@ class _WorkLocationCard extends StatelessWidget {
                     fontWeight: FontWeight.w800,
                     color: location.isActive
                         ? const Color(0xFF065F46)
-                        : const Color(0xFF64748B),
+                        : AppColors.textSecondary,
                   ),
                 ),
               ),
@@ -3180,16 +3181,16 @@ class _WorkLocationCard extends StatelessWidget {
             const SizedBox(height: 2),
             Text(
               location.address,
-              style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
+              style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
             ),
           ],
           const SizedBox(height: 4),
           Text(
             'GPS: ${location.lat != null ? location.lat!.toStringAsFixed(4) : "—"}, ${location.lng != null ? location.lng!.toStringAsFixed(4) : "—"} • Geofence: ${location.geofenceRadius}m (${location.geofenceType})',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 11,
               fontFamily: 'monospace',
-              color: Color(0xFF475569),
+              color: AppColors.textSecondary,
             ),
           ),
           const SizedBox(height: 8),
@@ -3204,7 +3205,7 @@ class _WorkLocationCard extends StatelessWidget {
                       : Icons.toggle_off_rounded,
                   color: location.isActive
                       ? const Color(0xFF059669)
-                      : const Color(0xFF94A3B8),
+                      : AppColors.textMuted,
                   size: 24,
                 ),
                 tooltip: location.isActive ? 'Deactivate' : 'Activate',
@@ -3348,8 +3349,8 @@ class _LocationFormBottomSheetState
         left: 16,
         right: 16,
       ),
-      decoration: const BoxDecoration(
-        color: Colors.white,
+      decoration: BoxDecoration(
+        color: AppColors.surface,
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       child: SingleChildScrollView(
@@ -3362,7 +3363,7 @@ class _LocationFormBottomSheetState
                 width: 36,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFCBD5E1),
+                  color: AppColors.border,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -3373,10 +3374,10 @@ class _LocationFormBottomSheetState
               children: [
                 Text(
                   isEditing ? 'Edit Authorized Location' : 'Add Authorized Location',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF0F172A),
+                    color: AppColors.textPrimary,
                   ),
                 ),
                 IconButton(
@@ -3390,12 +3391,12 @@ class _LocationFormBottomSheetState
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFEF2F2),
+                  color: AppColors.errorBg,
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
                   _errorMessage!,
-                  style: const TextStyle(fontSize: 12, color: Color(0xFFDC2626)),
+                  style: TextStyle(fontSize: 12, color: Color(0xFFDC2626)),
                 ),
               ),
             ],
@@ -3480,7 +3481,7 @@ class _LocationFormBottomSheetState
             const SizedBox(height: 10),
             CheckboxListTile(
               contentPadding: EdgeInsets.zero,
-              title: const Text('Active (visible to employees for clock-in)',
+              title: Text('Active (visible to employees for clock-in)',
                   style: TextStyle(fontSize: 12.5)),
               value: _isActive,
               onChanged: (val) => setState(() => _isActive = val ?? true),
@@ -3500,7 +3501,7 @@ class _LocationFormBottomSheetState
                       : isEditing
                           ? 'Update Location'
                           : 'Save Location',
-                  style: const TextStyle(fontWeight: FontWeight.w800),
+                  style: TextStyle(fontWeight: FontWeight.w800),
                 ),
               ),
             ),
@@ -3526,8 +3527,8 @@ class _JobTimelineBottomSheet extends ConsumerWidget {
         maxHeight: MediaQuery.of(context).size.height * 0.75,
       ),
       padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: const BoxDecoration(
-        color: Colors.white,
+      decoration: BoxDecoration(
+        color: AppColors.surface,
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       child: Column(
@@ -3538,7 +3539,7 @@ class _JobTimelineBottomSheet extends ConsumerWidget {
               width: 36,
               height: 4,
               decoration: BoxDecoration(
-                color: const Color(0xFFCBD5E1),
+                color: AppColors.border,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -3552,7 +3553,7 @@ class _JobTimelineBottomSheet extends ConsumerWidget {
                   Container(
                     padding: const EdgeInsets.all(6),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFEFF6FF),
+                      color: AppColors.infoBg,
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: const Icon(Icons.history_rounded,
@@ -3561,10 +3562,10 @@ class _JobTimelineBottomSheet extends ConsumerWidget {
                   const SizedBox(width: 8),
                   Text(
                     'Timeline — #${job.requestId}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w800,
-                      color: Color(0xFF0F172A),
+                      color: AppColors.textPrimary,
                     ),
                   ),
                 ],
@@ -3578,25 +3579,25 @@ class _JobTimelineBottomSheet extends ConsumerWidget {
           const SizedBox(height: 4),
           Text(
             '${job.displayTitle} • Customer: ${job.customerName ?? "—"}',
-            style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
+            style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
           ),
-          const Divider(height: 16),
+          Divider(height: 16),
           Expanded(
             child: timelineAsync.when(
               loading: () => const Center(
                 child: CircularProgressIndicator(
-                  color: Color(0xFF004E89),
+                  color: Color(0xFF005965),
                 ),
               ),
               error: (err, _) => Center(
                 child: Text('Failed to load timeline: $err',
-                    style: const TextStyle(fontSize: 12, color: Color(0xFFDC2626))),
+                    style: TextStyle(fontSize: 12, color: Color(0xFFDC2626))),
               ),
               data: (timelineData) {
                 if (timelineData.events.isEmpty) {
-                  return const Center(
+                  return Center(
                     child: Text('No lifecycle events recorded for this job yet.',
-                        style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+                        style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                   );
                 }
 
@@ -3613,13 +3614,13 @@ class _JobTimelineBottomSheet extends ConsumerWidget {
                           height: 22,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: const Color(0xFFEFF6FF),
+                            color: AppColors.infoBg,
                             border: Border.all(color: const Color(0xFF2563EB)),
                           ),
                           child: Center(
                             child: Text(
                               '${idx + 1}',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 10,
                                 fontWeight: FontWeight.w800,
                                 color: Color(0xFF2563EB),
@@ -3632,9 +3633,9 @@ class _JobTimelineBottomSheet extends ConsumerWidget {
                           child: Container(
                             padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFF8FAFC),
+                              color: AppColors.surfaceMuted,
                               borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: const Color(0xFFE2E8F0)),
+                              border: Border.all(color: AppColors.border),
                             ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -3646,19 +3647,19 @@ class _JobTimelineBottomSheet extends ConsumerWidget {
                                     Expanded(
                                       child: Text(
                                         item.title,
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           fontSize: 12.5,
                                           fontWeight: FontWeight.w700,
-                                          color: Color(0xFF0F172A),
+                                          color: AppColors.textPrimary,
                                         ),
                                       ),
                                     ),
                                     Text(
                                       '${item.timestamp.hour.toString().padLeft(2, "0")}:${item.timestamp.minute.toString().padLeft(2, "0")}',
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         fontSize: 10,
                                         fontFamily: 'monospace',
-                                        color: Color(0xFF64748B),
+                                        color: AppColors.textSecondary,
                                       ),
                                     ),
                                   ],
@@ -3667,9 +3668,9 @@ class _JobTimelineBottomSheet extends ConsumerWidget {
                                   const SizedBox(height: 2),
                                   Text(
                                     item.description,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 11.5,
-                                      color: Color(0xFF475569),
+                                      color: AppColors.textSecondary,
                                     ),
                                   ),
                                 ],
@@ -3680,18 +3681,18 @@ class _JobTimelineBottomSheet extends ConsumerWidget {
                                   children: [
                                     Text(
                                       'Actor: ${item.actor}',
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         fontSize: 10.5,
                                         fontWeight: FontWeight.w600,
-                                        color: Color(0xFF334155),
+                                        color: AppColors.textSecondary,
                                       ),
                                     ),
                                     Text(
                                       item.eventType,
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         fontSize: 10,
                                         fontFamily: 'monospace',
-                                        color: Color(0xFF94A3B8),
+                                        color: AppColors.textMuted,
                                       ),
                                     ),
                                   ],

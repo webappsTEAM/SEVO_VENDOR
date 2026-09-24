@@ -4,6 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_error.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../shared/widgets/module_header_card.dart';
+import '../../../shared/widgets/sevo_brand_mark.dart';
+import '../../../shared/widgets/theme_toggle_button.dart';
 import '../data/notification_settings_repository.dart';
 import '../domain/notification_preferences.dart';
 import 'providers/notification_settings_providers.dart';
@@ -35,7 +38,25 @@ class _NotificationSettingsScreenState extends ConsumerState<NotificationSetting
     final draft = _draft ?? savedAsync.valueOrNull ?? NotificationPreferences.defaults;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Notifications')),
+      backgroundColor: AppColors.background,
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF003B46),
+        foregroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: false,
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            gradient: AppColors.peacockGradient,
+            borderRadius: BorderRadius.vertical(bottom: Radius.circular(22)),
+          ),
+        ),
+        title: const SevoHeaderTitle(
+          fontSize: 22,
+        ),
+        actions: const [
+          ThemeToggleButton(),
+        ],
+      ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(
           AppSpacing.lg,
@@ -44,6 +65,12 @@ class _NotificationSettingsScreenState extends ConsumerState<NotificationSetting
           AppSpacing.xxl,
         ),
         children: [
+          const ModuleHeaderCard(
+            title: 'Notification Alerts',
+            subtitle: 'Configure operational alerts & channels',
+            icon: Icons.campaign_outlined,
+          ),
+          const SizedBox(height: AppSpacing.md),
           SettingsSectionCard(
             icon: Icons.campaign_outlined,
             title: 'Notification Alerts & Communication Channels',

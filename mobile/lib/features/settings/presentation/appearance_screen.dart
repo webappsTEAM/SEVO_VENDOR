@@ -4,6 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_error.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../shared/widgets/module_header_card.dart';
+import '../../../shared/widgets/sevo_brand_mark.dart';
+import '../../../shared/widgets/theme_toggle_button.dart';
 import '../domain/appearance_preferences.dart';
 import 'providers/appearance_providers.dart';
 import 'widgets/settings_section_card.dart';
@@ -36,7 +39,25 @@ class _AppearanceScreenState extends ConsumerState<AppearanceScreen> {
     final draft = _draft ?? savedAsync.valueOrNull ?? AppearancePreferences.defaults;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Appearance & UI')),
+      backgroundColor: AppColors.background,
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF003B46),
+        foregroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: false,
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            gradient: AppColors.peacockGradient,
+            borderRadius: BorderRadius.vertical(bottom: Radius.circular(22)),
+          ),
+        ),
+        title: const SevoHeaderTitle(
+          fontSize: 22,
+        ),
+        actions: const [
+          ThemeToggleButton(),
+        ],
+      ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(
           AppSpacing.lg,
@@ -45,6 +66,12 @@ class _AppearanceScreenState extends ConsumerState<AppearanceScreen> {
           AppSpacing.xxl,
         ),
         children: [
+          const ModuleHeaderCard(
+            title: 'Appearance & UI',
+            subtitle: 'Customize themes, colors & accessibility',
+            icon: Icons.palette_outlined,
+          ),
+          const SizedBox(height: AppSpacing.md),
           SettingsSectionCard(
             icon: Icons.palette_outlined,
             title: 'Display & Visual Preferences',

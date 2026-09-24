@@ -48,8 +48,9 @@ class _AdminWalletsScreenState extends ConsumerState<AdminWalletsScreen> {
     final displayedCount = filteredWallets.length;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: AppColors.background,
       appBar: const WorkforceAppBar(
+        titleText: 'Vendor Wallets',
         showStatusSubBar: false,
         showDrawerMenu: true,
       ),
@@ -57,7 +58,7 @@ class _AdminWalletsScreenState extends ConsumerState<AdminWalletsScreen> {
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: _refresh,
-          color: const Color(0xFF0F172A),
+          color: AppColors.primary,
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.all(AppSpacing.md),
@@ -66,9 +67,9 @@ class _AdminWalletsScreenState extends ConsumerState<AdminWalletsScreen> {
               Container(
                 padding: const EdgeInsets.all(AppSpacing.md),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: AppColors.surface,
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                  border: Border.all(color: AppColors.border),
                   boxShadow: const [
                     BoxShadow(
                       color: Color(0x040F172A),
@@ -85,15 +86,16 @@ class _AdminWalletsScreenState extends ConsumerState<AdminWalletsScreen> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 2.5),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF1F5F9),
+                        color: AppColors.surfaceMuted,
                         borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: AppColors.border, width: 0.5),
                       ),
-                      child: const Text(
+                      child: Text(
                         'Wallets & Finance',
                         style: TextStyle(
                           fontSize: 10.5,
                           fontWeight: FontWeight.w800,
-                          color: Color(0xFF475569),
+                          color: AppColors.textSecondary,
                           letterSpacing: 0.3,
                         ),
                       ),
@@ -109,7 +111,7 @@ class _AdminWalletsScreenState extends ConsumerState<AdminWalletsScreen> {
                           height: 42,
                           decoration: BoxDecoration(
                             gradient: const LinearGradient(
-                              colors: [Color(0xFF004E89), Color(0xFF0284C7)],
+                              colors: [Color(0xFF005965), Color(0xFF0284C7)],
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                             ),
@@ -122,7 +124,7 @@ class _AdminWalletsScreenState extends ConsumerState<AdminWalletsScreen> {
                           ),
                         ),
                         const SizedBox(width: 12),
-                        const Expanded(
+                        Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -131,7 +133,7 @@ class _AdminWalletsScreenState extends ConsumerState<AdminWalletsScreen> {
                                 style: TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.w800,
-                                  color: Color(0xFF0F172A),
+                                  color: AppColors.textPrimary,
                                   letterSpacing: -0.2,
                                 ),
                               ),
@@ -140,7 +142,7 @@ class _AdminWalletsScreenState extends ConsumerState<AdminWalletsScreen> {
                                 'Monitor technician earnings (60% commission share), pending T+7 settlements, and payout disbursements.',
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color: Color(0xFF64748B),
+                                  color: AppColors.textSecondary,
                                   height: 1.35,
                                 ),
                               ),
@@ -150,7 +152,7 @@ class _AdminWalletsScreenState extends ConsumerState<AdminWalletsScreen> {
                       ],
                     ),
                     const SizedBox(height: 12),
-                    const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                    Divider(height: 1, color: AppColors.border),
                     const SizedBox(height: 10),
 
                     // Actions Row: Refresh & Manage Payouts (X)
@@ -163,12 +165,12 @@ class _AdminWalletsScreenState extends ConsumerState<AdminWalletsScreen> {
                         OutlinedButton.icon(
                           onPressed: _refresh,
                           icon: const Icon(Icons.refresh_rounded, size: 15),
-                          label: const Text('Refresh'),
+                          label: Text('Refresh'),
                           style: OutlinedButton.styleFrom(
-                            foregroundColor: const Color(0xFF475569),
-                            side: const BorderSide(color: Color(0xFFCBD5E1)),
+                            foregroundColor: AppColors.textSecondary,
+                            side: BorderSide(color: AppColors.border),
                             visualDensity: VisualDensity.compact,
-                            textStyle: const TextStyle(
+                            textStyle: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
                             ),
@@ -180,9 +182,9 @@ class _AdminWalletsScreenState extends ConsumerState<AdminWalletsScreen> {
                           icon: const Icon(Icons.payments_rounded, size: 15),
                           label: Text('Manage Payouts ($pendingPayoutsCount)'),
                           style: FilledButton.styleFrom(
-                            backgroundColor: const Color(0xFF004E89),
+                            backgroundColor: const Color(0xFF005965),
                             visualDensity: VisualDensity.compact,
-                            textStyle: const TextStyle(
+                            textStyle: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w800,
                             ),
@@ -203,8 +205,8 @@ class _AdminWalletsScreenState extends ConsumerState<AdminWalletsScreen> {
                     value: (summary?.totalWallets ?? 0).toString(),
                     description: 'Total active technician wallets',
                     icon: Icons.people_alt_rounded,
-                    iconColor: const Color(0xFF2563EB),
-                    iconBgColor: const Color(0xFFEFF6FF),
+                    iconColor: AppColors.infoText,
+                    iconBgColor: AppColors.infoBg,
                   );
                   final card2 = _FinancialMetricCard(
                     label: 'Total Available',
@@ -212,8 +214,8 @@ class _AdminWalletsScreenState extends ConsumerState<AdminWalletsScreen> {
                         '₹${(summary?.totalAvailableBalance ?? 0.0).toStringAsFixed(2)}',
                     description: 'Withdrawable technician balances',
                     icon: Icons.account_balance_wallet_rounded,
-                    iconColor: const Color(0xFF059669),
-                    iconBgColor: const Color(0xFFECFDF5),
+                    iconColor: AppColors.successText,
+                    iconBgColor: AppColors.successBg,
                   );
                   final card3 = _FinancialMetricCard(
                     label: 'In T+7 Hold',
@@ -221,8 +223,8 @@ class _AdminWalletsScreenState extends ConsumerState<AdminWalletsScreen> {
                         '₹${(summary?.totalPendingBalance ?? 0.0).toStringAsFixed(2)}',
                     description: 'Pending settlement release',
                     icon: Icons.hourglass_top_rounded,
-                    iconColor: const Color(0xFFD97706),
-                    iconBgColor: const Color(0xFFFFFBEB),
+                    iconColor: AppColors.warningText,
+                    iconBgColor: AppColors.warningBg,
                   );
                   final card4 = _FinancialMetricCard(
                     label: 'Total Disbursed',
@@ -230,8 +232,8 @@ class _AdminWalletsScreenState extends ConsumerState<AdminWalletsScreen> {
                         '₹${(summary?.totalDisbursed ?? 0.0).toStringAsFixed(2)}',
                     description: 'Lifetime payouts to technicians',
                     icon: Icons.check_circle_rounded,
-                    iconColor: const Color(0xFF7C3AED),
-                    iconBgColor: const Color(0xFFF5F3FF),
+                    iconColor: AppColors.isDark ? const Color(0xFFA78BFA) : const Color(0xFF7C3AED),
+                    iconBgColor: AppColors.isDark ? const Color(0xFF4C1D95).withValues(alpha: 0.3) : const Color(0xFFF5F3FF),
                   );
 
                   if (constraints.maxWidth >= 600) {
@@ -278,22 +280,22 @@ class _AdminWalletsScreenState extends ConsumerState<AdminWalletsScreen> {
                   Expanded(
                     child: Text(
                       'Active Technician Wallets ($displayedCount)',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF0F172A),
+                        color: AppColors.textPrimary,
                       ),
                     ),
                   ),
                   TextButton.icon(
                     onPressed: () =>
                         context.push(AppRoutes.adminFinanceTransactions),
-                    icon: const Text(
+                    icon: Text(
                       'View All Transactions →',
                       style: TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF004E89),
+                        color: Color(0xFF005965),
                       ),
                     ),
                     label: const SizedBox.shrink(),
@@ -309,9 +311,9 @@ class _AdminWalletsScreenState extends ConsumerState<AdminWalletsScreen> {
               // ── 4. Search & Filter Bar ────────────────────────────────────
               Container(
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: AppColors.surface,
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                  border: Border.all(color: AppColors.border),
                 ),
                 child: TextField(
                   controller: _searchController,
@@ -319,15 +321,15 @@ class _AdminWalletsScreenState extends ConsumerState<AdminWalletsScreen> {
                     ref.read(adminWalletSearchQueryProvider.notifier).state =
                         val;
                   },
-                  style: const TextStyle(fontSize: 13),
+                  style: TextStyle(fontSize: 13),
                   decoration: InputDecoration(
                     hintText: 'Search technician by name or employee ID...',
-                    hintStyle: const TextStyle(
+                    hintStyle: TextStyle(
                       fontSize: 13,
-                      color: Color(0xFF94A3B8),
+                      color: AppColors.textMuted,
                     ),
-                    prefixIcon: const Icon(Icons.search_rounded,
-                        size: 18, color: Color(0xFF94A3B8)),
+                    prefixIcon: Icon(Icons.search_rounded,
+                        size: 18, color: AppColors.textMuted),
                     suffixIcon: _searchController.text.isNotEmpty
                         ? IconButton(
                             icon: const Icon(Icons.clear_rounded, size: 16),
@@ -381,19 +383,19 @@ class _AdminWalletsScreenState extends ConsumerState<AdminWalletsScreen> {
                                 .state = st['id']!;
                           }
                         },
-                        selectedColor: const Color(0xFF0F172A),
+                        selectedColor: AppColors.primary,
                         labelStyle: TextStyle(
                           color: isSelected
                               ? Colors.white
-                              : const Color(0xFF334155),
+                              : AppColors.textSecondary,
                         ),
-                        backgroundColor: Colors.white,
+                        backgroundColor: AppColors.surface,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8),
                           side: BorderSide(
                             color: isSelected
-                                ? const Color(0xFF0F172A)
-                                : const Color(0xFFE2E8F0),
+                                ? AppColors.primary
+                                : AppColors.border,
                           ),
                         ),
                       ),
@@ -405,11 +407,11 @@ class _AdminWalletsScreenState extends ConsumerState<AdminWalletsScreen> {
 
               // ── 5. Technician Wallets List ────────────────────────────────
               walletsAsync.when(
-                loading: () => const Center(
+                loading: () => Center(
                   child: Padding(
                     padding: EdgeInsets.all(AppSpacing.xxl),
                     child:
-                        CircularProgressIndicator(color: Color(0xFF0F172A)),
+                        CircularProgressIndicator(color: AppColors.primary),
                   ),
                 ),
                 error: (error, stack) {
@@ -422,7 +424,7 @@ class _AdminWalletsScreenState extends ConsumerState<AdminWalletsScreen> {
                   return Container(
                     padding: const EdgeInsets.all(AppSpacing.xl),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: AppColors.surface,
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: const Color(0xFFFECDD3)),
                     ),
@@ -431,30 +433,30 @@ class _AdminWalletsScreenState extends ConsumerState<AdminWalletsScreen> {
                         const Icon(Icons.error_outline_rounded,
                             size: 36, color: Color(0xFFDC2626)),
                         const SizedBox(height: 12),
-                        const Text(
+                        Text(
                           'Failed to load technician wallet data',
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w700,
-                            color: Color(0xFF0F172A),
+                            color: AppColors.textPrimary,
                           ),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           message,
                           textAlign: TextAlign.center,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12,
-                            color: Color(0xFF64748B),
+                            color: AppColors.textSecondary,
                           ),
                         ),
                         const SizedBox(height: 16),
                         FilledButton.icon(
                           onPressed: _refresh,
                           icon: const Icon(Icons.refresh_rounded, size: 16),
-                          label: const Text('Retry'),
+                          label: Text('Retry'),
                           style: FilledButton.styleFrom(
-                            backgroundColor: const Color(0xFF0F172A),
+                            backgroundColor: AppColors.textPrimary,
                           ),
                         ),
                       ],
@@ -467,9 +469,9 @@ class _AdminWalletsScreenState extends ConsumerState<AdminWalletsScreen> {
                       padding: const EdgeInsets.symmetric(
                           vertical: 40, horizontal: 16),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: AppColors.surface,
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                        border: Border.all(color: AppColors.border),
                       ),
                       child: const EmptyState(
                         icon: Icons.account_balance_wallet_outlined,
@@ -528,9 +530,9 @@ class _FinancialMetricCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: AppColors.border),
         boxShadow: const [
           BoxShadow(
             color: Color(0x040F172A),
@@ -556,10 +558,10 @@ class _FinancialMetricCard extends StatelessWidget {
               children: [
                 Text(
                   label,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF64748B),
+                    color: AppColors.textSecondary,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -570,19 +572,19 @@ class _FinancialMetricCard extends StatelessWidget {
                   alignment: Alignment.centerLeft,
                   child: Text(
                     value,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 15,
                       fontFamily: 'monospace',
                       fontWeight: FontWeight.w900,
-                      color: Color(0xFF0F172A),
+                      color: AppColors.textPrimary,
                     ),
                   ),
                 ),
                 Text(
                   description,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 10.5,
-                    color: Color(0xFF94A3B8),
+                    color: AppColors.textMuted,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,

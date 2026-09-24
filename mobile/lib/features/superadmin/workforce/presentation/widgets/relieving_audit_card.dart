@@ -25,12 +25,12 @@ class RelievingAuditCard extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: AppSpacing.sm),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(
           color: isVendorApproved
               ? const Color(0xFFDDD6FE)
-              : const Color(0xFFE2E8F0),
+              : AppColors.border,
           width: isVendorApproved ? 1.4 : 1.0,
         ),
         boxShadow: [
@@ -62,7 +62,7 @@ class RelievingAuditCard extends StatelessWidget {
                   backgroundColor: const Color(0xFFF3E8FF),
                   child: Text(
                     initial,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: Color(0xFF7C3AED),
                       fontWeight: FontWeight.w800,
                       fontSize: 14,
@@ -76,10 +76,10 @@ class RelievingAuditCard extends StatelessWidget {
                     children: [
                       Text(
                         request.technicianName,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 13.5,
                           fontWeight: FontWeight.w800,
-                          color: Color(0xFF0F172A),
+                          color: AppColors.textPrimary,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -87,10 +87,10 @@ class RelievingAuditCard extends StatelessWidget {
                       const SizedBox(height: 2),
                       Text(
                         'Req #${request.id} • ${request.vendorName}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
-                          color: Color(0xFF64748B),
+                          color: AppColors.textSecondary,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -113,7 +113,7 @@ class RelievingAuditCard extends StatelessWidget {
               decoration: BoxDecoration(
                 color: const Color(0xFFF8FAFC),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
+                border: Border.all(color: AppColors.border),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -133,7 +133,7 @@ class RelievingAuditCard extends StatelessWidget {
                           ),
                           child: Text(
                             request.reasonDisplay ?? request.reasonCategory,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.w700,
                               color: Color(0xFF3730A3),
@@ -147,9 +147,9 @@ class RelievingAuditCard extends StatelessWidget {
                         const SizedBox(width: 6),
                         Text(
                           'Effective: ${request.desiredRelievingDate}',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 10,
-                            color: Color(0xFF64748B),
+                            color: AppColors.textSecondary,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -161,10 +161,10 @@ class RelievingAuditCard extends StatelessWidget {
                     const SizedBox(height: 6),
                     Text(
                       '"${request.resignationNotes}"',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11,
                         fontStyle: FontStyle.italic,
-                        color: Color(0xFF334155),
+                        color: AppColors.textSecondary,
                       ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
@@ -216,7 +216,7 @@ class RelievingAuditCard extends StatelessWidget {
           ),
 
           const SizedBox(height: AppSpacing.sm),
-          const Divider(height: 1, color: Color(0xFFF1F5F9)),
+          Divider(height: 1, color: Color(0xFFF1F5F9)),
 
           // ── Action Footer ────────────────────────────────────────────────
           Padding(
@@ -233,9 +233,9 @@ class RelievingAuditCard extends StatelessWidget {
                     request.technicianPhone.isNotEmpty
                         ? request.technicianPhone
                         : request.technicianEmail,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 11,
-                      color: Color(0xFF64748B),
+                      color: AppColors.textSecondary,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -259,7 +259,7 @@ class RelievingAuditCard extends StatelessWidget {
                       ),
                     ),
                     icon: const Icon(Icons.verified_user_rounded, size: 13),
-                    label: const Text(
+                    label: Text(
                       'Audit & Clear',
                       style: TextStyle(
                         fontSize: 11,
@@ -269,7 +269,7 @@ class RelievingAuditCard extends StatelessWidget {
                     onPressed: onAudit,
                   )
                 else if (isCompleted)
-                  const Text(
+                  Text(
                     'Relieved (Solo Active)',
                     style: TextStyle(
                       fontSize: 11,
@@ -278,12 +278,12 @@ class RelievingAuditCard extends StatelessWidget {
                     ),
                   )
                 else
-                  const Text(
+                  Text(
                     'Vendor Pending',
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFF94A3B8),
+                      color: AppColors.textMuted,
                     ),
                   ),
               ],

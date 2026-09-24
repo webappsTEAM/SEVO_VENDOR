@@ -32,12 +32,12 @@ class _TableStorageSectionState extends State<TableStorageSection> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // ── Section Title & Subtitle ─────────────────────────────────────
-        const Text(
+        Text(
           'Detailed Table Storage',
           style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w900,
-            color: Color(0xFF0A2540),
+            color: Color(0xFF003B46),
             letterSpacing: -0.3,
           ),
         ),
@@ -59,9 +59,9 @@ class _TableStorageSectionState extends State<TableStorageSection> {
             padding: const EdgeInsets.all(AppSpacing.lg),
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: AppColors.surface,
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
+              border: Border.all(color: AppColors.border),
             ),
             child: Text(
               'No table storage telemetry available.',
@@ -76,9 +76,9 @@ class _TableStorageSectionState extends State<TableStorageSection> {
               margin: const EdgeInsets.only(bottom: 8),
               padding: const EdgeInsets.all(AppSpacing.md),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: AppColors.surface,
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
+                border: Border.all(color: AppColors.border),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -88,29 +88,29 @@ class _TableStorageSectionState extends State<TableStorageSection> {
                       Container(
                         padding: const EdgeInsets.all(5),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF004E89).withValues(alpha: 0.08),
+                          color: const Color(0xFF005965).withValues(alpha: 0.08),
                           borderRadius: BorderRadius.circular(6),
                         ),
-                        child: const Icon(Icons.table_rows_rounded, size: 16, color: Color(0xFF004E89)),
+                        child: const Icon(Icons.table_rows_rounded, size: 16, color: Color(0xFF005965)),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           tbl.tableName,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontFamily: 'monospace',
                             fontSize: 13,
                             fontWeight: FontWeight.w800,
-                            color: Color(0xFF0A2540),
+                            color: Color(0xFF003B46),
                           ),
                         ),
                       ),
                       Text(
                         tbl.totalSize,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w900,
-                          color: Color(0xFF0A2540),
+                          color: Color(0xFF003B46),
                         ),
                       ),
                     ],
@@ -140,12 +140,12 @@ class _TableStorageSectionState extends State<TableStorageSection> {
                           color: const Color(0xFFF1F5F9),
                           borderRadius: BorderRadius.circular(4),
                         ),
-                        child: const Text(
+                        child: Text(
                           'ACTUAL',
                           style: TextStyle(
                             fontSize: 9,
                             fontWeight: FontWeight.w800,
-                            color: Color(0xFF64748B),
+                            color: AppColors.textSecondary,
                           ),
                         ),
                       ),
@@ -159,7 +159,7 @@ class _TableStorageSectionState extends State<TableStorageSection> {
                     child: LinearProgressIndicator(
                       value: proportion,
                       backgroundColor: const Color(0xFFF1F5F9),
-                      color: const Color(0xFF004E89),
+                      color: const Color(0xFF005965),
                       minHeight: 4,
                     ),
                   ),
@@ -192,7 +192,7 @@ class _TableStorageSectionState extends State<TableStorageSection> {
                   _visibleCount >= tableStorage.length
                       ? 'Show Less'
                       : 'Show More Tables (${tableStorage.length - _visibleCount} remaining)',
-                  style: const TextStyle(fontWeight: FontWeight.w700),
+                  style: TextStyle(fontWeight: FontWeight.w700),
                 ),
               ),
             ),

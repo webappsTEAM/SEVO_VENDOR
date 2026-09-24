@@ -190,7 +190,7 @@ void main() {
 
       expect(find.text('Dharani'), findsOneWidget);
       expect(find.byIcon(Icons.phone_rounded), findsOneWidget);
-      expect(find.byIcon(Icons.directions_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.chat_bubble_rounded), findsOneWidget);
     });
 
     testWidgets('JobCard renders complete visual hierarchy for an offer', (tester) async {
@@ -207,7 +207,6 @@ void main() {
       );
 
       expect(find.text('Locks & Carpentry'), findsOneWidget);
-      expect(find.text('#MS4942'), findsOneWidget);
       expect(find.text('₹98'), findsOneWidget);
       expect(find.text('Earn on finish'), findsOneWidget);
       expect(find.textContaining('Block Wall Construction (Site Consultation)'), findsOneWidget);
@@ -233,7 +232,6 @@ void main() {
       );
 
       expect(find.text('Electrical'), findsOneWidget);
-      expect(find.text('#MS4943'), findsOneWidget);
       expect(find.text('₹2672.95'), findsOneWidget);
       expect(find.text('Earn on finish'), findsOneWidget);
       expect(find.textContaining('Main Switchboard Repair & Fuse Upgrade'), findsOneWidget);
@@ -256,10 +254,10 @@ void main() {
       );
 
       expect(find.text('Plumbing'), findsOneWidget);
-      expect(find.text('#MS4944'), findsOneWidget);
       expect(find.text('₹1450.00'), findsOneWidget);
       expect(find.text('Completed'), findsWidgets);
       expect(find.text('View Details'), findsOneWidget);
+      expect(find.text('Mark as Completed'), findsOneWidget);
     });
   });
 
@@ -269,6 +267,7 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
 
+      expect(find.text('SE'), findsOneWidget);
       expect(find.text('My Orders & Jobs'), findsOneWidget);
       expect(find.textContaining('3 Jobs Available & Assigned'), findsOneWidget);
       expect(find.text('1 New Service Offer Available'), findsOneWidget);
@@ -282,31 +281,34 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
 
-      // Filter: Completed
-      await tester.tap(find.textContaining('Completed (1)'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 200));
+      // 1. Filter: Completed (Tap status dropdown, select Completed)
+      await tester.tap(find.byType(JobStatusFilterBar));
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('Completed (1)').last);
+      await tester.pumpAndSettle();
 
-      expect(find.text('#MS4944'), findsOneWidget);
-      expect(find.text('#MS4942'), findsNothing);
-      expect(find.text('#MS4943'), findsNothing);
+      expect(find.textContaining('Water Heater Pipe Leak Repair'), findsOneWidget);
+      expect(find.textContaining('Block Wall Construction'), findsNothing);
+      expect(find.textContaining('Main Switchboard Repair'), findsNothing);
 
-      // Filter: In Progress
-      await tester.tap(find.textContaining('In Progress (1)'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 200));
+      // 2. Filter: In Progress (Tap status dropdown, select In Progress)
+      await tester.tap(find.byType(JobStatusFilterBar));
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('In Progress (1)').last);
+      await tester.pumpAndSettle();
 
-      expect(find.text('#MS4943'), findsOneWidget);
-      expect(find.text('#MS4944'), findsNothing);
-      expect(find.text('#MS4942'), findsNothing);
+      expect(find.textContaining('Main Switchboard Repair'), findsOneWidget);
+      expect(find.textContaining('Water Heater Pipe Leak Repair'), findsNothing);
+      expect(find.textContaining('Block Wall Construction'), findsNothing);
 
-      // Filter: New Offers
-      await tester.tap(find.textContaining('New Offers (1)'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 200));
+      // 3. Filter: New Offers (Tap status dropdown, select New Offers)
+      await tester.tap(find.byType(JobStatusFilterBar));
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('New Offers (1)').last);
+      await tester.pumpAndSettle();
 
-      expect(find.text('#MS4942'), findsOneWidget);
-      expect(find.text('#MS4943'), findsNothing);
+      expect(find.textContaining('Block Wall Construction'), findsOneWidget);
+      expect(find.textContaining('Main Switchboard Repair'), findsNothing);
     });
 
     testWidgets('JobsScreen category filter chips filter job list', (tester) async {
@@ -314,27 +316,19 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
 
-      // Tap Electrical category chip inside JobCategoryFilterBar
-      final electricalChip = find.descendant(
-        of: find.byType(JobCategoryFilterBar),
-        matching: find.text('Electrical'),
-      );
-      await tester.tap(electricalChip);
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 200));
+      // Open category dropdown and tap Electrical
+      await tester.tap(find.byType(JobCategoryFilterBar));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Electrical').last);
+      await tester.pumpAndSettle();
 
-      expect(find.text('#MS4943'), findsOneWidget);
-      expect(find.text('#MS4942'), findsNothing);
-      expect(find.text('#MS4944'), findsNothing);
+      expect(find.textContaining('Main Switchboard Repair'), findsOneWidget);
+      expect(find.textContaining('Block Wall Construction'), findsNothing);
+      expect(find.textContaining('Water Heater Pipe Leak Repair'), findsNothing);
     });
 
-    testWidgets('JobsScreen search toggles and filters by search query', (tester) async {
+    testWidgets('JobsScreen search filters by search query', (tester) async {
       await tester.pumpWidget(buildJobsScreenTestWidget());
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 200));
-
-      // Tap search icon
-      await tester.tap(find.byTooltip('Search Jobs'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
 
@@ -345,9 +339,9 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
 
-      expect(find.text('#MS4943'), findsOneWidget);
-      expect(find.text('#MS4942'), findsNothing);
-      expect(find.text('#MS4944'), findsNothing);
+      expect(find.textContaining('Main Switchboard Repair'), findsOneWidget);
+      expect(find.textContaining('Block Wall Construction'), findsNothing);
+      expect(find.textContaining('Water Heater Pipe Leak Repair'), findsNothing);
     });
   });
 

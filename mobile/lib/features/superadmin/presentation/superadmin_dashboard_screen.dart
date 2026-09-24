@@ -25,6 +25,7 @@ class SuperAdminDashboardScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: const WorkforceAppBar(
+        titleText: 'Operations Center',
         showStatusSubBar: false,
         showDrawerMenu: true,
       ),

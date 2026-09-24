@@ -72,7 +72,7 @@ class _AdminCompletePayoutDialogState extends ConsumerState<AdminCompletePayoutD
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Complete Payout Transfer',
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
           ),
@@ -100,7 +100,7 @@ class _AdminCompletePayoutDialogState extends ConsumerState<AdminCompletePayoutD
                   ),
                   child: Text(
                     _errorMessage!,
-                    style: const TextStyle(fontSize: 12, color: Color(0xFFE11D48)),
+                    style: TextStyle(fontSize: 12, color: Color(0xFFE11D48)),
                   ),
                 ),
                 const SizedBox(height: AppSpacing.md),
@@ -124,7 +124,7 @@ class _AdminCompletePayoutDialogState extends ConsumerState<AdminCompletePayoutD
                         Expanded(
                           child: Text(
                             widget.withdrawal.payoutAccountDisplay?.bankName ?? 'Direct Bank Transfer',
-                            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Color(0xFF1E3A8A)),
+                            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Color(0xFF1E3A8A)),
                           ),
                         ),
                       ],
@@ -132,7 +132,7 @@ class _AdminCompletePayoutDialogState extends ConsumerState<AdminCompletePayoutD
                     const SizedBox(height: 4),
                     Text(
                       'Account: ${widget.withdrawal.payoutAccountDisplay?.maskedAccountDisplay ?? "••••"}  •  Payee: ${widget.withdrawal.payoutAccountDisplay?.accountHolderName ?? widget.withdrawal.employeeName}',
-                      style: const TextStyle(fontSize: 11, color: Color(0xFF3B82F6)),
+                      style: TextStyle(fontSize: 11, color: Color(0xFF3B82F6)),
                     ),
                   ],
                 ),
@@ -140,7 +140,7 @@ class _AdminCompletePayoutDialogState extends ConsumerState<AdminCompletePayoutD
               const SizedBox(height: AppSpacing.md),
 
               // UTR / Transaction Reference Input
-              const Text(
+              Text(
                 'Bank Reference / UTR Number *',
                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
               ),
@@ -171,7 +171,7 @@ class _AdminCompletePayoutDialogState extends ConsumerState<AdminCompletePayoutD
       actions: [
         TextButton(
           onPressed: _isSubmitting ? null : () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          child: Text('Cancel'),
         ),
         FilledButton.icon(
           onPressed: _isSubmitting ? null : _submit,
@@ -181,7 +181,7 @@ class _AdminCompletePayoutDialogState extends ConsumerState<AdminCompletePayoutD
           icon: _isSubmitting
               ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
               : const Icon(Icons.check_circle_rounded, size: 16),
-          label: const Text('Mark Completed'),
+          label: Text('Mark Completed'),
         ),
       ],
     );

@@ -5,6 +5,9 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../routing/app_routes.dart';
 import '../../../shared/widgets/empty_state.dart';
+import '../../../shared/widgets/module_header_card.dart';
+import '../../../shared/widgets/sevo_brand_mark.dart';
+import '../../../shared/widgets/theme_toggle_button.dart';
 import '../../notifications/presentation/notifications_providers.dart';
 import '../../profile/presentation/profile_providers.dart';
 import '../domain/job.dart';
@@ -15,15 +18,16 @@ import 'widgets/job_category_filter_bar.dart';
 import 'widgets/job_status_filter_bar.dart';
 import 'widgets/new_offer_banner.dart';
 
-/// Classic Premium Jobs & Orders screen for Workforce mobile app.
+/// Modern SEVO Jobs & Orders screen for Workforce mobile app.
 ///
 /// Features:
-/// 1. Classic App Bar: "My Orders & Jobs" + Job count badge + Search toggle
-/// 2. New Service Offer Alert banner (when pending offers exist)
-/// 3. Horizontally scrollable Job Status Filters (All, New Offers, In Progress, Completed)
-/// 4. Horizontally scrollable Category Filters (All, Electrical, AC, Plumbing, etc.)
-/// 5. Classic Job Cards with full hierarchy, customer actions, and status action bars
-/// 6. Pull-to-refresh and professional loading/empty/error states
+/// 1. SEVO Header: Branded modern teal/blue gradient AppBar + search, notifications & refresh actions
+/// 2. Interactive "My Orders & Jobs" heading section with live available & assigned job count
+/// 3. Single dropdown Job Status filter: [ All Jobs (X) ▼ ]
+/// 4. Single dropdown Job Category filter: [ All Categories ▼ ]
+/// 5. Clean search field: [ 🔍 Search jobs, location, or category... ]
+/// 6. Modern SEVO Job Cards with complete information, customer actions, and status action bars
+/// 7. Pull-to-refresh and professional loading/empty/error states
 class JobsScreen extends ConsumerStatefulWidget {
   const JobsScreen({super.key});
 
@@ -34,13 +38,14 @@ class JobsScreen extends ConsumerStatefulWidget {
 class _JobsScreenState extends ConsumerState<JobsScreen> {
   JobStatusFilter _selectedStatus = JobStatusFilter.all;
   String? _selectedCategory;
-  bool _isSearchOpen = false;
   final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
   String _searchQuery = '';
 
   @override
   void dispose() {
     _searchController.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
   }
 
@@ -155,7 +160,7 @@ class _JobsScreenState extends ConsumerState<JobsScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        backgroundColor: AppColors.peacockNavy,
+        backgroundColor: const Color(0xFF003B46),
         foregroundColor: Colors.white,
         elevation: 0,
         centerTitle: false,
@@ -165,56 +170,28 @@ class _JobsScreenState extends ConsumerState<JobsScreen> {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                Color(0xFF0A2540), // Deep Peacock Navy
-                Color(0xFF004E89), // Peacock Blue
+                Color(0xFF003B46), // Deep rich teal
+                Color(0xFF005965), // Teal
+                Color(0xFF028090), // Cyan/Teal accent
               ],
             ),
+            borderRadius: BorderRadius.vertical(bottom: Radius.circular(22)),
           ),
         ),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'My Orders & Jobs',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                color: Colors.white,
-                letterSpacing: 0.2,
-              ),
-            ),
-            if (allJobs.isNotEmpty) ...[
-              const SizedBox(height: 1),
-              Text(
-                '${allJobs.length} ${allJobs.length == 1 ? 'Job' : 'Jobs'} Available & Assigned',
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500,
-                  color: Color(0xFFBAE6FD),
-                ),
-              ),
-            ],
-          ],
+        title: const SevoHeaderTitle(
+          fontSize: 22,
         ),
         actions: [
+          const ThemeToggleButton(),
           IconButton(
-            icon: Icon(
-              _isSearchOpen ? Icons.search_off_rounded : Icons.search_rounded,
+            icon: const Icon(
+              Icons.search_rounded,
               color: Colors.white,
               size: 22,
             ),
-            tooltip: _isSearchOpen ? 'Close Search' : 'Search Jobs',
+            tooltip: 'Search Jobs',
             onPressed: () {
-              setState(() {
-                _isSearchOpen = !_isSearchOpen;
-                if (!_isSearchOpen) {
-                  _searchController.clear();
-                  _searchQuery = '';
-                }
-              });
+              _searchFocusNode.requestFocus();
             },
           ),
           IconButton(
@@ -225,9 +202,9 @@ class _JobsScreenState extends ConsumerState<JobsScreen> {
                       style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold),
                     ),
                     backgroundColor: const Color(0xFFEF4444),
-                    child: const Icon(Icons.notifications_outlined, size: 22, color: Colors.white),
+                    child: const Icon(Icons.notifications_none_rounded, size: 23, color: Colors.white),
                   )
-                : const Icon(Icons.notifications_outlined, size: 22, color: Colors.white),
+                : const Icon(Icons.notifications_none_rounded, size: 23, color: Colors.white),
             tooltip: 'Notifications',
             onPressed: () => context.push(AppRoutes.notifications),
           ),
@@ -242,7 +219,7 @@ class _JobsScreenState extends ConsumerState<JobsScreen> {
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: _refreshAll,
-          color: AppColors.peacockBlue,
+          color: const Color(0xFF005965),
           child: ListView(
             padding: const EdgeInsets.fromLTRB(
               AppSpacing.md,
@@ -251,48 +228,16 @@ class _JobsScreenState extends ConsumerState<JobsScreen> {
               AppSpacing.xxl + 24,
             ),
             children: [
-              // ── Optional Search Bar ─────────────────────────────────────────
-              if (_isSearchOpen) ...[
-                Container(
-                  margin: const EdgeInsets.only(bottom: AppSpacing.md),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(AppRadius.chip),
-                    border: Border.all(color: AppColors.peacockBlue, width: 1.2),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x0E004E89),
-                        blurRadius: 6,
-                        offset: Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: TextField(
-                    controller: _searchController,
-                    autofocus: true,
-                    decoration: InputDecoration(
-                      hintText: 'Search by Job ID, title, customer, or address...',
-                      hintStyle: TextStyle(fontSize: 12.5, color: AppColors.textMuted),
-                      prefixIcon: const Icon(Icons.search_rounded, size: 20, color: AppColors.peacockBlue),
-                      suffixIcon: _searchQuery.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.clear_rounded, size: 18),
-                              onPressed: () {
-                                _searchController.clear();
-                                setState(() => _searchQuery = '');
-                              },
-                            )
-                          : null,
-                      border: InputBorder.none,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-                      isDense: true,
-                    ),
-                    onChanged: (val) => setState(() => _searchQuery = val.trim()),
-                  ),
-                ),
-              ],
+              // ── 1. "MY ORDERS & JOBS" CARD ────────────────────────────────────
+              ModuleHeaderCard(
+                title: 'My Orders & Jobs',
+                subtitle: '${allJobs.length} ${allJobs.length == 1 ? 'Job' : 'Jobs'} Available & Assigned',
+                icon: Icons.business_center_rounded,
+                onTap: _refreshAll,
+              ),
+              const SizedBox(height: 12),
 
-              // ── New Service Offer Alert Banner ──────────────────────────────
+              // ── 2. NEW SERVICE OFFER ALERT BANNER ─────────────────────────────
               if (newOffersCount > 0)
                 NewOfferBanner(
                   offerCount: newOffersCount,
@@ -301,7 +246,7 @@ class _JobsScreenState extends ConsumerState<JobsScreen> {
                   },
                 ),
 
-              // ── Status Filters (Horizontally scrollable) ────────────────────
+              // ── 3. STATUS FILTER ROW (Dropdown Chips) ────────────────────────
               JobStatusFilterBar(
                 selectedFilter: _selectedStatus,
                 allCount: allJobs.length,
@@ -316,17 +261,93 @@ class _JobsScreenState extends ConsumerState<JobsScreen> {
                   }
                 },
               ),
-              const SizedBox(height: AppSpacing.sm),
+              const SizedBox(height: 10),
 
-              // ── Category Filters (Horizontally scrollable) ──────────────────
+              // ── 4. CATEGORY FILTER ROW (Dropdown Chips) ──────────────────────
               JobCategoryFilterBar(
                 selectedCategory: _selectedCategory,
                 availableCategories: availableCategories.toList(),
                 onCategorySelected: (cat) => setState(() => _selectedCategory = cat),
               ),
-              const SizedBox(height: AppSpacing.md),
+              const SizedBox(height: 10),
 
-              // ── Main Content Area ───────────────────────────────────────────
+              // ── 5. SEARCH FIELD ───────────────────────────────────────────────
+              Container(
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: _searchQuery.isNotEmpty
+                        ? const Color(0xFF005965)
+                        : AppColors.border,
+                    width: 1.0,
+                  ),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x04000000),
+                      blurRadius: 6,
+                      offset: Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: TextField(
+                  controller: _searchController,
+                  focusNode: _searchFocusNode,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: 'Search jobs, location, or category...',
+                    hintStyle: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w400,
+                      color: AppColors.textMuted,
+                    ),
+                    prefixIcon: Icon(
+                      Icons.search_rounded,
+                      size: 20,
+                      color: AppColors.textMuted,
+                    ),
+                    suffixIcon: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (_searchQuery.isNotEmpty)
+                          IconButton(
+                            icon: Icon(
+                              Icons.clear_rounded,
+                              size: 18,
+                              color: AppColors.textMuted,
+                            ),
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() => _searchQuery = '');
+                            },
+                          ),
+                        Padding(
+                          padding: const EdgeInsets.only(right: 12),
+                          child: Icon(
+                            Icons.tune_rounded,
+                            size: 19,
+                            color: AppColors.textMuted,
+                          ),
+                        ),
+                      ],
+                    ),
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
+                    isDense: true,
+                  ),
+                  onChanged: (val) => setState(() => _searchQuery = val.trim()),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // ── 6. MAIN CONTENT AREA (JOB CARDS / SKELETON / EMPTY / ERROR) ───
               if (isLoading) ...[
                 const JobCardSkeleton(),
                 const JobCardSkeleton(),
@@ -344,12 +365,12 @@ class _JobsScreenState extends ConsumerState<JobsScreen> {
                           color: Color(0xFFDC2626),
                         ),
                         const SizedBox(height: AppSpacing.md),
-                        const Text(
+                        Text(
                           'Unable to load workforce jobs',
                           style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w800,
-                            color: Color(0xFF0F172A),
+                            color: AppColors.textPrimary,
                           ),
                         ),
                         const SizedBox(height: 4),
@@ -398,8 +419,10 @@ class _JobsScreenState extends ConsumerState<JobsScreen> {
                       icon: const Icon(Icons.filter_alt_off_outlined, size: 15),
                       label: const Text('Clear Filters & Search'),
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.peacockBlue,
-                        side: const BorderSide(color: AppColors.peacockBlue),
+                        foregroundColor: AppColors.isDark ? const Color(0xFF38BDF8) : AppColors.peacockBlue,
+                        side: BorderSide(
+                          color: AppColors.isDark ? const Color(0xFF028090) : AppColors.peacockBlue,
+                        ),
                       ),
                     ),
                   ),

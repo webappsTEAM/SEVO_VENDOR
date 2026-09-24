@@ -7,7 +7,9 @@ import '../../../core/network/api_error.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/countdown_text.dart';
 import '../../../shared/widgets/otp_input_field.dart';
+import '../../../shared/widgets/sevo_brand_mark.dart';
 import '../../../shared/widgets/status_chip.dart';
+import '../../../shared/widgets/theme_toggle_button.dart';
 import '../data/job_actions_repository.dart';
 import '../domain/job.dart';
 import '../domain/job_presentation.dart';
@@ -115,8 +117,21 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(job?.requestId ?? 'Job Details'),
+        backgroundColor: const Color(0xFF003B46),
+        foregroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: false,
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            gradient: AppColors.peacockGradient,
+            borderRadius: BorderRadius.vertical(bottom: Radius.circular(22)),
+          ),
+        ),
+        title: const SevoHeaderTitle(
+          fontSize: 22,
+        ),
         actions: [
+          const ThemeToggleButton(),
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: 'Refresh',
@@ -200,7 +215,7 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
             label: 'Offer expires in',
             trailing: CountdownText(
               target: offerExpiresAt,
-              style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF92400E)),
+              style: TextStyle(fontWeight: FontWeight.w800, color: AppColors.warningText),
             ),
           ),
         ],
@@ -384,9 +399,9 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
                     margin: const EdgeInsets.only(bottom: AppSpacing.xs),
                     padding: const EdgeInsets.all(AppSpacing.sm),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF8FAFC),
+                      color: AppColors.surfaceMuted,
                       borderRadius: BorderRadius.circular(AppRadius.chip),
-                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                      border: Border.all(color: AppColors.border),
                     ),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -397,7 +412,7 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
                             children: [
                               Text(
                                 item.name,
-                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
                               ),
                               if (item.selectedOption != null) ...[
                                 const SizedBox(height: 2),
@@ -410,7 +425,7 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
                                 const SizedBox(height: 2),
                                 Text(
                                   item.description!,
-                                  style: const TextStyle(fontSize: 10.5, color: Color(0xFF64748B)),
+                                  style: TextStyle(fontSize: 10.5, color: AppColors.textSecondary),
                                 ),
                               ],
                             ],
@@ -421,16 +436,16 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFE2E8F0),
+                              color: AppColors.surface,
                               borderRadius: BorderRadius.circular(AppRadius.chip),
                             ),
                             child: Text(
                               'Qty: ${item.quantity}',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 10,
                                 fontFamily: 'monospace',
                                 fontWeight: FontWeight.w800,
-                                color: Color(0xFF334155),
+                                color: AppColors.textPrimary,
                               ),
                             ),
                           ),
@@ -467,12 +482,12 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
           const SizedBox(height: AppSpacing.lg),
         ],
 
-        const Text(
+        Text(
           'ACTION STEPS',
           style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w900,
-            color: Color(0xFF475569),
+            color: AppColors.textSecondary,
             letterSpacing: 0.5,
           ),
         ),
@@ -511,20 +526,20 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
                       ),
                     ),
                     const SizedBox(width: AppSpacing.sm),
-                    const Expanded(
+                    Expanded(
                       child: Text(
                         'Active Work Session — Job In Progress',
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w800,
-                          color: Color(0xFF065F46),
+                          color: AppColors.successText,
                         ),
                       ),
                     ),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF059669),
+                        color: AppColors.successText,
                         borderRadius: BorderRadius.circular(AppRadius.chip),
                       ),
                       child: const Text(
@@ -539,7 +554,7 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
                   job.isLogistics
                       ? 'Trip underway. Once the goods are unloaded, capture proof of delivery below — that is what marks the trip delivered.'
                       : 'Clocked in on site. When repairs and service are finished, upload completion photos below to complete the service.',
-                  style: const TextStyle(fontSize: 11.5, color: Color(0xFF047857), height: 1.35),
+                  style: TextStyle(fontSize: 11.5, color: AppColors.successText, height: 1.35),
                 ),
                 const SizedBox(height: AppSpacing.md),
                 ElevatedButton.icon(
@@ -573,18 +588,18 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
               children: [
                 const Icon(Icons.check_circle_rounded, size: 24, color: Color(0xFF2563EB)),
                 const SizedBox(width: AppSpacing.sm),
-                const Expanded(
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         'Service Completed — Proof Submitted',
-                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF1E3A8A)),
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.infoText),
                       ),
                       SizedBox(height: 2),
                       Text(
                         'After-service proof verified. Please settle and confirm payment below to close and complete this job.',
-                        style: TextStyle(fontSize: 11.5, color: Color(0xFF1D4ED8)),
+                        style: TextStyle(fontSize: 11.5, color: AppColors.infoText),
                       ),
                     ],
                   ),
@@ -592,7 +607,7 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1D4ED8),
+                    color: AppColors.infoText,
                     borderRadius: BorderRadius.circular(AppRadius.chip),
                   ),
                   child: const Text(
@@ -614,7 +629,7 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
               borderRadius: BorderRadius.circular(AppRadius.card),
               border: Border.all(color: const Color(0xFFA7F3D0)),
             ),
-            child: const Row(
+            child: Row(
               children: [
                 Icon(Icons.task_alt_rounded, size: 24, color: Color(0xFF059669)),
                 SizedBox(width: AppSpacing.sm),
@@ -624,12 +639,12 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
                     children: [
                       Text(
                         'Job Successfully Completed',
-                        style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: Color(0xFF065F46)),
+                        style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: AppColors.successText),
                       ),
                       SizedBox(height: 2),
                       Text(
                         'All service tasks finished, completion proof submitted, and payment recorded.',
-                        style: TextStyle(fontSize: 11.5, color: Color(0xFF047857)),
+                        style: TextStyle(fontSize: 11.5, color: AppColors.successText),
                       ),
                     ],
                   ),
@@ -661,13 +676,13 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           'Payment: ONLINE (Prepaid)',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
                         ),
                         Text(
                           'Amount: ₹${job.totalAmount?.toStringAsFixed(2) ?? "0.00"} • No cash collection required.',
-                          style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                          style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
                         ),
                       ],
                     ),
@@ -679,9 +694,9 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
                       borderRadius: BorderRadius.circular(AppRadius.chip),
                       border: Border.all(color: const Color(0xFFA7F3D0)),
                     ),
-                    child: const Text(
+                    child: Text(
                       'PAID ONLINE ✓',
-                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Color(0xFF065F46)),
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.successText),
                     ),
                   ),
                 ],
@@ -703,13 +718,13 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           'Cash Payment Confirmed & Collected',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF065F46)),
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.successText),
                         ),
                         Text(
                           'Amount: ₹${job.totalAmount?.toStringAsFixed(2) ?? "0.00"} • Received by Technician',
-                          style: const TextStyle(fontSize: 11, color: Color(0xFF047857)),
+                          style: TextStyle(fontSize: 11, color: AppColors.successText),
                         ),
                       ],
                     ),
@@ -717,7 +732,7 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF059669),
+                      color: AppColors.successText,
                       borderRadius: BorderRadius.circular(AppRadius.chip),
                     ),
                     child: const Text(
@@ -742,24 +757,24 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.hourglass_top_rounded, size: 18, color: Color(0xFFD97706)),
+                      Icon(Icons.hourglass_top_rounded, size: 18, color: AppColors.warningText),
                       const SizedBox(width: AppSpacing.sm),
-                      const Expanded(
+                      Expanded(
                         child: Text(
                           'Cash Collection Reported — Awaiting Confirmation',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF92400E)),
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.warningText),
                         ),
                       ),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFFEF3C7),
+                          color: AppColors.warningBg,
                           borderRadius: BorderRadius.circular(AppRadius.chip),
-                          border: Border.all(color: const Color(0xFFFDE68A)),
+                          border: Border.all(color: AppColors.warningBorder),
                         ),
-                        child: const Text(
+                        child: Text(
                           'CASH PENDING',
-                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Color(0xFF92400E)),
+                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.warningText),
                         ),
                       ),
                     ],
@@ -767,12 +782,12 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
                   const SizedBox(height: 6),
                   Text(
                     'Amount Received: ₹${job.totalAmount?.toStringAsFixed(2) ?? "0.00"}',
-                    style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF78350F)),
+                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.warningText),
                   ),
                   const SizedBox(height: 4),
-                  const Text(
+                  Text(
                     'Customer can confirm in their dashboard, or share the 6-digit payment confirmation OTP with you:',
-                    style: TextStyle(fontSize: 11, color: Color(0xFF92400E)),
+                    style: TextStyle(fontSize: 11, color: AppColors.warningText),
                   ),
                   const SizedBox(height: AppSpacing.sm),
 
@@ -797,7 +812,7 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
                               ? () => _verifyPaymentOtp(job.id)
                               : null,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFFD97706),
+                            backgroundColor: AppColors.warningText,
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(vertical: 10),
                             textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
@@ -808,9 +823,9 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
                       const SizedBox(width: AppSpacing.sm),
                       TextButton(
                         onPressed: () => CashCollectionSheet.show(context, job),
-                        child: const Text(
+                        child: Text(
                           'Re-record cash',
-                          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF92400E)),
+                          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.warningText),
                         ),
                       ),
                     ],
@@ -833,31 +848,31 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Row(
+                      Row(
                         children: [
-                          Icon(Icons.payments_outlined, size: 16, color: Color(0xFFD97706)),
+                          Icon(Icons.payments_outlined, size: 16, color: AppColors.warningText),
                           SizedBox(width: 6),
                           Text(
                             'Payment Collection (Cash on Service)',
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF92400E)),
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.warningText),
                           ),
                         ],
                       ),
                       Text(
                         '₹${job.totalAmount?.toStringAsFixed(2) ?? "0.00"} DUE',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w900,
                           fontFamily: 'monospace',
-                          color: Color(0xFF78350F),
+                          color: AppColors.warningText,
                         ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 6),
-                  const Text(
+                  Text(
                     'Collect cash payment from the customer upon completing work.',
-                    style: TextStyle(fontSize: 11, color: Color(0xFF92400E)),
+                    style: TextStyle(fontSize: 11, color: AppColors.warningText),
                   ),
                   const SizedBox(height: AppSpacing.md),
                   ElevatedButton.icon(
@@ -865,7 +880,7 @@ class _JobDetailScreenState extends ConsumerState<JobDetailScreen> {
                     icon: const Icon(Icons.payments_rounded, size: 16),
                     label: Text('COLLECT ₹${job.totalAmount?.toStringAsFixed(0) ?? "0"} CASH'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFD97706),
+                      backgroundColor: AppColors.warningText,
                       foregroundColor: Colors.white,
                       minimumSize: const Size.fromHeight(44),
                       textStyle: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, letterSpacing: 0.4),
@@ -994,7 +1009,7 @@ class _SectionCard extends StatelessWidget {
             if (freeText != null)
               Text(
                 freeText!,
-                style: const TextStyle(fontSize: 13, color: Color(0xFF334155), height: 1.4),
+                style: TextStyle(fontSize: 13, color: AppColors.textPrimary, height: 1.4),
               )
             else if (customContent != null)
               customContent!

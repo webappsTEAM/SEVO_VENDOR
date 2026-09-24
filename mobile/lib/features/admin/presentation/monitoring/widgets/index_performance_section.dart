@@ -52,12 +52,12 @@ class _IndexPerformanceSectionState extends ConsumerState<IndexPerformanceSectio
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // ── Section Title & Subtitle ─────────────────────────────────────
-        const Text(
+        Text(
           'Database Search Shortcuts',
           style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w900,
-            color: Color(0xFF0A2540),
+            color: Color(0xFF003B46),
             letterSpacing: -0.3,
           ),
         ),
@@ -106,7 +106,7 @@ class _IndexPerformanceSectionState extends ConsumerState<IndexPerformanceSectio
           decoration: BoxDecoration(
             color: const Color(0xFFF8FAFC),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: const Color(0xFFE2E8F0)),
+            border: Border.all(color: AppColors.border),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -116,19 +116,19 @@ class _IndexPerformanceSectionState extends ConsumerState<IndexPerformanceSectio
                   Container(
                     width: 6,
                     height: 6,
-                    decoration: const BoxDecoration(
+                    decoration: BoxDecoration(
                       color: Color(0xFF059669),
                       shape: BoxShape.circle,
                     ),
                   ),
                   const SizedBox(width: 6),
-                  const Text(
+                  Text(
                     'ACTUAL MEASUREMENT',
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w800,
                       letterSpacing: 0.8,
-                      color: Color(0xFF475569),
+                      color: AppColors.textSecondary,
                     ),
                   ),
                 ],
@@ -165,7 +165,7 @@ class _IndexPerformanceSectionState extends ConsumerState<IndexPerformanceSectio
             contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+              borderSide: BorderSide(color: AppColors.border),
             ),
           ),
           onSubmitted: (val) {
@@ -194,7 +194,7 @@ class _IndexPerformanceSectionState extends ConsumerState<IndexPerformanceSectio
               icon: const Icon(Icons.table_chart_outlined, size: 14),
               label: Text(
                 filter.table == 'ALL' ? 'All Tables' : filter.table,
-                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -254,7 +254,7 @@ class _IndexPerformanceSectionState extends ConsumerState<IndexPerformanceSectio
                   minimumSize: Size.zero,
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
-                child: const Text('Clear Filters', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+                child: Text('Clear Filters', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
               ),
             ],
           ],
@@ -267,22 +267,22 @@ class _IndexPerformanceSectionState extends ConsumerState<IndexPerformanceSectio
             width: double.infinity,
             padding: const EdgeInsets.all(AppSpacing.xl),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: AppColors.surface,
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
+              border: Border.all(color: AppColors.border),
             ),
             child: Column(
               children: [
-                const Icon(Icons.search_off_rounded, size: 36, color: Color(0xFF94A3B8)),
+                Icon(Icons.search_off_rounded, size: 36, color: AppColors.textMuted),
                 const SizedBox(height: 8),
                 Text(
                   filter.search.isNotEmpty || filter.table != 'ALL' || filter.status != 'ALL'
                       ? 'No indexes matching your filters.'
                       : 'No index telemetry available.',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
-                    color: Color(0xFF475569),
+                    color: AppColors.textSecondary,
                   ),
                 ),
               ],
@@ -307,7 +307,7 @@ class _IndexPerformanceSectionState extends ConsumerState<IndexPerformanceSectio
                         }
                       : null,
                   icon: const Icon(Icons.chevron_left_rounded, size: 16),
-                  label: const Text('Previous', style: TextStyle(fontSize: 11.5)),
+                  label: Text('Previous', style: TextStyle(fontSize: 11.5)),
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     minimumSize: Size.zero,
@@ -316,10 +316,10 @@ class _IndexPerformanceSectionState extends ConsumerState<IndexPerformanceSectio
                 const SizedBox(width: 12),
                 Text(
                   'Page ${indexHealth.page} of ${indexHealth.totalPages}',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF0A2540),
+                    color: Color(0xFF003B46),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -331,7 +331,7 @@ class _IndexPerformanceSectionState extends ConsumerState<IndexPerformanceSectio
                         }
                       : null,
                   icon: const Icon(Icons.chevron_right_rounded, size: 16),
-                  label: const Text('Next', style: TextStyle(fontSize: 11.5)),
+                  label: Text('Next', style: TextStyle(fontSize: 11.5)),
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     minimumSize: Size.zero,
@@ -351,10 +351,10 @@ class _IndexPerformanceSectionState extends ConsumerState<IndexPerformanceSectio
       children: [
         Text(
           title,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w800,
-            color: Color(0xFF1E293B),
+            color: AppColors.textPrimary,
           ),
         ),
         const SizedBox(width: 4),
@@ -377,7 +377,7 @@ class _IndexPerformanceSectionState extends ConsumerState<IndexPerformanceSectio
     return ChoiceChip(
       label: Text(label),
       selected: isSelected,
-      selectedColor: const Color(0xFF004E89),
+      selectedColor: const Color(0xFF005965),
       labelStyle: TextStyle(
         fontSize: 11,
         fontWeight: FontWeight.w700,

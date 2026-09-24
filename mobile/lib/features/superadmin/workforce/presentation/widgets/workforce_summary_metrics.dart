@@ -27,9 +27,9 @@ class WorkforceSummaryMetrics extends StatelessWidget {
           label: 'TOTAL TECHNICIANS',
           value: '${data.totalTechnicians}',
           subtext: 'Registered on platform',
-          color: const Color(0xFF0F172A),
+          color: AppColors.textPrimary,
           icon: Icons.people_alt_rounded,
-          iconColor: const Color(0xFF004E89),
+          iconColor: const Color(0xFF005965),
           isSelected: selectedFilter == WorkforceFilterType.all,
           onTap: () => onSelectFilter(WorkforceFilterType.all),
         );
@@ -139,8 +139,7 @@ class _MetricBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
+    return Material(color: AppColors.surface,
       borderRadius: BorderRadius.circular(AppRadius.card),
       child: InkWell(
         onTap: onTap,
@@ -153,7 +152,7 @@ class _MetricBox extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(AppRadius.card),
             border: Border.all(
-              color: isSelected ? color : const Color(0xFFE2E8F0),
+              color: isSelected ? color : AppColors.border,
               width: isSelected ? 1.5 : 1.0,
             ),
             boxShadow: [
@@ -181,10 +180,10 @@ class _MetricBox extends StatelessWidget {
                   Expanded(
                     child: Text(
                       label,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF64748B),
+                        color: AppColors.textSecondary,
                         letterSpacing: 0.5,
                       ),
                       maxLines: 1,
@@ -202,7 +201,7 @@ class _MetricBox extends StatelessWidget {
                         color: const Color(0xFFFEE2E2),
                         borderRadius: BorderRadius.circular(4),
                       ),
-                      child: const Text(
+                      child: Text(
                         'AUDIT',
                         style: TextStyle(
                           color: Color(0xFFDC2626),
@@ -228,10 +227,10 @@ class _MetricBox extends StatelessWidget {
               const SizedBox(height: 2),
               Text(
                 subtext,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.w500,
-                  color: Color(0xFF94A3B8),
+                  color: AppColors.textMuted,
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,

@@ -25,7 +25,7 @@ class WorkforceOverviewSection extends StatelessWidget {
             const Icon(
               Icons.people_alt_rounded,
               size: 15,
-              color: Color(0xFF004E89),
+              color: AppColors.primaryLight,
             ),
             const SizedBox(width: 6),
             Text(
@@ -60,8 +60,8 @@ class WorkforceOverviewSection extends StatelessWidget {
               value: data.totalRegisteredCount,
               subtext: 'Technicians on roster',
               icon: Icons.people_alt_rounded,
-              iconColor: const Color(0xFF004E89),
-              valueColor: const Color(0xFF0F172A),
+              iconColor: AppColors.primaryLight,
+              valueColor: AppColors.textPrimary,
             );
 
             final card2 = MetricCard(
@@ -70,7 +70,9 @@ class WorkforceOverviewSection extends StatelessWidget {
               subtext: 'Authorized for jobs',
               icon: Icons.check_circle_rounded,
               iconColor: const Color(0xFF059669),
-              valueColor: const Color(0xFF047857),
+              valueColor: AppColors.isDark
+                  ? const Color(0xFF34D399)
+                  : const Color(0xFF047857),
             );
 
             final card3 = MetricCard(
@@ -79,7 +81,9 @@ class WorkforceOverviewSection extends StatelessWidget {
               subtext: 'Ready for dispatch',
               icon: Icons.sensors_rounded,
               iconColor: const Color(0xFF0284C7),
-              valueColor: const Color(0xFF0369A1),
+              valueColor: AppColors.isDark
+                  ? const Color(0xFF38BDF8)
+                  : const Color(0xFF0369A1),
             );
 
             final card4 = MetricCard(
@@ -88,7 +92,9 @@ class WorkforceOverviewSection extends StatelessWidget {
               subtext: 'Currently in field',
               icon: Icons.construction_rounded,
               iconColor: const Color(0xFFD97706),
-              valueColor: const Color(0xFFB45309),
+              valueColor: AppColors.isDark
+                  ? const Color(0xFFFBBF24)
+                  : const Color(0xFFB45309),
             );
 
             final card5 = MetricCard(
@@ -97,7 +103,9 @@ class WorkforceOverviewSection extends StatelessWidget {
               subtext: 'Awaiting dossier check',
               icon: Icons.schedule_rounded,
               iconColor: const Color(0xFFEA580C),
-              valueColor: const Color(0xFFC2410C),
+              valueColor: AppColors.isDark
+                  ? const Color(0xFFFB923C)
+                  : const Color(0xFFC2410C),
             );
 
             if (isSmall) {

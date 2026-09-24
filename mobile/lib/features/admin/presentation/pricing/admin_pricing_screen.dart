@@ -35,6 +35,7 @@ class _AdminPricingApprovalsScreenState
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: const WorkforceAppBar(
+        titleText: 'Service Catalog & Pricing',
         showStatusSubBar: false,
         showDrawerMenu: true,
       ),
@@ -42,7 +43,7 @@ class _AdminPricingApprovalsScreenState
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: _refresh,
-          color: const Color(0xFF0F172A),
+          color: AppColors.textPrimary,
           child: ListView(
             padding: const EdgeInsets.all(AppSpacing.md),
             children: [
@@ -50,9 +51,9 @@ class _AdminPricingApprovalsScreenState
               Container(
                 padding: const EdgeInsets.all(AppSpacing.md),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: AppColors.surface,
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                  border: Border.all(color: AppColors.border),
                   boxShadow: const [
                     BoxShadow(
                       color: Color(0x040F172A),
@@ -85,7 +86,7 @@ class _AdminPricingApprovalsScreenState
                           ),
                         ),
                         const SizedBox(width: 12),
-                        const Expanded(
+                        Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -94,7 +95,7 @@ class _AdminPricingApprovalsScreenState
                                 style: TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.w800,
-                                  color: Color(0xFF0F172A),
+                                  color: AppColors.textPrimary,
                                   letterSpacing: -0.2,
                                 ),
                               ),
@@ -103,7 +104,7 @@ class _AdminPricingApprovalsScreenState
                                 'Applies to new quotations and bookings. Invoices already issued keep the figures they were issued with.',
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color: Color(0xFF64748B),
+                                  color: AppColors.textSecondary,
                                   height: 1.35,
                                 ),
                               ),
@@ -113,7 +114,7 @@ class _AdminPricingApprovalsScreenState
                       ],
                     ),
                     const SizedBox(height: 12),
-                    const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                    Divider(height: 1, color: Color(0xFFF1F5F9)),
                     const SizedBox(height: 10),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
@@ -121,12 +122,12 @@ class _AdminPricingApprovalsScreenState
                         OutlinedButton.icon(
                           onPressed: _refresh,
                           icon: const Icon(Icons.refresh_rounded, size: 15),
-                          label: const Text('Refresh'),
+                          label: Text('Refresh'),
                           style: OutlinedButton.styleFrom(
-                            foregroundColor: const Color(0xFF475569),
-                            side: const BorderSide(color: Color(0xFFCBD5E1)),
+                            foregroundColor: AppColors.textSecondary,
+                            side: BorderSide(color: AppColors.border),
                             visualDensity: VisualDensity.compact,
-                            textStyle: const TextStyle(
+                            textStyle: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
                             ),
@@ -141,10 +142,10 @@ class _AdminPricingApprovalsScreenState
 
               // ── Async Policies List ────────────────────────────────────────
               policiesAsync.when(
-                loading: () => const Center(
+                loading: () => Center(
                   child: Padding(
                     padding: EdgeInsets.all(AppSpacing.xxl),
-                    child: CircularProgressIndicator(color: Color(0xFF0F172A)),
+                    child: CircularProgressIndicator(color: AppColors.textPrimary),
                   ),
                 ),
                 error: (err, _) => AppCard(
@@ -157,30 +158,30 @@ class _AdminPricingApprovalsScreenState
                         size: 36,
                       ),
                       const SizedBox(height: 12),
-                      const Text(
+                      Text(
                         'Unable to load pricing policies',
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
-                          color: Color(0xFF0F172A),
+                          color: AppColors.textPrimary,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         err.toString(),
                         textAlign: TextAlign.center,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
-                          color: Color(0xFF64748B),
+                          color: AppColors.textSecondary,
                         ),
                       ),
                       const SizedBox(height: 16),
                       FilledButton.icon(
                         onPressed: _refresh,
                         icon: const Icon(Icons.refresh_rounded, size: 16),
-                        label: const Text('Try again'),
+                        label: Text('Try again'),
                         style: FilledButton.styleFrom(
-                          backgroundColor: const Color(0xFF0F172A),
+                          backgroundColor: AppColors.textPrimary,
                         ),
                       ),
                     ],
@@ -353,9 +354,9 @@ class _CategoryPricingPolicyCardState
       margin: const EdgeInsets.only(bottom: AppSpacing.md),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: AppColors.border),
         boxShadow: const [
           BoxShadow(
             color: Color(0x040F172A),
@@ -377,18 +378,18 @@ class _CategoryPricingPolicyCardState
                   children: [
                     Text(
                       widget.policy.effectiveTitle,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF0F172A),
+                        color: AppColors.textPrimary,
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       'Category: ${widget.policy.serviceCategory}',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11.5,
-                        color: Color(0xFF64748B),
+                        color: AppColors.textSecondary,
                         fontFamily: 'monospace',
                       ),
                     ),
@@ -404,7 +405,7 @@ class _CategoryPricingPolicyCardState
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(color: const Color(0xFFA7F3D0)),
                   ),
-                  child: const Row(
+                  child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(Icons.check_circle_rounded,
@@ -424,16 +425,16 @@ class _CategoryPricingPolicyCardState
             ],
           ),
           const SizedBox(height: 14),
-          const Divider(height: 1, color: Color(0xFFF1F5F9)),
+          Divider(height: 1, color: Color(0xFFF1F5F9)),
           const SizedBox(height: 12),
 
           // ── Consultation Fee Mode ─────────────────────────────────────────
-          const Text(
+          Text(
             'Consultation Fee',
             style: TextStyle(
               fontSize: 12.5,
               fontWeight: FontWeight.w800,
-              color: Color(0xFF0F172A),
+              color: AppColors.textPrimary,
             ),
           ),
           const SizedBox(height: 6),
@@ -542,13 +543,13 @@ class _CategoryPricingPolicyCardState
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const Expanded(
+              Expanded(
                 child: Text(
                   'SEVO approves accepted quotes before work is scheduled',
                   style: TextStyle(
                     fontSize: 12.5,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF1E293B),
+                    color: AppColors.textPrimary,
                   ),
                 ),
               ),
@@ -561,14 +562,14 @@ class _CategoryPricingPolicyCardState
             ],
           ),
           const SizedBox(height: 6),
-          const Divider(height: 1, color: Color(0xFFF1F5F9)),
+          Divider(height: 1, color: Color(0xFFF1F5F9)),
           const SizedBox(height: 6),
 
           // ── Customer-Supplied Materials Toggle ────────────────────────────
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -577,13 +578,13 @@ class _CategoryPricingPolicyCardState
                       style: TextStyle(
                         fontSize: 12.5,
                         fontWeight: FontWeight.w600,
-                        color: Color(0xFF1E293B),
+                        color: AppColors.textPrimary,
                       ),
                     ),
                     SizedBox(height: 2),
                     Text(
                       'Off by default — customer-supplied material voids the workmanship warranty.',
-                      style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                      style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
                     ),
                   ],
                 ),
@@ -615,9 +616,9 @@ class _CategoryPricingPolicyCardState
                   : const Icon(Icons.save_rounded, size: 15),
               label: Text(_isSaving ? 'Saving...' : 'Save'),
               style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF0F172A),
+                backgroundColor: AppColors.textPrimary,
                 padding: const EdgeInsets.symmetric(vertical: 11),
-                textStyle: const TextStyle(
+                textStyle: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
                 ),

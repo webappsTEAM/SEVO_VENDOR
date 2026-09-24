@@ -17,6 +17,7 @@ import 'package:mobile/features/superadmin/presentation/widgets/recent_operation
 import 'package:mobile/features/superadmin/presentation/widgets/superadmin_dashboard_header.dart';
 import 'package:mobile/features/superadmin/presentation/widgets/workforce_metric_card.dart';
 import 'package:mobile/routing/app_routes.dart';
+import 'package:mobile/shared/widgets/workforce_app_bar.dart';
 
 class FakeAuthController extends StateNotifier<AuthState>
     implements AuthController {
@@ -255,9 +256,8 @@ void main() {
       await tester.pumpAndSettle();
 
       // Check AppBar branding & context
-      expect(find.text('Workforce Operations Center'), findsWidgets);
-      expect(find.text('SUPERADMIN'), findsWidgets);
-      expect(find.text('SEVO Platform'), findsWidgets);
+      expect(find.byType(WorkforceAppBar), findsOneWidget);
+      expect(find.text('Operations Center'), findsOneWidget);
       expect(find.byIcon(Icons.refresh_rounded), findsWidgets);
       expect(find.byIcon(Icons.menu_rounded), findsOneWidget);
     });

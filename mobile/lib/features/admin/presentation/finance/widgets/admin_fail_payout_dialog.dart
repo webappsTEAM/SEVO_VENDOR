@@ -72,7 +72,7 @@ class _AdminFailPayoutDialogState extends ConsumerState<AdminFailPayoutDialog> {
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Mark Payout as Failed',
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFFDC2626)),
           ),
@@ -100,7 +100,7 @@ class _AdminFailPayoutDialogState extends ConsumerState<AdminFailPayoutDialog> {
                   ),
                   child: Text(
                     _errorMessage!,
-                    style: const TextStyle(fontSize: 12, color: Color(0xFFE11D48)),
+                    style: TextStyle(fontSize: 12, color: Color(0xFFE11D48)),
                   ),
                 ),
                 const SizedBox(height: AppSpacing.md),
@@ -122,7 +122,7 @@ class _AdminFailPayoutDialogState extends ConsumerState<AdminFailPayoutDialog> {
                     Expanded(
                       child: Text(
                         'Marking this withdrawal as failed will automatically reverse ₹${widget.withdrawal.amount.toStringAsFixed(2)} back into the technician\'s available wallet balance.',
-                        style: const TextStyle(fontSize: 11.5, color: Color(0xFF92400E)),
+                        style: TextStyle(fontSize: 11.5, color: Color(0xFF92400E)),
                       ),
                     ),
                   ],
@@ -131,7 +131,7 @@ class _AdminFailPayoutDialogState extends ConsumerState<AdminFailPayoutDialog> {
               const SizedBox(height: AppSpacing.md),
 
               // Failure Reason Input
-              const Text(
+              Text(
                 'Failure Reason *',
                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
               ),
@@ -156,7 +156,7 @@ class _AdminFailPayoutDialogState extends ConsumerState<AdminFailPayoutDialog> {
       actions: [
         TextButton(
           onPressed: _isSubmitting ? null : () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          child: Text('Cancel'),
         ),
         FilledButton.icon(
           onPressed: _isSubmitting ? null : _submit,
@@ -166,7 +166,7 @@ class _AdminFailPayoutDialogState extends ConsumerState<AdminFailPayoutDialog> {
           icon: _isSubmitting
               ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
               : const Icon(Icons.close_rounded, size: 16),
-          label: const Text('Mark Failed & Reverse'),
+          label: Text('Mark Failed & Reverse'),
         ),
       ],
     );

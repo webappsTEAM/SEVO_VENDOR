@@ -42,6 +42,7 @@ class _AdminJobsScreenState extends ConsumerState<AdminJobsScreen> {
 
     return Scaffold(
       appBar: const WorkforceAppBar(
+        titleText: 'Admin Jobs & Bookings',
         showStatusSubBar: false,
         showDrawerMenu: true,
       ),
@@ -62,7 +63,7 @@ class _AdminJobsScreenState extends ConsumerState<AdminJobsScreen> {
                 const SizedBox(height: 16),
                 FilledButton(
                   onPressed: () => ref.invalidate(adminJobsListProvider(null)),
-                  child: const Text('Retry'),
+                  child: Text('Retry'),
                 ),
               ],
             ),
@@ -129,9 +130,9 @@ class _AdminJobsScreenState extends ConsumerState<AdminJobsScreen> {
                 Container(
                   padding: const EdgeInsets.all(AppSpacing.md),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: AppColors.surface,
                     borderRadius: BorderRadius.circular(AppRadius.card),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                    border: Border.all(color: AppColors.border),
                   ),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -139,17 +140,17 @@ class _AdminJobsScreenState extends ConsumerState<AdminJobsScreen> {
                       Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFEFF6FF),
+                          color: AppColors.infoBg,
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: const Icon(
+                        child: Icon(
                           Icons.work_rounded,
-                          color: Color(0xFF2563EB),
+                          color: AppColors.infoText,
                           size: 24,
                         ),
                       ),
                       const SizedBox(width: 12),
-                      const Expanded(
+                      Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -158,7 +159,7 @@ class _AdminJobsScreenState extends ConsumerState<AdminJobsScreen> {
                               style: TextStyle(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w800,
-                                color: Color(0xFF0F172A),
+                                color: AppColors.textPrimary,
                               ),
                             ),
                             SizedBox(height: 2),
@@ -166,7 +167,7 @@ class _AdminJobsScreenState extends ConsumerState<AdminJobsScreen> {
                               'Real-time lifecycle tracking across booking, dispatch, execution, proof upload, and cash collection',
                               style: TextStyle(
                                 fontSize: 11.5,
-                                color: Color(0xFF64748B),
+                                color: AppColors.textSecondary,
                                 height: 1.3,
                               ),
                             ),
@@ -181,9 +182,9 @@ class _AdminJobsScreenState extends ConsumerState<AdminJobsScreen> {
                 // ── Search Input Field ───────────────────────────────────────
                 Container(
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: AppColors.surface,
                     borderRadius: BorderRadius.circular(AppRadius.card),
-                    border: Border.all(color: const Color(0xFFCBD5E1)),
+                    border: Border.all(color: AppColors.border),
                   ),
                   child: TextField(
                     controller: _searchController,
@@ -195,10 +196,10 @@ class _AdminJobsScreenState extends ConsumerState<AdminJobsScreen> {
                     },
                     decoration: InputDecoration(
                       hintText: 'Search by ID, customer, service, or address...',
-                      hintStyle: const TextStyle(
-                          fontSize: 12.5, color: Color(0xFF94A3B8)),
-                      prefixIcon: const Icon(Icons.search_rounded,
-                          size: 20, color: Color(0xFF64748B)),
+                      hintStyle: TextStyle(
+                          fontSize: 12.5, color: AppColors.textMuted),
+                      prefixIcon: Icon(Icons.search_rounded,
+                          size: 20, color: AppColors.textSecondary),
                       suffixIcon: _searchTerm.isNotEmpty
                           ? IconButton(
                               icon: const Icon(Icons.clear_rounded, size: 18),
@@ -280,10 +281,10 @@ class _AdminJobsScreenState extends ConsumerState<AdminJobsScreen> {
                     padding: const EdgeInsets.only(bottom: AppSpacing.xs, left: 2),
                     child: Text(
                       'Showing ${startIndex + 1} to $endIndex of $totalCount records',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
-                        color: Color(0xFF64748B),
+                        color: AppColors.textSecondary,
                       ),
                     ),
                   ),
@@ -305,9 +306,9 @@ class _AdminJobsScreenState extends ConsumerState<AdminJobsScreen> {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: AppColors.surface,
                       borderRadius: BorderRadius.circular(AppRadius.card),
-                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                      border: Border.all(color: AppColors.border),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -317,7 +318,7 @@ class _AdminJobsScreenState extends ConsumerState<AdminJobsScreen> {
                               ? () => setState(() => _currentPage = safePage - 1)
                               : null,
                           icon: const Icon(Icons.chevron_left_rounded, size: 18),
-                          label: const Text('Prev'),
+                          label: Text('Prev'),
                           style: OutlinedButton.styleFrom(
                             visualDensity: VisualDensity.compact,
                             padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -325,10 +326,10 @@ class _AdminJobsScreenState extends ConsumerState<AdminJobsScreen> {
                         ),
                         Text(
                           'Page $safePage of $totalPages ($totalCount)',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
-                            color: Color(0xFF475569),
+                            color: AppColors.textSecondary,
                           ),
                         ),
                         OutlinedButton(
@@ -339,7 +340,7 @@ class _AdminJobsScreenState extends ConsumerState<AdminJobsScreen> {
                             visualDensity: VisualDensity.compact,
                             padding: const EdgeInsets.symmetric(horizontal: 10),
                           ),
-                          child: const Row(
+                          child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text('Next'),
@@ -368,10 +369,10 @@ class _AdminJobsScreenState extends ConsumerState<AdminJobsScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF004E89) : Colors.white,
+          color: isSelected ? AppColors.primary : AppColors.surface,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: isSelected ? const Color(0xFF004E89) : const Color(0xFFCBD5E1),
+            color: isSelected ? AppColors.primary : AppColors.border,
           ),
         ),
         child: Text(
@@ -379,7 +380,7 @@ class _AdminJobsScreenState extends ConsumerState<AdminJobsScreen> {
           style: TextStyle(
             fontSize: 12,
             fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-            color: isSelected ? Colors.white : const Color(0xFF475569),
+            color: isSelected ? Colors.white : AppColors.textSecondary,
           ),
         ),
       ),
@@ -423,9 +424,9 @@ class _AdminJobCard extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppRadius.card),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: AppColors.border),
         boxShadow: const [
           BoxShadow(
             color: Color(0x060A2540),
@@ -447,19 +448,19 @@ class _AdminJobCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFEFF6FF),
+                    color: AppColors.infoBg,
                     borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: const Color(0xFFBFDBFE), width: 0.8),
+                    border: Border.all(color: AppColors.infoBorder, width: 0.8),
                   ),
                   child: Text(
                     job.requestId,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontFamily: 'monospace',
                       fontSize: 13,
                       fontWeight: FontWeight.w900,
-                      color: Color(0xFF004E89),
+                      color: AppColors.isDark ? const Color(0xFF38BDF8) : const Color(0xFF005965),
                       letterSpacing: 0.3,
                     ),
                   ),
@@ -469,17 +470,17 @@ class _AdminJobCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 8),
-            const Divider(height: 1, color: Color(0xFFF1F5F9)),
+            Divider(height: 1, color: AppColors.border),
             const SizedBox(height: 8),
 
             // Customer Name
             if (customer != null && customer.isNotEmpty) ...[
               Row(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.person_rounded,
                     size: 15,
-                    color: Color(0xFF64748B),
+                    color: AppColors.textSecondary,
                   ),
                   const SizedBox(width: 6),
                   Expanded(
@@ -487,10 +488,10 @@ class _AdminJobCard extends StatelessWidget {
                       customer,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 13.5,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFF0F172A),
+                        color: AppColors.textPrimary,
                       ),
                     ),
                   ),
@@ -514,7 +515,7 @@ class _AdminJobCard extends StatelessWidget {
                       'Technician: ${job.technicianName!}${job.technicianPhone != null && job.technicianPhone!.isNotEmpty ? " • ${job.technicianPhone!}" : ""}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12.5,
                         fontWeight: FontWeight.w700,
                         color: Color(0xFF059669),
@@ -535,7 +536,7 @@ class _AdminJobCard extends StatelessWidget {
                   child: Icon(
                     Icons.build_circle_outlined,
                     size: 15,
-                    color: Color(0xFF004E89),
+                    color: Color(0xFF005965),
                   ),
                 ),
                 const SizedBox(width: 6),
@@ -544,10 +545,10 @@ class _AdminJobCard extends StatelessWidget {
                     job.displayTitle,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFF334155),
+                      color: AppColors.textSecondary,
                     ),
                   ),
                 ),
@@ -560,12 +561,12 @@ class _AdminJobCard extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Padding(
+                  Padding(
                     padding: EdgeInsets.only(top: 2),
                     child: Icon(
                       Icons.location_on_outlined,
                       size: 15,
-                      color: Color(0xFF94A3B8),
+                      color: AppColors.textMuted,
                     ),
                   ),
                   const SizedBox(width: 6),
@@ -574,10 +575,10 @@ class _AdminJobCard extends StatelessWidget {
                       address,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w400,
-                        color: Color(0xFF64748B),
+                        color: AppColors.textSecondary,
                         height: 1.25,
                       ),
                     ),
@@ -601,7 +602,7 @@ class _AdminJobCard extends StatelessWidget {
                     paymentText,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
                       color: Color(0xFF059669),
@@ -615,10 +616,10 @@ class _AdminJobCard extends StatelessWidget {
             // Scheduled Date & Time
             Row(
               children: [
-                const Icon(
+                Icon(
                   Icons.schedule_rounded,
                   size: 15,
-                  color: Color(0xFF94A3B8),
+                  color: AppColors.textMuted,
                 ),
                 const SizedBox(width: 6),
                 Expanded(
@@ -626,11 +627,11 @@ class _AdminJobCard extends StatelessWidget {
                     formattedSchedule,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 11.5,
                       fontFamily: 'monospace',
                       fontWeight: FontWeight.w500,
-                      color: Color(0xFF64748B),
+                      color: AppColors.textSecondary,
                     ),
                   ),
                 ),
@@ -648,17 +649,17 @@ class _AdminJobCard extends StatelessWidget {
                     onPressed: () {
                       context.push('/jobs/${job.id}');
                     },
-                    icon: const Icon(Icons.navigation_outlined,
-                        size: 13, color: Color(0xFF059669)),
-                    label: const Text('Track'),
+                    icon: Icon(Icons.navigation_outlined,
+                        size: 13, color: AppColors.successText),
+                    label: Text('Track'),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFF059669),
-                      side: const BorderSide(color: Color(0xFFA7F3D0)),
-                      backgroundColor: const Color(0xFFECFDF5),
+                      foregroundColor: AppColors.successText,
+                      side: BorderSide(color: AppColors.successBorder),
+                      backgroundColor: AppColors.successBg,
                       visualDensity: VisualDensity.compact,
                       padding: const EdgeInsets.symmetric(
                           horizontal: 10, vertical: 6),
-                      textStyle: const TextStyle(
+                      textStyle: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
                       ),
@@ -675,14 +676,14 @@ class _AdminJobCard extends StatelessWidget {
                     );
                   },
                   icon: const Icon(Icons.send_rounded, size: 14),
-                  label: const Text('Dispatch'),
+                  label: Text('Dispatch'),
                   style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF004E89),
+                    backgroundColor: const Color(0xFF005965),
                     foregroundColor: Colors.white,
                     visualDensity: VisualDensity.compact,
                     padding:
                         const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                    textStyle: const TextStyle(
+                    textStyle: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w800,
                     ),

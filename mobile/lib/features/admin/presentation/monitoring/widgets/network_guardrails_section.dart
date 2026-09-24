@@ -27,12 +27,12 @@ class NetworkGuardrailsSection extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'Network Guardrails & Optimizations',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w900,
-                      color: Color(0xFF0A2540),
+                      color: Color(0xFF003B46),
                       letterSpacing: -0.3,
                     ),
                   ),
@@ -51,16 +51,16 @@ class NetworkGuardrailsSection extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
               decoration: BoxDecoration(
-                color: const Color(0xFF004E89).withValues(alpha: 0.1),
+                color: const Color(0xFF005965).withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(4),
-                border: Border.all(color: const Color(0xFF004E89).withValues(alpha: 0.25)),
+                border: Border.all(color: const Color(0xFF005965).withValues(alpha: 0.25)),
               ),
-              child: const Text(
+              child: Text(
                 'Code-Derived',
                 style: TextStyle(
                   fontSize: 9.5,
                   fontWeight: FontWeight.w800,
-                  color: Color(0xFF004E89),
+                  color: Color(0xFF005965),
                 ),
               ),
             ),
@@ -94,9 +94,9 @@ class _GuardrailCardState extends State<_GuardrailCard> {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: AppColors.border),
         boxShadow: const [
           BoxShadow(
             color: Color(0x040A2540),
@@ -138,20 +138,20 @@ class _GuardrailCardState extends State<_GuardrailCard> {
                         children: [
                           Text(
                             opt.title,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w800,
-                              color: Color(0xFF0A2540),
+                              color: Color(0xFF003B46),
                             ),
                           ),
                           const SizedBox(height: 2),
                           Text(
                             opt.endpoint,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 10.5,
                               fontFamily: 'monospace',
                               fontWeight: FontWeight.w700,
-                              color: Color(0xFF004E89),
+                              color: Color(0xFF005965),
                             ),
                           ),
                         ],
@@ -167,7 +167,7 @@ class _GuardrailCardState extends State<_GuardrailCard> {
                       ),
                       child: Text(
                         opt.status,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 9.5,
                           fontWeight: FontWeight.w800,
                           color: Color(0xFF059669),
@@ -191,7 +191,7 @@ class _GuardrailCardState extends State<_GuardrailCard> {
                 // Expanded Technical Details
                 if (_isExpanded) ...[
                   const SizedBox(height: 8),
-                  const Divider(height: 1, color: Color(0xFFE2E8F0)),
+                  Divider(height: 1, color: AppColors.border),
                   const SizedBox(height: 8),
                   if (opt.mechanism != null && opt.mechanism!.isNotEmpty) ...[
                     _buildDetailRow('Mechanism', opt.mechanism!),
@@ -221,20 +221,20 @@ class _GuardrailCardState extends State<_GuardrailCard> {
       children: [
         Text(
           '$label: ',
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w700,
-            color: Color(0xFF64748B),
+            color: AppColors.textSecondary,
           ),
         ),
         Expanded(
           child: Text(
             value,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 11,
               fontFamily: 'monospace',
               fontWeight: FontWeight.w600,
-              color: Color(0xFF1E293B),
+              color: AppColors.textPrimary,
             ),
           ),
         ),

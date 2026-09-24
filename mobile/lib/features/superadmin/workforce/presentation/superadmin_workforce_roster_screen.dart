@@ -107,6 +107,7 @@ class _SuperAdminWorkforceRosterScreenState
 
     return Scaffold(
       appBar: const WorkforceAppBar(
+        titleText: 'Workforce Roster',
         showStatusSubBar: false,
         showDrawerMenu: true,
       ),
@@ -150,20 +151,20 @@ class _SuperAdminWorkforceRosterScreenState
                                   vertical: 2,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF004E89)
+                                  color: const Color(0xFF005965)
                                       .withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(4),
                                   border: Border.all(
-                                    color: const Color(0xFF004E89)
+                                    color: const Color(0xFF005965)
                                         .withValues(alpha: 0.25),
                                   ),
                                 ),
-                                child: const Text(
+                                child: Text(
                                   'PLATFORM GOVERNANCE',
                                   style: TextStyle(
                                     fontSize: 9,
                                     fontWeight: FontWeight.w900,
-                                    color: Color(0xFF004E89),
+                                    color: Color(0xFF005965),
                                     letterSpacing: 0.6,
                                   ),
                                 ),
@@ -171,22 +172,22 @@ class _SuperAdminWorkforceRosterScreenState
                             ],
                           ),
                           const SizedBox(height: 4),
-                          const Text(
+                          Text(
                             'Workforce Oversight (Solo & Tied Workers)',
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.w900,
-                              color: Color(0xFF0F172A),
+                              color: AppColors.textPrimary,
                               letterSpacing: -0.4,
                             ),
                           ),
                           const SizedBox(height: 2),
-                          const Text(
+                          Text(
                             'SEVO Platform Admin: Manage all technicians, directly tie solo workers to any vendor, audit resignations, and relieve workers.',
                             style: TextStyle(
                               fontSize: 11.5,
                               fontWeight: FontWeight.w400,
-                              color: Color(0xFF64748B),
+                              color: AppColors.textSecondary,
                             ),
                           ),
                         ],
@@ -194,7 +195,7 @@ class _SuperAdminWorkforceRosterScreenState
                     ),
                     IconButton(
                       icon: const Icon(Icons.refresh_rounded, size: 20),
-                      color: const Color(0xFF004E89),
+                      color: const Color(0xFF005965),
                       tooltip: 'Refresh Roster',
                       onPressed: () =>
                           ref.invalidate(platformWorkforceDataProvider),
@@ -223,7 +224,7 @@ class _SuperAdminWorkforceRosterScreenState
                         children: [
                           Container(
                             padding: const EdgeInsets.all(6),
-                            decoration: const BoxDecoration(
+                            decoration: BoxDecoration(
                               color: Color(0xFFDBEAFE),
                               shape: BoxShape.circle,
                             ),
@@ -289,7 +290,7 @@ class _SuperAdminWorkforceRosterScreenState
                         label: 'All Workforce',
                         count: data.totalTechnicians,
                         isSelected: selectedFilter == WorkforceFilterType.all,
-                        activeColor: const Color(0xFF004E89),
+                        activeColor: const Color(0xFF005965),
                         onTap: () => ref
                             .read(workforceFilterTypeProvider.notifier)
                             .state = WorkforceFilterType.all,
@@ -337,33 +338,33 @@ class _SuperAdminWorkforceRosterScreenState
                   Container(
                     height: 40,
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: AppColors.surface,
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                      border: Border.all(color: AppColors.border),
                     ),
                     child: Row(
                       children: [
-                        const Padding(
+                        Padding(
                           padding: EdgeInsets.only(left: 10, right: 6),
                           child: Icon(
                             Icons.search_rounded,
                             size: 18,
-                            color: Color(0xFF94A3B8),
+                            color: AppColors.textMuted,
                           ),
                         ),
                         Expanded(
                           child: TextField(
                             controller: _searchController,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12.5,
-                              color: Color(0xFF0F172A),
+                              color: AppColors.textPrimary,
                             ),
-                            decoration: const InputDecoration(
+                            decoration: InputDecoration(
                               hintText:
                                   'Search by name, ID (EMP-...), email, phone...',
                               hintStyle: TextStyle(
                                 fontSize: 12,
-                                color: Color(0xFF94A3B8),
+                                color: AppColors.textMuted,
                               ),
                               border: InputBorder.none,
                               isDense: true,
@@ -375,7 +376,7 @@ class _SuperAdminWorkforceRosterScreenState
                         if (_searchController.text.isNotEmpty)
                           IconButton(
                             icon: const Icon(Icons.clear_rounded, size: 16),
-                            color: const Color(0xFF94A3B8),
+                            color: AppColors.textMuted,
                             onPressed: () {
                               _searchController.clear();
                               _onSearchChanged('');
@@ -391,31 +392,29 @@ class _SuperAdminWorkforceRosterScreenState
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: AppColors.surface,
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                        border: Border.all(color: AppColors.border),
                       ),
                       child: DropdownButtonHideUnderline(
                         child: DropdownButton<int?>(
                           value: selectedVendorId,
                           isExpanded: true,
-                          icon: const Icon(
-                            Icons.arrow_drop_down_rounded,
-                            color: Color(0xFF64748B),
+                          icon: Icon(Icons.arrow_drop_down_rounded, color: AppColors.textSecondary,
                           ),
-                          hint: const Row(
+                          hint: Row(
                             children: [
                               Icon(
                                 Icons.business_outlined,
                                 size: 14,
-                                color: Color(0xFF64748B),
+                                color: AppColors.textSecondary,
                               ),
                               SizedBox(width: 6),
                               Text(
                                 'Filter by Vendor (All Vendors)',
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color: Color(0xFF64748B),
+                                  color: AppColors.textSecondary,
                                 ),
                               ),
                             ],
@@ -433,7 +432,7 @@ class _SuperAdminWorkforceRosterScreenState
                                 value: v.id,
                                 child: Text(
                                   '${v.companyName} (${v.tiedWorkersCount} tied)',
-                                  style: const TextStyle(fontSize: 12),
+                                  style: TextStyle(fontSize: 12),
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
@@ -476,7 +475,7 @@ class _SuperAdminWorkforceRosterScreenState
                       title: 'No technicians found',
                       subtitle:
                           'No workers match your selected filter or search criteria.',
-                      iconColor: const Color(0xFF94A3B8),
+                      iconColor: AppColors.textMuted,
                     )
                   else
                     ...data.workers.map(
@@ -525,7 +524,7 @@ class _FilterTab extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-              color: isSelected ? activeColor : const Color(0xFFCBD5E1),
+              color: isSelected ? activeColor : AppColors.border,
               width: isSelected ? 1.2 : 1.0,
             ),
           ),
@@ -537,7 +536,7 @@ class _FilterTab extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 11.5,
                   fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                  color: isSelected ? Colors.white : const Color(0xFF334155),
+                  color: isSelected ? Colors.white : AppColors.textSecondary,
                 ),
               ),
               const SizedBox(width: 5),
@@ -561,7 +560,7 @@ class _FilterTab extends StatelessWidget {
                         ? Colors.white
                         : (hasAlert
                             ? const Color(0xFFDC2626)
-                            : const Color(0xFF475569)),
+                            : AppColors.textSecondary),
                   ),
                 ),
               ),
@@ -595,9 +594,9 @@ class _EmptyRosterView extends StatelessWidget {
       ),
       margin: const EdgeInsets.only(top: AppSpacing.md),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppRadius.card),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: AppColors.border),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -606,19 +605,19 @@ class _EmptyRosterView extends StatelessWidget {
           const SizedBox(height: 12),
           Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14.5,
               fontWeight: FontWeight.w800,
-              color: Color(0xFF0F172A),
+              color: AppColors.textPrimary,
             ),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 4),
           Text(
             subtitle,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
-              color: Color(0xFF64748B),
+              color: AppColors.textSecondary,
               height: 1.3,
             ),
             textAlign: TextAlign.center,

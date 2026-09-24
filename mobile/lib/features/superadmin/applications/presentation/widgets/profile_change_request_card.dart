@@ -26,9 +26,9 @@ class ProfileChangeRequestCard extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppRadius.card),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: AppColors.border),
         boxShadow: const [
           BoxShadow(
             color: Color(0x040A2540),
@@ -49,18 +49,18 @@ class ProfileChangeRequestCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF004E89).withValues(alpha: 0.08),
+                    color: AppColors.primary.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(4),
                     border: Border.all(
-                      color: const Color(0xFF004E89).withValues(alpha: 0.2),
+                      color: AppColors.primary.withValues(alpha: 0.2),
                     ),
                   ),
                   child: Text(
                     'REQUEST #${changeRequest.id}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w900,
-                      color: Color(0xFF004E89),
+                      color: AppColors.primary,
                       letterSpacing: 0.5,
                     ),
                   ),
@@ -77,28 +77,28 @@ class ProfileChangeRequestCard extends StatelessWidget {
             // ── Field Name & Technician ─────────────────────────────────────
             Text(
               changeRequest.displayField,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 14.5,
                 fontWeight: FontWeight.w800,
-                color: Color(0xFF0F172A),
+                color: AppColors.textPrimary,
               ),
             ),
             const SizedBox(height: 3),
             Row(
               children: [
-                const Icon(
+                Icon(
                   Icons.person_outline_rounded,
                   size: 14,
-                  color: Color(0xFF64748B),
+                  color: AppColors.textSecondary,
                 ),
                 const SizedBox(width: 4),
                 Expanded(
                   child: Text(
                     '${changeRequest.employeeName ?? "Technician"}${changeRequest.employeeId != null && changeRequest.employeeId!.isNotEmpty ? " (${changeRequest.employeeId})" : ""}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFF475569),
+                      color: AppColors.textSecondary,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -112,9 +112,9 @@ class ProfileChangeRequestCard extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
+                color: AppColors.surfaceMuted,
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
+                border: Border.all(color: AppColors.border),
               ),
               child: Row(
                 children: [
@@ -122,12 +122,12 @@ class ProfileChangeRequestCard extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           'CURRENT VALUE',
                           style: TextStyle(
                             fontSize: 9.5,
                             fontWeight: FontWeight.w700,
-                            color: Color(0xFF94A3B8),
+                            color: AppColors.textMuted,
                             letterSpacing: 0.3,
                           ),
                         ),
@@ -136,10 +136,10 @@ class ProfileChangeRequestCard extends StatelessWidget {
                           changeRequest.oldValue?.isNotEmpty == true
                               ? changeRequest.oldValue!
                               : '—',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
-                            color: Color(0xFF64748B),
+                            color: AppColors.textSecondary,
                           ),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
@@ -147,24 +147,24 @@ class ProfileChangeRequestCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  const Padding(
+                  Padding(
                     padding: EdgeInsets.symmetric(horizontal: 6),
                     child: Icon(
                       Icons.arrow_forward_rounded,
                       size: 16,
-                      color: Color(0xFF94A3B8),
+                      color: AppColors.textMuted,
                     ),
                   ),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           'REQUESTED VALUE',
                           style: TextStyle(
                             fontSize: 9.5,
                             fontWeight: FontWeight.w700,
-                            color: Color(0xFF004E89),
+                            color: AppColors.primary,
                             letterSpacing: 0.3,
                           ),
                         ),
@@ -173,10 +173,10 @@ class ProfileChangeRequestCard extends StatelessWidget {
                           changeRequest.newValue?.isNotEmpty == true
                               ? changeRequest.newValue!
                               : '—',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w800,
-                            color: Color(0xFF004E89),
+                            color: AppColors.primary,
                           ),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
@@ -195,26 +195,26 @@ class ProfileChangeRequestCard extends StatelessWidget {
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF1F5F9),
+                  color: AppColors.surfaceMuted,
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'Reason: ',
                       style: TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFF475569),
+                        color: AppColors.textSecondary,
                       ),
                     ),
                     Expanded(
                       child: Text(
                         changeRequest.reason!,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 11.5,
-                          color: Color(0xFF334155),
+                          color: AppColors.textSecondary,
                         ),
                       ),
                     ),
@@ -228,10 +228,10 @@ class ProfileChangeRequestCard extends StatelessWidget {
               const SizedBox(height: 6),
               Text(
                 'Admin Notes: ${changeRequest.adminNotes}',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 11,
                   fontStyle: FontStyle.italic,
-                  color: Color(0xFF64748B),
+                  color: AppColors.textSecondary,
                 ),
               ),
             ],
@@ -239,14 +239,14 @@ class ProfileChangeRequestCard extends StatelessWidget {
             // ── Actions ─────────────────────────────────────────────────────
             if (changeRequest.isPending) ...[
               const SizedBox(height: 10),
-              const Divider(height: 1, color: Color(0xFFF1F5F9)),
+              Divider(height: 1, color: AppColors.border),
               const SizedBox(height: 10),
               Align(
                 alignment: Alignment.centerRight,
                 child: FilledButton.icon(
                   onPressed: onDecide,
                   style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF004E89),
+                    backgroundColor: AppColors.primary,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(
                       horizontal: 14,
@@ -258,7 +258,7 @@ class ProfileChangeRequestCard extends StatelessWidget {
                     ),
                   ),
                   icon: const Icon(Icons.gavel_rounded, size: 14),
-                  label: const Text(
+                  label: Text(
                     'Review / Decide',
                     style: TextStyle(
                       fontSize: 12,

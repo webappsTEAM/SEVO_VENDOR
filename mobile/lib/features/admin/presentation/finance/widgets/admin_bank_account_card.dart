@@ -47,7 +47,7 @@ class AdminBankAccountCard extends ConsumerWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
+            child: Text('Cancel'),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
@@ -108,13 +108,13 @@ class AdminBankAccountCard extends ConsumerWidget {
                       Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF004E89).withValues(alpha: 0.1),
+                          color: const Color(0xFF005965).withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: const Icon(
                           Icons.account_balance_rounded,
                           size: 20,
-                          color: Color(0xFF004E89),
+                          color: AppColors.primary,
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -124,7 +124,7 @@ class AdminBankAccountCard extends ConsumerWidget {
                           children: [
                             Text(
                               account.bankName,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 14.5,
                                 fontWeight: FontWeight.w800,
                               ),
@@ -180,11 +180,11 @@ class AdminBankAccountCard extends ConsumerWidget {
                       Text('Account Number:', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
                       Text(
                         account.maskedAccountNumber,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 13,
                           fontFamily: 'monospace',
                           fontWeight: FontWeight.w800,
-                          color: Color(0xFF0F172A),
+                          color: AppColors.textPrimary,
                         ),
                       ),
                     ],
@@ -196,7 +196,7 @@ class AdminBankAccountCard extends ConsumerWidget {
                       Text('Account Holder:', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
                       Text(
                         account.accountHolderName,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12.5,
                           fontWeight: FontWeight.w700,
                         ),
@@ -210,10 +210,10 @@ class AdminBankAccountCard extends ConsumerWidget {
                       Text('Technician:', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
                       Text(
                         '${account.employeeName} (EMP-${account.employeeId})',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
-                          color: Color(0xFF004E89),
+                          color: AppColors.primary,
                         ),
                       ),
                     ],
@@ -231,12 +231,12 @@ class AdminBankAccountCard extends ConsumerWidget {
                     child: OutlinedButton(
                       onPressed: () => _updateVerification(context, ref, 'REJECTED'),
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFFDC2626),
-                        side: const BorderSide(color: Color(0xFFFECDD3)),
+                        foregroundColor: AppColors.errorText,
+                        side: BorderSide(color: AppColors.errorBorder),
                         padding: const EdgeInsets.symmetric(vertical: 8),
                         minimumSize: const Size(0, 36),
                       ),
-                      child: const Text('Reject', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                      child: Text('Reject', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -250,7 +250,7 @@ class AdminBankAccountCard extends ConsumerWidget {
                         minimumSize: const Size(0, 36),
                       ),
                       icon: const Icon(Icons.verified_rounded, size: 14),
-                      label: const Text('Verify Account', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                      label: Text('Verify Account', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
                     ),
                   ),
                 ],

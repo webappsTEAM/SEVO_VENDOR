@@ -6,6 +6,9 @@ import '../../../core/network/api_error.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/async_value_view.dart';
 import '../../../shared/widgets/empty_state.dart';
+import '../../../shared/widgets/module_header_card.dart';
+import '../../../shared/widgets/sevo_brand_mark.dart';
+import '../../../shared/widgets/theme_toggle_button.dart';
 import '../data/security_repository.dart';
 import '../domain/security_models.dart';
 import 'providers/security_providers.dart';
@@ -17,7 +20,25 @@ class AccountSecurityScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Account & Security')),
+      backgroundColor: AppColors.background,
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF003B46),
+        foregroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: false,
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            gradient: AppColors.peacockGradient,
+            borderRadius: BorderRadius.vertical(bottom: Radius.circular(22)),
+          ),
+        ),
+        title: const SevoHeaderTitle(
+          fontSize: 22,
+        ),
+        actions: const [
+          ThemeToggleButton(),
+        ],
+      ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(
           AppSpacing.lg,
@@ -26,6 +47,12 @@ class AccountSecurityScreen extends StatelessWidget {
           AppSpacing.xxl,
         ),
         children: const [
+          ModuleHeaderCard(
+            title: 'Account & Security',
+            subtitle: 'Password, sessions & two-factor authentication',
+            icon: Icons.shield_outlined,
+          ),
+          SizedBox(height: AppSpacing.md),
           _ChangePasswordCard(),
           SizedBox(height: AppSpacing.md),
           _UpdateEmailCard(),

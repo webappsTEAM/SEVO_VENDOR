@@ -35,9 +35,9 @@ class RecentOperationCard extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppRadius.card),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: AppColors.border),
         boxShadow: const [
           BoxShadow(
             color: Color(0x040A2540),
@@ -67,11 +67,11 @@ class RecentOperationCard extends StatelessWidget {
                     job.requestId,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontFamily: 'monospace',
                       fontSize: 12.5,
                       fontWeight: FontWeight.w900,
-                      color: Color(0xFF004E89),
+                      color: Color(0xFF005965),
                       letterSpacing: 0.3,
                     ),
                   ),
@@ -81,17 +81,17 @@ class RecentOperationCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 8),
-            const Divider(height: 1, color: Color(0xFFF1F5F9)),
+            Divider(height: 1, color: Color(0xFFF1F5F9)),
             const SizedBox(height: 8),
 
             // Customer Name
             if (customer != null && customer.isNotEmpty) ...[
               Row(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.person_outline_rounded,
                     size: 15,
-                    color: Color(0xFF64748B),
+                    color: AppColors.textSecondary,
                   ),
                   const SizedBox(width: 6),
                   Expanded(
@@ -99,10 +99,10 @@ class RecentOperationCard extends StatelessWidget {
                       customer,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFF0F172A),
+                        color: AppColors.textPrimary,
                       ),
                     ),
                   ),
@@ -126,7 +126,7 @@ class RecentOperationCard extends StatelessWidget {
                       'Technician: ${job.technicianName!}${job.technicianPhone != null && job.technicianPhone!.isNotEmpty ? " • ${job.technicianPhone!}" : ""}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
                         color: Color(0xFF059669),
@@ -144,7 +144,7 @@ class RecentOperationCard extends StatelessWidget {
                 const Icon(
                   Icons.build_circle_outlined,
                   size: 15,
-                  color: Color(0xFF004E89),
+                  color: Color(0xFF005965),
                 ),
                 const SizedBox(width: 6),
                 Expanded(
@@ -152,10 +152,10 @@ class RecentOperationCard extends StatelessWidget {
                     job.displayTitle,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12.5,
                       fontWeight: FontWeight.w700,
-                      color: Color(0xFF334155),
+                      color: AppColors.textSecondary,
                     ),
                   ),
                 ),
@@ -168,12 +168,12 @@ class RecentOperationCard extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Padding(
+                  Padding(
                     padding: EdgeInsets.only(top: 1),
                     child: Icon(
                       Icons.location_on_outlined,
                       size: 14,
-                      color: Color(0xFF94A3B8),
+                      color: AppColors.textMuted,
                     ),
                   ),
                   const SizedBox(width: 6),
@@ -182,10 +182,10 @@ class RecentOperationCard extends StatelessWidget {
                       address,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w400,
-                        color: Color(0xFF64748B),
+                        color: AppColors.textSecondary,
                         height: 1.25,
                       ),
                     ),
@@ -198,10 +198,10 @@ class RecentOperationCard extends StatelessWidget {
             // Scheduled Time
             Row(
               children: [
-                const Icon(
+                Icon(
                   Icons.schedule_rounded,
                   size: 14,
-                  color: Color(0xFF94A3B8),
+                  color: AppColors.textMuted,
                 ),
                 const SizedBox(width: 6),
                 Expanded(
@@ -209,11 +209,11 @@ class RecentOperationCard extends StatelessWidget {
                     formattedSchedule,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 11.5,
                       fontFamily: 'monospace',
                       fontWeight: FontWeight.w500,
-                      color: Color(0xFF64748B),
+                      color: AppColors.textSecondary,
                     ),
                   ),
                 ),
@@ -237,7 +237,7 @@ class RecentOperationCard extends StatelessWidget {
                       borderRadius: BorderRadius.circular(6),
                       border: Border.all(color: const Color(0xFFBFDBFE)),
                     ),
-                    child: const Row(
+                    child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
@@ -245,14 +245,14 @@ class RecentOperationCard extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 11.5,
                             fontWeight: FontWeight.w800,
-                            color: Color(0xFF004E89),
+                            color: Color(0xFF005965),
                           ),
                         ),
                         SizedBox(width: 4),
                         Icon(
                           Icons.arrow_forward_rounded,
                           size: 13,
-                          color: Color(0xFF004E89),
+                          color: Color(0xFF005965),
                         ),
                       ],
                     ),
@@ -294,7 +294,7 @@ class SuperAdminRecentOperationsSection extends StatelessWidget {
                   const Icon(
                     Icons.business_center_outlined,
                     size: 15,
-                    color: Color(0xFF004E89),
+                    color: Color(0xFF005965),
                   ),
                   const SizedBox(width: 6),
                   Expanded(
@@ -327,14 +327,14 @@ class SuperAdminRecentOperationsSection extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF004E89),
+                        color: Color(0xFF005965),
                       ),
                     ),
                     SizedBox(width: 2),
                     Icon(
                       Icons.arrow_forward_rounded,
                       size: 13,
-                      color: Color(0xFF004E89),
+                      color: Color(0xFF005965),
                     ),
                   ],
                 ),

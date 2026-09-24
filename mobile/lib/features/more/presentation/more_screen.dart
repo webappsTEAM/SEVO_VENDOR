@@ -95,18 +95,19 @@ class MoreScreen extends ConsumerWidget {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    Color(0xFF0A2540), // Deep Navy
-                    Color(0xFF004E89), // Royal Navy Blue
+                    Color(0xFF003B46), // Deep rich teal
+                    Color(0xFF005965), // Teal
+                    Color(0xFF028090), // Cyan accent
                   ],
                 ),
                 borderRadius: BorderRadius.circular(AppRadius.cardStandard),
                 border: Border.all(
-                  color: const Color(0xFF1E3A8A).withValues(alpha: 0.4),
+                  color: const Color(0xFF005965).withValues(alpha: 0.4),
                   width: 1,
                 ),
                 boxShadow: const [
                   BoxShadow(
-                    color: Color(0x1A0A2540),
+                    color: Color(0x12003B46),
                     blurRadius: 10,
                     offset: Offset(0, 3),
                   ),
@@ -362,7 +363,7 @@ class MoreScreen extends ConsumerWidget {
                 children: [
                   _NavRow(
                     icon: Icons.work_outline_rounded,
-                    iconBg: const Color(0xFF004E89),
+                    iconBg: AppColors.primary,
                     title: 'Jobs',
                     subtitle: 'Manage active, completed, and assigned jobs',
                     onTap: () => context.go(AppRoutes.jobs),
@@ -405,7 +406,7 @@ class MoreScreen extends ConsumerWidget {
                 children: [
                   _NavRow(
                     icon: Icons.person_outline_rounded,
-                    iconBg: const Color(0xFF2563EB),
+                    iconBg: const Color(0xFF028090),
                     title: 'My Profile',
                     subtitle: 'Personal details, bio, language & contact',
                     onTap: () => context.push(AppRoutes.moreProfile),
@@ -448,7 +449,7 @@ class MoreScreen extends ConsumerWidget {
                 children: [
                   _NavRow(
                     icon: Icons.account_balance_wallet_outlined,
-                    iconBg: const Color(0xFF004E89), // Peacock Blue
+                    iconBg: AppColors.primary, // Peacock Blue
                     title: 'Wallet',
                     subtitle: 'Balances, hold, eligibility & payouts',
                     onTap: () => context.push(AppRoutes.earningsWallet),
@@ -628,7 +629,7 @@ class _SectionHeader extends StatelessWidget {
           height: 12,
           margin: const EdgeInsets.only(right: 6),
           decoration: BoxDecoration(
-            color: const Color(0xFF004E89),
+            color: AppColors.primary,
             borderRadius: BorderRadius.circular(2),
           ),
         ),

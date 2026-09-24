@@ -66,23 +66,24 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
     } catch (_) {}
 
     return Drawer(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       child: SafeArea(
         child: Column(
           children: [
             // ── Drawer Header ──────────────────────────────────────────────
             Container(
               padding: const EdgeInsets.all(AppSpacing.md),
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    Color(0xFF0A2540), // Deep Peacock Navy
-                    Color(0xFF004E89), // Peacock Blue
+                    Color(0xFF003B46), // Deep rich teal
+                    Color(0xFF005965), // Teal Primary
+                    Color(0xFF028090), // Cyan Accent
                   ],
                 ),
-                border: Border(bottom: BorderSide(color: Color(0x33004E89))),
+                border: Border(bottom: BorderSide(color: Color(0x33005965))),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -120,7 +121,7 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                           children: [
                             Text(
                               isSuperAdmin ? 'SEVO Platform' : 'SEVO',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: Colors.white,
                                 fontSize: 16,
                                 fontWeight: FontWeight.w900,
@@ -171,7 +172,7 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                         initial: initial,
                         radius: 19,
                         fontSize: 14,
-                        backgroundColor: Colors.white.withValues(alpha: 0.15),
+                        backgroundColor: AppColors.surface.withValues(alpha: 0.15),
                         foregroundColor: Colors.white,
                       ),
                       const SizedBox(width: 10),
@@ -181,7 +182,7 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                           children: [
                             Text(
                               displayName,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: Colors.white,
                                 fontSize: 14,
                                 fontWeight: FontWeight.w800,
@@ -192,7 +193,7 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                             if (email.isNotEmpty)
                               Text(
                                 email,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   color: Color(0xFFBAE6FD),
                                   fontSize: 11,
                                 ),
@@ -214,7 +215,7 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                         ),
                         child: Text(
                           isSuperAdmin ? 'SUPERADMIN' : 'ADMIN',
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: Color(0xFF92400E),
                             fontSize: 9.5,
                             fontWeight: FontWeight.w900,
@@ -258,7 +259,7 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                     ),
 
                     const SizedBox(height: AppSpacing.sm),
-                    const Divider(height: 1),
+                    Divider(height: 1),
                     const SizedBox(height: AppSpacing.xs),
 
                     // 1. PLATFORM GOVERNANCE
@@ -283,7 +284,7 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                       ),
                       _DrawerNavItem(
                         icon: Icons.groups_rounded,
-                        iconColor: const Color(0xFF004E89),
+                        iconColor: AppColors.primaryLight,
                         label: 'Workforce Roster',
                         route: AppRoutes.superAdminWorkforce,
                         isActive: currentLocation.startsWith('/superadmin/workforce') ||
@@ -320,7 +321,7 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                     ],
 
                     const SizedBox(height: AppSpacing.sm),
-                    const Divider(height: 1),
+                    Divider(height: 1),
                     const SizedBox(height: AppSpacing.xs),
 
                     // 2. OPERATIONS HUB
@@ -333,7 +334,7 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                     if (_operationsHubExpanded) ...[
                       _DrawerNavItem(
                         icon: Icons.calculate_rounded,
-                        iconColor: const Color(0xFF004E89),
+                        iconColor: AppColors.primaryLight,
                         label: 'AC Estimations',
                         route: AppRoutes.estimates,
                         isActive: currentLocation == AppRoutes.estimates ||
@@ -445,7 +446,7 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                     ],
 
                     const SizedBox(height: AppSpacing.sm),
-                    const Divider(height: 1),
+                    Divider(height: 1),
                     const SizedBox(height: AppSpacing.xs),
 
                     // 3. FINANCE & TREASURY
@@ -458,7 +459,7 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                     if (_financeTreasuryExpanded) ...[
                       _DrawerNavItem(
                         icon: Icons.account_balance_wallet_rounded,
-                        iconColor: const Color(0xFF004E89),
+                        iconColor: AppColors.primaryLight,
                         label: 'Platform Treasury',
                         route: AppRoutes.adminFinanceWallets,
                         isActive: currentLocation.startsWith('/admin/finance/wallets') ||
@@ -507,7 +508,7 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                     ],
 
                     const SizedBox(height: AppSpacing.sm),
-                    const Divider(height: 1),
+                    Divider(height: 1),
                     const SizedBox(height: AppSpacing.xs),
 
                     // 4. TELEMETRY & AUDITS
@@ -554,9 +555,11 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                       margin: const EdgeInsets.only(bottom: AppSpacing.sm),
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFEFF6FF),
+                        color: AppColors.isDark
+                            ? AppColors.surfaceMuted
+                            : const Color(0xFFE6F4F1),
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: const Color(0xFFBFDBFE)),
+                        border: Border.all(color: AppColors.border),
                       ),
                       child: Row(
                         children: [
@@ -564,7 +567,7 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                             width: 30,
                             height: 30,
                             decoration: BoxDecoration(
-                              color: const Color(0xFF004E89),
+                              color: AppColors.primary,
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: const Icon(
@@ -580,20 +583,20 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                               children: [
                                 Text(
                                   user?.companyName ?? 'Vendor Business',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.w800,
-                                    color: Color(0xFF0A2540),
+                                    color: AppColors.textPrimary,
                                   ),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
-                                const Text(
+                                Text(
                                   'Company Portal',
                                   style: TextStyle(
                                     fontSize: 10,
                                     fontWeight: FontWeight.w600,
-                                    color: Color(0xFF2563EB),
+                                    color: AppColors.primaryLight,
                                   ),
                                 ),
                               ],
@@ -618,7 +621,7 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                     ),
 
                     const SizedBox(height: AppSpacing.sm),
-                    const Divider(height: 1),
+                    Divider(height: 1),
                     const SizedBox(height: AppSpacing.xs),
 
                     // 2. MY WORKFORCE GROUP
@@ -654,7 +657,7 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                       ),
                       _DrawerNavItem(
                         icon: Icons.how_to_reg_rounded,
-                        iconColor: const Color(0xFF004E89),
+                        iconColor: AppColors.primaryLight,
                         label: 'Employee Roster',
                         route: AppRoutes.adminEmployees,
                         isActive: currentLocation.startsWith('/admin/employees') ||
@@ -679,7 +682,7 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                     ],
 
                     const SizedBox(height: AppSpacing.sm),
-                    const Divider(height: 1),
+                    Divider(height: 1),
                     const SizedBox(height: AppSpacing.xs),
 
                     // 3. OPERATIONS GROUP
@@ -730,7 +733,7 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                     ],
 
                     const SizedBox(height: AppSpacing.sm),
-                    const Divider(height: 1),
+                    Divider(height: 1),
                     const SizedBox(height: AppSpacing.xs),
 
                     // 4. FINANCE & LEDGER GROUP
@@ -742,7 +745,7 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                     if (_financeExpanded) ...[
                       _DrawerNavItem(
                         icon: Icons.account_balance_wallet_rounded,
-                        iconColor: const Color(0xFF004E89),
+                        iconColor: AppColors.primaryLight,
                         label: 'Company Wallet',
                         route: AppRoutes.adminFinanceWallets,
                         isActive: currentLocation.startsWith('/admin/finance/wallets') ||
@@ -791,7 +794,7 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                     ],
 
                     const SizedBox(height: AppSpacing.sm),
-                    const Divider(height: 1),
+                    Divider(height: 1),
                     const SizedBox(height: AppSpacing.xs),
 
                     // 5. TELEMETRY GROUP
@@ -818,7 +821,7 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                       ),
                       _DrawerNavItem(
                         icon: Icons.bar_chart_rounded,
-                        iconColor: const Color(0xFF004E89),
+                        iconColor: AppColors.primaryLight,
                         label: 'Reports & Audits',
                         route: AppRoutes.adminReports,
                         isActive: currentLocation.startsWith('/admin/reports') ||
@@ -840,15 +843,15 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                 horizontal: AppSpacing.sm,
                 vertical: AppSpacing.xs,
               ),
-              decoration: const BoxDecoration(
-                border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
+              decoration: BoxDecoration(
+                border: Border(top: BorderSide(color: AppColors.border)),
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   _DrawerNavItem(
                     icon: Icons.settings_rounded,
-                    iconColor: const Color(0xFF64748B),
+                    iconColor: AppColors.textSecondary,
                     label: 'System Settings',
                     route: isSuperAdmin ? AppRoutes.adminSettings : AppRoutes.adminHome,
                     isActive: isSuperAdmin
@@ -871,7 +874,7 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                       borderRadius: BorderRadius.circular(AppRadius.card),
                     ),
                     leading: const Icon(Icons.logout_rounded, color: Color(0xFFDC2626), size: 20),
-                    title: const Text(
+                    title: Text(
                       'Log Out',
                       style: TextStyle(
                         color: Color(0xFFDC2626),
@@ -884,19 +887,19 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                       final confirmed = await showDialog<bool>(
                         context: context,
                         builder: (ctx) => AlertDialog(
-                          title: const Text('Log Out'),
-                          content: const Text('Are you sure you want to log out of Workforce?'),
+                          title: Text('Log Out'),
+                          content: Text('Are you sure you want to log out of Workforce?'),
                           actions: [
                             TextButton(
                               onPressed: () => Navigator.of(ctx).pop(false),
-                              child: const Text('Cancel'),
+                              child: Text('Cancel'),
                             ),
                             FilledButton(
                               style: FilledButton.styleFrom(
                                 backgroundColor: const Color(0xFFDC2626),
                               ),
                               onPressed: () => Navigator.of(ctx).pop(true),
-                              child: const Text('Log Out'),
+                              child: Text('Log Out'),
                             ),
                           ],
                         ),
@@ -939,17 +942,17 @@ class _DrawerGroupHeader extends StatelessWidget {
           children: [
             Text(
               title,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 10.5,
                 fontWeight: FontWeight.w800,
-                color: Color(0xFF94A3B8),
+                color: AppColors.textMuted,
                 letterSpacing: 0.8,
               ),
             ),
             Icon(
               isExpanded ? Icons.keyboard_arrow_down_rounded : Icons.keyboard_arrow_right_rounded,
               size: 16,
-              color: const Color(0xFF94A3B8),
+              color: AppColors.textMuted,
             ),
           ],
         ),
@@ -978,25 +981,25 @@ class _DrawerNavItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final effectiveIconColor = isActive
-        ? const Color(0xFF004E89) // Peacock Blue
-        : (iconColor ?? const Color(0xFF64748B));
+        ? AppColors.primary
+        : (iconColor ?? (AppColors.isDark ? AppColors.textSecondary : AppColors.textSecondary));
 
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 1.5),
       child: Material(
-        color: isActive ? const Color(0xFFEFF6FF) : Colors.transparent,
+        color: isActive ? AppColors.primary.withValues(alpha: 0.15) : Colors.transparent,
         borderRadius: BorderRadius.circular(8),
         child: InkWell(
           borderRadius: BorderRadius.circular(8),
           onTap: onTap,
           child: Container(
             decoration: isActive
-                ? const BoxDecoration(
-                    borderRadius: BorderRadius.only(
+                ? BoxDecoration(
+                    borderRadius: const BorderRadius.only(
                       topLeft: Radius.circular(8),
                       bottomLeft: Radius.circular(8),
                     ),
-                    border: Border(left: BorderSide(color: Color(0xFF004E89), width: 3.5)),
+                    border: Border(left: BorderSide(color: AppColors.primary, width: 3.5)),
                   )
                 : null,
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
@@ -1010,7 +1013,7 @@ class _DrawerNavItem extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: isActive ? FontWeight.w800 : FontWeight.w600,
-                      color: isActive ? const Color(0xFF0A2540) : const Color(0xFF334155),
+                      color: isActive ? AppColors.primary : AppColors.textPrimary,
                     ),
                   ),
                 ),

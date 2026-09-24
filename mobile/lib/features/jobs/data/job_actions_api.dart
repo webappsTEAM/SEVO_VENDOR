@@ -113,9 +113,9 @@ class JobActionsApi {
       if (notes != null && notes.isNotEmpty) 'notes': notes,
       if (recipientName != null && recipientName.isNotEmpty) 'recipient_name': recipientName,
       if (recipientPhone != null && recipientPhone.isNotEmpty) 'recipient_phone': recipientPhone,
-      if (stopId != null) 'stop_id': stopId,
-      if (latitude != null) 'latitude': latitude,
-      if (longitude != null) 'longitude': longitude,
+      'stop_id': ?stopId,
+      'latitude': ?latitude,
+      'longitude': ?longitude,
     });
     final response = await _dio.post('/workforce/jobs/$jobId/proof/', data: formData);
     return response.data as Map<String, dynamic>;

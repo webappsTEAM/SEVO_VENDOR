@@ -4,7 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/async_value_view.dart';
 import '../../../shared/widgets/empty_state.dart';
+import '../../../shared/widgets/module_header_card.dart';
+import '../../../shared/widgets/sevo_brand_mark.dart';
 import '../../../shared/widgets/status_chip.dart';
+import '../../../shared/widgets/theme_toggle_button.dart';
 import '../../jobs/presentation/widgets/category_helper.dart';
 import '../../profile/domain/employee_profile.dart';
 import '../../profile/presentation/profile_providers.dart';
@@ -45,20 +48,14 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
         flexibleSpace: Container(
           decoration: const BoxDecoration(
             gradient: AppColors.peacockGradient,
+            borderRadius: BorderRadius.vertical(bottom: Radius.circular(22)),
           ),
         ),
-        title: const Text(
-          'Services & Skills',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w800,
-            color: Colors.white,
-            letterSpacing: 0.2,
-          ),
+        title: const SevoHeaderTitle(
+          fontSize: 22,
         ),
         actions: [
+          const ThemeToggleButton(),
           IconButton(
             icon: const Icon(Icons.refresh_rounded, color: Colors.white, size: 22),
             tooltip: 'Refresh Services',
@@ -107,24 +104,11 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
                 AppSpacing.xxl,
               ),
               children: [
-                // Header & Subtitle
-                const Text(
-                  'Services & Skills',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF0F172A),
-                    letterSpacing: -0.3,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  'Manage your authorized trade services, skills portfolio, and request new service categories',
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    color: Color(0xFF64748B),
-                    height: 1.35,
-                  ),
+                // Module Heading Card
+                ModuleHeaderCard(
+                  title: 'Services & Skills',
+                  subtitle: '${approvedServices.length} Active Services • ${categories.length} Categories',
+                  icon: Icons.handyman_rounded,
                 ),
                 const SizedBox(height: AppSpacing.md),
 
@@ -165,11 +149,11 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
                 // Approved Services Grouped by Category
                 if (approvedServices.isEmpty)
                   Card(
-                    color: Colors.white,
+                    color: AppColors.surface,
                     elevation: 0,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
-                      side: const BorderSide(color: Color(0xFFE2E8F0)),
+                      side: BorderSide(color: AppColors.border),
                     ),
                     child: const Padding(
                       padding: EdgeInsets.all(AppSpacing.xl),
@@ -319,9 +303,10 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      backgroundColor: AppColors.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        side: BorderSide(color: AppColors.border, width: 1.0),
       ),
       builder: (ctx) => RequestNewServicesModal(
         categories: categories,
@@ -397,23 +382,29 @@ class _ServicesScreenState extends ConsumerState<ServicesScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text(
-          'Remove Service?',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: AppColors.border, width: 1.0),
         ),
-        content: const Text(
+        title: Text(
+          'Remove Service?',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+        ),
+        content: Text(
           'Are you sure you want to remove this service from your authorized skills?',
-          style: TextStyle(fontSize: 13, color: Color(0xFF475569)),
+          style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
+            child: Text('Cancel', style: TextStyle(color: AppColors.textSecondary)),
           ),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFFDC2626),
+              foregroundColor: Colors.white,
             ),
             child: const Text('Remove'),
           ),
@@ -461,11 +452,11 @@ class _ActiveTradeQualificationsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
-      color: Colors.white,
+      color: AppColors.surface,
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: const BorderSide(color: Color(0xFFE2E8F0)),
+        side: BorderSide(color: AppColors.border),
       ),
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.md),
@@ -478,13 +469,21 @@ class _ActiveTradeQualificationsCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFE0F2FE),
+                    color: AppColors.isDark
+                        ? const Color(0xFF003B46).withValues(alpha: 0.5)
+                        : const Color(0xFFE6F4F1),
                     borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: AppColors.isDark
+                          ? const Color(0xFF028090).withValues(alpha: 0.5)
+                          : const Color(0xFFB2DFDB),
+                      width: 0.8,
+                    ),
                   ),
                   child: const Icon(
                     Icons.workspace_premium_outlined,
                     size: 22,
-                    color: AppColors.peacockBlue,
+                    color: AppColors.primaryLight,
                   ),
                 ),
                 const SizedBox(width: AppSpacing.md),
@@ -492,20 +491,20 @@ class _ActiveTradeQualificationsCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'Active Trade Qualifications',
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w800,
-                          color: Color(0xFF0F172A),
+                          color: AppColors.textPrimary,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         'You are currently authorized to accept customer service requests for ${categoryCount > 0 ? '$categoryCount trades' : 'your authorized trades'}.',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
-                          color: Color(0xFF64748B),
+                          color: AppColors.textSecondary,
                           height: 1.3,
                         ),
                       ),
@@ -522,19 +521,19 @@ class _ActiveTradeQualificationsCard extends StatelessWidget {
                 vertical: 10,
               ),
               decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
+                color: AppColors.surfaceMuted,
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
+                border: Border.all(color: AppColors.border),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
+                  Text(
                     'Total Services',
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
-                      color: Color(0xFF334155),
+                      color: AppColors.textPrimary,
                     ),
                   ),
                   Container(
@@ -543,16 +542,24 @@ class _ActiveTradeQualificationsCard extends StatelessWidget {
                       vertical: 3,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFECFDF5),
+                      color: AppColors.isDark
+                          ? const Color(0xFF064E3B).withValues(alpha: 0.4)
+                          : const Color(0xFFECFDF5),
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: const Color(0xFFA7F3D0)),
+                      border: Border.all(
+                        color: AppColors.isDark
+                            ? const Color(0xFF059669)
+                            : const Color(0xFFA7F3D0),
+                      ),
                     ),
                     child: Text(
                       '$totalServicesCount',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF059669),
+                        color: AppColors.isDark
+                            ? const Color(0xFF6EE7B7)
+                            : const Color(0xFF059669),
                       ),
                     ),
                   ),
@@ -593,17 +600,17 @@ class _CategoryServiceSection extends StatelessWidget {
               const Icon(
                 Icons.build_circle_outlined,
                 size: 15,
-                color: AppColors.peacockBlue,
+                color: AppColors.primaryLight,
               ),
               const SizedBox(width: 6),
               Flexible(
                 child: Text(
                   categoryName,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 13.5,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF0F172A),
+                    color: AppColors.textPrimary,
                   ),
                 ),
               ),
@@ -611,15 +618,16 @@ class _CategoryServiceSection extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF1F5F9),
+                  color: AppColors.surfaceMuted,
                   borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: AppColors.border),
                 ),
                 child: Text(
                   '${services.length}',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.bold,
-                    color: Color(0xFF64748B),
+                    color: AppColors.textSecondary,
                   ),
                 ),
               ),
@@ -655,11 +663,11 @@ class _ServiceCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-      color: Colors.white,
+      color: AppColors.surface,
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
-        side: const BorderSide(color: Color(0xFFE2E8F0)),
+        side: BorderSide(color: AppColors.border),
       ),
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.md),
@@ -677,7 +685,7 @@ class _ServiceCard extends StatelessWidget {
                       const Icon(
                         Icons.handyman_outlined,
                         size: 13,
-                        color: AppColors.peacockBlue,
+                        color: AppColors.primaryLight,
                       ),
                       const SizedBox(width: 4),
                       Flexible(
@@ -687,7 +695,7 @@ class _ServiceCard extends StatelessWidget {
                           style: const TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
-                            color: AppColors.peacockBlue,
+                            color: AppColors.primaryLight,
                           ),
                         ),
                       ),
@@ -698,16 +706,24 @@ class _ServiceCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFECFDF5),
+                    color: AppColors.isDark
+                        ? const Color(0xFF064E3B).withValues(alpha: 0.4)
+                        : const Color(0xFFECFDF5),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFFA7F3D0)),
+                    border: Border.all(
+                      color: AppColors.isDark
+                          ? const Color(0xFF059669)
+                          : const Color(0xFFA7F3D0),
+                    ),
                   ),
-                  child: const Text(
+                  child: Text(
                     'Approved',
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w800,
-                      color: Color(0xFF059669),
+                      color: AppColors.isDark
+                          ? const Color(0xFF6EE7B7)
+                          : const Color(0xFF059669),
                     ),
                   ),
                 ),
@@ -718,10 +734,10 @@ class _ServiceCard extends StatelessWidget {
             // Main Content: Service Name
             Text(
               service.name,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 13.5,
                 fontWeight: FontWeight.w700,
-                color: Color(0xFF0F172A),
+                color: AppColors.textPrimary,
                 height: 1.25,
               ),
             ),
@@ -731,16 +747,18 @@ class _ServiceCard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Flexible(
+                Flexible(
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
                         Icons.check_circle_outline_rounded,
                         size: 14,
-                        color: Color(0xFF059669),
+                        color: AppColors.isDark
+                            ? const Color(0xFF34D399)
+                            : const Color(0xFF059669),
                       ),
-                      SizedBox(width: 4),
+                      const SizedBox(width: 4),
                       Flexible(
                         child: Text(
                           '✓ Eligible for Dispatch',
@@ -748,7 +766,9 @@ class _ServiceCard extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
-                            color: Color(0xFF059669),
+                            color: AppColors.isDark
+                                ? const Color(0xFF34D399)
+                                : const Color(0xFF059669),
                           ),
                         ),
                       ),
@@ -760,7 +780,7 @@ class _ServiceCard extends StatelessWidget {
                   icon: const Icon(
                     Icons.delete_outline_rounded,
                     size: 18,
-                    color: Color(0xFFDC2626),
+                    color: Color(0xFFEF4444),
                   ),
                   tooltip: 'Remove',
                   constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
@@ -787,10 +807,13 @@ class _PendingServicesCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       clipBehavior: Clip.antiAlias,
+      color: AppColors.surface,
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: const BorderSide(color: Color(0xFFFDE68A)),
+        side: BorderSide(
+          color: AppColors.isDark ? const Color(0xFF78350F) : const Color(0xFFFDE68A),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -798,22 +821,30 @@ class _PendingServicesCard extends StatelessWidget {
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.md),
-            decoration: const BoxDecoration(
-              color: Color(0xFFFFFBEB),
-              border: Border(bottom: BorderSide(color: Color(0xFFFDE68A))),
+            decoration: BoxDecoration(
+              color: AppColors.isDark ? const Color(0xFF451A03).withValues(alpha: 0.5) : const Color(0xFFFFFBEB),
+              border: Border(
+                bottom: BorderSide(
+                  color: AppColors.isDark ? const Color(0xFF78350F) : const Color(0xFFFDE68A),
+                ),
+              ),
             ),
             child: Row(
               children: [
-                const Icon(Icons.hourglass_top_rounded, size: 15, color: Color(0xFFD97706)),
+                Icon(
+                  Icons.hourglass_top_rounded,
+                  size: 15,
+                  color: AppColors.isDark ? const Color(0xFFFBBF24) : const Color(0xFFD97706),
+                ),
                 const SizedBox(width: AppSpacing.sm),
                 Expanded(
                   child: Text(
                     'PENDING ADMIN REVIEW (${pendingServices.length})',
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w800,
-                      color: Color(0xFF92400E),
+                      color: AppColors.isDark ? const Color(0xFFFDE68A) : const Color(0xFF92400E),
                     ),
                   ),
                 ),
@@ -839,15 +870,19 @@ class _PendingServicesCard extends StatelessWidget {
                         children: [
                           Text(
                             svc.name,
-                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.textPrimary,
+                            ),
                           ),
                           const SizedBox(height: 2),
                           Text(
                             isRemoval ? 'REMOVAL PENDING REVIEW' : 'AUTHORIZATION PENDING REVIEW',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.bold,
-                              color: Color(0xFFB45309),
+                              color: AppColors.isDark ? const Color(0xFFFBBF24) : const Color(0xFFB45309),
                             ),
                           ),
                         ],
@@ -882,10 +917,13 @@ class _RejectedServicesCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       clipBehavior: Clip.antiAlias,
+      color: AppColors.surface,
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: const BorderSide(color: Color(0xFFFECACA)),
+        side: BorderSide(
+          color: AppColors.isDark ? const Color(0xFF7F1D1D) : const Color(0xFFFECACA),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -893,22 +931,30 @@ class _RejectedServicesCard extends StatelessWidget {
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.md),
-            decoration: const BoxDecoration(
-              color: Color(0xFFFEF2F2),
-              border: Border(bottom: BorderSide(color: Color(0xFFFECACA))),
+            decoration: BoxDecoration(
+              color: AppColors.isDark ? const Color(0xFF450A0A).withValues(alpha: 0.5) : const Color(0xFFFEF2F2),
+              border: Border(
+                bottom: BorderSide(
+                  color: AppColors.isDark ? const Color(0xFF7F1D1D) : const Color(0xFFFECACA),
+                ),
+              ),
             ),
             child: Row(
               children: [
-                const Icon(Icons.error_outline_rounded, size: 15, color: Color(0xFFDC2626)),
+                Icon(
+                  Icons.error_outline_rounded,
+                  size: 15,
+                  color: AppColors.isDark ? const Color(0xFFF87171) : const Color(0xFFDC2626),
+                ),
                 const SizedBox(width: AppSpacing.sm),
                 Expanded(
                   child: Text(
                     'REJECTED SERVICE REQUESTS (${rejectedServices.length})',
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w800,
-                      color: Color(0xFF991B1B),
+                      color: AppColors.isDark ? const Color(0xFFFCA5A5) : const Color(0xFF991B1B),
                     ),
                   ),
                 ),
@@ -934,7 +980,11 @@ class _RejectedServicesCard extends StatelessWidget {
                         Expanded(
                           child: Text(
                             svc.name,
-                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.textPrimary,
+                            ),
                           ),
                         ),
                         const StatusChip(status: 'rejected', dense: true),
@@ -944,13 +994,17 @@ class _RejectedServicesCard extends StatelessWidget {
                       const SizedBox(height: 4),
                       Text(
                         'Reason: ${svc.rejectionReason}',
-                        style: const TextStyle(fontSize: 11, color: Color(0xFFB91C1C)),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: AppColors.isDark ? const Color(0xFFFCA5A5) : const Color(0xFFB91C1C),
+                        ),
                       ),
                     ],
                     const SizedBox(height: 6),
                     TextButton(
                       onPressed: isLoading ? null : () => onReapply(svc.id, svc.name),
                       style: TextButton.styleFrom(
+                        foregroundColor: AppColors.primaryLight,
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                         visualDensity: VisualDensity.compact,
                       ),
@@ -1020,12 +1074,12 @@ class _AvailableCatalogSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           'Available Service Catalog',
           style: TextStyle(
             fontSize: 13.5,
             fontWeight: FontWeight.w800,
-            color: Color(0xFF0F172A),
+            color: AppColors.textPrimary,
           ),
         ),
         const SizedBox(height: 2),
@@ -1055,6 +1109,7 @@ class _AvailableCatalogSection extends StatelessWidget {
                   children: [
                     Checkbox(
                       value: isAllSelected,
+                      activeColor: AppColors.primary,
                       onChanged: (val) => onToggleAll(allRequestableIds),
                       visualDensity: VisualDensity.compact,
                     ),
@@ -1062,7 +1117,7 @@ class _AvailableCatalogSection extends StatelessWidget {
                       child: Text(
                         'Select All (${allRequestableIds.length})',
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold),
+                        style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
                       ),
                     ),
                   ],
@@ -1151,10 +1206,11 @@ class _CatalogCategoryCard extends StatelessWidget {
 
     return Card(
       clipBehavior: Clip.antiAlias,
+      color: AppColors.surface,
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
-        side: const BorderSide(color: Color(0xFFE2E8F0)),
+        side: BorderSide(color: AppColors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1163,7 +1219,7 @@ class _CatalogCategoryCard extends StatelessWidget {
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
             decoration: BoxDecoration(
-              color: AppColors.background,
+              color: AppColors.surfaceMuted,
               border: Border(bottom: BorderSide(color: AppColors.border)),
             ),
             child: Wrap(
@@ -1179,7 +1235,11 @@ class _CatalogCategoryCard extends StatelessWidget {
                       child: Text(
                         category.name,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textPrimary,
+                        ),
                       ),
                     ),
                     const SizedBox(width: AppSpacing.xs),
@@ -1205,12 +1265,17 @@ class _CatalogCategoryCard extends StatelessWidget {
                       children: [
                         Checkbox(
                           value: isCatAllSelected,
+                          activeColor: AppColors.primary,
                           onChanged: (val) => onToggleCategory(catRequestableIds),
                           visualDensity: VisualDensity.compact,
                         ),
                         Text(
                           'Select All (${catRequestableIds.length})',
-                          style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600),
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textPrimary,
+                          ),
                         ),
                       ],
                     ),
@@ -1242,6 +1307,7 @@ class _CatalogCategoryCard extends StatelessWidget {
                     if (isRequestable)
                       Checkbox(
                         value: isChecked,
+                        activeColor: AppColors.primary,
                         onChanged: (val) => onToggleSelect(s.id),
                         visualDensity: VisualDensity.compact,
                       )
@@ -1253,7 +1319,11 @@ class _CatalogCategoryCard extends StatelessWidget {
                         children: [
                           Text(
                             s.name,
-                            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold),
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.textPrimary,
+                            ),
                           ),
                           Text(
                             'Approx. ${s.durationMinutes} mins',
@@ -1473,9 +1543,9 @@ class _RequestNewServicesModalState extends ConsumerState<RequestNewServicesModa
       expand: false,
       builder: (context, scrollController) {
         return Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
           ),
           child: Column(
             children: [
@@ -1487,7 +1557,7 @@ class _RequestNewServicesModalState extends ConsumerState<RequestNewServicesModa
                     width: 38,
                     height: 4.5,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFCBD5E1),
+                      color: AppColors.isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1),
                       borderRadius: BorderRadius.circular(3),
                     ),
                   ),
@@ -1500,7 +1570,7 @@ class _RequestNewServicesModalState extends ConsumerState<RequestNewServicesModa
                 child: Row(
                   children: [
                     IconButton(
-                      icon: const Icon(Icons.close_rounded, color: Color(0xFF475569), size: 22),
+                      icon: Icon(Icons.close_rounded, color: AppColors.textSecondary, size: 22),
                       tooltip: 'Close',
                       onPressed: () => Navigator.of(context).pop(),
                     ),
@@ -1508,7 +1578,7 @@ class _RequestNewServicesModalState extends ConsumerState<RequestNewServicesModa
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
+                        children: [
                           Text(
                             'Request New Services from Catalog',
                             maxLines: 1,
@@ -1516,25 +1586,25 @@ class _RequestNewServicesModalState extends ConsumerState<RequestNewServicesModa
                             style: TextStyle(
                               fontSize: 15.5,
                               fontWeight: FontWeight.w800,
-                              color: Color(0xFF0F172A),
+                              color: AppColors.textPrimary,
                               letterSpacing: -0.2,
                             ),
                           ),
-                          SizedBox(height: 2),
+                          const SizedBox(height: 2),
                           Text(
                             'Select trade services to request operational authorization',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               fontSize: 11.5,
-                              color: Color(0xFF64748B),
+                              color: AppColors.textSecondary,
                             ),
                           ),
                         ],
                       ),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.refresh_rounded, color: Color(0xFF475569), size: 22),
+                      icon: Icon(Icons.refresh_rounded, color: AppColors.textSecondary, size: 22),
                       tooltip: 'Refresh Catalog',
                       onPressed: () {
                         ref.invalidate(serviceCatalogProvider);
@@ -1544,7 +1614,7 @@ class _RequestNewServicesModalState extends ConsumerState<RequestNewServicesModa
                   ],
                 ),
               ),
-              const Divider(height: 1, color: Color(0xFFE2E8F0)),
+              Divider(height: 1, color: AppColors.border),
 
               // Main Content Area
               Expanded(
@@ -1609,30 +1679,31 @@ class _RequestNewServicesModalState extends ConsumerState<RequestNewServicesModa
       children: [
         // Search Input
         TextField(
+          style: TextStyle(fontSize: 13, color: AppColors.textPrimary),
           decoration: InputDecoration(
             hintText: 'Search services or categories...',
-            hintStyle: const TextStyle(fontSize: 12.5, color: Color(0xFF94A3B8)),
-            prefixIcon: const Icon(Icons.search, size: 20, color: Color(0xFF64748B)),
+            hintStyle: TextStyle(fontSize: 12.5, color: AppColors.textMuted),
+            prefixIcon: Icon(Icons.search, size: 20, color: AppColors.textSecondary),
             suffixIcon: _searchQuery.isNotEmpty
                 ? IconButton(
-                    icon: const Icon(Icons.clear_rounded, size: 18, color: Color(0xFF64748B)),
+                    icon: Icon(Icons.clear_rounded, size: 18, color: AppColors.textSecondary),
                     onPressed: () => setState(() => _searchQuery = ''),
                   )
                 : null,
             filled: true,
-            fillColor: const Color(0xFFF8FAFC),
+            fillColor: AppColors.surfaceMuted,
             contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+              borderSide: BorderSide(color: AppColors.border),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+              borderSide: BorderSide(color: AppColors.border),
             ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: AppColors.peacockBlue, width: 1.5),
+            focusedBorder: const OutlineInputBorder(
+              borderRadius: BorderRadius.all(Radius.circular(10)),
+              borderSide: BorderSide(color: AppColors.peacockBlue, width: 1.5),
             ),
           ),
           onChanged: (val) => setState(() => _searchQuery = val),
@@ -1649,12 +1720,12 @@ class _RequestNewServicesModalState extends ConsumerState<RequestNewServicesModa
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text(
+                Text(
                   'All Categories',
                   style: TextStyle(
                     fontSize: 13.5,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF1E293B),
+                    color: AppColors.textPrimary,
                     letterSpacing: -0.2,
                   ),
                 ),
@@ -1662,16 +1733,16 @@ class _RequestNewServicesModalState extends ConsumerState<RequestNewServicesModa
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1.5),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF1F5F9),
+                    color: AppColors.surfaceMuted,
                     borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                    border: Border.all(color: AppColors.border),
                   ),
                   child: Text(
                     '${filteredCategories.length}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
-                      color: Color(0xFF475569),
+                      color: AppColors.textSecondary,
                     ),
                   ),
                 ),
@@ -1701,7 +1772,7 @@ class _RequestNewServicesModalState extends ConsumerState<RequestNewServicesModa
                   style: const TextStyle(
                     fontSize: 11.5,
                     fontWeight: FontWeight.w700,
-                    color: AppColors.peacockBlue,
+                    color: AppColors.primaryLight,
                   ),
                 ),
               ),
@@ -1710,12 +1781,12 @@ class _RequestNewServicesModalState extends ConsumerState<RequestNewServicesModa
         const SizedBox(height: AppSpacing.sm),
 
         if (filteredCategories.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 36),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 36),
             child: Center(
               child: Text(
                 'No matching services or categories found.',
-                style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+                style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
               ),
             ),
           )
@@ -1728,13 +1799,15 @@ class _RequestNewServicesModalState extends ConsumerState<RequestNewServicesModa
 
             return Card(
               margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-              color: isSelected ? const Color(0xFFF0F9FF) : Colors.white,
+              color: isSelected
+                  ? (AppColors.isDark ? const Color(0xFF003B46).withValues(alpha: 0.5) : const Color(0xFFE6F4F1))
+                  : AppColors.surface,
               elevation: 0.5,
               shadowColor: const Color(0x0A000000),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
                 side: BorderSide(
-                  color: isSelected ? AppColors.peacockBlue : const Color(0xFFE2E8F0),
+                  color: isSelected ? AppColors.primaryLight : AppColors.border,
                   width: isSelected ? 1.5 : 1.0,
                 ),
               ),
@@ -1754,21 +1827,21 @@ class _RequestNewServicesModalState extends ConsumerState<RequestNewServicesModa
                         height: 40,
                         decoration: BoxDecoration(
                           color: isSelected
-                              ? const Color(0xFFE0F2FE)
-                              : const Color(0xFFF8FAFC),
+                              ? (AppColors.isDark ? const Color(0xFF005965).withValues(alpha: 0.6) : const Color(0xFFE0F2FE))
+                              : AppColors.surfaceMuted,
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
                             color: isSelected
-                                ? const Color(0xFFBAE6FD)
-                                : const Color(0xFFE2E8F0),
+                                ? (AppColors.isDark ? const Color(0xFF028090) : const Color(0xFFBAE6FD))
+                                : AppColors.border,
                           ),
                         ),
                         child: Icon(
                           iconForCategory(cat.name),
                           size: 20,
                           color: isSelected
-                              ? AppColors.peacockBlue
-                              : const Color(0xFF475569),
+                              ? (AppColors.isDark ? const Color(0xFF6EE7B7) : AppColors.peacockBlue)
+                              : AppColors.textSecondary,
                         ),
                       ),
                       const SizedBox(width: AppSpacing.md),
@@ -1786,8 +1859,8 @@ class _RequestNewServicesModalState extends ConsumerState<RequestNewServicesModa
                               ),
                               decoration: BoxDecoration(
                                 color: isSelected
-                                    ? const Color(0xFFE0F2FE)
-                                    : const Color(0xFFF1F5F9),
+                                    ? (AppColors.isDark ? const Color(0xFF005965).withValues(alpha: 0.6) : const Color(0xFFE0F2FE))
+                                    : AppColors.surfaceMuted,
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: Text(
@@ -1796,8 +1869,8 @@ class _RequestNewServicesModalState extends ConsumerState<RequestNewServicesModa
                                   fontSize: 9,
                                   fontWeight: FontWeight.w800,
                                   color: isSelected
-                                      ? AppColors.peacockBlue
-                                      : const Color(0xFF64748B),
+                                      ? (AppColors.isDark ? const Color(0xFF6EE7B7) : AppColors.peacockBlue)
+                                      : AppColors.textSecondary,
                                   letterSpacing: 0.5,
                                 ),
                               ),
@@ -1809,8 +1882,8 @@ class _RequestNewServicesModalState extends ConsumerState<RequestNewServicesModa
                                 fontSize: 13.5,
                                 fontWeight: FontWeight.w700,
                                 color: isSelected
-                                    ? AppColors.peacockNavy
-                                    : const Color(0xFF0F172A),
+                                    ? (AppColors.isDark ? Colors.white : AppColors.peacockNavy)
+                                    : AppColors.textPrimary,
                               ),
                             ),
                           ],
@@ -1826,18 +1899,18 @@ class _RequestNewServicesModalState extends ConsumerState<RequestNewServicesModa
                             vertical: 3,
                           ),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFECFDF5),
+                            color: AppColors.isDark ? const Color(0xFF064E3B).withValues(alpha: 0.4) : const Color(0xFFECFDF5),
                             borderRadius: BorderRadius.circular(6),
                             border: Border.all(
-                              color: const Color(0xFFA7F3D0),
+                              color: AppColors.isDark ? const Color(0xFF059669) : const Color(0xFFA7F3D0),
                             ),
                           ),
-                          child: const Text(
+                          child: Text(
                             '✓ Already Approved',
                             style: TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.w700,
-                              color: Color(0xFF059669),
+                              color: AppColors.isDark ? const Color(0xFF6EE7B7) : const Color(0xFF059669),
                             ),
                           ),
                         )
@@ -1848,18 +1921,18 @@ class _RequestNewServicesModalState extends ConsumerState<RequestNewServicesModa
                             vertical: 3,
                           ),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFFFFBEB),
+                            color: AppColors.isDark ? const Color(0xFF451A03).withValues(alpha: 0.4) : const Color(0xFFFFFBEB),
                             borderRadius: BorderRadius.circular(6),
                             border: Border.all(
-                              color: const Color(0xFFFDE68A),
+                              color: AppColors.isDark ? const Color(0xFF78350F) : const Color(0xFFFDE68A),
                             ),
                           ),
-                          child: const Text(
+                          child: Text(
                             '⏳ Pending Review',
                             style: TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.w700,
-                              color: Color(0xFFD97706),
+                              color: AppColors.isDark ? const Color(0xFFFBBF24) : const Color(0xFFD97706),
                             ),
                           ),
                         )
@@ -1869,7 +1942,7 @@ class _RequestNewServicesModalState extends ConsumerState<RequestNewServicesModa
                           height: 24,
                           child: Checkbox(
                             value: isSelected,
-                            activeColor: AppColors.peacockBlue,
+                            activeColor: AppColors.primary,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(4),
                             ),
@@ -1898,9 +1971,9 @@ class _RequestNewServicesModalState extends ConsumerState<RequestNewServicesModa
         AppSpacing.md,
         MediaQuery.of(context).viewInsets.bottom + AppSpacing.md,
       ),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        boxShadow: const [
           BoxShadow(
             color: Color(0x0F000000),
             blurRadius: 10,
@@ -1908,7 +1981,7 @@ class _RequestNewServicesModalState extends ConsumerState<RequestNewServicesModa
           ),
         ],
         border: Border(
-          top: BorderSide(color: Color(0xFFE2E8F0)),
+          top: BorderSide(color: AppColors.border),
         ),
       ),
       child: Column(
@@ -1930,8 +2003,8 @@ class _RequestNewServicesModalState extends ConsumerState<RequestNewServicesModa
                     fontSize: 12.5,
                     fontWeight: FontWeight.w700,
                     color: _selectedCategoryIds.isEmpty
-                        ? const Color(0xFF64748B)
-                        : AppColors.peacockBlue,
+                        ? AppColors.textSecondary
+                        : AppColors.primaryLight,
                   ),
                 ),
                 if (_selectedCategoryIds.isNotEmpty)
@@ -1957,8 +2030,8 @@ class _RequestNewServicesModalState extends ConsumerState<RequestNewServicesModa
                   child: OutlinedButton(
                     onPressed: _isSubmitting ? null : () => Navigator.of(context).pop(),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFF475569),
-                      side: const BorderSide(color: Color(0xFFCBD5E1)),
+                      foregroundColor: AppColors.textSecondary,
+                      side: BorderSide(color: AppColors.border),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
@@ -1981,9 +2054,9 @@ class _RequestNewServicesModalState extends ConsumerState<RequestNewServicesModa
                         : () => _handleSubmit(categories, allRequested),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.peacockBlue,
-                      disabledBackgroundColor: const Color(0xFFE2E8F0),
+                      disabledBackgroundColor: AppColors.surfaceMuted,
                       foregroundColor: Colors.white,
-                      disabledForegroundColor: const Color(0xFF94A3B8),
+                      disabledForegroundColor: AppColors.textMuted,
                       elevation: 0,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
@@ -2031,30 +2104,30 @@ class _EmptyCatalogView extends StatelessWidget {
           children: [
             Container(
               padding: const EdgeInsets.all(16),
-              decoration: const BoxDecoration(
-                color: Color(0xFFF1F5F9),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceMuted,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.inventory_2_outlined,
                 size: 36,
-                color: Color(0xFF64748B),
+                color: AppColors.textSecondary,
               ),
             ),
             const SizedBox(height: 16),
-            const Text(
+            Text(
               'No services available',
               style: TextStyle(
                 fontSize: 15.5,
                 fontWeight: FontWeight.w800,
-                color: Color(0xFF0F172A),
+                color: AppColors.textPrimary,
               ),
             ),
             const SizedBox(height: 6),
-            const Text(
+            Text(
               'New service categories will appear here when available.',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12.5, color: Color(0xFF64748B)),
+              style: TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
             ),
           ],
         ),
@@ -2078,8 +2151,8 @@ class _CatalogErrorView extends StatelessWidget {
           children: [
             Container(
               padding: const EdgeInsets.all(16),
-              decoration: const BoxDecoration(
-                color: Color(0xFFFEF2F2),
+              decoration: BoxDecoration(
+                color: AppColors.isDark ? const Color(0xFF450A0A) : const Color(0xFFFEF2F2),
                 shape: BoxShape.circle,
               ),
               child: const Icon(
@@ -2089,19 +2162,19 @@ class _CatalogErrorView extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
-            const Text(
+            Text(
               'Unable to load service catalog',
               style: TextStyle(
                 fontSize: 15.5,
                 fontWeight: FontWeight.w800,
-                color: Color(0xFF0F172A),
+                color: AppColors.textPrimary,
               ),
             ),
             const SizedBox(height: 6),
-            const Text(
+            Text(
               'Please check your connection and try again.',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12.5, color: Color(0xFF64748B)),
+              style: TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
             ),
             const SizedBox(height: 16),
             ElevatedButton.icon(
@@ -2135,10 +2208,11 @@ class _VerifiedSkillsSection extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       clipBehavior: Clip.antiAlias,
+      color: AppColors.surface,
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: const BorderSide(color: Color(0xFFE2E8F0)),
+        side: BorderSide(color: AppColors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2147,21 +2221,22 @@ class _VerifiedSkillsSection extends StatelessWidget {
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.md),
             decoration: BoxDecoration(
-              color: AppColors.background,
+              color: AppColors.surfaceMuted,
               border: Border(bottom: BorderSide(color: AppColors.border)),
             ),
             child: Row(
               children: [
-                const Icon(Icons.star_outline_rounded, size: 16, color: Color(0xFF2563EB)),
+                const Icon(Icons.workspace_premium_outlined, size: 16, color: AppColors.primaryLight),
                 const SizedBox(width: AppSpacing.sm),
                 Expanded(
                   child: Text(
                     'VERIFIED SKILL RATINGS (${skills.length})',
                     overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: AppColors.textPrimary,
-                          fontWeight: FontWeight.w800,
-                        ),
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.textPrimary,
+                    ),
                   ),
                 ),
               ],
@@ -2196,7 +2271,11 @@ class _VerifiedSkillsSection extends StatelessWidget {
                           children: [
                             Text(
                               sk.skillName,
-                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.textPrimary,
+                              ),
                             ),
                             if (sk.category != null && sk.category!.isNotEmpty)
                               Text(
@@ -2209,16 +2288,24 @@ class _VerifiedSkillsSection extends StatelessWidget {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFEFF6FF),
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(color: const Color(0xFFBFDBFE)),
+                          color: AppColors.isDark
+                              ? const Color(0xFF003B46).withValues(alpha: 0.5)
+                              : const Color(0xFFE6F4F1),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color: AppColors.isDark
+                                ? const Color(0xFF028090).withValues(alpha: 0.6)
+                                : const Color(0xFFB2DFDB),
+                          ),
                         ),
                         child: Text(
                           sk.proficiencyLevel.toUpperCase(),
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.bold,
-                            color: Color(0xFF1D4ED8),
+                            color: AppColors.isDark
+                                ? const Color(0xFF6EE7B7)
+                                : AppColors.peacockBlue,
                           ),
                         ),
                       ),

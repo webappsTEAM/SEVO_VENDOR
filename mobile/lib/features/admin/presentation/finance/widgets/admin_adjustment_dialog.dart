@@ -82,7 +82,7 @@ class _AdminAdjustmentDialogState extends ConsumerState<AdminAdjustmentDialog> {
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Manual Balance Adjustment',
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
           ),
@@ -110,7 +110,7 @@ class _AdminAdjustmentDialogState extends ConsumerState<AdminAdjustmentDialog> {
                   ),
                   child: Text(
                     _errorMessage!,
-                    style: const TextStyle(fontSize: 12, color: Color(0xFFE11D48)),
+                    style: TextStyle(fontSize: 12, color: Color(0xFFE11D48)),
                   ),
                 ),
                 const SizedBox(height: AppSpacing.md),
@@ -129,7 +129,7 @@ class _AdminAdjustmentDialogState extends ConsumerState<AdminAdjustmentDialog> {
                     Text('Current Available:', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
                     Text(
                       '₹${widget.wallet.availableBalance.toStringAsFixed(2)}',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 13,
                         fontFamily: 'monospace',
                         fontWeight: FontWeight.w800,
@@ -141,7 +141,7 @@ class _AdminAdjustmentDialogState extends ConsumerState<AdminAdjustmentDialog> {
               const SizedBox(height: AppSpacing.md),
 
               // Direction Selector (CREDIT vs DEBIT)
-              const Text(
+              Text(
                 'Adjustment Type *',
                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
               ),
@@ -156,7 +156,7 @@ class _AdminAdjustmentDialogState extends ConsumerState<AdminAdjustmentDialog> {
                       labelStyle: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w800,
-                        color: _direction == 'CREDIT' ? const Color(0xFF15803D) : const Color(0xFF64748B),
+                        color: _direction == 'CREDIT' ? const Color(0xFF15803D) : AppColors.textSecondary,
                       ),
                       onSelected: (selected) {
                         if (selected) setState(() => _direction = 'CREDIT');
@@ -172,7 +172,7 @@ class _AdminAdjustmentDialogState extends ConsumerState<AdminAdjustmentDialog> {
                       labelStyle: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w800,
-                        color: _direction == 'DEBIT' ? const Color(0xFFB91C1C) : const Color(0xFF64748B),
+                        color: _direction == 'DEBIT' ? const Color(0xFFB91C1C) : AppColors.textSecondary,
                       ),
                       onSelected: (selected) {
                         if (selected) setState(() => _direction = 'DEBIT');
@@ -184,7 +184,7 @@ class _AdminAdjustmentDialogState extends ConsumerState<AdminAdjustmentDialog> {
               const SizedBox(height: AppSpacing.md),
 
               // Amount Input
-              const Text(
+              Text(
                 'Adjustment Amount (₹) *',
                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
               ),
@@ -206,7 +206,7 @@ class _AdminAdjustmentDialogState extends ConsumerState<AdminAdjustmentDialog> {
               const SizedBox(height: AppSpacing.md),
 
               // Audit Reason Input
-              const Text(
+              Text(
                 'Audit Reason *',
                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
               ),
@@ -231,7 +231,7 @@ class _AdminAdjustmentDialogState extends ConsumerState<AdminAdjustmentDialog> {
       actions: [
         TextButton(
           onPressed: _isSubmitting ? null : () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          child: Text('Cancel'),
         ),
         FilledButton(
           onPressed: _isSubmitting ? null : _submit,

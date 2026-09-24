@@ -71,8 +71,9 @@ class _AdminInvoicesScreenState extends ConsumerState<AdminInvoicesScreen> {
     final invoicesAsync = ref.watch(adminInvoicesListProvider);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: AppColors.background,
       appBar: const WorkforceAppBar(
+        titleText: 'Invoices & Billing',
         showStatusSubBar: false,
         showDrawerMenu: true,
       ),
@@ -80,7 +81,7 @@ class _AdminInvoicesScreenState extends ConsumerState<AdminInvoicesScreen> {
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: _refresh,
-          color: const Color(0xFF0F172A),
+          color: AppColors.primary,
           child: ListView(
             padding: const EdgeInsets.all(AppSpacing.md),
             children: [
@@ -88,9 +89,9 @@ class _AdminInvoicesScreenState extends ConsumerState<AdminInvoicesScreen> {
               Container(
                 padding: const EdgeInsets.all(AppSpacing.md),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: AppColors.surface,
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                  border: Border.all(color: AppColors.border),
                   boxShadow: const [
                     BoxShadow(
                       color: Color(0x040F172A),
@@ -109,7 +110,7 @@ class _AdminInvoicesScreenState extends ConsumerState<AdminInvoicesScreen> {
                           width: 42,
                           height: 42,
                           decoration: BoxDecoration(
-                            color: const Color(0xFF0F172A),
+                            color: AppColors.primary,
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: const Icon(
@@ -119,7 +120,7 @@ class _AdminInvoicesScreenState extends ConsumerState<AdminInvoicesScreen> {
                           ),
                         ),
                         const SizedBox(width: 12),
-                        const Expanded(
+                        Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -128,7 +129,7 @@ class _AdminInvoicesScreenState extends ConsumerState<AdminInvoicesScreen> {
                                 style: TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.w800,
-                                  color: Color(0xFF0F172A),
+                                  color: AppColors.textPrimary,
                                   letterSpacing: -0.2,
                                 ),
                               ),
@@ -137,7 +138,7 @@ class _AdminInvoicesScreenState extends ConsumerState<AdminInvoicesScreen> {
                                 'Raised automatically when SEVO approves a quotation.',
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color: Color(0xFF64748B),
+                                  color: AppColors.textSecondary,
                                   height: 1.35,
                                 ),
                               ),
@@ -147,7 +148,7 @@ class _AdminInvoicesScreenState extends ConsumerState<AdminInvoicesScreen> {
                       ],
                     ),
                     const SizedBox(height: 12),
-                    const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                    Divider(height: 1, color: AppColors.border),
                     const SizedBox(height: 10),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
@@ -155,12 +156,12 @@ class _AdminInvoicesScreenState extends ConsumerState<AdminInvoicesScreen> {
                         OutlinedButton.icon(
                           onPressed: _refresh,
                           icon: const Icon(Icons.refresh_rounded, size: 15),
-                          label: const Text('Refresh'),
+                          label: Text('Refresh'),
                           style: OutlinedButton.styleFrom(
-                            foregroundColor: const Color(0xFF475569),
-                            side: const BorderSide(color: Color(0xFFCBD5E1)),
+                            foregroundColor: AppColors.textSecondary,
+                            side: BorderSide(color: AppColors.border),
                             visualDensity: VisualDensity.compact,
-                            textStyle: const TextStyle(
+                            textStyle: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
                             ),
@@ -176,9 +177,9 @@ class _AdminInvoicesScreenState extends ConsumerState<AdminInvoicesScreen> {
               // ── Search & Filter Controls ───────────────────────────────────
               Container(
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: AppColors.surface,
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                  border: Border.all(color: AppColors.border),
                 ),
                 child: TextField(
                   controller: _searchController,
@@ -186,15 +187,15 @@ class _AdminInvoicesScreenState extends ConsumerState<AdminInvoicesScreen> {
                     ref.read(adminInvoicesSearchQueryProvider.notifier).state =
                         val;
                   },
-                  style: const TextStyle(fontSize: 13),
+                  style: TextStyle(fontSize: 13, color: AppColors.textPrimary),
                   decoration: InputDecoration(
                     hintText: 'Invoice number, customer, phone',
-                    hintStyle: const TextStyle(
+                    hintStyle: TextStyle(
                       fontSize: 13,
-                      color: Color(0xFF94A3B8),
+                      color: AppColors.textMuted,
                     ),
-                    prefixIcon: const Icon(Icons.search_rounded,
-                        size: 18, color: Color(0xFF94A3B8)),
+                    prefixIcon: Icon(Icons.search_rounded,
+                        size: 18, color: AppColors.textMuted),
                     suffixIcon: search.isNotEmpty
                         ? IconButton(
                             icon: const Icon(Icons.clear_rounded, size: 16),
@@ -242,19 +243,19 @@ class _AdminInvoicesScreenState extends ConsumerState<AdminInvoicesScreen> {
                                 .state = st['id']!;
                           }
                         },
-                        selectedColor: const Color(0xFF0F172A),
+                        selectedColor: AppColors.primary,
                         labelStyle: TextStyle(
                           color: isSelected
                               ? Colors.white
-                              : const Color(0xFF334155),
+                              : AppColors.textSecondary,
                         ),
-                        backgroundColor: Colors.white,
+                        backgroundColor: AppColors.surface,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8),
                           side: BorderSide(
                             color: isSelected
-                                ? const Color(0xFF0F172A)
-                                : const Color(0xFFE2E8F0),
+                                ? AppColors.primary
+                                : AppColors.border,
                           ),
                         ),
                       ),
@@ -266,10 +267,10 @@ class _AdminInvoicesScreenState extends ConsumerState<AdminInvoicesScreen> {
 
               // ── Invoices List ──────────────────────────────────────────────
               invoicesAsync.when(
-                loading: () => const Center(
+                loading: () => Center(
                   child: Padding(
                     padding: EdgeInsets.all(AppSpacing.xxl),
-                    child: CircularProgressIndicator(color: Color(0xFF0F172A)),
+                    child: CircularProgressIndicator(color: AppColors.primary),
                   ),
                 ),
                 error: (err, _) => AppCard(
@@ -282,30 +283,30 @@ class _AdminInvoicesScreenState extends ConsumerState<AdminInvoicesScreen> {
                         size: 36,
                       ),
                       const SizedBox(height: 12),
-                      const Text(
+                      Text(
                         'Unable to load invoices',
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
-                          color: Color(0xFF0F172A),
+                          color: AppColors.textPrimary,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         err.toString(),
                         textAlign: TextAlign.center,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
-                          color: Color(0xFF64748B),
+                          color: AppColors.textSecondary,
                         ),
                       ),
                       const SizedBox(height: 16),
                       FilledButton.icon(
                         onPressed: _refresh,
                         icon: const Icon(Icons.refresh_rounded, size: 16),
-                        label: const Text('Try again'),
+                        label: Text('Try again'),
                         style: FilledButton.styleFrom(
-                          backgroundColor: const Color(0xFF0F172A),
+                          backgroundColor: AppColors.primary,
                         ),
                       ),
                     ],
@@ -356,26 +357,26 @@ class _InvoiceCard extends StatelessWidget {
   Color _getStatusBg() {
     switch (invoice.status) {
       case 'ISSUED':
-        return const Color(0xFFEFF6FF);
+        return AppColors.infoBg;
       case 'PARTIALLY_PAID':
-        return const Color(0xFFFEF3C7);
+        return AppColors.warningBg;
       case 'PAID':
-        return const Color(0xFFECFDF5);
+        return AppColors.successBg;
       default:
-        return const Color(0xFFF1F5F9);
+        return AppColors.surfaceMuted;
     }
   }
 
   Color _getStatusTextColor() {
     switch (invoice.status) {
       case 'ISSUED':
-        return const Color(0xFF1D4ED8);
+        return AppColors.infoText;
       case 'PARTIALLY_PAID':
-        return const Color(0xFF92400E);
+        return AppColors.warningText;
       case 'PAID':
-        return const Color(0xFF047857);
+        return AppColors.successText;
       default:
-        return const Color(0xFF475569);
+        return AppColors.textSecondary;
     }
   }
 
@@ -384,9 +385,9 @@ class _InvoiceCard extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: AppSpacing.sm),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: AppColors.border),
         boxShadow: const [
           BoxShadow(
             color: Color(0x040F172A),
@@ -414,11 +415,11 @@ class _InvoiceCard extends StatelessWidget {
                       children: [
                         Text(
                           invoice.invoiceNumber,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 13.5,
                             fontWeight: FontWeight.w800,
                             fontFamily: 'monospace',
-                            color: Color(0xFF0F172A),
+                            color: AppColors.textPrimary,
                           ),
                         ),
                         Container(
@@ -442,9 +443,9 @@ class _InvoiceCard extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       '${invoice.billToName} · ${invoice.serviceName}',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12.5,
-                        color: Color(0xFF475569),
+                        color: AppColors.textSecondary,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -452,9 +453,9 @@ class _InvoiceCard extends StatelessWidget {
                       const SizedBox(height: 2),
                       Text(
                         'Issued ${invoice.issuedAt!.day.toString().padLeft(2, '0')}/${invoice.issuedAt!.month.toString().padLeft(2, '0')}/${invoice.issuedAt!.year}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 11,
-                          color: Color(0xFF94A3B8),
+                          color: AppColors.textMuted,
                         ),
                       ),
                     ],
@@ -467,16 +468,16 @@ class _InvoiceCard extends StatelessWidget {
                 children: [
                   Text(
                     '₹${invoice.totalAmount.toStringAsFixed(2)}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w800,
-                      color: Color(0xFF0F172A),
+                      color: AppColors.textPrimary,
                     ),
                   ),
                   if (invoice.balanceDue > 0)
                     Text(
                       '₹${invoice.balanceDue.toStringAsFixed(2)} outstanding',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
                         color: Color(0xFFB45309),
@@ -586,8 +587,8 @@ class _InvoiceDetailBottomSheetState
       constraints: BoxConstraints(
         maxHeight: MediaQuery.of(context).size.height * 0.88,
       ),
-      decoration: const BoxDecoration(
-        color: Colors.white,
+      decoration: BoxDecoration(
+        color: AppColors.surface,
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       child: SafeArea(
@@ -603,7 +604,7 @@ class _InvoiceDetailBottomSheetState
                     width: 36,
                     height: 4,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFCBD5E1),
+                      color: AppColors.border,
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
@@ -616,18 +617,18 @@ class _InvoiceDetailBottomSheetState
                           children: [
                             Text(
                               inv.invoiceNumber,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w800,
                                 fontFamily: 'monospace',
-                                color: Color(0xFF0F172A),
+                                color: AppColors.textPrimary,
                               ),
                             ),
                             Text(
                               inv.billToName,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 13,
-                                color: Color(0xFF64748B),
+                                color: AppColors.textSecondary,
                               ),
                             ),
                           ],
@@ -642,7 +643,7 @@ class _InvoiceDetailBottomSheetState
                 ],
               ),
             ),
-            const Divider(height: 1, color: Color(0xFFF1F5F9)),
+            Divider(height: 1, color: AppColors.border),
 
             // Scrollable Content
             Expanded(
@@ -651,12 +652,12 @@ class _InvoiceDetailBottomSheetState
                 children: [
                   // Line Items Breakdown
                   if (inv.items.isNotEmpty) ...[
-                    const Text(
+                    Text(
                       'LINE ITEMS',
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF64748B),
+                        color: AppColors.textSecondary,
                         letterSpacing: 0.5,
                       ),
                     ),
@@ -669,25 +670,25 @@ class _InvoiceDetailBottomSheetState
                               Expanded(
                                 child: Text(
                                   '${item.name} × ${item.quantity} ${item.unit}',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 13,
-                                    color: Color(0xFF334155),
+                                    color: AppColors.textSecondary,
                                   ),
                                 ),
                               ),
                               Text(
                                 '₹${item.totalAmount.toStringAsFixed(2)}',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w600,
-                                  color: Color(0xFF0F172A),
+                                  color: AppColors.textPrimary,
                                 ),
                               ),
                             ],
                           ),
                         )),
                     const SizedBox(height: 12),
-                    const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                    Divider(height: 1, color: AppColors.border),
                     const SizedBox(height: 12),
                   ],
 
@@ -712,12 +713,12 @@ class _InvoiceDetailBottomSheetState
                   // Payments History
                   if (inv.payments.isNotEmpty) ...[
                     const SizedBox(height: 16),
-                    const Text(
+                    Text(
                       'PAYMENTS HISTORY',
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF64748B),
+                        color: AppColors.textSecondary,
                         letterSpacing: 0.5,
                       ),
                     ),
@@ -726,8 +727,9 @@ class _InvoiceDetailBottomSheetState
                           margin: const EdgeInsets.only(bottom: 6),
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFF8FAFC),
+                            color: AppColors.surfaceMuted,
                             borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: AppColors.border, width: 0.5),
                           ),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -737,25 +739,25 @@ class _InvoiceDetailBottomSheetState
                                 children: [
                                   Text(
                                     p.method,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.w700,
-                                      color: Color(0xFF0F172A),
+                                      color: AppColors.textPrimary,
                                     ),
                                   ),
                                   if (p.reference.isNotEmpty)
                                     Text(
                                       'Ref: ${p.reference}',
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         fontSize: 11,
-                                        color: Color(0xFF64748B),
+                                        color: AppColors.textSecondary,
                                       ),
                                     ),
                                 ],
                               ),
                               Text(
                                 '₹${p.amount.toStringAsFixed(2)}',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w800,
                                   color: Color(0xFF059669),
@@ -769,14 +771,14 @@ class _InvoiceDetailBottomSheetState
                   // Record Payment Section
                   if (outstanding > 0 && !inv.isCancelled) ...[
                     const SizedBox(height: 16),
-                    const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                    Divider(height: 1, color: AppColors.border),
                     const SizedBox(height: 14),
-                    const Text(
+                    Text(
                       'Record a payment',
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF0F172A),
+                        color: AppColors.textPrimary,
                       ),
                     ),
                     const SizedBox(height: 10),
@@ -824,15 +826,15 @@ class _InvoiceDetailBottomSheetState
                       ),
                     ),
                     const SizedBox(height: 4),
-                    const Text(
+                    Text(
                       'A reference makes this safe to repeat: recording the same reference twice will not charge twice.',
-                      style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
+                      style: TextStyle(fontSize: 11, color: AppColors.textMuted),
                     ),
                     const SizedBox(height: 12),
                     FilledButton(
                       onPressed: _isSavingPayment ? null : _recordPayment,
                       style: FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFF0F172A),
+                        backgroundColor: AppColors.primary,
                         padding: const EdgeInsets.symmetric(vertical: 12),
                       ),
                       child: _isSavingPayment
@@ -882,7 +884,7 @@ class _DetailRow extends StatelessWidget {
             style: TextStyle(
               fontSize: 13,
               fontWeight: isBold ? FontWeight.w700 : FontWeight.w500,
-              color: const Color(0xFF64748B),
+              color: AppColors.textSecondary,
             ),
           ),
           Text(
@@ -890,7 +892,7 @@ class _DetailRow extends StatelessWidget {
             style: TextStyle(
               fontSize: 13,
               fontWeight: isBold ? FontWeight.w800 : FontWeight.w600,
-              color: valueColor ?? const Color(0xFF0F172A),
+              color: valueColor ?? AppColors.textPrimary,
             ),
           ),
         ],

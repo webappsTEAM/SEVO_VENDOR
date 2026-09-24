@@ -24,9 +24,9 @@ class SuperAdminDashboardHeader extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppRadius.card),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: AppColors.border),
         boxShadow: const [
           BoxShadow(
             color: Color(0x040A2540),
@@ -48,26 +48,26 @@ class SuperAdminDashboardHeader extends ConsumerWidget {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.home_outlined,
                     size: 13,
-                    color: Color(0xFF64748B),
+                    color: AppColors.textSecondary,
                   ),
                   const SizedBox(width: 4),
-                  const Text(
+                  Text(
                     'Home',
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFF64748B),
+                      color: AppColors.textSecondary,
                     ),
                   ),
                   const SizedBox(width: 4),
-                  const Text(
+                  Text(
                     '•',
                     style: TextStyle(
                       fontSize: 10,
-                      color: Color(0xFF94A3B8),
+                      color: AppColors.textMuted,
                     ),
                   ),
                 ],
@@ -75,10 +75,10 @@ class SuperAdminDashboardHeader extends ConsumerWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF0A2540),
+                  color: AppColors.peacockNavy,
                   borderRadius: BorderRadius.circular(4),
                 ),
-                child: const Text(
+                child: Text(
                   'SEVO Platform',
                   style: TextStyle(
                     fontSize: 10,
@@ -95,7 +95,7 @@ class SuperAdminDashboardHeader extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(4),
                   border: Border.all(color: const Color(0xFFFDE68A), width: 0.8),
                 ),
-                child: const Text(
+                child: Text(
                   'Superadmin Console',
                   style: TextStyle(
                     fontSize: 10,
@@ -116,13 +116,13 @@ class SuperAdminDashboardHeader extends ConsumerWidget {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF004E89).withValues(alpha: 0.1),
+                  color: const Color(0xFF005965).withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Icon(
                   Icons.hub_rounded,
                   size: 20,
-                  color: Color(0xFF004E89),
+                  color: AppColors.primary,
                 ),
               ),
               const SizedBox(width: 10),
@@ -132,13 +132,13 @@ class SuperAdminDashboardHeader extends ConsumerWidget {
                   children: [
                     Row(
                       children: [
-                        const Expanded(
+                        Expanded(
                           child: Text(
                             'Workforce Operations Center',
                             style: TextStyle(
                               fontSize: 15.5,
                               fontWeight: FontWeight.w900,
-                              color: Color(0xFF0F172A),
+                              color: AppColors.textPrimary,
                               letterSpacing: -0.2,
                             ),
                             maxLines: 1,
@@ -153,7 +153,7 @@ class SuperAdminDashboardHeader extends ConsumerWidget {
                             borderRadius: BorderRadius.circular(4),
                             border: Border.all(color: const Color(0xFFA7F3D0), width: 0.8),
                           ),
-                          child: const Text(
+                          child: Text(
                             'LIVE',
                             style: TextStyle(
                               fontSize: 9,
@@ -166,12 +166,12 @@ class SuperAdminDashboardHeader extends ConsumerWidget {
                       ],
                     ),
                     const SizedBox(height: 2),
-                    const Text(
+                    Text(
                       'Real-time personnel monitoring, dossier verifications, and dynamic dispatch',
                       style: TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w400,
-                        color: Color(0xFF64748B),
+                        color: AppColors.textSecondary,
                         height: 1.25,
                       ),
                       maxLines: 2,
@@ -183,7 +183,7 @@ class SuperAdminDashboardHeader extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 12),
-          const Divider(height: 1, color: Color(0xFFF1F5F9)),
+          Divider(height: 1, color: Color(0xFFF1F5F9)),
           const SizedBox(height: 10),
 
           // Header Actions Row (Responsive Wrap)
@@ -199,17 +199,17 @@ class SuperAdminDashboardHeader extends ConsumerWidget {
                     ? const SizedBox(
                         width: 13,
                         height: 13,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF004E89)),
+                        child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
                       )
-                    : const Icon(Icons.refresh_rounded, size: 15, color: Color(0xFF004E89)),
-                label: const Text('Refresh Data'),
+                    : const Icon(Icons.refresh_rounded, size: 15, color: AppColors.primary),
+                label: Text('Refresh Data'),
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF0A2540),
+                  foregroundColor: AppColors.peacockNavy,
                   backgroundColor: const Color(0xFFF8FAFC),
-                  side: const BorderSide(color: Color(0xFFE2E8F0)),
+                  side: BorderSide(color: AppColors.border),
                   visualDensity: VisualDensity.compact,
                   padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
-                  textStyle: const TextStyle(
+                  textStyle: TextStyle(
                     fontSize: 11.5,
                     fontWeight: FontWeight.w700,
                   ),
@@ -222,13 +222,13 @@ class SuperAdminDashboardHeader extends ConsumerWidget {
               FilledButton.icon(
                 onPressed: () => context.push(AppRoutes.adminDispatch),
                 icon: const Icon(Icons.send_rounded, size: 13, color: Colors.white),
-                label: const Text('Open Dispatch Console'),
+                label: Text('Open Dispatch Console'),
                 style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF004E89),
+                  backgroundColor: AppColors.primary,
                   foregroundColor: Colors.white,
                   visualDensity: VisualDensity.compact,
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                  textStyle: const TextStyle(
+                  textStyle: TextStyle(
                     fontSize: 11.5,
                     fontWeight: FontWeight.w800,
                   ),
@@ -244,4 +244,3 @@ class SuperAdminDashboardHeader extends ConsumerWidget {
     );
   }
 }
-

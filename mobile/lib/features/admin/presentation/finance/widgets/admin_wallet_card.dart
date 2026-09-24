@@ -33,7 +33,7 @@ class AdminWalletCard extends ConsumerWidget {
         return const Color(0xFFD97706); // Amber
       case 'CLOSED':
       default:
-        return const Color(0xFF64748B); // Slate
+        return AppColors.textSecondary; // Slate
     }
   }
 
@@ -54,7 +54,7 @@ class AdminWalletCard extends ConsumerWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
+            child: Text('Cancel'),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
@@ -108,8 +108,8 @@ class AdminWalletCard extends ConsumerWidget {
       backgroundColor: Colors.transparent,
       builder: (ctx) => Container(
         padding: const EdgeInsets.all(AppSpacing.lg),
-        decoration: const BoxDecoration(
-          color: Colors.white,
+        decoration: BoxDecoration(
+          color: AppColors.surface,
           borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: SafeArea(
@@ -126,7 +126,7 @@ class AdminWalletCard extends ConsumerWidget {
                     height: 4,
                     margin: const EdgeInsets.only(bottom: AppSpacing.md),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFCBD5E1),
+                      color: AppColors.border,
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
@@ -144,8 +144,8 @@ class AdminWalletCard extends ConsumerWidget {
                       radius: 24,
                       fontSize: 16,
                       backgroundColor:
-                          const Color(0xFF004E89).withValues(alpha: 0.1),
-                      foregroundColor: const Color(0xFF004E89),
+                          const Color(0xFF005965).withValues(alpha: 0.1),
+                      foregroundColor: const Color(0xFF005965),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -154,19 +154,19 @@ class AdminWalletCard extends ConsumerWidget {
                         children: [
                           Text(
                             wallet.employeeName,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w900,
-                              color: Color(0xFF0F172A),
+                              color: AppColors.textPrimary,
                             ),
                           ),
                           const SizedBox(height: 2),
                           Text(
                             'Technician ID: #${wallet.employeeId} · ${wallet.currency}',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
                               fontFamily: 'monospace',
-                              color: Color(0xFF64748B),
+                              color: AppColors.textSecondary,
                             ),
                           ),
                         ],
@@ -194,16 +194,16 @@ class AdminWalletCard extends ConsumerWidget {
                   ],
                 ),
                 const SizedBox(height: AppSpacing.md),
-                const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                Divider(height: 1, color: AppColors.border),
                 const SizedBox(height: AppSpacing.md),
 
                 // Financial Summary
-                const Text(
+                Text(
                   'Financial Summary',
                   style: TextStyle(
                     fontSize: 13.5,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF0F172A),
+                    color: AppColors.textPrimary,
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -211,35 +211,35 @@ class AdminWalletCard extends ConsumerWidget {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF8FAFC),
+                    color: AppColors.surfaceMuted,
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                    border: Border.all(color: AppColors.border),
                   ),
                   child: Column(
                     children: [
                       _sheetRow('Available Balance',
                           '₹${wallet.availableBalance.toStringAsFixed(2)}',
-                          isBold: true, valueColor: const Color(0xFF004E89)),
-                      const Divider(height: 14, color: Color(0xFFE2E8F0)),
+                          isBold: true, valueColor: const Color(0xFF005965)),
+                      Divider(height: 14, color: AppColors.border),
                       _sheetRow('T+7 Pending Hold',
                           '₹${wallet.pendingBalance.toStringAsFixed(2)}',
                           valueColor: const Color(0xFFD97706)),
-                      const Divider(height: 14, color: Color(0xFFE2E8F0)),
+                      Divider(height: 14, color: AppColors.border),
                       _sheetRow('Total Earned (Lifetime)',
                           '₹${wallet.lifetimeEarnings.toStringAsFixed(2)}',
                           valueColor: const Color(0xFF059669)),
-                      const Divider(height: 14, color: Color(0xFFE2E8F0)),
+                      Divider(height: 14, color: AppColors.border),
                       _sheetRow('Total Withdrawn',
                           '₹${wallet.totalWithdrawn.toStringAsFixed(2)}',
                           valueColor: const Color(0xFF2563EB)),
                       if (wallet.outstandingRecovery > 0) ...[
-                        const Divider(height: 14, color: Color(0xFFE2E8F0)),
+                        Divider(height: 14, color: AppColors.border),
                         _sheetRow('Outstanding Recovery',
                             '₹${wallet.outstandingRecovery.toStringAsFixed(2)}',
                             valueColor: const Color(0xFFDC2626)),
                       ],
                       if (wallet.nextSettlementDate != null) ...[
-                        const Divider(height: 14, color: Color(0xFFE2E8F0)),
+                        Divider(height: 14, color: AppColors.border),
                         _sheetRow(
                           'Next Settlement Date',
                           '${wallet.nextSettlementDate!.day.toString().padLeft(2, '0')}/${wallet.nextSettlementDate!.month.toString().padLeft(2, '0')}/${wallet.nextSettlementDate!.year}',
@@ -251,12 +251,12 @@ class AdminWalletCard extends ConsumerWidget {
                 const SizedBox(height: AppSpacing.lg),
 
                 // Quick Actions
-                const Text(
+                Text(
                   'Quick Actions',
                   style: TextStyle(
                     fontSize: 13.5,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF0F172A),
+                    color: AppColors.textPrimary,
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -273,12 +273,12 @@ class AdminWalletCard extends ConsumerWidget {
                           context.push(AppRoutes.adminFinanceTransactions);
                         },
                         icon: const Icon(Icons.receipt_long_rounded, size: 16),
-                        label: const Text('Transactions'),
+                        label: Text('Transactions'),
                         style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFF0F172A),
-                          side: const BorderSide(color: Color(0xFFCBD5E1)),
+                          foregroundColor: AppColors.textPrimary,
+                          side: BorderSide(color: AppColors.border),
                           padding: const EdgeInsets.symmetric(vertical: 10),
-                          textStyle: const TextStyle(
+                          textStyle: TextStyle(
                               fontSize: 12, fontWeight: FontWeight.w700),
                         ),
                       ),
@@ -291,12 +291,12 @@ class AdminWalletCard extends ConsumerWidget {
                           context.push(AppRoutes.adminFinanceWithdrawals);
                         },
                         icon: const Icon(Icons.payments_rounded, size: 16),
-                        label: const Text('Withdrawals'),
+                        label: Text('Withdrawals'),
                         style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFF0F172A),
-                          side: const BorderSide(color: Color(0xFFCBD5E1)),
+                          foregroundColor: AppColors.textPrimary,
+                          side: BorderSide(color: AppColors.border),
                           padding: const EdgeInsets.symmetric(vertical: 10),
-                          textStyle: const TextStyle(
+                          textStyle: TextStyle(
                               fontSize: 12, fontWeight: FontWeight.w700),
                         ),
                       ),
@@ -313,12 +313,12 @@ class AdminWalletCard extends ConsumerWidget {
                           AdminAdjustmentDialog.show(context, wallet);
                         },
                         icon: const Icon(Icons.tune_rounded, size: 16),
-                        label: const Text('Adjust Balance'),
+                        label: Text('Adjust Balance'),
                         style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFF0F172A),
-                          side: const BorderSide(color: Color(0xFFCBD5E1)),
+                          foregroundColor: AppColors.textPrimary,
+                          side: BorderSide(color: AppColors.border),
                           padding: const EdgeInsets.symmetric(vertical: 10),
-                          textStyle: const TextStyle(
+                          textStyle: TextStyle(
                               fontSize: 12, fontWeight: FontWeight.w700),
                         ),
                       ),
@@ -377,9 +377,9 @@ class AdminWalletCard extends ConsumerWidget {
         Expanded(
           child: Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
-              color: Color(0xFF64748B),
+              color: AppColors.textSecondary,
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -391,7 +391,7 @@ class AdminWalletCard extends ConsumerWidget {
             fontSize: isBold ? 14 : 12.5,
             fontFamily: 'monospace',
             fontWeight: isBold ? FontWeight.w900 : FontWeight.w700,
-            color: valueColor ?? const Color(0xFF0F172A),
+            color: valueColor ?? AppColors.textPrimary,
           ),
         ),
       ],
@@ -409,12 +409,12 @@ class AdminWalletCard extends ConsumerWidget {
         margin: const EdgeInsets.only(bottom: AppSpacing.md),
         padding: const EdgeInsets.all(AppSpacing.md),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: AppColors.surface,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: wallet.isLocked
                 ? const Color(0xFFFECDD3)
-                : const Color(0xFFE2E8F0),
+                : AppColors.border,
             width: wallet.isLocked ? 1.2 : 1.0,
           ),
           boxShadow: const [
@@ -444,8 +444,8 @@ class AdminWalletCard extends ConsumerWidget {
                         radius: 18,
                         fontSize: 14,
                         backgroundColor:
-                            const Color(0xFF004E89).withValues(alpha: 0.1),
-                        foregroundColor: const Color(0xFF004E89),
+                            const Color(0xFF005965).withValues(alpha: 0.1),
+                        foregroundColor: const Color(0xFF005965),
                       ),
                       const SizedBox(width: 10),
                       Expanded(
@@ -456,19 +456,19 @@ class AdminWalletCard extends ConsumerWidget {
                               wallet.employeeName,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 14.5,
                                 fontWeight: FontWeight.w800,
-                                color: Color(0xFF0F172A),
+                                color: AppColors.textPrimary,
                               ),
                             ),
                             const SizedBox(height: 2),
                             Text(
                               'EMP-${wallet.employeeId}  •  ${wallet.currency}',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 11.5,
                                 fontFamily: 'monospace',
-                                color: Color(0xFF64748B),
+                                color: AppColors.textSecondary,
                               ),
                             ),
                           ],
@@ -514,7 +514,7 @@ class AdminWalletCard extends ConsumerWidget {
               ],
             ),
             const SizedBox(height: AppSpacing.md),
-            const Divider(color: Color(0xFFF1F5F9), height: 1),
+            Divider(color: AppColors.border, height: 1),
             const SizedBox(height: AppSpacing.md),
 
             // ── 2. Available Balance & T+7 Pending ─────────────────────────
@@ -525,12 +525,12 @@ class AdminWalletCard extends ConsumerWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'Available Balance',
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
-                          color: Color(0xFF64748B),
+                          color: AppColors.textSecondary,
                         ),
                       ),
                       const SizedBox(height: 2),
@@ -539,11 +539,11 @@ class AdminWalletCard extends ConsumerWidget {
                         alignment: Alignment.centerLeft,
                         child: Text(
                           '₹${wallet.availableBalance.toStringAsFixed(2)}',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 17,
                             fontFamily: 'monospace',
                             fontWeight: FontWeight.w900,
-                            color: Color(0xFF004E89),
+                            color: Color(0xFF005965),
                           ),
                         ),
                       ),
@@ -555,12 +555,12 @@ class AdminWalletCard extends ConsumerWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      const Text(
+                      Text(
                         'T+7 Pending',
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
-                          color: Color(0xFF64748B),
+                          color: AppColors.textSecondary,
                         ),
                       ),
                       const SizedBox(height: 2),
@@ -569,7 +569,7 @@ class AdminWalletCard extends ConsumerWidget {
                         alignment: Alignment.centerRight,
                         child: Text(
                           '₹${wallet.pendingBalance.toStringAsFixed(2)}',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 15,
                             fontFamily: 'monospace',
                             fontWeight: FontWeight.w800,
@@ -588,8 +588,9 @@ class AdminWalletCard extends ConsumerWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
+                color: AppColors.surfaceMuted,
                 borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.border, width: 0.5),
               ),
               child: Row(
                 children: [
@@ -597,17 +598,17 @@ class AdminWalletCard extends ConsumerWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           'Total Earned',
                           style: TextStyle(
-                              fontSize: 10.5, color: Color(0xFF64748B)),
+                              fontSize: 10.5, color: AppColors.textSecondary),
                         ),
                         const SizedBox(height: 1),
                         FittedBox(
                           fit: BoxFit.scaleDown,
                           child: Text(
                             '₹${wallet.lifetimeEarnings.toStringAsFixed(2)}',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12.5,
                               fontFamily: 'monospace',
                               fontWeight: FontWeight.w800,
@@ -619,23 +620,23 @@ class AdminWalletCard extends ConsumerWidget {
                     ),
                   ),
                   Container(
-                      width: 1, height: 24, color: const Color(0xFFE2E8F0)),
+                      width: 1, height: 24, color: AppColors.border),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           'Total Withdrawn',
                           style: TextStyle(
-                              fontSize: 10.5, color: Color(0xFF64748B)),
+                              fontSize: 10.5, color: AppColors.textSecondary),
                         ),
                         const SizedBox(height: 1),
                         FittedBox(
                           fit: BoxFit.scaleDown,
                           child: Text(
                             '₹${wallet.totalWithdrawn.toStringAsFixed(2)}',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12.5,
                               fontFamily: 'monospace',
                               fontWeight: FontWeight.w800,
@@ -660,14 +661,14 @@ class AdminWalletCard extends ConsumerWidget {
                     onPressed:
                         onViewDetails ?? () => _showDetailSheet(context, ref),
                     icon: const Icon(Icons.info_outline_rounded, size: 14),
-                    label: const Text(
+                    label: Text(
                       'View Details',
                       style:
                           TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
                     ),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFF0F172A),
-                      side: const BorderSide(color: Color(0xFFCBD5E1)),
+                      foregroundColor: AppColors.textPrimary,
+                      side: BorderSide(color: AppColors.border),
                       padding: const EdgeInsets.symmetric(
                           horizontal: 6, vertical: 8),
                       minimumSize: const Size(0, 36),
@@ -724,12 +725,12 @@ class AdminWalletCard extends ConsumerWidget {
                           context.push(AppRoutes.adminFinanceTransactions);
                         },
                     style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF004E89),
+                      backgroundColor: const Color(0xFF005965),
                       padding: const EdgeInsets.symmetric(
                           horizontal: 6, vertical: 8),
                       minimumSize: const Size(0, 36),
                     ),
-                    child: const Text(
+                    child: Text(
                       'Ledger',
                       style: TextStyle(
                           fontSize: 11.5, fontWeight: FontWeight.w700),
@@ -744,4 +745,3 @@ class AdminWalletCard extends ConsumerWidget {
     );
   }
 }
-

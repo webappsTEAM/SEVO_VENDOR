@@ -52,6 +52,7 @@ class _SuperAdminVendorDirectoryScreenState
 
     return Scaffold(
       appBar: const WorkforceAppBar(
+        titleText: 'Vendor Directory',
         showStatusSubBar: false,
         showDrawerMenu: true,
       ),
@@ -95,20 +96,20 @@ class _SuperAdminVendorDirectoryScreenState
                                   vertical: 2,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF004E89)
+                                  color: const Color(0xFF005965)
                                       .withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(4),
                                   border: Border.all(
-                                    color: const Color(0xFF004E89)
+                                    color: const Color(0xFF005965)
                                         .withValues(alpha: 0.25),
                                   ),
                                 ),
-                                child: const Text(
+                                child: Text(
                                   'PLATFORM GOVERNANCE',
                                   style: TextStyle(
                                     fontSize: 9,
                                     fontWeight: FontWeight.w900,
-                                    color: Color(0xFF004E89),
+                                    color: Color(0xFF005965),
                                     letterSpacing: 0.6,
                                   ),
                                 ),
@@ -116,22 +117,22 @@ class _SuperAdminVendorDirectoryScreenState
                             ],
                           ),
                           const SizedBox(height: 4),
-                          const Text(
+                          Text(
                             'Vendor Companies Management',
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.w900,
-                              color: Color(0xFF0F172A),
+                              color: AppColors.textPrimary,
                               letterSpacing: -0.4,
                             ),
                           ),
                           const SizedBox(height: 2),
-                          const Text(
+                          Text(
                             'SEVO Platform Admin: Complete oversight of service vendor organizations and their tied workforce.',
                             style: TextStyle(
                               fontSize: 11.5,
                               fontWeight: FontWeight.w400,
-                              color: Color(0xFF64748B),
+                              color: AppColors.textSecondary,
                             ),
                           ),
                         ],
@@ -139,7 +140,7 @@ class _SuperAdminVendorDirectoryScreenState
                     ),
                     IconButton(
                       icon: const Icon(Icons.refresh_rounded, size: 20),
-                      color: const Color(0xFF004E89),
+                      color: const Color(0xFF005965),
                       tooltip: 'Refresh Vendors',
                       onPressed: () =>
                           ref.invalidate(platformVendorsDataProvider),
@@ -159,31 +160,31 @@ class _SuperAdminVendorDirectoryScreenState
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: AppColors.surface,
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                    border: Border.all(color: AppColors.border),
                   ),
                   child: Row(
                     children: [
-                      const Icon(
+                      Icon(
                         Icons.search_rounded,
                         size: 18,
-                        color: Color(0xFF94A3B8),
+                        color: AppColors.textMuted,
                       ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: TextField(
                           controller: _searchController,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12.5,
-                            color: Color(0xFF0F172A),
+                            color: AppColors.textPrimary,
                           ),
-                          decoration: const InputDecoration(
+                          decoration: InputDecoration(
                             hintText:
                                 'Search by vendor name, owner, email, or city...',
                             hintStyle: TextStyle(
                               fontSize: 12,
-                              color: Color(0xFF94A3B8),
+                              color: AppColors.textMuted,
                             ),
                             border: InputBorder.none,
                             isDense: true,
@@ -195,7 +196,7 @@ class _SuperAdminVendorDirectoryScreenState
                       if (_searchController.text.isNotEmpty)
                         IconButton(
                           icon: const Icon(Icons.clear_rounded, size: 16),
-                          color: const Color(0xFF94A3B8),
+                          color: AppColors.textMuted,
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(),
                           onPressed: () {
@@ -213,10 +214,10 @@ class _SuperAdminVendorDirectoryScreenState
                   padding: const EdgeInsets.symmetric(horizontal: 2),
                   child: Text(
                     'Showing $showingCount of $totalCount vendors',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 11.5,
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFF64748B),
+                      color: AppColors.textSecondary,
                     ),
                   ),
                 ),
@@ -257,25 +258,25 @@ class _EmptyVendorsView extends StatelessWidget {
       ),
       margin: const EdgeInsets.only(top: AppSpacing.md),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppRadius.card),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: AppColors.border),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(
+          Icon(
             Icons.business_outlined,
             size: 40,
-            color: Color(0xFF94A3B8),
+            color: AppColors.textMuted,
           ),
           const SizedBox(height: 12),
           Text(
             isSearching ? 'No vendor businesses found' : 'No Vendors Registered',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14.5,
               fontWeight: FontWeight.w800,
-              color: Color(0xFF0F172A),
+              color: AppColors.textPrimary,
             ),
             textAlign: TextAlign.center,
           ),
@@ -284,9 +285,9 @@ class _EmptyVendorsView extends StatelessWidget {
             isSearching
                 ? 'No vendors match your search criteria.'
                 : 'No service vendor organizations have registered on the platform yet.',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
-              color: Color(0xFF64748B),
+              color: AppColors.textSecondary,
               height: 1.3,
             ),
             textAlign: TextAlign.center,

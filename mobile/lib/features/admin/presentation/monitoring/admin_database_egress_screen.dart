@@ -133,9 +133,9 @@ class _AdminDatabaseEgressScreenState extends ConsumerState<AdminDatabaseEgressS
             Container(
               padding: const EdgeInsets.all(AppSpacing.md),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: AppColors.surface,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
+                border: Border.all(color: AppColors.border),
                 boxShadow: const [
                   BoxShadow(
                     color: Color(0x040A2540),
@@ -152,12 +152,12 @@ class _AdminDatabaseEgressScreenState extends ConsumerState<AdminDatabaseEgressS
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       Expanded(
-                        child: const Text(
+                        child: Text(
                           'Database & Egress Monitoring',
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w900,
-                            color: Color(0xFF0A2540),
+                            color: Color(0xFF003B46),
                             letterSpacing: -0.4,
                           ),
                         ),
@@ -177,13 +177,13 @@ class _AdminDatabaseEgressScreenState extends ConsumerState<AdminDatabaseEgressS
                             Container(
                               width: 6,
                               height: 6,
-                              decoration: const BoxDecoration(
+                              decoration: BoxDecoration(
                                 color: Color(0xFF059669),
                                 shape: BoxShape.circle,
                               ),
                             ),
                             const SizedBox(width: 5),
-                            const Text(
+                            Text(
                               'Live Telemetry',
                               style: TextStyle(
                                 fontSize: 10,
@@ -208,7 +208,7 @@ class _AdminDatabaseEgressScreenState extends ConsumerState<AdminDatabaseEgressS
                     ),
                   ),
                   const SizedBox(height: AppSpacing.sm),
-                  const Divider(height: 1, color: Color(0xFFE2E8F0)),
+                  Divider(height: 1, color: AppColors.border),
                   const SizedBox(height: AppSpacing.sm),
 
                   // Metadata & Actions Bar: Last updated, Auto-refresh toggle, Manual refresh
@@ -222,7 +222,7 @@ class _AdminDatabaseEgressScreenState extends ConsumerState<AdminDatabaseEgressS
                           children: [
                             Row(
                               children: [
-                                const Icon(Icons.schedule_rounded, size: 12, color: Color(0xFF64748B)),
+                                Icon(Icons.schedule_rounded, size: 12, color: AppColors.textSecondary),
                                 const SizedBox(width: 4),
                                 Expanded(
                                   child: Text(
@@ -251,7 +251,7 @@ class _AdminDatabaseEgressScreenState extends ConsumerState<AdminDatabaseEgressS
                                   Icon(
                                     autoRefresh ? Icons.sync_rounded : Icons.sync_disabled_rounded,
                                     size: 12,
-                                    color: autoRefresh ? const Color(0xFF059669) : const Color(0xFF94A3B8),
+                                    color: autoRefresh ? const Color(0xFF059669) : AppColors.textMuted,
                                   ),
                                   const SizedBox(width: 4),
                                   Flexible(
@@ -262,7 +262,7 @@ class _AdminDatabaseEgressScreenState extends ConsumerState<AdminDatabaseEgressS
                                       style: TextStyle(
                                         fontSize: 10.5,
                                         fontWeight: FontWeight.w700,
-                                        color: autoRefresh ? const Color(0xFF059669) : const Color(0xFF94A3B8),
+                                        color: autoRefresh ? const Color(0xFF059669) : AppColors.textMuted,
                                       ),
                                     ),
                                   ),
@@ -284,7 +284,7 @@ class _AdminDatabaseEgressScreenState extends ConsumerState<AdminDatabaseEgressS
                                 child: CircularProgressIndicator(strokeWidth: 2),
                               )
                             : const Icon(Icons.refresh_rounded, size: 14),
-                        label: const Text('Refresh', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+                        label: Text('Refresh', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
                         style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                           minimumSize: Size.zero,
@@ -339,7 +339,7 @@ class _AdminDatabaseEgressScreenState extends ConsumerState<AdminDatabaseEgressS
                 return Container(
                   padding: const EdgeInsets.all(AppSpacing.xl),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: AppColors.surface,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: const Color(0xFFFECDD3)),
                   ),
@@ -347,7 +347,7 @@ class _AdminDatabaseEgressScreenState extends ConsumerState<AdminDatabaseEgressS
                     children: [
                       const Icon(Icons.error_outline_rounded, size: 40, color: Color(0xFFE11D48)),
                       const SizedBox(height: AppSpacing.md),
-                      const Text(
+                      Text(
                         'Monitoring data unavailable',
                         style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
                       ),
@@ -363,11 +363,11 @@ class _AdminDatabaseEgressScreenState extends ConsumerState<AdminDatabaseEgressS
                         decoration: BoxDecoration(
                           color: const Color(0xFFF8FAFC),
                           borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                          border: Border.all(color: AppColors.border),
                         ),
                         child: SelectableText(
                           detail,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 11,
                             fontFamily: 'monospace',
                             color: Color(0xFFE11D48),
@@ -379,8 +379,8 @@ class _AdminDatabaseEgressScreenState extends ConsumerState<AdminDatabaseEgressS
                       FilledButton.icon(
                         onPressed: () => _handleRefresh(silent: false),
                         icon: const Icon(Icons.refresh_rounded, size: 16),
-                        label: const Text('Retry'),
-                        style: FilledButton.styleFrom(backgroundColor: const Color(0xFF004E89)),
+                        label: Text('Retry'),
+                        style: FilledButton.styleFrom(backgroundColor: const Color(0xFF005965)),
                       ),
                     ],
                   ),

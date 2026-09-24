@@ -15,9 +15,9 @@ const List<CategoryInfo> kStandardServiceCategories = [
   CategoryInfo(name: 'Electrical', icon: Icons.bolt_rounded),
   CategoryInfo(name: 'AC & Appliances', icon: Icons.ac_unit_rounded),
   CategoryInfo(name: 'Plumbing', icon: Icons.water_drop_rounded),
+  CategoryInfo(name: 'Painting', icon: Icons.format_paint_rounded),
   CategoryInfo(name: 'Locks & Carpentry', icon: Icons.handyman_rounded),
   CategoryInfo(name: 'Cleaning', icon: Icons.cleaning_services_rounded),
-  CategoryInfo(name: 'Painting', icon: Icons.format_paint_rounded),
   CategoryInfo(name: 'Automotive', icon: Icons.directions_car_rounded),
   CategoryInfo(name: 'Pest Control', icon: Icons.pest_control_rounded),
 ];

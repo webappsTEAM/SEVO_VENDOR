@@ -86,21 +86,21 @@ class _TieVendorBottomSheetState extends ConsumerState<TieVendorBottomSheet> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Untie Technician'),
+        title: Text('Untie Technician'),
         content: Text(
           'Are you sure you want to relieve ${widget.worker.name} and convert them to an independent Solo Worker?',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
+            child: Text('Cancel'),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFFDC2626),
             ),
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Untie & Convert to Solo'),
+            child: Text('Untie & Convert to Solo'),
           ),
         ],
       ),
@@ -144,8 +144,8 @@ class _TieVendorBottomSheetState extends ConsumerState<TieVendorBottomSheet> {
     return Padding(
       padding: EdgeInsets.only(bottom: bottomInset),
       child: Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
+        decoration: BoxDecoration(
+          color: AppColors.surface,
           borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         ),
         padding: const EdgeInsets.fromLTRB(
@@ -165,7 +165,7 @@ class _TieVendorBottomSheetState extends ConsumerState<TieVendorBottomSheet> {
                   width: 36,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFCBD5E1),
+                    color: AppColors.border,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -203,17 +203,17 @@ class _TieVendorBottomSheetState extends ConsumerState<TieVendorBottomSheet> {
                           isTied
                               ? 'Manage Vendor Assignment'
                               : 'Tie Solo Worker to Vendor',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w800,
-                            color: Color(0xFF0F172A),
+                            color: AppColors.textPrimary,
                           ),
                         ),
                         Text(
                           '${widget.worker.name} (${widget.worker.employeeId.isNotEmpty ? widget.worker.employeeId : '#${widget.worker.id}'})',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12,
-                            color: Color(0xFF64748B),
+                            color: AppColors.textSecondary,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -247,7 +247,7 @@ class _TieVendorBottomSheetState extends ConsumerState<TieVendorBottomSheet> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
+                            Text(
                               'CURRENTLY TIED TO:',
                               style: TextStyle(
                                 fontSize: 9.5,
@@ -258,7 +258,7 @@ class _TieVendorBottomSheetState extends ConsumerState<TieVendorBottomSheet> {
                             ),
                             Text(
                               widget.worker.tiedVendor!.companyName,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 12.5,
                                 fontWeight: FontWeight.w800,
                                 color: Color(0xFF064E3B),
@@ -272,12 +272,12 @@ class _TieVendorBottomSheetState extends ConsumerState<TieVendorBottomSheet> {
                 ),
 
               // ── Target Vendor Selection ─────────────────────────────────
-              const Text(
+              Text(
                 'Target Vendor Company *',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF334155),
+                  color: AppColors.textSecondary,
                 ),
               ),
               const SizedBox(height: 6),
@@ -291,14 +291,14 @@ class _TieVendorBottomSheetState extends ConsumerState<TieVendorBottomSheet> {
                   ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                    borderSide: BorderSide(color: AppColors.border),
                   ),
                   filled: true,
                   fillColor: const Color(0xFFF8FAFC),
                 ),
-                hint: const Text(
+                hint: Text(
                   'Select a vendor business...',
-                  style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+                  style: TextStyle(fontSize: 12, color: AppColors.textMuted),
                   overflow: TextOverflow.ellipsis,
                 ),
                 items: widget.vendors
@@ -307,7 +307,7 @@ class _TieVendorBottomSheetState extends ConsumerState<TieVendorBottomSheet> {
                         value: v.id,
                         child: Text(
                           '${v.companyName} (${v.tiedWorkersCount} tied)',
-                          style: const TextStyle(fontSize: 12.5),
+                          style: TextStyle(fontSize: 12.5),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
@@ -318,12 +318,12 @@ class _TieVendorBottomSheetState extends ConsumerState<TieVendorBottomSheet> {
               const SizedBox(height: AppSpacing.md),
 
               // ── Engagement Model Selection ──────────────────────────────
-              const Text(
+              Text(
                 'Engagement Model',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF334155),
+                  color: AppColors.textSecondary,
                 ),
               ),
               const SizedBox(height: 6),
@@ -337,7 +337,7 @@ class _TieVendorBottomSheetState extends ConsumerState<TieVendorBottomSheet> {
                   ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                    borderSide: BorderSide(color: AppColors.border),
                   ),
                   filled: true,
                   fillColor: const Color(0xFFF8FAFC),
@@ -367,29 +367,29 @@ class _TieVendorBottomSheetState extends ConsumerState<TieVendorBottomSheet> {
               const SizedBox(height: AppSpacing.md),
 
               // ── Admin Notes ─────────────────────────────────────────────
-              const Text(
+              Text(
                 'Assignment Notes (Optional)',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF334155),
+                  color: AppColors.textSecondary,
                 ),
               ),
               const SizedBox(height: 6),
               TextField(
                 controller: _notesController,
                 maxLines: 2,
-                style: const TextStyle(fontSize: 12),
+                style: TextStyle(fontSize: 12),
                 decoration: InputDecoration(
                   hintText: 'Enter internal notes about this assignment...',
-                  hintStyle: const TextStyle(
+                  hintStyle: TextStyle(
                     fontSize: 12,
-                    color: Color(0xFF94A3B8),
+                    color: AppColors.textMuted,
                   ),
                   contentPadding: const EdgeInsets.all(10),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                    borderSide: BorderSide(color: AppColors.border),
                   ),
                   filled: true,
                   fillColor: const Color(0xFFF8FAFC),
@@ -420,7 +420,7 @@ class _TieVendorBottomSheetState extends ConsumerState<TieVendorBottomSheet> {
                         )
                       : Text(
                           isTied ? 'Update Assignment' : 'Tie to Vendor',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontWeight: FontWeight.w800,
                             fontSize: 13.5,
                           ),
@@ -436,13 +436,13 @@ class _TieVendorBottomSheetState extends ConsumerState<TieVendorBottomSheet> {
                   child: OutlinedButton(
                     style: OutlinedButton.styleFrom(
                       foregroundColor: const Color(0xFFDC2626),
-                      side: const BorderSide(color: Color(0xFFFCA5A5)),
+                      side: BorderSide(color: Color(0xFFFCA5A5)),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
                       ),
                     ),
                     onPressed: _isSubmitting ? null : _handleUntie,
-                    child: const Text(
+                    child: Text(
                       'Untie & Relieve to Solo Worker',
                       style: TextStyle(
                         fontWeight: FontWeight.w800,

@@ -49,13 +49,13 @@ class _AdminTiedTechniciansScreenState
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
+            child: Text('Cancel'),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
               backgroundColor: action == 'SUSPEND'
                   ? const Color(0xFFD97706)
-                  : const Color(0xFF004E89),
+                  : const Color(0xFF005965),
             ),
             onPressed: () => Navigator.of(ctx).pop(true),
             child: Text(action == 'SUSPEND' ? 'Suspend' : 'Confirm'),
@@ -126,9 +126,9 @@ class _AdminTiedTechniciansScreenState
             Container(
               padding: const EdgeInsets.all(AppSpacing.md),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: AppColors.surface,
                 borderRadius: BorderRadius.circular(AppRadius.card),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
+                border: Border.all(color: AppColors.border),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -143,39 +143,39 @@ class _AdminTiedTechniciansScreenState
                           borderRadius: BorderRadius.circular(5),
                           border: Border.all(color: const Color(0xFFBFDBFE)),
                         ),
-                        child: const Text(
+                        child: Text(
                           'MY WORKFORCE',
                           style: TextStyle(
                             fontSize: 9.5,
                             fontWeight: FontWeight.w900,
-                            color: Color(0xFF004E89),
+                            color: Color(0xFF005965),
                             letterSpacing: 0.6,
                           ),
                         ),
                       ),
                       IconButton(
                         onPressed: () => ref.invalidate(adminVendorNetworkProvider),
-                        icon: const Icon(Icons.refresh_rounded, size: 20, color: Color(0xFF004E89)),
+                        icon: const Icon(Icons.refresh_rounded, size: 20, color: Color(0xFF005965)),
                         tooltip: 'Refresh Roster',
                         visualDensity: VisualDensity.compact,
                       ),
                     ],
                   ),
                   const SizedBox(height: 6),
-                  const Text(
+                  Text(
                     'Tied Technicians',
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w900,
-                      color: Color(0xFF0F172A),
+                      color: AppColors.textPrimary,
                     ),
                   ),
                   const SizedBox(height: 2),
-                  const Text(
+                  Text(
                     'Technicians attached to your service provider company entity',
                     style: TextStyle(
                       fontSize: 12,
-                      color: Color(0xFF64748B),
+                      color: AppColors.textSecondary,
                     ),
                   ),
                 ],
@@ -188,7 +188,7 @@ class _AdminTiedTechniciansScreenState
               controller: _searchController,
               decoration: InputDecoration(
                 hintText: 'Search by technician name, email or phone...',
-                prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Color(0xFF64748B)),
+                prefixIcon: Icon(Icons.search_rounded, size: 20, color: AppColors.textSecondary),
                 suffixIcon: _searchQuery.isNotEmpty
                     ? IconButton(
                         icon: const Icon(Icons.clear_rounded, size: 18),
@@ -200,14 +200,14 @@ class _AdminTiedTechniciansScreenState
                     : null,
                 contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 filled: true,
-                fillColor: Colors.white,
+                fillColor: AppColors.surface,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(AppRadius.card),
-                  borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                  borderSide: BorderSide(color: AppColors.border),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(AppRadius.card),
-                  borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                  borderSide: BorderSide(color: AppColors.border),
                 ),
               ),
               onChanged: (val) => setState(() => _searchQuery = val),
@@ -242,7 +242,7 @@ class _AdminTiedTechniciansScreenState
               error: (err, _) => Container(
                 padding: const EdgeInsets.all(AppSpacing.lg),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: AppColors.surface,
                   borderRadius: BorderRadius.circular(AppRadius.card),
                   border: Border.all(color: const Color(0xFFFECACA)),
                 ),
@@ -253,13 +253,13 @@ class _AdminTiedTechniciansScreenState
                     Text(
                       'Failed to load tied technicians: $err',
                       textAlign: TextAlign.center,
-                      style: const TextStyle(fontSize: 12.5, color: Color(0xFF991B1B)),
+                      style: TextStyle(fontSize: 12.5, color: Color(0xFF991B1B)),
                     ),
                     const SizedBox(height: 12),
                     FilledButton.icon(
                       onPressed: () => ref.invalidate(adminVendorNetworkProvider),
                       icon: const Icon(Icons.refresh_rounded, size: 16),
-                      label: const Text('Retry'),
+                      label: Text('Retry'),
                     ),
                   ],
                 ),
@@ -291,15 +291,15 @@ class _AdminTiedTechniciansScreenState
       label: Text(label),
       selected: isSelected,
       onSelected: (_) => setState(() => _selectedStatus = value),
-      selectedColor: const Color(0xFF004E89),
-      backgroundColor: Colors.white,
+      selectedColor: const Color(0xFF005965),
+      backgroundColor: AppColors.surface,
       labelStyle: TextStyle(
         fontSize: 12,
         fontWeight: FontWeight.w700,
-        color: isSelected ? Colors.white : const Color(0xFF475569),
+        color: isSelected ? Colors.white : AppColors.textSecondary,
       ),
       side: BorderSide(
-        color: isSelected ? const Color(0xFF004E89) : const Color(0xFFCBD5E1),
+        color: isSelected ? const Color(0xFF005965) : AppColors.border,
       ),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
     );
@@ -312,9 +312,9 @@ class _AdminTiedTechniciansScreenState
       margin: const EdgeInsets.only(bottom: AppSpacing.sm),
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppRadius.card),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: AppColors.border),
         boxShadow: const [
           BoxShadow(
             color: Color(0x040A2540),
@@ -345,10 +345,10 @@ class _AdminTiedTechniciansScreenState
                         Flexible(
                           child: Text(
                             tech.name,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w800,
-                              color: Color(0xFF0F172A),
+                              color: AppColors.textPrimary,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -360,7 +360,7 @@ class _AdminTiedTechniciansScreenState
                           height: 8,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: tech.isOnline ? const Color(0xFF10B981) : const Color(0xFF94A3B8),
+                            color: tech.isOnline ? const Color(0xFF10B981) : AppColors.textMuted,
                           ),
                         ),
                       ],
@@ -368,9 +368,9 @@ class _AdminTiedTechniciansScreenState
                     const SizedBox(height: 2),
                     Text(
                       tech.title,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11.5,
-                        color: Color(0xFF64748B),
+                        color: AppColors.textSecondary,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -383,18 +383,18 @@ class _AdminTiedTechniciansScreenState
             ],
           ),
           const SizedBox(height: 10),
-          const Divider(height: 1, color: Color(0xFFF1F5F9)),
+          Divider(height: 1, color: Color(0xFFF1F5F9)),
           const SizedBox(height: 10),
 
           // Contact Details & Metrics
           Row(
             children: [
               if (tech.phone.isNotEmpty) ...[
-                const Icon(Icons.phone_outlined, size: 14, color: Color(0xFF64748B)),
+                Icon(Icons.phone_outlined, size: 14, color: AppColors.textSecondary),
                 const SizedBox(width: 4),
                 Text(
                   tech.phone,
-                  style: const TextStyle(fontSize: 11.5, color: Color(0xFF334155)),
+                  style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
                 ),
                 const SizedBox(width: 12),
               ],
@@ -403,10 +403,10 @@ class _AdminTiedTechniciansScreenState
                 const SizedBox(width: 3),
                 Text(
                   '${tech.averageRating.toStringAsFixed(1)} (${tech.ratingCount})',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 11.5,
                     fontWeight: FontWeight.w700,
-                    color: Color(0xFF0F172A),
+                    color: AppColors.textPrimary,
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -419,10 +419,10 @@ class _AdminTiedTechniciansScreenState
                 ),
                 child: Text(
                   tech.tier,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 9.5,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF475569),
+                    color: AppColors.textSecondary,
                   ),
                 ),
               ),
@@ -445,10 +445,10 @@ class _AdminTiedTechniciansScreenState
                   ),
                   child: Text(
                     skill,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFF004E89),
+                      color: Color(0xFF005965),
                     ),
                   ),
                 );
@@ -475,11 +475,11 @@ class _AdminTiedTechniciansScreenState
                     techName: tech.name,
                   ),
                   icon: const Icon(Icons.pause_circle_outline_rounded, size: 14, color: Color(0xFFD97706)),
-                  label: const Text('Suspend'),
+                  label: Text('Suspend'),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: const Color(0xFFB45309),
                     visualDensity: VisualDensity.compact,
-                    textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                    textStyle: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   ),
                 )
@@ -491,11 +491,11 @@ class _AdminTiedTechniciansScreenState
                     techName: tech.name,
                   ),
                   icon: const Icon(Icons.play_circle_outline_rounded, size: 14),
-                  label: const Text('Reactivate'),
+                  label: Text('Reactivate'),
                   style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF004E89),
+                    backgroundColor: const Color(0xFF005965),
                     visualDensity: VisualDensity.compact,
-                    textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                    textStyle: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   ),
                 ),

@@ -107,7 +107,7 @@ class _OfferCardState extends ConsumerState<OfferCard> {
     return showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.card)),
       ),
@@ -276,9 +276,9 @@ class _OfferCardState extends ConsumerState<OfferCard> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFFEF3C7),
+                        color: AppColors.warningBg,
                         borderRadius: BorderRadius.circular(AppRadius.chip),
-                        border: Border.all(color: const Color(0xFFFDE68A)),
+                        border: Border.all(color: AppColors.warningBorder),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -292,7 +292,7 @@ class _OfferCardState extends ConsumerState<OfferCard> {
                             ),
                           ),
                           const SizedBox(width: 5),
-                          const Flexible(
+                          Flexible(
                             child: Text(
                               'EXCLUSIVE JOB OFFER',
                               maxLines: 1,
@@ -300,7 +300,7 @@ class _OfferCardState extends ConsumerState<OfferCard> {
                               style: TextStyle(
                                 fontSize: 10,
                                 fontWeight: FontWeight.w900,
-                                color: Color(0xFF92400E),
+                                color: AppColors.warningText,
                                 letterSpacing: 0.4,
                               ),
                             ),
@@ -312,21 +312,21 @@ class _OfferCardState extends ConsumerState<OfferCard> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFFEE2E2),
+                          color: AppColors.errorBg,
                           borderRadius: BorderRadius.circular(AppRadius.chip),
-                          border: Border.all(color: const Color(0xFFFECDD3)),
+                          border: Border.all(color: AppColors.errorBorder),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.timer_outlined, size: 12, color: Color(0xFFB91C1C)),
+                            Icon(Icons.timer_outlined, size: 12, color: AppColors.errorText),
                             const SizedBox(width: 4),
                             CountdownText(
                               target: expiresAt,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w800,
-                                color: Color(0xFFB91C1C),
+                                color: AppColors.errorText,
                               ),
                             ),
                           ],
@@ -356,10 +356,10 @@ class _OfferCardState extends ConsumerState<OfferCard> {
                           const SizedBox(height: 2),
                           Text(
                             widget.job.displayTitle,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.w800,
-                              color: Color(0xFF0F172A),
+                              color: AppColors.textPrimary,
                             ),
                           ),
                         ],
@@ -368,10 +368,10 @@ class _OfferCardState extends ConsumerState<OfferCard> {
                     if (widget.job.totalAmount != null)
                       Text(
                         '₹${widget.job.totalAmount!.toStringAsFixed(0)}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w900,
-                          color: Color(0xFF0F172A),
+                          color: AppColors.textPrimary,
                           fontFamily: 'monospace',
                         ),
                       ),
@@ -384,9 +384,9 @@ class _OfferCardState extends ConsumerState<OfferCard> {
                 Container(
                   padding: const EdgeInsets.all(AppSpacing.sm),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: AppColors.surface,
                     borderRadius: BorderRadius.circular(AppRadius.chip),
-                    border: Border.all(color: const Color(0xFFFDE68A)),
+                    border: Border.all(color: const Color(0xFFFDE68A).withValues(alpha: 0.5)),
                   ),
                   child: Column(
                     children: [
@@ -519,7 +519,7 @@ class _DetailRow extends StatelessWidget {
             style: TextStyle(
               fontSize: 11.5,
               fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
-              color: const Color(0xFF334155),
+              color: AppColors.textPrimary,
             ),
           ),
         ),

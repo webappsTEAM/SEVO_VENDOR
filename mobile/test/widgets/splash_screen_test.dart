@@ -30,17 +30,15 @@ void main() {
 
     // Initial render
     expect(find.byType(SplashScreen), findsOneWidget);
-    expect(find.text('SEVO'), findsOneWidget);
-    expect(find.text('WORKFORCE'), findsOneWidget);
     expect(find.byType(Image), findsOneWidget);
     expect(container.read(splashControllerProvider), isFalse);
 
-    // Advance halfway through animation (3700ms)
-    await tester.pump(const Duration(milliseconds: 3700));
+    // Advance halfway through animation (1500ms)
+    await tester.pump(const Duration(milliseconds: 1500));
     expect(container.read(splashControllerProvider), isFalse);
 
-    // Advance to completion (another 3900ms)
-    await tester.pump(const Duration(milliseconds: 3900));
+    // Advance to completion (another 1600ms -> 3100ms total)
+    await tester.pump(const Duration(milliseconds: 1600));
     await tester.pumpAndSettle();
     expect(container.read(splashControllerProvider), isTrue);
   });

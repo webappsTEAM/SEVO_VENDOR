@@ -78,8 +78,8 @@ class _ApproveRelievingBottomSheetState
     return Padding(
       padding: EdgeInsets.only(bottom: bottomInset),
       child: Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
+        decoration: BoxDecoration(
+          color: AppColors.surface,
           borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         ),
         padding: const EdgeInsets.fromLTRB(
@@ -99,7 +99,7 @@ class _ApproveRelievingBottomSheetState
                   width: 36,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFCBD5E1),
+                    color: AppColors.border,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -129,19 +129,19 @@ class _ApproveRelievingBottomSheetState
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           'SEVO Platform Relieving Audit',
                           style: TextStyle(
                             fontSize: 15.5,
                             fontWeight: FontWeight.w800,
-                            color: Color(0xFF0F172A),
+                            color: AppColors.textPrimary,
                           ),
                         ),
                         Text(
                           'Request #${widget.request.id} • ${widget.request.technicianName}',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12,
-                            color: Color(0xFF64748B),
+                            color: AppColors.textSecondary,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -159,7 +159,7 @@ class _ApproveRelievingBottomSheetState
                 decoration: BoxDecoration(
                   color: const Color(0xFFF8FAFC),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                  border: Border.all(color: AppColors.border),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -167,22 +167,22 @@ class _ApproveRelievingBottomSheetState
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
+                        Text(
                           'Vendor Company:',
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
-                            color: Color(0xFF64748B),
+                            color: AppColors.textSecondary,
                           ),
                         ),
                         const SizedBox(width: 8),
                         Flexible(
                           child: Text(
                             widget.request.vendorName,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 11.5,
                               fontWeight: FontWeight.w800,
-                              color: Color(0xFF0F172A),
+                              color: AppColors.textPrimary,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -194,12 +194,12 @@ class _ApproveRelievingBottomSheetState
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
+                        Text(
                           'Resignation Category:',
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
-                            color: Color(0xFF64748B),
+                            color: AppColors.textSecondary,
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -207,7 +207,7 @@ class _ApproveRelievingBottomSheetState
                           child: Text(
                             widget.request.reasonDisplay ??
                                 widget.request.reasonCategory,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w700,
                               color: Color(0xFF3730A3),
@@ -220,9 +220,9 @@ class _ApproveRelievingBottomSheetState
                     ),
                     if (widget.request.vendorSettlementNotes != null) ...[
                       const SizedBox(height: 6),
-                      const Divider(height: 1, color: Color(0xFFE2E8F0)),
+                      Divider(height: 1, color: AppColors.border),
                       const SizedBox(height: 6),
-                      const Text(
+                      Text(
                         'Vendor Clearance Notes:',
                         style: TextStyle(
                           fontSize: 10.5,
@@ -233,9 +233,9 @@ class _ApproveRelievingBottomSheetState
                       const SizedBox(height: 2),
                       Text(
                         widget.request.vendorSettlementNotes!,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 11.5,
-                          color: Color(0xFF334155),
+                          color: AppColors.textSecondary,
                         ),
                       ),
                     ],
@@ -245,25 +245,25 @@ class _ApproveRelievingBottomSheetState
               const SizedBox(height: AppSpacing.md),
 
               // ── SEVO Audit Checklist / Notes ────────────────────────────
-              const Text(
+              Text(
                 'Platform Audit & Settlement Notes *',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF334155),
+                  color: AppColors.textSecondary,
                 ),
               ),
               const SizedBox(height: 6),
               TextField(
                 controller: _auditNotesController,
                 maxLines: 3,
-                style: const TextStyle(fontSize: 12),
+                style: TextStyle(fontSize: 12),
                 decoration: InputDecoration(
                   hintText: 'Enter platform audit notes for compliance...',
                   contentPadding: const EdgeInsets.all(10),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                    borderSide: BorderSide(color: AppColors.border),
                   ),
                   filled: true,
                   fillColor: const Color(0xFFF8FAFC),
@@ -292,7 +292,7 @@ class _ApproveRelievingBottomSheetState
                             color: Colors.white,
                           ),
                         )
-                      : const Text(
+                      : Text(
                           'Approve SEVO Audit & Relieve',
                           style: TextStyle(
                             fontWeight: FontWeight.w800,
@@ -307,11 +307,11 @@ class _ApproveRelievingBottomSheetState
                 height: 40,
                 child: TextButton(
                   onPressed: () => Navigator.of(context).pop(false),
-                  child: const Text(
+                  child: Text(
                     'Cancel',
                     style: TextStyle(
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFF64748B),
+                      color: AppColors.textSecondary,
                     ),
                   ),
                 ),

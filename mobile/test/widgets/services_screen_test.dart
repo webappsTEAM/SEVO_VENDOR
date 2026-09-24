@@ -171,7 +171,7 @@ void main() {
       // Verify Header & Subtitle
       expect(find.text('Services & Skills'), findsWidgets);
       expect(
-        find.text('Manage your authorized trade services, skills portfolio, and request new service categories'),
+        find.text('2 Active Services • 3 Categories'),
         findsOneWidget,
       );
 

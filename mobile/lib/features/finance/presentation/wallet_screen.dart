@@ -10,6 +10,7 @@ import 'package:mobile/features/finance/presentation/widgets/transaction_detail_
 import 'package:mobile/features/finance/presentation/widgets/transaction_list_tile.dart';
 import 'package:mobile/routing/app_routes.dart';
 import 'package:mobile/shared/widgets/app_card.dart';
+import 'package:mobile/shared/widgets/module_header_card.dart';
 import 'package:mobile/shared/widgets/workforce_app_bar.dart';
 
 /// Main Technician Earnings & Wallet Screen.
@@ -84,23 +85,11 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                 AppSpacing.xxl,
               ),
               children: [
-                // ── Main Heading, Description & Top Actions Row ──────────────
-                const Text(
-                  'Technician Earnings & Wallet',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                    color: Color(0xFF0A2540),
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  'Authoritative 60% job commission earnings, T+7 settlement releases, and bank payouts.',
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    color: AppColors.textMuted,
-                    height: 1.35,
-                  ),
+                // ── Module Heading Card ──────────────────────────────────────
+                const ModuleHeaderCard(
+                  title: 'Technician Earnings & Wallet',
+                  subtitle: 'Commission earnings, settlement releases & payouts',
+                  icon: Icons.account_balance_wallet_rounded,
                 ),
                 const SizedBox(height: AppSpacing.md),
 
@@ -111,12 +100,12 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                       child: OutlinedButton.icon(
                         onPressed: _isRefreshing ? null : _handleRefresh,
                         icon: _isRefreshing
-                            ? const SizedBox(
+                            ? SizedBox(
                                 width: 14,
                                 height: 14,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
-                                  color: Color(0xFF004E89),
+                                  color: AppColors.primary,
                                 ),
                               )
                             : const Icon(Icons.refresh_rounded, size: 16),
@@ -140,7 +129,7 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                           style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
                         ),
                         style: FilledButton.styleFrom(
-                          backgroundColor: const Color(0xFF004E89), // Peacock Blue branding
+                          backgroundColor: AppColors.primary, // SEVO Teal branding
                           padding: const EdgeInsets.symmetric(vertical: 10),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                         ),
@@ -160,9 +149,9 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                         amount: '₹${wallet.availableBalance.toStringAsFixed(2)}',
                         supportingText: 'Ready for withdrawal (min ₹5,000)',
                         icon: Icons.account_balance_wallet_rounded,
-                        iconColor: const Color(0xFF004E89),
-                        accentBorderColor: const Color(0xFF004E89).withValues(alpha: 0.25),
-                        bgColor: const Color(0xFFEFF6FF),
+                        iconColor: AppColors.primary,
+                        accentBorderColor: AppColors.primary.withValues(alpha: 0.25),
+                        bgColor: AppColors.selectedTint,
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -202,7 +191,7 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                         amount: '₹${wallet.totalWithdrawn.toStringAsFixed(2)}',
                         supportingText: 'Disbursed to bank accounts',
                         icon: Icons.outbox_rounded,
-                        iconColor: const Color(0xFF004E89),
+                        iconColor: AppColors.primary,
                         accentBorderColor: const Color(0xFF94A3B8).withValues(alpha: 0.3),
                         bgColor: const Color(0xFFF1F5F9),
                       ),
@@ -570,18 +559,18 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                     children: [
                       Row(
                         children: [
-                          const Icon(
+                          Icon(
                             Icons.verified_user_outlined,
                             size: 18,
-                            color: Color(0xFF004E89),
+                            color: AppColors.primary,
                           ),
                           const SizedBox(width: 8),
-                          const Text(
+                          Text(
                             'Commission & Payout Policy',
                             style: TextStyle(
                               fontSize: 13.5,
                               fontWeight: FontWeight.w800,
-                              color: Color(0xFF0A2540),
+                              color: AppColors.peacockNavy,
                             ),
                           ),
                         ],
@@ -608,9 +597,9 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Padding(
-            padding: EdgeInsets.only(top: 4, right: 8),
-            child: Icon(Icons.circle, size: 5, color: Color(0xFF004E89)),
+          Padding(
+            padding: const EdgeInsets.only(top: 4, right: 8),
+            child: Icon(Icons.circle, size: 5, color: AppColors.primary),
           ),
           Expanded(
             child: Text(
@@ -697,11 +686,11 @@ class _SummaryMetricCard extends StatelessWidget {
             fit: BoxFit.scaleDown,
             child: Text(
               amount,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 20,
                 fontFamily: 'monospace',
                 fontWeight: FontWeight.w900,
-                color: Color(0xFF0A2540),
+                color: AppColors.peacockNavy,
                 letterSpacing: -0.5,
               ),
             ),

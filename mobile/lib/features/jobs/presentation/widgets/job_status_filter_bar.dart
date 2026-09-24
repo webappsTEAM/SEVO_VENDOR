@@ -10,6 +10,9 @@ enum JobStatusFilter {
   cancelled,
 }
 
+/// Single dropdown control for Job Status filter matching SEVO design.
+/// Shows EXACTLY ONE visible control: [ 💼 All Jobs (14) ▼ ]
+/// Tapping it opens a dropdown menu with all status options.
 class JobStatusFilterBar extends StatelessWidget {
   const JobStatusFilterBar({
     super.key,
@@ -36,7 +39,7 @@ class JobStatusFilterBar extends StatelessWidget {
       _StatusFilterItem(
         filter: JobStatusFilter.all,
         label: 'All Jobs ($allCount)',
-        icon: null,
+        icon: Icons.business_center_rounded,
       ),
       _StatusFilterItem(
         filter: JobStatusFilter.newOffers,
@@ -52,89 +55,107 @@ class JobStatusFilterBar extends StatelessWidget {
       _StatusFilterItem(
         filter: JobStatusFilter.completed,
         label: 'Completed ($completedCount)',
-        icon: Icons.check_rounded,
+        icon: Icons.check_circle_outline_rounded,
       ),
-      if (cancelledCount > 0)
+      if (cancelledCount > 0 || selectedFilter == JobStatusFilter.cancelled)
         _StatusFilterItem(
           filter: JobStatusFilter.cancelled,
           label: 'Cancelled ($cancelledCount)',
-          icon: Icons.close_rounded,
+          icon: Icons.cancel_outlined,
         ),
     ];
 
-    return SizedBox(
-      height: 38,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        itemCount: filters.length,
-        separatorBuilder: (context, index) => const SizedBox(width: AppSpacing.sm),
-        itemBuilder: (context, index) {
-          final item = filters[index];
-          final isSelected = selectedFilter == item.filter;
+    final currentItem = filters.firstWhere(
+      (f) => f.filter == selectedFilter,
+      orElse: () => filters.first,
+    );
 
-          final Color bgColor;
-          final Color textColor;
-          final Color borderColor;
-          final Color? iconColor;
+    final isFiltered = selectedFilter != JobStatusFilter.all;
 
-          if (isSelected) {
-            bgColor = AppColors.peacockNavy;
-            textColor = Colors.white;
-            borderColor = AppColors.peacockBlue;
-            iconColor = item.isAlert ? const Color(0xFF34D399) : Colors.white;
-          } else {
-            bgColor = AppColors.surface;
-            textColor = item.isAlert ? const Color(0xFF065F46) : AppColors.textPrimary;
-            borderColor = item.isAlert ? const Color(0xFFA7F3D0) : AppColors.border;
-            iconColor = item.isAlert ? const Color(0xFF059669) : AppColors.textMuted;
-          }
-
-          return Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: () => onFilterSelected(item.filter),
-              borderRadius: BorderRadius.circular(AppRadius.chip),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: bgColor,
-                  borderRadius: BorderRadius.circular(AppRadius.chip),
-                  border: Border.all(color: borderColor, width: isSelected ? 1.2 : 0.9),
-                  boxShadow: isSelected
-                      ? const [
-                          BoxShadow(
-                            color: Color(0x180A2540),
-                            blurRadius: 4,
-                            offset: Offset(0, 1.5),
-                          ),
-                        ]
-                      : null,
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isFiltered ? const Color(0xFF005965) : AppColors.border,
+          width: isFiltered ? 1.5 : 1.0,
+        ),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x060A2540),
+            blurRadius: 6,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: PopupMenuButton<JobStatusFilter>(
+        tooltip: 'Select Job Status',
+        onSelected: onFilterSelected,
+        offset: const Offset(0, 50),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        color: AppColors.surface,
+        elevation: 6,
+        constraints: const BoxConstraints(minWidth: 280),
+        itemBuilder: (context) => filters.map((f) {
+          final isSelected = f.filter == selectedFilter;
+          return PopupMenuItem<JobStatusFilter>(
+            value: f.filter,
+            child: Row(
+              children: [
+                Icon(
+                  f.icon,
+                  size: 19,
+                  color: isSelected ? const Color(0xFF005965) : AppColors.textSecondary,
                 ),
-                alignment: Alignment.center,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (item.icon != null) ...[
-                      Icon(item.icon, size: 14, color: iconColor),
-                      const SizedBox(width: 4),
-                    ],
-                    Text(
-                      item.label,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                        color: textColor,
-                        letterSpacing: 0.1,
-                      ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    f.label,
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
+                      color: isSelected ? const Color(0xFF005965) : AppColors.textPrimary,
                     ),
-                  ],
+                  ),
                 ),
-              ),
+                if (isSelected)
+                  const Icon(
+                    Icons.check_rounded,
+                    size: 18,
+                    color: Color(0xFF005965),
+                  ),
+              ],
             ),
           );
-        },
+        }).toList(),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              Icon(
+                currentItem.icon,
+                size: 20,
+                color: const Color(0xFF005965),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  currentItem.label,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ),
+              Icon(
+                Icons.keyboard_arrow_down_rounded,
+                size: 22,
+                color: AppColors.textSecondary,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -144,12 +165,12 @@ class _StatusFilterItem {
   const _StatusFilterItem({
     required this.filter,
     required this.label,
-    this.icon,
+    required this.icon,
     this.isAlert = false,
   });
 
   final JobStatusFilter filter;
   final String label;
-  final IconData? icon;
+  final IconData icon;
   final bool isAlert;
 }

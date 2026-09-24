@@ -34,7 +34,7 @@ class RecentOperationsSection extends StatelessWidget {
                   const Icon(
                     Icons.business_center_outlined,
                     size: 15,
-                    color: Color(0xFF004E89),
+                    color: AppColors.primaryLight,
                   ),
                   const SizedBox(width: 6),
                   Flexible(
@@ -67,14 +67,14 @@ class RecentOperationsSection extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF004E89),
+                        color: AppColors.primaryLight,
                       ),
                     ),
                     SizedBox(width: 2),
                     Icon(
                       Icons.arrow_forward_rounded,
                       size: 13,
-                      color: Color(0xFF004E89),
+                      color: AppColors.primaryLight,
                     ),
                   ],
                 ),

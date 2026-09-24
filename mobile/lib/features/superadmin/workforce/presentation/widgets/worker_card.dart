@@ -23,10 +23,10 @@ class WorkerCard extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: AppSpacing.sm),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(
-          color: isTied ? const Color(0xFFD1FAE5) : const Color(0xFFE2E8F0),
+          color: isTied ? const Color(0xFFD1FAE5) : AppColors.border,
         ),
         boxShadow: const [
           BoxShadow(
@@ -73,7 +73,7 @@ class WorkerCard extends StatelessWidget {
                         decoration: BoxDecoration(
                           color: worker.isOnline
                               ? const Color(0xFF10B981)
-                              : const Color(0xFF94A3B8),
+                              : AppColors.textMuted,
                           shape: BoxShape.circle,
                           border: Border.all(color: Colors.white, width: 1.5),
                         ),
@@ -89,10 +89,10 @@ class WorkerCard extends StatelessWidget {
                     children: [
                       Text(
                         worker.name,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w800,
-                          color: Color(0xFF0F172A),
+                          color: AppColors.textPrimary,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -104,29 +104,29 @@ class WorkerCard extends StatelessWidget {
                             worker.employeeId.isNotEmpty
                                 ? worker.employeeId
                                 : '#${worker.id}',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w600,
-                              color: Color(0xFF64748B),
+                              color: AppColors.textSecondary,
                               fontFamily: 'monospace',
                             ),
                           ),
                           if (worker.city.isNotEmpty) ...[
                             const SizedBox(width: 6),
-                            const Text(
+                            Text(
                               '•',
                               style: TextStyle(
                                 fontSize: 10,
-                                color: Color(0xFFCBD5E1),
+                                color: AppColors.border,
                               ),
                             ),
                             const SizedBox(width: 6),
                             Flexible(
                               child: Text(
                                 worker.city,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 11,
-                                  color: Color(0xFF64748B),
+                                  color: AppColors.textSecondary,
                                 ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
@@ -167,7 +167,7 @@ class WorkerCard extends StatelessWidget {
                     color: Color(0xFF059669),
                   ),
                   const SizedBox(width: 6),
-                  const Text(
+                  Text(
                     'Tied to:',
                     style: TextStyle(
                       fontSize: 11,
@@ -179,7 +179,7 @@ class WorkerCard extends StatelessWidget {
                   Expanded(
                     child: Text(
                       worker.tiedVendor!.companyName,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w800,
                         color: Color(0xFF064E3B),
@@ -217,10 +217,10 @@ class WorkerCard extends StatelessWidget {
                           ),
                           child: Text(
                             skill,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.w600,
-                              color: Color(0xFF475569),
+                              color: AppColors.textSecondary,
                             ),
                           ),
                         ),
@@ -232,15 +232,15 @@ class WorkerCard extends StatelessWidget {
                       vertical: 2,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFE2E8F0),
+                      color: AppColors.border,
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
                       '+${worker.skills.length - 3} more',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFF64748B),
+                        color: AppColors.textSecondary,
                       ),
                     ),
                   ),
@@ -254,12 +254,12 @@ class WorkerCard extends StatelessWidget {
                       color: const Color(0xFFF8FAFC),
                       borderRadius: BorderRadius.circular(4),
                     ),
-                    child: const Text(
+                    child: Text(
                       'General Technician',
                       style: TextStyle(
                         fontSize: 10,
                         fontStyle: FontStyle.italic,
-                        color: Color(0xFF94A3B8),
+                        color: AppColors.textMuted,
                       ),
                     ),
                   ),
@@ -278,17 +278,17 @@ class WorkerCard extends StatelessWidget {
                     padding: const EdgeInsets.only(top: 2),
                     child: Row(
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.phone_outlined,
                           size: 13,
-                          color: Color(0xFF94A3B8),
+                          color: AppColors.textMuted,
                         ),
                         const SizedBox(width: 5),
                         Text(
                           worker.phone,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 11,
-                            color: Color(0xFF475569),
+                            color: AppColors.textSecondary,
                           ),
                         ),
                       ],
@@ -299,18 +299,18 @@ class WorkerCard extends StatelessWidget {
                     padding: const EdgeInsets.only(top: 2),
                     child: Row(
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.mail_outline_rounded,
                           size: 13,
-                          color: Color(0xFF94A3B8),
+                          color: AppColors.textMuted,
                         ),
                         const SizedBox(width: 5),
                         Expanded(
                           child: Text(
                             worker.email,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 11,
-                              color: Color(0xFF475569),
+                              color: AppColors.textSecondary,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -324,7 +324,7 @@ class WorkerCard extends StatelessWidget {
           ),
 
           const SizedBox(height: AppSpacing.sm),
-          const Divider(height: 1, color: Color(0xFFF1F5F9)),
+          Divider(height: 1, color: Color(0xFFF1F5F9)),
 
           // ── Bottom Actions Bar ───────────────────────────────────────────
           Padding(

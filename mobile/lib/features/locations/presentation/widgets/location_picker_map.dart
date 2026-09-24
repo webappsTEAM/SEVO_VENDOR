@@ -145,7 +145,7 @@ class _LocationPickerMapState extends State<LocationPickerMap> {
                   children: [
                     TileLayer(
                       urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                      userAgentPackageName: 'online.caldimservices.vendor',
+                      userAgentPackageName: 'in.co.sevo.vendor',
                       maxZoom: 19,
                     ),
                     if (hasCoords)

@@ -36,28 +36,28 @@ class _AdminScorecardsScreenState extends ConsumerState<AdminScorecardsScreen> {
   Color _getTierBgColor(String tier) {
     switch (tier) {
       case 'GOLD':
-        return const Color(0xFFFEF3C7);
+        return AppColors.warningBg;
       case 'SILVER':
-        return const Color(0xFFF1F5F9);
+        return AppColors.surfaceMuted;
       case 'BRONZE':
-        return const Color(0xFFFFEDD5);
+        return AppColors.isDark ? const Color(0xFF7C2D12).withValues(alpha: 0.35) : const Color(0xFFFFEDD5);
       case 'UNRATED':
       default:
-        return const Color(0xFFF3F4F6);
+        return AppColors.surfaceMuted;
     }
   }
 
   Color _getTierTextColor(String tier) {
     switch (tier) {
       case 'GOLD':
-        return const Color(0xFF92400E);
+        return AppColors.warningText;
       case 'SILVER':
-        return const Color(0xFF475569);
+        return AppColors.textSecondary;
       case 'BRONZE':
-        return const Color(0xFF9A3412);
+        return AppColors.isDark ? const Color(0xFFFB923C) : const Color(0xFF9A3412);
       case 'UNRATED':
       default:
-        return const Color(0xFF6B7280);
+        return AppColors.textMuted;
     }
   }
 
@@ -69,8 +69,9 @@ class _AdminScorecardsScreenState extends ConsumerState<AdminScorecardsScreen> {
     final totalCount = allScorecardsAsync.valueOrNull?.length ?? 0;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: AppColors.background,
       appBar: const WorkforceAppBar(
+        titleText: 'Technician Scorecards',
         showStatusSubBar: false,
         showDrawerMenu: true,
       ),
@@ -78,7 +79,7 @@ class _AdminScorecardsScreenState extends ConsumerState<AdminScorecardsScreen> {
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: _refresh,
-          color: const Color(0xFF0F172A),
+          color: AppColors.primary,
           child: ListView(
             padding: const EdgeInsets.all(AppSpacing.md),
             children: [
@@ -86,9 +87,9 @@ class _AdminScorecardsScreenState extends ConsumerState<AdminScorecardsScreen> {
               Container(
                 padding: const EdgeInsets.all(AppSpacing.md),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: AppColors.surface,
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                  border: Border.all(color: AppColors.border),
                   boxShadow: const [
                     BoxShadow(
                       color: Color(0x040F172A),
@@ -121,7 +122,7 @@ class _AdminScorecardsScreenState extends ConsumerState<AdminScorecardsScreen> {
                           ),
                         ),
                         const SizedBox(width: 12),
-                        const Expanded(
+                        Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -130,7 +131,7 @@ class _AdminScorecardsScreenState extends ConsumerState<AdminScorecardsScreen> {
                                 style: TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.w800,
-                                  color: Color(0xFF0F172A),
+                                  color: AppColors.textPrimary,
                                   letterSpacing: -0.2,
                                 ),
                               ),
@@ -139,7 +140,7 @@ class _AdminScorecardsScreenState extends ConsumerState<AdminScorecardsScreen> {
                                 'Rating, CSAT, and SLA compliance metrics across the technician workforce.',
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color: Color(0xFF64748B),
+                                  color: AppColors.textSecondary,
                                   height: 1.35,
                                 ),
                               ),
@@ -149,7 +150,7 @@ class _AdminScorecardsScreenState extends ConsumerState<AdminScorecardsScreen> {
                       ],
                     ),
                     const SizedBox(height: 12),
-                    const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                    Divider(height: 1, color: AppColors.border),
                     const SizedBox(height: 10),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
@@ -157,12 +158,12 @@ class _AdminScorecardsScreenState extends ConsumerState<AdminScorecardsScreen> {
                         OutlinedButton.icon(
                           onPressed: _refresh,
                           icon: const Icon(Icons.refresh_rounded, size: 15),
-                          label: const Text('Refresh'),
+                          label: Text('Refresh'),
                           style: OutlinedButton.styleFrom(
-                            foregroundColor: const Color(0xFF475569),
-                            side: const BorderSide(color: Color(0xFFCBD5E1)),
+                            foregroundColor: AppColors.textSecondary,
+                            side: BorderSide(color: AppColors.border),
                             visualDensity: VisualDensity.compact,
-                            textStyle: const TextStyle(
+                            textStyle: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
                             ),
@@ -178,10 +179,10 @@ class _AdminScorecardsScreenState extends ConsumerState<AdminScorecardsScreen> {
               // ── Main Section Heading: Worker & Provider Scorecards (X) ─────
               Text(
                 'Worker & Provider Scorecards ($totalCount)',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w800,
-                  color: Color(0xFF0F172A),
+                  color: AppColors.textPrimary,
                 ),
               ),
               const SizedBox(height: AppSpacing.sm),
@@ -189,9 +190,9 @@ class _AdminScorecardsScreenState extends ConsumerState<AdminScorecardsScreen> {
               // ── Search & Filter Bar ────────────────────────────────────────
               Container(
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: AppColors.surface,
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                  border: Border.all(color: AppColors.border),
                 ),
                 child: TextField(
                   controller: _searchController,
@@ -199,15 +200,15 @@ class _AdminScorecardsScreenState extends ConsumerState<AdminScorecardsScreen> {
                     ref.read(adminScorecardsSearchQueryProvider.notifier).state =
                         val;
                   },
-                  style: const TextStyle(fontSize: 13),
+                  style: TextStyle(fontSize: 13, color: AppColors.textPrimary),
                   decoration: InputDecoration(
                     hintText: 'Search technician name or ID...',
-                    hintStyle: const TextStyle(
+                    hintStyle: TextStyle(
                       fontSize: 13,
-                      color: Color(0xFF94A3B8),
+                      color: AppColors.textMuted,
                     ),
-                    prefixIcon: const Icon(Icons.search_rounded,
-                        size: 18, color: Color(0xFF94A3B8)),
+                    prefixIcon: Icon(Icons.search_rounded,
+                        size: 18, color: AppColors.textMuted),
                     suffixIcon: _searchController.text.isNotEmpty
                         ? IconButton(
                             icon: const Icon(Icons.clear_rounded, size: 16),
@@ -262,19 +263,19 @@ class _AdminScorecardsScreenState extends ConsumerState<AdminScorecardsScreen> {
                                 .state = tier['id']!;
                           }
                         },
-                        selectedColor: const Color(0xFF0F172A),
+                        selectedColor: AppColors.primary,
                         labelStyle: TextStyle(
                           color: isSelected
                               ? Colors.white
-                              : const Color(0xFF334155),
+                              : AppColors.textSecondary,
                         ),
-                        backgroundColor: Colors.white,
+                        backgroundColor: AppColors.surface,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8),
                           side: BorderSide(
                             color: isSelected
-                                ? const Color(0xFF0F172A)
-                                : const Color(0xFFE2E8F0),
+                                ? AppColors.primary
+                                : AppColors.border,
                           ),
                         ),
                       ),
@@ -286,10 +287,10 @@ class _AdminScorecardsScreenState extends ConsumerState<AdminScorecardsScreen> {
 
               // ── Scorecards List ────────────────────────────────────────────
               filteredAsync.when(
-                loading: () => const Center(
+                loading: () => Center(
                   child: Padding(
                     padding: EdgeInsets.all(AppSpacing.xxl),
-                    child: CircularProgressIndicator(color: Color(0xFF0F172A)),
+                    child: CircularProgressIndicator(color: AppColors.primary),
                   ),
                 ),
                 error: (err, _) => AppCard(
@@ -302,30 +303,30 @@ class _AdminScorecardsScreenState extends ConsumerState<AdminScorecardsScreen> {
                         size: 36,
                       ),
                       const SizedBox(height: 12),
-                      const Text(
+                      Text(
                         'Unable to load scorecards',
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
-                          color: Color(0xFF0F172A),
+                          color: AppColors.textPrimary,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         err.toString(),
                         textAlign: TextAlign.center,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
-                          color: Color(0xFF64748B),
+                          color: AppColors.textSecondary,
                         ),
                       ),
                       const SizedBox(height: 16),
                       FilledButton.icon(
                         onPressed: _refresh,
                         icon: const Icon(Icons.refresh_rounded, size: 16),
-                        label: const Text('Try again'),
+                        label: Text('Try again'),
                         style: FilledButton.styleFrom(
-                          backgroundColor: const Color(0xFF0F172A),
+                          backgroundColor: AppColors.primary,
                         ),
                       ),
                     ],
@@ -380,9 +381,9 @@ class _ScorecardCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: AppSpacing.sm),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: AppColors.border),
         boxShadow: const [
           BoxShadow(
             color: Color(0x040F172A),
@@ -404,18 +405,18 @@ class _ScorecardCard extends StatelessWidget {
                   children: [
                     Text(
                       scorecard.employeeName,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF0F172A),
+                        color: AppColors.textPrimary,
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       'Worker ID: #${scorecard.employeeId}',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11.5,
-                        color: Color(0xFF64748B),
+                        color: AppColors.textSecondary,
                         fontFamily: 'monospace',
                       ),
                     ),
@@ -441,7 +442,7 @@ class _ScorecardCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          const Divider(height: 1, color: Color(0xFFF1F5F9)),
+          Divider(height: 1, color: AppColors.border),
           const SizedBox(height: 10),
 
           // Metrics Grid: Rating, SLA Score, CSAT
@@ -451,18 +452,19 @@ class _ScorecardCard extends StatelessWidget {
                 child: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF8FAFC),
+                    color: AppColors.surfaceMuted,
                     borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppColors.border, width: 0.5),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'Rating',
                         style: TextStyle(
                           fontSize: 10.5,
                           fontWeight: FontWeight.w600,
-                          color: Color(0xFF64748B),
+                          color: AppColors.textSecondary,
                         ),
                       ),
                       const SizedBox(height: 2),
@@ -479,18 +481,18 @@ class _ScorecardCard extends StatelessWidget {
                               scorecard.averageRating > 0
                                   ? scorecard.averageRating.toStringAsFixed(1)
                                   : '—',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w800,
-                                color: Color(0xFF0F172A),
+                                color: AppColors.textPrimary,
                               ),
                             ),
                             const SizedBox(width: 3),
                             Text(
                               '(${scorecard.ratingCount})',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 10,
-                                color: Color(0xFF94A3B8),
+                                color: AppColors.textMuted,
                               ),
                             ),
                           ],
@@ -505,18 +507,19 @@ class _ScorecardCard extends StatelessWidget {
                 child: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF8FAFC),
+                    color: AppColors.surfaceMuted,
                     borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppColors.border, width: 0.5),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'SLA On-Time',
                         style: TextStyle(
                           fontSize: 10.5,
                           fontWeight: FontWeight.w600,
-                          color: Color(0xFF64748B),
+                          color: AppColors.textSecondary,
                         ),
                       ),
                       const SizedBox(height: 2),
@@ -543,18 +546,19 @@ class _ScorecardCard extends StatelessWidget {
                 child: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF8FAFC),
+                    color: AppColors.surfaceMuted,
                     borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppColors.border, width: 0.5),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'CSAT',
                         style: TextStyle(
                           fontSize: 10.5,
                           fontWeight: FontWeight.w600,
-                          color: Color(0xFF64748B),
+                          color: AppColors.textSecondary,
                         ),
                       ),
                       const SizedBox(height: 2),
@@ -565,10 +569,10 @@ class _ScorecardCard extends StatelessWidget {
                           scorecard.csatAverage > 0
                               ? scorecard.csatAverage.toStringAsFixed(1)
                               : '—',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w800,
-                            color: Color(0xFF0F172A),
+                            color: AppColors.textPrimary,
                           ),
                         ),
                       ),
@@ -589,18 +593,18 @@ class _ScorecardCard extends StatelessWidget {
             children: [
               Text(
                 '${scorecard.slaMetCount} SLAs met · ${scorecard.slaBreachCount} breaches',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 11,
-                  color: Color(0xFF64748B),
+                  color: AppColors.textSecondary,
                   fontWeight: FontWeight.w500,
                 ),
               ),
               if (scorecard.lastRecalculatedAt != null)
                 Text(
                   'Updated ${scorecard.lastRecalculatedAt!.day.toString().padLeft(2, '0')}/${scorecard.lastRecalculatedAt!.month.toString().padLeft(2, '0')}/${scorecard.lastRecalculatedAt!.year}',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 10.5,
-                    color: Color(0xFF94A3B8),
+                    color: AppColors.textMuted,
                   ),
                 ),
             ],

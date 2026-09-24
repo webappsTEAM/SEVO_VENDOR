@@ -71,9 +71,9 @@ class WorkerStatusHeader extends ConsumerWidget {
                     initial: initial,
                     radius: isCompact ? 20 : 23,
                     fontSize: isCompact ? 17 : 19,
-                    backgroundColor: const Color(0xFFF1F5F9),
-                    foregroundColor: const Color(0xFF1E293B),
-                    borderColor: const Color(0xFFE2E8F0),
+                    backgroundColor: AppColors.surfaceMuted,
+                    foregroundColor: AppColors.textPrimary,
+                    borderColor: AppColors.border,
                     borderWidth: 1,
                   ),
                   SizedBox(width: isCompact ? AppSpacing.sm : AppSpacing.md),
@@ -89,7 +89,7 @@ class WorkerStatusHeader extends ConsumerWidget {
                           style: TextStyle(
                             fontSize: isCompact ? 14 : 15.5,
                             fontWeight: FontWeight.w800,
-                            color: const Color(0xFF0F172A),
+                            color: AppColors.textPrimary,
                           ),
                         ),
                         const SizedBox(height: 3),
@@ -109,12 +109,12 @@ class WorkerStatusHeader extends ConsumerWidget {
                         // 2. Employee ID
                         Row(
                           children: [
-                            const Text(
+                            Text(
                               'ID: ',
                               style: TextStyle(
                                 fontSize: 11,
                                 fontFamily: 'monospace',
-                                color: Color(0xFF64748B),
+                                color: AppColors.textSecondary,
                               ),
                             ),
                             Flexible(
@@ -122,11 +122,11 @@ class WorkerStatusHeader extends ConsumerWidget {
                                 workerId,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 11,
                                   fontFamily: 'monospace',
                                   fontWeight: FontWeight.w700,
-                                  color: Color(0xFF334155),
+                                  color: AppColors.textPrimary,
                                 ),
                               ),
                             ),
@@ -138,7 +138,7 @@ class WorkerStatusHeader extends ConsumerWidget {
                 ],
               ),
               const SizedBox(height: AppSpacing.sm),
-              const Divider(height: 1, color: Color(0xFFF1F5F9)),
+              Divider(height: 1, color: AppColors.border),
               const SizedBox(height: AppSpacing.sm),
               // Availability Control Area
               Row(
@@ -149,12 +149,12 @@ class WorkerStatusHeader extends ConsumerWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           'Availability',
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
-                            color: Color(0xFF1E293B),
+                            color: AppColors.textPrimary,
                           ),
                         ),
                         const SizedBox(height: 1),
@@ -162,10 +162,10 @@ class WorkerStatusHeader extends ConsumerWidget {
                           isOnline ? 'Ready for dispatch offers' : 'Offline • Not receiving offers',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 10.5,
                             fontWeight: FontWeight.w500,
-                            color: Color(0xFF64748B),
+                            color: AppColors.textSecondary,
                           ),
                         ),
                       ],

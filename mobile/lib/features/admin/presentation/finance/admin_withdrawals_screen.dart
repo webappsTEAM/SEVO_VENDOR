@@ -18,7 +18,9 @@ class AdminWithdrawalsScreen extends ConsumerWidget {
     final currentStatusFilter = ref.watch(adminWithdrawalStatusFilterProvider);
 
     return Scaffold(
+      backgroundColor: AppColors.background,
       appBar: const WorkforceAppBar(
+        titleText: 'Payout Approvals',
         showStatusSubBar: false,
         showDrawerMenu: true,
       ),
@@ -38,12 +40,12 @@ class AdminWithdrawalsScreen extends ConsumerWidget {
           ),
           children: [
             // ── 1. Page Header ───────────────────────────────────────────
-            const Text(
+            Text(
               'Technician Payout Requests',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w900,
-                color: Color(0xFF0A2540),
+                color: AppColors.textPrimary,
               ),
             ),
             const SizedBox(height: 3),
@@ -91,7 +93,7 @@ class AdminWithdrawalsScreen extends ConsumerWidget {
                       children: [
                         Icon(Icons.payments_outlined, size: 48, color: AppColors.textMuted),
                         const SizedBox(height: 12),
-                        const Text(
+                        Text(
                           'No payout requests found.',
                           style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
                         ),
@@ -133,11 +135,11 @@ class AdminWithdrawalsScreen extends ConsumerWidget {
           ref.read(adminWithdrawalStatusFilterProvider.notifier).state = value;
         }
       },
-      selectedColor: const Color(0xFF004E89),
+      selectedColor: AppColors.primary,
       labelStyle: TextStyle(
         fontSize: 12,
         fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-        color: isSelected ? Colors.white : const Color(0xFF475569),
+        color: isSelected ? Colors.white : AppColors.textSecondary,
       ),
       backgroundColor: AppColors.surfaceMuted,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),

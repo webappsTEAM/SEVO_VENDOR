@@ -32,8 +32,7 @@ class ActionCenterCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
+    return Material(color: AppColors.surface,
       borderRadius: BorderRadius.circular(AppRadius.card),
       child: InkWell(
         onTap: onTap,
@@ -41,7 +40,7 @@ class ActionCenterCard extends StatelessWidget {
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(AppRadius.card),
-            border: Border.all(color: const Color(0xFFE2E8F0)),
+            border: Border.all(color: AppColors.border),
             boxShadow: const [
               BoxShadow(
                 color: Color(0x040A2540),
@@ -94,20 +93,20 @@ class ActionCenterCard extends StatelessWidget {
                   Expanded(
                     child: Text(
                       title,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12.5,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF0F172A),
+                        color: AppColors.textPrimary,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   const SizedBox(width: 4),
-                  const Icon(
+                  Icon(
                     Icons.chevron_right_rounded,
                     size: 16,
-                    color: Color(0xFF94A3B8),
+                    color: AppColors.textMuted,
                   ),
                 ],
               ),
@@ -115,10 +114,10 @@ class ActionCenterCard extends StatelessWidget {
               // Subtitle Description
               Text(
                 description,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w400,
-                  color: Color(0xFF64748B),
+                  color: AppColors.textSecondary,
                   height: 1.25,
                 ),
                 maxLines: 2,
@@ -227,9 +226,9 @@ class SuperAdminActionCenterSection extends StatelessWidget {
               count: data.correctionsPendingCount,
               icon: Icons.edit_note_rounded,
               badgeBgColor: const Color(0xFFF1F5F9),
-              badgeTextColor: const Color(0xFF334155),
+              badgeTextColor: AppColors.textSecondary,
               iconBgColor: const Color(0xFFF8FAFC),
-              iconColor: const Color(0xFF64748B),
+              iconColor: AppColors.textSecondary,
               onTap: () => context.push(
                 '${AppRoutes.superAdminApplications}?status=correction_required',
               ),

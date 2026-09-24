@@ -24,12 +24,12 @@ class TechnicalSqlSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Header
-        const Text(
+        Text(
           'Technical Engine & Buffer Telemetry',
           style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w900,
-            color: Color(0xFF0A2540),
+            color: Color(0xFF003B46),
             letterSpacing: -0.3,
           ),
         ),
@@ -116,19 +116,19 @@ class TechnicalSqlSection extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(AppSpacing.md),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: AppColors.surface,
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
+              border: Border.all(color: AppColors.border),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'Top 5 Actively Scanned Indexes',
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF0A2540),
+                    color: Color(0xFF003B46),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -141,11 +141,11 @@ class TechnicalSqlSection extends StatelessWidget {
                         Expanded(
                           child: Text(
                             idx.indexName,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontFamily: 'monospace',
                               fontSize: 11.5,
                               fontWeight: FontWeight.w700,
-                              color: Color(0xFF004E89),
+                              color: Color(0xFF005965),
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -154,7 +154,7 @@ class TechnicalSqlSection extends StatelessWidget {
                         const SizedBox(width: 8),
                         Text(
                           '${idx.cumulativeScans} scans',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 11.5,
                             fontFamily: 'monospace',
                             fontWeight: FontWeight.w800,
@@ -180,19 +180,19 @@ class TechnicalSqlSection extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: AppColors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w800,
-              color: Color(0xFF0A2540),
+              color: Color(0xFF003B46),
             ),
           ),
           const SizedBox(height: 8),
@@ -214,11 +214,11 @@ class TechnicalSqlSection extends StatelessWidget {
                   const SizedBox(width: 8),
                   Text(
                     r.value,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 11.5,
                       fontFamily: 'monospace',
                       fontWeight: FontWeight.w800,
-                      color: Color(0xFF0A2540),
+                      color: Color(0xFF003B46),
                     ),
                   ),
                 ],

@@ -74,8 +74,8 @@ flutter:
   assets:
     - assets/images/
     - assets/images/banners/
-    - Technician_banner.jpg
-    - technician_banner2.jpg
+    - Banner.jpeg
+    - Sevo name.png
     - onboarding1.jpg
     - onboarding2.jpg
     - onboarding3.jpg

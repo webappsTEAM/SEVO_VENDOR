@@ -96,15 +96,15 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                     padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
-                      children: const [
-                        Icon(Icons.arrow_back_rounded, size: 16, color: Color(0xFF004E89)),
-                        SizedBox(width: 4),
+                      children: [
+                        Icon(Icons.arrow_back_rounded, size: 16, color: AppColors.primary),
+                        const SizedBox(width: 4),
                         Text(
                           'Back to Wallet',
                           style: TextStyle(
                             fontSize: 12.5,
                             fontWeight: FontWeight.w700,
-                            color: Color(0xFF004E89),
+                            color: AppColors.primary,
                           ),
                         ),
                       ],
@@ -121,12 +121,12 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
+                          Text(
                             'Financial Ledger & Transactions',
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w900,
-                              color: Color(0xFF0A2540),
+                              color: AppColors.peacockNavy,
                             ),
                           ),
                           const SizedBox(height: 2),
@@ -156,17 +156,17 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                                 )
                               : const Icon(Icons.refresh_rounded),
                           tooltip: 'Refresh',
-                          color: const Color(0xFF004E89),
+                          color: AppColors.primary,
                         ),
                         Badge(
                           isLabelVisible: isFiltered,
-                          backgroundColor: const Color(0xFF004E89),
+                          backgroundColor: AppColors.primary,
                           label: const Text('•', style: TextStyle(fontSize: 10)),
                           child: IconButton(
                             onPressed: () => _showFilterSheet(context),
                             icon: const Icon(Icons.tune_rounded),
                             tooltip: 'Filter',
-                            color: isFiltered ? const Color(0xFF004E89) : AppColors.textSecondary,
+                            color: isFiltered ? AppColors.primary : AppColors.textSecondary,
                           ),
                         ),
                       ],
@@ -649,7 +649,7 @@ class _TransactionFilterSheetState extends ConsumerState<_TransactionFilterSheet
                 return ChoiceChip(
                   label: Text(d['label']!),
                   selected: isSelected,
-                  selectedColor: const Color(0xFF004E89),
+                  selectedColor: AppColors.primary,
                   labelStyle: TextStyle(
                     fontSize: 11.5,
                     fontWeight: FontWeight.w700,
@@ -691,7 +691,7 @@ class _TransactionFilterSheetState extends ConsumerState<_TransactionFilterSheet
                       Navigator.of(context).pop();
                     },
                     style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF004E89),
+                      backgroundColor: AppColors.primary,
                     ),
                     child: const Text('Apply Filters'),
                   ),
@@ -724,10 +724,10 @@ class _QuickFilterChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF004E89) : Colors.white,
+          color: isSelected ? AppColors.primary : Colors.white,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: isSelected ? const Color(0xFF004E89) : const Color(0xFFE2E8F0),
+            color: isSelected ? AppColors.primary : const Color(0xFFE2E8F0),
             width: 1,
           ),
         ),
