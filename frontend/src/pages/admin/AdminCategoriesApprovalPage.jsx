@@ -30,9 +30,12 @@ import {
   Info,
   Scan,
   Barcode as BarcodeIcon,
+  Warehouse as WarehouseIcon,
+  MapPin,
 } from 'lucide-react';
 import { BarcodeScannerModal } from '../../components/common/BarcodeScannerModal.jsx';
 import { BarcodeRenderer } from '../../components/common/BarcodeRenderer.jsx';
+import { apiAdminGetWarehouses, apiAdminAssignSellerWarehouse } from '../../api/workforceService.js';
 
 export function AdminCategoriesApprovalPage() {
   const { user, token } = useAuth();
@@ -80,6 +83,72 @@ export function AdminCategoriesApprovalPage() {
 
   const [approveConfirmItem, setApproveConfirmItem] = useState(null);
   const [bulkApproveOpen, setBulkApproveOpen] = useState(false);
+
+  // ── Phase T: Warehouse Assignment State ──
+  const [warehousesList, setWarehousesList] = useState([]);
+  const [assignWarehouseModal, setAssignWarehouseModal] = useState({
+    isOpen: false,
+    seller: null,
+    warehouseId: '',
+    notes: '',
+    saving: false,
+    error: '',
+  });
+
+  useEffect(() => {
+    const loadWhs = async () => {
+      try {
+        const whs = await apiAdminGetWarehouses({ is_active: true });
+        setWarehousesList(whs || []);
+      } catch (err) {
+        console.error('Failed to load active warehouses:', err);
+      }
+    };
+    loadWhs();
+  }, []);
+
+  const handleOpenAssignWarehouse = (e, seller) => {
+    e.stopPropagation();
+    setAssignWarehouseModal({
+      isOpen: true,
+      seller,
+      warehouseId: seller.warehouse_id ? String(seller.warehouse_id) : '',
+      notes: '',
+      saving: false,
+      error: '',
+    });
+  };
+
+  const handleSaveWarehouseAssignment = async (e) => {
+    e.preventDefault();
+    if (!assignWarehouseModal.warehouseId) {
+      setAssignWarehouseModal((prev) => ({ ...prev, error: 'Please select a fulfillment warehouse facility.' }));
+      return;
+    }
+    setAssignWarehouseModal((prev) => ({ ...prev, saving: true, error: '' }));
+    try {
+      await apiAdminAssignSellerWarehouse(
+        assignWarehouseModal.seller.id,
+        assignWarehouseModal.warehouseId,
+        assignWarehouseModal.notes
+      );
+      setAssignWarehouseModal({
+        isOpen: false,
+        seller: null,
+        warehouseId: '',
+        notes: '',
+        saving: false,
+        error: '',
+      });
+      fetchSellers();
+    } catch (err) {
+      setAssignWarehouseModal((prev) => ({
+        ...prev,
+        saving: false,
+        error: err.message || 'Failed to assign warehouse.',
+      }));
+    }
+  };
 
   // ── Headers Setup ─────────────────────────────────────────────────────────
   const authHeaders = useMemo(() => {
@@ -1163,26 +1232,27 @@ export function AdminCategoriesApprovalPage() {
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
-                    <th className="p-3.5 min-w-[220px]">Merchant Store</th>
-                    <th className="p-3.5 text-center min-w-[120px]">Pending Approval</th>
-                    <th className="p-3.5 text-center min-w-[100px]">Approved</th>
-                    <th className="p-3.5 text-center min-w-[100px]">Rejected</th>
-                    <th className="p-3.5 text-center min-w-[100px]">Total Catalogs</th>
-                    <th className="p-3.5 min-w-[140px]">Last Submitted</th>
+                    <th className="p-3.5 min-w-[200px]">Merchant Store</th>
+                    <th className="p-3.5 min-w-[170px]">Fulfillment Warehouse</th>
+                    <th className="p-3.5 text-center min-w-[110px]">Pending Approval</th>
+                    <th className="p-3.5 text-center min-w-[90px]">Approved</th>
+                    <th className="p-3.5 text-center min-w-[90px]">Rejected</th>
+                    <th className="p-3.5 text-center min-w-[90px]">Total</th>
+                    <th className="p-3.5 min-w-[130px]">Last Submitted</th>
                     <th className="p-3.5 text-right min-w-[120px]">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {sellersLoading ? (
                     <tr>
-                      <td colSpan={7} className="p-12 text-center text-slate-500">
+                      <td colSpan={8} className="p-12 text-center text-slate-500">
                         <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-emerald-600" />
                         <span>Loading merchant stores...</span>
                       </td>
                     </tr>
                   ) : sellers.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="p-12 text-center text-slate-500">
+                      <td colSpan={8} className="p-12 text-center text-slate-500">
                         <Store className="w-10 h-10 mx-auto mb-2 text-slate-300" />
                         <p className="font-semibold text-slate-700">No stores found</p>
                         <p className="text-xs text-slate-400 mt-1">
@@ -1210,6 +1280,35 @@ export function AdminCategoriesApprovalPage() {
                             </div>
                           </div>
                         </td>
+
+                        {/* Phase T: Fulfillment Warehouse */}
+                        <td className="p-3.5" onClick={(e) => e.stopPropagation()}>
+                          {s.warehouse_name ? (
+                            <div className="flex items-center gap-2">
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                <WarehouseIcon className="w-3.5 h-3.5 text-indigo-600" />
+                                <span className="truncate max-w-[120px]">{s.warehouse_name}</span>
+                              </span>
+                              <button
+                                type="button"
+                                onClick={(e) => handleOpenAssignWarehouse(e, s)}
+                                className="text-[11px] font-bold text-slate-500 hover:text-indigo-600 underline"
+                              >
+                                Change
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={(e) => handleOpenAssignWarehouse(e, s)}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-300 transition-colors"
+                            >
+                              <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
+                              <span>Assign Warehouse</span>
+                            </button>
+                          )}
+                        </td>
+
                         <td className="p-3.5 text-center">
                           {s.pending_count > 0 ? (
                             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-900 border border-amber-200">
@@ -1274,7 +1373,141 @@ export function AdminCategoriesApprovalPage() {
             )}
           </div>
         </div>
+
+        {/* ── MODAL: ASSIGN WAREHOUSE MODAL ── */}
+        {assignWarehouseModal.isOpen && (
+          <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in duration-150 border border-slate-200">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
+                    <WarehouseIcon className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">
+                      Assign Fulfillment Warehouse
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      {assignWarehouseModal.seller?.name || assignWarehouseModal.seller?.company_name}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setAssignWarehouseModal({
+                      isOpen: false,
+                      seller: null,
+                      warehouseId: '',
+                      notes: '',
+                      saving: false,
+                      error: '',
+                    })
+                  }
+                  className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {assignWarehouseModal.error && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{assignWarehouseModal.error}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleSaveWarehouseAssignment} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Select Active Warehouse <span className="text-rose-500">*</span>
+                  </label>
+                  {warehousesList.length === 0 ? (
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 space-y-1">
+                      <p className="font-semibold">No active warehouses found</p>
+                      <p className="text-[11px]">
+                        Please create and activate at least one fulfillment warehouse in Warehouses Master first.
+                      </p>
+                    </div>
+                  ) : (
+                    <select
+                      value={assignWarehouseModal.warehouseId}
+                      onChange={(e) =>
+                        setAssignWarehouseModal((prev) => ({ ...prev, warehouseId: e.target.value }))
+                      }
+                      className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                    >
+                      <option value="">-- Choose Warehouse --</option>
+                      {warehousesList.map((wh) => (
+                        <option key={wh.id} value={wh.id}>
+                          {wh.name} ({wh.city || 'General'}) {wh.code ? `[${wh.code}]` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Assignment Notes (Optional)</label>
+                  <input
+                    type="text"
+                    value={assignWarehouseModal.notes}
+                    onChange={(e) =>
+                      setAssignWarehouseModal((prev) => ({ ...prev, notes: e.target.value }))
+                    }
+                    placeholder="e.g. Bangalore South regional zone assignment"
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-500 space-y-1">
+                  <p className="font-semibold text-slate-700">How dispatch routing works</p>
+                  <p className="text-[11px]">
+                    When this store's orders transition to Ready for Pickup, delivery riders will be routed to pick up stock directly from the selected warehouse.
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setAssignWarehouseModal({
+                        isOpen: false,
+                        seller: null,
+                        warehouseId: '',
+                        notes: '',
+                        saving: false,
+                        error: '',
+                      })
+                    }
+                    className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={assignWarehouseModal.saving || warehousesList.length === 0}
+                    className="inline-flex items-center gap-2 px-5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-xl shadow-xs transition-colors"
+                  >
+                    {assignWarehouseModal.saving ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>Saving...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Save Assignment</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );
 }
+

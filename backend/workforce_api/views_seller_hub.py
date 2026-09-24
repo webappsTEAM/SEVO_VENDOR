@@ -1764,7 +1764,7 @@ class AdminSellerApprovalListView(APIView):
             page_size = 20
 
         offset = (page - 1) * page_size
-        paged_queryset = queryset[offset:offset + page_size]
+        paged_queryset = queryset[offset:offset + page_size].select_related("warehouse_assignment__warehouse")
 
         from workforce_api.serializers import AdminSellerApprovalListSerializer
         serializer = AdminSellerApprovalListSerializer(paged_queryset, many=True)
@@ -3510,38 +3510,128 @@ class SellerOrderStatusTransitionView(APIView):
             elif target_status == SellerOrder.Status.PACKED:
                 order.packed_at = now
             elif target_status == SellerOrder.Status.READY_FOR_PICKUP:
-                order.ready_at = now
-                # Automatically create dispatchable ServiceRequest and run dispatch engine
-                if not order.dispatch_job:
-                    from service_requests.models import ServiceRequest
-                    from workforce_api.services.automatic_dispatch import dispatch_job
-
-                    pickup_addr = order.company.address or getattr(order.company, "company_name", "Merchant Store")
-                    sr = ServiceRequest.objects.create(
-                        company=order.company,
-                        service_category="two_wheeler_delivery",
-                        job_type="DELIVERY",
-                        request_kind=ServiceRequest.RequestKind.DIRECT,
-                        customer_name=order.customer_name,
-                        phone=order.customer_phone,
-                        address=pickup_addr,
-                        latitude=getattr(order.company, "latitude", None) if hasattr(order.company, "latitude") else None,
-                        longitude=getattr(order.company, "longitude", None) if hasattr(order.company, "longitude") else None,
-                        drop_address=order.delivery_address,
-                        drop_contact_name=order.customer_name,
-                        preferred_date=now.date(),
-                        preferred_time="Immediate",
-                        issue_title=f"Marketplace Order Delivery #{order.order_number}",
-                        description=f"Delivery of Order #{order.order_number} to {order.customer_name}. Total: ₹{order.total_amount}",
-                        total_amount=order.total_amount,
-                        status="new_request",
+                from workforce_api.models import get_seller_assigned_warehouse
+                warehouse = get_seller_assigned_warehouse(order.company_id)
+                if not warehouse or warehouse.latitude is None or warehouse.longitude is None:
+                    return Response(
+                        {
+                            "error": "Your store isn't assigned to an active warehouse yet. Please contact platform support to assign your store's fulfillment warehouse before orders can be dispatched to a rider.",
+                            "code": "WAREHOUSE_ASSIGNMENT_REQUIRED",
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
                     )
-                    order.dispatch_job = sr
-                    # Dispatch to eligible 2-wheeler riders (Gate 3/4 verified)
-                    dispatch_job(sr)
-                elif order.dispatch_job and order.dispatch_job.status in ["unassigned", "redispatching", "new_request"]:
-                    from workforce_api.services.automatic_dispatch import dispatch_job
-                    dispatch_job(order.dispatch_job)
+
+                pickup_lat = warehouse.latitude
+                pickup_lon = warehouse.longitude
+                pickup_addr = warehouse.address or f"Warehouse: {warehouse.name}"
+
+                order.ready_at = now
+
+                # Delivery Group handling: Wait for all active sibling sub-orders before creating 1 consolidated dispatch job
+                if order.delivery_group_id:
+                    group_orders = list(SellerOrder.objects.filter(
+                        delivery_group_id=order.delivery_group_id
+                    ).exclude(status=SellerOrder.Status.CANCELLED))
+
+                    not_ready = [
+                        o for o in group_orders
+                        if o.id != order.id and o.status not in [
+                            SellerOrder.Status.READY_FOR_PICKUP,
+                            SellerOrder.Status.ASSIGNED,
+                            SellerOrder.Status.HANDED_OVER,
+                            SellerOrder.Status.DELIVERED,
+                        ]
+                    ]
+
+                    if not_ready:
+                        # Waiting for other sellers in group
+                        if not notes:
+                            notes = f"Order ready for pickup. Waiting for {len(not_ready)} sibling seller order(s) in delivery group before dispatching rider."
+                    else:
+                        # All active sellers in this warehouse delivery group are READY_FOR_PICKUP!
+                        existing_sr = None
+                        for o in group_orders:
+                            if o.dispatch_job:
+                                existing_sr = o.dispatch_job
+                                break
+
+                        if not existing_sr:
+                            from service_requests.models import ServiceRequest
+                            from workforce_api.services.automatic_dispatch import dispatch_job
+
+                            total_group_amount = sum((o.total_amount for o in group_orders), Decimal("0.00"))
+                            all_order_numbers = ", ".join(o.order_number for o in group_orders)
+                            all_sellers = ", ".join(sorted(set(getattr(o.company, "company_name", f"Seller #{o.company_id}") for o in group_orders if o.company_id)))
+
+                            sr = ServiceRequest.objects.create(
+                                company=order.company,
+                                service_category="two_wheeler_delivery",
+                                job_type="DELIVERY",
+                                request_kind=ServiceRequest.RequestKind.DIRECT,
+                                customer_name=order.customer_name,
+                                phone=order.customer_phone,
+                                address=pickup_addr,
+                                latitude=pickup_lat,
+                                longitude=pickup_lon,
+                                drop_address=order.delivery_address,
+                                drop_contact_name=order.customer_name,
+                                preferred_date=now.date(),
+                                preferred_time="Immediate",
+                                issue_title=f"Consolidated Delivery ({len(group_orders)} sub-orders): {all_order_numbers}",
+                                description=f"Consolidated Warehouse Delivery for {order.customer_name} from {all_sellers}. Orders: {all_order_numbers}. Total: ₹{total_group_amount}",
+                                total_amount=total_group_amount,
+                                status="new_request",
+                            )
+                            for o in group_orders:
+                                o.dispatch_job = sr
+                                o.save(update_fields=["dispatch_job", "updated_at"])
+                            order.dispatch_job = sr
+                            dispatch_job(sr)
+                        else:
+                            order.dispatch_job = existing_sr
+                            from workforce_api.services.automatic_dispatch import dispatch_job
+                            if existing_sr.status in ["unassigned", "redispatching", "new_request"]:
+                                dispatch_job(existing_sr)
+                else:
+                    # Single standalone order dispatch
+                    if not order.dispatch_job:
+                        from service_requests.models import ServiceRequest
+                        from workforce_api.services.automatic_dispatch import dispatch_job
+
+                        sr = ServiceRequest.objects.create(
+                            company=order.company,
+                            service_category="two_wheeler_delivery",
+                            job_type="DELIVERY",
+                            request_kind=ServiceRequest.RequestKind.DIRECT,
+                            customer_name=order.customer_name,
+                            phone=order.customer_phone,
+                            address=pickup_addr,
+                            latitude=pickup_lat,
+                            longitude=pickup_lon,
+                            drop_address=order.delivery_address,
+                            drop_contact_name=order.customer_name,
+                            preferred_date=now.date(),
+                            preferred_time="Immediate",
+                            issue_title=f"Marketplace Order Delivery #{order.order_number}",
+                            description=f"Delivery of Order #{order.order_number} to {order.customer_name}. Total: ₹{order.total_amount}",
+                            total_amount=order.total_amount,
+                            status="new_request",
+                        )
+                        order.dispatch_job = sr
+                        dispatch_job(sr)
+                    elif order.dispatch_job and order.dispatch_job.status in ["unassigned", "redispatching", "new_request"]:
+                        from workforce_api.services.automatic_dispatch import dispatch_job
+                        update_fields = []
+                        if order.dispatch_job.latitude != pickup_lat or order.dispatch_job.longitude != pickup_lon:
+                            order.dispatch_job.latitude = pickup_lat
+                            order.dispatch_job.longitude = pickup_lon
+                            update_fields.extend(["latitude", "longitude"])
+                        if order.dispatch_job.address != pickup_addr:
+                            order.dispatch_job.address = pickup_addr
+                            update_fields.append("address")
+                        if update_fields:
+                            order.dispatch_job.save(update_fields=list(set(update_fields)))
+                        dispatch_job(order.dispatch_job)
 
             elif target_status == SellerOrder.Status.HANDED_OVER:
                 order.handed_over_at = now
@@ -3559,6 +3649,50 @@ class SellerOrderStatusTransitionView(APIView):
                 order.cancelled_by = user
                 # Release reserved inventory on cancellation
                 self._release_inventory_reservations(order, user, cancellation_reason)
+
+                # If in a delivery group, check if remaining active siblings are now all READY_FOR_PICKUP and waiting for dispatch
+                if order.delivery_group_id:
+                    remaining_active = list(SellerOrder.objects.filter(
+                        delivery_group_id=order.delivery_group_id
+                    ).exclude(pk=order.pk).exclude(status=SellerOrder.Status.CANCELLED))
+
+                    if remaining_active and all(o.status in [SellerOrder.Status.READY_FOR_PICKUP, SellerOrder.Status.ASSIGNED] for o in remaining_active):
+                        has_sr = any(o.dispatch_job for o in remaining_active)
+                        if not has_sr:
+                            first_rem = remaining_active[0]
+                            from workforce_api.models import get_seller_assigned_warehouse
+                            rem_wh = get_seller_assigned_warehouse(first_rem.company_id)
+                            if rem_wh and rem_wh.latitude is not None:
+                                from service_requests.models import ServiceRequest
+                                from workforce_api.services.automatic_dispatch import dispatch_job
+
+                                total_rem_amount = sum((o.total_amount for o in remaining_active), Decimal("0.00"))
+                                all_order_numbers = ", ".join(o.order_number for o in remaining_active)
+                                all_sellers = ", ".join(sorted(set(getattr(o.company, "company_name", f"Seller #{o.company_id}") for o in remaining_active if o.company_id)))
+
+                                sr = ServiceRequest.objects.create(
+                                    company=first_rem.company,
+                                    service_category="two_wheeler_delivery",
+                                    job_type="DELIVERY",
+                                    request_kind=ServiceRequest.RequestKind.DIRECT,
+                                    customer_name=first_rem.customer_name,
+                                    phone=first_rem.customer_phone,
+                                    address=rem_wh.address or f"Warehouse: {rem_wh.name}",
+                                    latitude=rem_wh.latitude,
+                                    longitude=rem_wh.longitude,
+                                    drop_address=first_rem.delivery_address,
+                                    drop_contact_name=first_rem.customer_name,
+                                    preferred_date=now.date(),
+                                    preferred_time="Immediate",
+                                    issue_title=f"Consolidated Delivery ({len(remaining_active)} sub-orders): {all_order_numbers}",
+                                    description=f"Consolidated Delivery for {first_rem.customer_name} from {all_sellers}. Orders: {all_order_numbers}. Total: ₹{total_rem_amount}",
+                                    total_amount=total_rem_amount,
+                                    status="new_request",
+                                )
+                                for o in remaining_active:
+                                    o.dispatch_job = sr
+                                    o.save(update_fields=["dispatch_job", "updated_at"])
+                                dispatch_job(sr)
 
             order.status = target_status
             if notes:
@@ -3717,11 +3851,22 @@ class SellerOrderRiderArrivePickupView(APIView):
             now = timezone.now()
             # Generate cryptographically secure 6-digit OTP
             otp_raw = f"{secrets.randbelow(900000) + 100000}"
-            order.handover_otp_hash = make_password(otp_raw)
-            order.handover_otp_expires_at = now + timedelta(minutes=15)
-            order.handover_otp_attempts = 0
-            order.handover_otp_used_at = None
-            order.save(update_fields=["handover_otp_hash", "handover_otp_expires_at", "handover_otp_attempts", "handover_otp_used_at", "updated_at"])
+            otp_hash = make_password(otp_raw)
+            otp_exp = now + timedelta(minutes=15)
+
+            if order.delivery_group_id:
+                group_orders = list(SellerOrder.objects.filter(
+                    delivery_group_id=order.delivery_group_id
+                ).exclude(status=SellerOrder.Status.CANCELLED))
+            else:
+                group_orders = [order]
+
+            for o in group_orders:
+                o.handover_otp_hash = otp_hash
+                o.handover_otp_expires_at = otp_exp
+                o.handover_otp_attempts = 0
+                o.handover_otp_used_at = None
+                o.save(update_fields=["handover_otp_hash", "handover_otp_expires_at", "handover_otp_attempts", "handover_otp_used_at", "updated_at"])
 
             # Update dispatch job leg
             if order.dispatch_job:
@@ -3731,8 +3876,9 @@ class SellerOrderRiderArrivePickupView(APIView):
                 order.dispatch_job.save(update_fields=["logistics_leg", "status"])
 
             # Send Notification to Seller Merchant User(s)
+            company_ids = [o.company_id for o in group_orders if o.company_id]
             company_users = get_user_model().objects.filter(
-                models.Q(company_id=order.company_id) | models.Q(employee_profile__company_id=order.company_id)
+                models.Q(company_id__in=company_ids) | models.Q(employee_profile__company_id__in=company_ids)
             ).distinct()
 
             rider_name = (emp.user.get_full_name() or emp.user.username) if getattr(emp, "user", None) else str(emp.id)
@@ -3746,20 +3892,37 @@ class SellerOrderRiderArrivePickupView(APIView):
                     related_object_id=str(order.id),
                 )
 
-            # Record audit log
-            SellerOrderAuditLog.objects.create(
-                order=order,
-                from_status=order.status,
-                to_status=order.status,
-                action="Rider Arrived for Pickup (OTP Generated)",
-                actor=request.user,
-                notes=f"Rider {rider_name} arrived at store. 6-digit handover OTP issued.",
-            )
+            # Record audit log for all orders in group
+            for o in group_orders:
+                SellerOrderAuditLog.objects.create(
+                    order=o,
+                    from_status=o.status,
+                    to_status=o.status,
+                    action="Rider Arrived for Pickup (OTP Generated)",
+                    actor=request.user,
+                    notes=f"Rider {rider_name} arrived at store/warehouse. 6-digit handover OTP issued for delivery group.",
+                )
+
+            packages = [
+                {
+                    "order_id": o.id,
+                    "order_number": o.order_number,
+                    "source_order_id": o.source_order_id,
+                    "seller_name": getattr(o.company, "company_name", f"Seller #{o.company_id}") if o.company else "",
+                    "items_count": o.items.count(),
+                    "status": o.status,
+                }
+                for o in group_orders
+            ]
 
             return Response({
-                "message": f"Arrived at pickup location. Pickup OTP generated for merchant for Order #{order.order_number}.",
+                "message": f"Arrived at pickup location. Pickup OTP generated for Order #{order.order_number}.",
                 "order_id": order.id,
                 "order_number": order.order_number,
+                "delivery_group_id": order.delivery_group_id,
+                "warehouse_name": order.warehouse_name,
+                "total_packages": len(packages),
+                "packages_to_collect": packages,
                 "status": "ARRIVED_AT_PICKUP",
             }, status=status.HTTP_200_OK)
 
@@ -3768,7 +3931,8 @@ class SellerOrderRiderVerifyPickupOTPView(APIView):
     """
     POST /api/workforce/seller-hub/orders/<int:pk>/verify-pickup-otp/
     Rider submits seller's 6-digit Pickup OTP.
-    Transitions order to HANDED_OVER and executes single idempotent stock deduction.
+    Transitions order (and all sibling orders in delivery group) to HANDED_OVER
+    and executes single idempotent stock deduction for each individual order.
     """
     permission_classes = [IsApprovedTechnician]
     throttle_classes = [ScopedRateThrottle]
@@ -3833,16 +3997,40 @@ class SellerOrderRiderVerifyPickupOTPView(APIView):
                 }, status=status.HTTP_400_BAD_REQUEST)
 
             # Successful OTP verification
-            from_st = order.status
-            order.status = SellerOrder.Status.HANDED_OVER
-            order.handed_over_at = now
-            order.handover_otp_used_at = now
+            if order.delivery_group_id:
+                group_orders = list(SellerOrder.objects.filter(
+                    delivery_group_id=order.delivery_group_id
+                ).exclude(status__in=[SellerOrder.Status.CANCELLED, SellerOrder.Status.DELIVERED]))
+            else:
+                group_orders = [order]
 
-            # Deduct inventory physical on-hand stock exactly once
             transition_view = SellerOrderStatusTransitionView()
-            transition_view._deduct_inventory_for_order(order, request.user, f"Handover verification via OTP for Order #{order.order_number}")
+            rider_name = getattr(emp, "name", "") or request.user.username
 
-            order.save()
+            for o in group_orders:
+                from_st = o.status
+                o.status = SellerOrder.Status.HANDED_OVER
+                o.handed_over_at = now
+                o.handover_otp_used_at = now
+                transition_view._deduct_inventory_for_order(o, request.user, f"Handover verification via OTP for Order #{o.order_number}")
+                o.save()
+
+                SellerOrderAuditLog.objects.create(
+                    order=o,
+                    from_status=from_st,
+                    to_status=SellerOrder.Status.HANDED_OVER,
+                    action="Handover Confirmed via OTP",
+                    actor=request.user,
+                    notes=f"Pickup verified by rider {rider_name}.",
+                )
+
+                record_seller_order_status_event(
+                    order=o,
+                    previous_status=from_st,
+                    new_status=SellerOrder.Status.HANDED_OVER,
+                    event_type="seller_order.status_updated",
+                    actor=request.user,
+                )
 
             # Advance dispatch job
             if order.dispatch_job:
@@ -3850,25 +4038,6 @@ class SellerOrderRiderVerifyPickupOTPView(APIView):
                 order.dispatch_job.status = "in_progress"
                 order.dispatch_job.logistics_leg = ServiceRequest.LogisticsLeg.EN_ROUTE_DROP
                 order.dispatch_job.save(update_fields=["status", "logistics_leg"])
-
-            # Create immutable audit log
-            SellerOrderAuditLog.objects.create(
-                order=order,
-                from_status=from_st,
-                to_status=SellerOrder.Status.HANDED_OVER,
-                action="Handover Confirmed via OTP",
-                actor=request.user,
-                notes=f"Pickup verified by rider {getattr(emp, 'name', '') or request.user.username}.",
-            )
-
-            # Record outbox status event
-            record_seller_order_status_event(
-                order=order,
-                previous_status=from_st,
-                new_status=SellerOrder.Status.HANDED_OVER,
-                event_type="seller_order.status_updated",
-                actor=request.user,
-            )
 
             return Response({
                 "message": f"Pickup verified successfully. Order #{order.order_number} is now Handed Over and Out for Delivery.",
@@ -3909,11 +4078,22 @@ class SellerOrderRiderArriveDeliveryView(APIView):
             now = timezone.now()
             # Generate cryptographically secure 6-digit OTP
             otp_raw = f"{secrets.randbelow(900000) + 100000}"
-            order.delivery_otp_hash = make_password(otp_raw)
-            order.delivery_otp_expires_at = now + timedelta(minutes=15)
-            order.delivery_otp_attempts = 0
-            order.delivery_otp_used_at = None
-            order.save(update_fields=["delivery_otp_hash", "delivery_otp_expires_at", "delivery_otp_attempts", "delivery_otp_used_at", "updated_at"])
+            otp_hash = make_password(otp_raw)
+            otp_exp = now + timedelta(minutes=15)
+
+            if order.delivery_group_id:
+                group_orders = list(SellerOrder.objects.filter(
+                    delivery_group_id=order.delivery_group_id
+                ).exclude(status=SellerOrder.Status.CANCELLED))
+            else:
+                group_orders = [order]
+
+            for o in group_orders:
+                o.delivery_otp_hash = otp_hash
+                o.delivery_otp_expires_at = otp_exp
+                o.delivery_otp_attempts = 0
+                o.delivery_otp_used_at = None
+                o.save(update_fields=["delivery_otp_hash", "delivery_otp_expires_at", "delivery_otp_attempts", "delivery_otp_used_at", "updated_at"])
 
             # Update dispatch job leg
             if order.dispatch_job:
@@ -3939,15 +4119,16 @@ class SellerOrderRiderArriveDeliveryView(APIView):
                     related_object_id=str(order.id),
                 )
 
-            # Record audit log
-            SellerOrderAuditLog.objects.create(
-                order=order,
-                from_status=order.status,
-                to_status=order.status,
-                action="Rider Arrived at Customer (Delivery OTP Generated)",
-                actor=request.user,
-                notes=f"Rider arrived at customer location. Delivery confirmation OTP dispatched.",
-            )
+            # Record audit log for all orders in group
+            for o in group_orders:
+                SellerOrderAuditLog.objects.create(
+                    order=o,
+                    from_status=o.status,
+                    to_status=o.status,
+                    action="Rider Arrived at Customer (Delivery OTP Generated)",
+                    actor=request.user,
+                    notes=f"Rider arrived at customer location. Delivery confirmation OTP dispatched.",
+                )
 
             return Response({
                 "message": f"Arrived at customer location. Delivery confirmation OTP sent to customer for Order #{order.order_number}.",
@@ -3961,7 +4142,7 @@ class SellerOrderRiderVerifyDeliveryOTPView(APIView):
     """
     POST /api/workforce/seller-hub/orders/<int:pk>/verify-delivery-otp/
     Rider submits customer's 6-digit Delivery OTP.
-    Transitions order to DELIVERED, completes dispatch job, and frees rider.
+    Transitions order (and all sibling orders in delivery group) to DELIVERED, completes dispatch job, and frees rider.
     """
     permission_classes = [IsApprovedTechnician]
     throttle_classes = [ScopedRateThrottle]
@@ -4026,17 +4207,45 @@ class SellerOrderRiderVerifyDeliveryOTPView(APIView):
                 }, status=status.HTTP_400_BAD_REQUEST)
 
             # Successful OTP verification
-            from_st = order.status
-            order.status = SellerOrder.Status.DELIVERED
-            order.delivered_at = now
-            order.delivery_otp_used_at = now
+            if order.delivery_group_id:
+                group_orders = list(SellerOrder.objects.filter(
+                    delivery_group_id=order.delivery_group_id
+                ).exclude(status=SellerOrder.Status.CANCELLED))
+            else:
+                group_orders = [order]
 
-            # Ensure inventory deducted if somehow missed
-            if not order.inventory_deducted:
-                transition_view = SellerOrderStatusTransitionView()
-                transition_view._deduct_inventory_for_order(order, request.user, f"Delivery completion for Order #{order.order_number}")
+            transition_view = SellerOrderStatusTransitionView()
 
-            order.save()
+            for o in group_orders:
+                from_st = o.status
+                o.status = SellerOrder.Status.DELIVERED
+                o.delivered_at = now
+                o.delivery_otp_used_at = now
+
+                # Ensure inventory deducted if somehow missed
+                if not o.inventory_deducted:
+                    transition_view._deduct_inventory_for_order(o, request.user, f"Delivery completion for Order #{o.order_number}")
+
+                o.save()
+
+                # Create immutable audit log
+                SellerOrderAuditLog.objects.create(
+                    order=o,
+                    from_status=from_st,
+                    to_status=SellerOrder.Status.DELIVERED,
+                    action="Delivery Confirmed via OTP",
+                    actor=request.user,
+                    notes=f"Delivery confirmed by customer OTP verification.",
+                )
+
+                # Record outbox status event
+                record_seller_order_status_event(
+                    order=o,
+                    previous_status=from_st,
+                    new_status=SellerOrder.Status.DELIVERED,
+                    event_type="seller_order.status_updated",
+                    actor=request.user,
+                )
 
             # Complete dispatch job
             if order.dispatch_job:
@@ -4053,25 +4262,6 @@ class SellerOrderRiderVerifyDeliveryOTPView(APIView):
             if emp:
                 from workforce_api.services.workload import reconcile_employee_availability
                 reconcile_employee_availability(emp)
-
-            # Create immutable audit log
-            SellerOrderAuditLog.objects.create(
-                order=order,
-                from_status=from_st,
-                to_status=SellerOrder.Status.DELIVERED,
-                action="Delivery Confirmed via OTP",
-                actor=request.user,
-                notes=f"Delivery confirmed by customer OTP verification.",
-            )
-
-            # Record outbox status event
-            record_seller_order_status_event(
-                order=order,
-                previous_status=from_st,
-                new_status=SellerOrder.Status.DELIVERED,
-                event_type="seller_order.status_updated",
-                actor=request.user,
-            )
 
             return Response({
                 "message": f"Delivery OTP verified. Order #{order.order_number} marked DELIVERED successfully.",
@@ -4214,6 +4404,146 @@ class SellerOrderAdminOverrideView(APIView):
                 "order": detail_serializer.data,
             },
             status=status.HTTP_200_OK,
+        )
+
+
+class SellerOrderAvailableRidersView(APIView):
+    """
+    GET /api/workforce/seller-hub/orders/<int:pk>/available-riders/
+    Vendor-visible read-only eligibility diagnostics for 2-wheeler riders.
+    Runs the exact same candidate discovery and gate checks as get_eligible_candidates().
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk):
+        user = request.user
+        company_id = _resolve_user_company_id(user)
+        is_super = is_platform_reviewer(user)
+
+        order_qs = SellerOrder.objects.filter(pk=pk).select_related("company", "dispatch_job", "handling_technician")
+        if not is_super:
+            if not company_id:
+                return Response({"error": "Merchant company not found."}, status=status.HTTP_403_FORBIDDEN)
+            order_qs = order_qs.filter(company_id=company_id)
+
+        order = order_qs.first()
+        if not order:
+            return Response({"error": "Order not found.", "code": "ORDER_NOT_FOUND"}, status=status.HTTP_404_NOT_FOUND)
+
+        from workforce_api.services.automatic_dispatch import get_available_riders_summary
+        summary = get_available_riders_summary(order)
+        return Response(summary, status=status.HTTP_200_OK)
+
+
+class SellerOrderRetryDispatchView(APIView):
+    """
+    POST /api/workforce/seller-hub/orders/<int:pk>/retry-dispatch/
+    Vendor-triggered re-dispatch for orders waiting in READY_FOR_PICKUP or unassigned state.
+    Re-runs dispatch_job() without bypassing any verification or candidate gates. Idempotent.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        user = request.user
+        company_id = _resolve_user_company_id(user)
+        is_super = is_platform_reviewer(user)
+
+        order_qs = SellerOrder.objects.filter(pk=pk).select_related("company", "dispatch_job", "handling_technician")
+        if not is_super:
+            if not company_id:
+                return Response({"error": "Merchant company not found."}, status=status.HTTP_403_FORBIDDEN)
+            order_qs = order_qs.filter(company_id=company_id)
+
+        order = order_qs.first()
+        if not order:
+            return Response({"error": "Order not found.", "code": "ORDER_NOT_FOUND"}, status=status.HTTP_404_NOT_FOUND)
+
+        if order.status not in [SellerOrder.Status.READY_FOR_PICKUP, SellerOrder.Status.ASSIGNED]:
+            return Response(
+                {
+                    "error": f"Cannot retry dispatch for order in status '{order.status}'. Order must be READY_FOR_PICKUP.",
+                    "code": "INVALID_DISPATCH_STATE",
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if order.handling_technician and order.status == SellerOrder.Status.ASSIGNED:
+            return Response(
+                {
+                    "message": f"Order #{order.order_number} is already assigned to {order.handling_technician.user.get_full_name() or order.handling_technician.user.username}.",
+                    "already_assigned": True,
+                    "order": SellerOrderDetailSerializer(order).data,
+                },
+                status=status.HTTP_200_OK
+            )
+
+        from workforce_api.services.automatic_dispatch import dispatch_job, get_available_riders_summary
+        from workforce_api.models import get_seller_assigned_warehouse
+        from service_requests.models import ServiceRequest
+
+        now = timezone.now()
+        warehouse = get_seller_assigned_warehouse(order.company_id)
+        if not warehouse or warehouse.latitude is None or warehouse.longitude is None:
+            return Response(
+                {
+                    "error": "Your store isn't assigned to an active warehouse yet. Please contact platform support to assign your store's fulfillment warehouse before orders can be dispatched to a rider.",
+                    "code": "WAREHOUSE_ASSIGNMENT_REQUIRED",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        pickup_lat = warehouse.latitude
+        pickup_lon = warehouse.longitude
+        pickup_addr = warehouse.address or f"Warehouse: {warehouse.name}"
+
+        # Ensure dispatch job exists
+        if not order.dispatch_job:
+            sr = ServiceRequest.objects.create(
+                company=order.company,
+                service_category="two_wheeler_delivery",
+                job_type="DELIVERY",
+                request_kind=ServiceRequest.RequestKind.DIRECT,
+                customer_name=order.customer_name,
+                phone=order.customer_phone,
+                address=pickup_addr,
+                latitude=pickup_lat,
+                longitude=pickup_lon,
+                drop_address=order.delivery_address,
+                drop_contact_name=order.customer_name,
+                preferred_date=now.date(),
+                preferred_time="Immediate",
+                issue_title=f"Marketplace Order Delivery #{order.order_number}",
+                description=f"Delivery of Order #{order.order_number} to {order.customer_name}. Total: ₹{order.total_amount}",
+                total_amount=order.total_amount,
+                status="new_request",
+            )
+            order.dispatch_job = sr
+            order.save(update_fields=["dispatch_job", "updated_at"])
+        else:
+            update_fields = []
+            if order.dispatch_job.latitude != pickup_lat or order.dispatch_job.longitude != pickup_lon:
+                order.dispatch_job.latitude = pickup_lat
+                order.dispatch_job.longitude = pickup_lon
+                update_fields.extend(["latitude", "longitude"])
+            if order.dispatch_job.address != pickup_addr:
+                order.dispatch_job.address = pickup_addr
+                update_fields.append("address")
+            if update_fields:
+                order.dispatch_job.save(update_fields=list(set(update_fields)))
+
+        dispatched, msg = dispatch_job(order.dispatch_job)
+        order.refresh_from_db()
+
+        available_summary = get_available_riders_summary(order)
+
+        return Response(
+            {
+                "success": dispatched,
+                "message": msg,
+                "order": SellerOrderDetailSerializer(order).data,
+                "available_riders": available_summary,
+            },
+            status=status.HTTP_200_OK
         )
 
 
@@ -6461,6 +6791,241 @@ class SellerReportsExportCSVView(APIView):
             writer.writerow(["Invalid report type requested."])
 
         return response
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE T: ADMIN WAREHOUSE MANAGEMENT & SELLER ASSIGNMENTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class AdminWarehouseListCreateView(APIView):
+    """
+    GET  /api/workforce/admin/warehouses/ – List warehouses with assigned sellers count & filter support
+    POST /api/workforce/admin/warehouses/ – Create a new warehouse facility (Platform Admin only)
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        if not _is_admin_or_superadmin(user):
+            return Response(
+                {"error": "Only platform administrators can manage warehouse facilities."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        from workforce_api.models import Warehouse
+        from workforce_api.serializers import WarehouseSerializer
+
+        queryset = Warehouse.objects.annotate(
+            assigned_sellers_count_annotated=models.Count("seller_assignments", distinct=True)
+        )
+
+        search = request.query_params.get("search", "").strip()
+        if search:
+            queryset = queryset.filter(
+                models.Q(name__icontains=search) |
+                models.Q(code__icontains=search) |
+                models.Q(city__icontains=search) |
+                models.Q(address__icontains=search)
+            )
+
+        city = request.query_params.get("city", "").strip()
+        if city:
+            queryset = queryset.filter(city__iexact=city)
+
+        is_active_param = request.query_params.get("is_active", "").strip().lower()
+        if is_active_param in ("true", "1"):
+            queryset = queryset.filter(is_active=True)
+        elif is_active_param in ("false", "0"):
+            queryset = queryset.filter(is_active=False)
+
+        queryset = queryset.order_by("name")
+        serializer = WarehouseSerializer(queryset, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        user = request.user
+        if not _is_admin_or_superadmin(user):
+            return Response(
+                {"error": "Only platform administrators can create warehouse facilities."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        from workforce_api.serializers import WarehouseSerializer
+        serializer = WarehouseSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        warehouse = serializer.save()
+        return Response(WarehouseSerializer(warehouse).data, status=status.HTTP_201_CREATED)
+
+
+class AdminWarehouseDetailView(APIView):
+    """
+    GET    /api/workforce/admin/warehouses/<int:pk>/ – Get warehouse details including assigned sellers
+    PATCH  /api/workforce/admin/warehouses/<int:pk>/ – Update warehouse attributes / coordinates
+    DELETE /api/workforce/admin/warehouses/<int:pk>/ – Deactivate warehouse facility
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk):
+        user = request.user
+        if not _is_admin_or_superadmin(user):
+            return Response(
+                {"error": "Only platform administrators can access warehouse facilities."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        from workforce_api.models import Warehouse
+        from workforce_api.serializers import WarehouseDetailSerializer
+
+        warehouse = Warehouse.objects.filter(pk=pk).annotate(
+            assigned_sellers_count_annotated=models.Count("seller_assignments", distinct=True)
+        ).first()
+        if not warehouse:
+            return Response({"error": "Warehouse facility not found.", "code": "NOT_FOUND"}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = WarehouseDetailSerializer(warehouse)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def patch(self, request, pk):
+        user = request.user
+        if not _is_admin_or_superadmin(user):
+            return Response(
+                {"error": "Only platform administrators can modify warehouse facilities."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        from workforce_api.models import Warehouse
+        from workforce_api.serializers import WarehouseSerializer
+
+        warehouse = Warehouse.objects.filter(pk=pk).first()
+        if not warehouse:
+            return Response({"error": "Warehouse facility not found.", "code": "NOT_FOUND"}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = WarehouseSerializer(warehouse, data=request.data, partial=True)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        warehouse = serializer.save()
+        return Response(WarehouseSerializer(warehouse).data, status=status.HTTP_200_OK)
+
+    def delete(self, request, pk):
+        user = request.user
+        if not _is_admin_or_superadmin(user):
+            return Response(
+                {"error": "Only platform administrators can deactivate warehouse facilities."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        from workforce_api.models import Warehouse
+        warehouse = Warehouse.objects.filter(pk=pk).first()
+        if not warehouse:
+            return Response({"error": "Warehouse facility not found.", "code": "NOT_FOUND"}, status=status.HTTP_404_NOT_FOUND)
+
+        # Toggle active state or soft-deactivate
+        warehouse.is_active = False
+        warehouse.save(update_fields=["is_active", "updated_at"])
+        return Response(
+            {"message": f"Warehouse '{warehouse.name}' has been deactivated.", "is_active": False},
+            status=status.HTTP_200_OK,
+        )
+
+
+class AdminSellerWarehouseAssignView(APIView):
+    """
+    GET  /api/workforce/admin/sellers/<int:seller_id>/warehouse/ – Get seller's assigned warehouse
+    POST /api/workforce/admin/sellers/<int:seller_id>/warehouse/ – Assign or change seller's warehouse
+    DELETE /api/workforce/admin/sellers/<int:seller_id>/warehouse/ – Remove warehouse assignment
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, seller_id):
+        user = request.user
+        if not _is_admin_or_superadmin(user):
+            return Response(
+                {"error": "Only platform administrators can view seller warehouse assignments."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        from workforce_api.models import SellerWarehouseAssignment
+        from workforce_api.serializers import SellerWarehouseAssignmentSerializer
+
+        assignment = SellerWarehouseAssignment.objects.filter(company_id=seller_id).select_related("company", "warehouse", "assigned_by").first()
+        if not assignment:
+            return Response({"assignment": None, "assigned": False}, status=status.HTTP_200_OK)
+
+        serializer = SellerWarehouseAssignmentSerializer(assignment)
+        return Response({"assignment": serializer.data, "assigned": True}, status=status.HTTP_200_OK)
+
+    def post(self, request, seller_id):
+        user = request.user
+        if not _is_admin_or_superadmin(user):
+            return Response(
+                {"error": "Only platform administrators can assign seller fulfillment warehouses."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        warehouse_id = request.data.get("warehouse_id")
+        notes = str(request.data.get("notes", "")).strip()
+
+        if not warehouse_id:
+            return Response(
+                {"error": "warehouse_id is required.", "code": "WAREHOUSE_ID_REQUIRED"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        from workforce_api.models import Warehouse, SellerWarehouseAssignment
+        from workforce_api.serializers import SellerWarehouseAssignmentSerializer
+
+        company = Company.objects.filter(pk=seller_id).first()
+        if not company:
+            return Response({"error": "Seller company not found.", "code": "COMPANY_NOT_FOUND"}, status=status.HTTP_404_NOT_FOUND)
+
+        warehouse = Warehouse.objects.filter(pk=warehouse_id).first()
+        if not warehouse:
+            return Response({"error": "Warehouse facility not found.", "code": "WAREHOUSE_NOT_FOUND"}, status=status.HTTP_404_NOT_FOUND)
+
+        if not warehouse.is_active:
+            return Response(
+                {"error": f"Warehouse '{warehouse.name}' is inactive. Cannot assign sellers to inactive facilities.", "code": "WAREHOUSE_INACTIVE"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            assignment, created = SellerWarehouseAssignment.objects.update_or_create(
+                company=company,
+                defaults={
+                    "warehouse": warehouse,
+                    "assigned_by": user,
+                    "notes": notes,
+                },
+            )
+
+        serializer = SellerWarehouseAssignmentSerializer(assignment)
+        return Response(
+            {
+                "message": f"Seller '{company.company_name}' assigned to warehouse '{warehouse.name}'.",
+                "assignment": serializer.data,
+                "created": created,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    def delete(self, request, seller_id):
+        user = request.user
+        if not _is_admin_or_superadmin(user):
+            return Response(
+                {"error": "Only platform administrators can remove warehouse assignments."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        from workforce_api.models import SellerWarehouseAssignment
+        assignment = SellerWarehouseAssignment.objects.filter(company_id=seller_id).first()
+        if assignment:
+            assignment.delete()
+            return Response({"message": "Warehouse assignment removed successfully.", "unassigned": True}, status=status.HTTP_200_OK)
+        return Response({"message": "Seller was not assigned to any warehouse.", "unassigned": True}, status=status.HTTP_200_OK)
+
 
 
 

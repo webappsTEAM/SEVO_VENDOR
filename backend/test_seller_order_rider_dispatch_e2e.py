@@ -40,6 +40,8 @@ from workforce_api.models import (
     SellerOrderStatusOutbox,
     WorkforceJobOffer,
     WorkforceNotification,
+    Warehouse,
+    SellerWarehouseAssignment,
 )
 from workforce_api.views_seller_hub import (
     SellerOrderStatusTransitionView,
@@ -50,8 +52,18 @@ from workforce_api.views_seller_hub import (
     SellerHubMetricsView,
     SellerOrderListView,
     SellerOrderAdminOverrideView,
+    SellerOrderAvailableRidersView,
+    SellerOrderRetryDispatchView,
 )
 from workforce_api.views import WorkforceJobAcceptOfferView
+from workforce_api.services.automatic_dispatch import (
+    check_candidate_eligibility,
+    canonical_service_match,
+    get_eligible_candidates,
+    get_available_riders_summary,
+    dispatch_job,
+    dispatch_pending_jobs,
+)
 
 User = get_user_model()
 factory = APIRequestFactory()
@@ -71,6 +83,23 @@ def run_e2e_verification():
             "business_type": "grocery_supplier",
             "is_active": True,
         }
+    )
+
+    from workforce_api.models import Warehouse, SellerWarehouseAssignment
+    wh_test, _ = Warehouse.objects.get_or_create(
+        name=f"E2E Fulfillment Hub {suffix}",
+        defaults={
+            "code": f"WH-E2E-{suffix[:4].upper()}",
+            "address": "Indiranagar Hub, Bangalore",
+            "latitude": Decimal("12.9716000"),
+            "longitude": Decimal("77.5946000"),
+            "city": "Bangalore",
+            "is_active": True,
+        }
+    )
+    SellerWarehouseAssignment.objects.update_or_create(
+        company=company,
+        defaults={"warehouse": wh_test}
     )
 
     merchant_user, _ = User.objects.get_or_create(
@@ -410,6 +439,22 @@ def run_phase_q_hardening_verification():
         }
     )
 
+    wh_q, _ = Warehouse.objects.get_or_create(
+        name=f"Hub Q {suffix}",
+        defaults={
+            "code": f"WH-Q-{suffix[:4].upper()}",
+            "address": "Tasker Town Hub, Bangalore",
+            "latitude": Decimal("12.9800000"),
+            "longitude": Decimal("77.6000000"),
+            "city": "Bangalore",
+            "is_active": True,
+        }
+    )
+    SellerWarehouseAssignment.objects.update_or_create(
+        company=company,
+        defaults={"warehouse": wh_q}
+    )
+
     merchant_user, _ = User.objects.get_or_create(
         username=f"merchant_q_{suffix}",
         defaults={"email": f"merchant_q_{suffix}@example.com", "first_name": "Store", "last_name": "Manager"}
@@ -655,12 +700,321 @@ def run_phase_q_hardening_verification():
         if log.notes:
             print(f"    Note: \"{log.notes}\"")
 
+def run_phase_r_rider_availability_verification():
     print("\n" + "="*80)
-    print("🎉 ALL PHASE Q HARDENING VERIFICATION CHECKS PASSED SUCCESSFULLY!")
+    print("🚀 STARTING PHASE R: RIDER DISPATCH DIAGNOSIS, VENDOR VISIBILITY & RETRY VERIFICATION")
+    print("="*80)
+
+    suffix = secrets.token_hex(4)
+    company, _ = Company.objects.get_or_create(
+        slug=f"seller-co-r-{suffix}",
+        defaults={
+            "company_name": f"QuickMart Grocery {suffix}",
+            "address": "456 100ft Road, Indiranagar, Bengaluru 560038",
+            "business_type": "grocery_supplier",
+            "is_active": True,
+        }
+    )
+
+    wh_r, _ = Warehouse.objects.get_or_create(
+        name=f"Hub R {suffix}",
+        defaults={
+            "code": f"WH-R-{suffix[:4].upper()}",
+            "address": "Indiranagar Hub, Bangalore",
+            "latitude": Decimal("12.9750000"),
+            "longitude": Decimal("77.6400000"),
+            "city": "Bangalore",
+            "is_active": True,
+        }
+    )
+    SellerWarehouseAssignment.objects.update_or_create(
+        company=company,
+        defaults={"warehouse": wh_r}
+    )
+
+    merchant_user, _ = User.objects.get_or_create(
+        username=f"merchant_r_{suffix}",
+        defaults={"email": f"merchant_r_{suffix}@example.com", "first_name": "Store", "last_name": "Manager"}
+    )
+    merchant_user.company_id = company.id
+    merchant_user.save()
+
+    rider_user, _ = User.objects.get_or_create(
+        username=f"rider_r_{suffix}",
+        defaults={"email": f"rider_r_{suffix}@example.com", "first_name": "Kaviya", "last_name": "K"}
+    )
+    rider_user.company_id = company.id
+    rider_user.save()
+
+    # Initial State: Technician appears "ONLINE" in the top bar presence toggle,
+    # but availability is "offline", no vehicle on file, no GPS telemetry.
+    rider_emp, _ = Employee.objects.get_or_create(
+        user=rider_user,
+        defaults={
+            "company": company,
+            "employee_id": f"EMP-R-{suffix.upper()}",
+            "phone": "9876543211",
+            "title": "Delivery Partner",
+            "is_active": True,
+            "is_online": True, # Top-bar presence is ONLINE
+            "current_availability": "offline", # Not yet available
+            "bank_details": {
+                "onboarding": {
+                    "status": "approved",
+                    "services": [{"name": "two_wheeler_delivery", "status": "approved"}]
+                }
+            },
+        }
+    )
+
+    # Setup Product & Inventory
+    category, _ = SellerHubCategory.objects.get_or_create(
+        slug=f"dairy-r-{suffix}",
+        defaults={"name": "Dairy & Beverages", "is_active": True}
+    )
+
+    product, _ = SellerProduct.objects.get_or_create(
+        company=company,
+        sku=f"SKU-MILK-{suffix}",
+        defaults={
+            "title": "Fresh Farm Milk 1L",
+            "category": category,
+            "mrp": Decimal("75.00"),
+            "selling_price": Decimal("68.00"),
+            "status": SellerProduct.Status.APPROVED,
+        }
+    )
+
+    inventory, _ = SellerInventory.objects.get_or_create(
+        company=company,
+        product=product,
+        defaults={"on_hand_qty": Decimal("40.000"), "reserved_qty": Decimal("0.000")}
+    )
+
+    # 1. Create Order #1 and transition to READY_FOR_PICKUP
+    order = SellerOrder.objects.create(
+        source_order_id=f"ORD-R1-{suffix}",
+        company=company,
+        order_number=f"SO-R1-{suffix}",
+        customer_name="Priya Nair",
+        customer_phone="9811223344",
+        delivery_address="Indiranagar 5th Cross, Bengaluru 560038",
+        total_amount=Decimal("136.00"),
+        status=SellerOrder.Status.PACKED,
+    )
+    SellerOrderItem.objects.create(
+        order=order,
+        product=product,
+        product_title=product.title,
+        sku=product.sku,
+        ordered_quantity=Decimal("2.000"),
+        unit_price=Decimal("68.00"),
+        line_total=Decimal("136.00"),
+    )
+
+    transition_view = SellerOrderStatusTransitionView.as_view()
+    req = factory.post(f"/api/workforce/seller-hub/orders/{order.id}/transition/", {"action": "mark_ready"}, format="json")
+    force_authenticate(req, user=merchant_user)
+    resp = transition_view(req, pk=order.id)
+    assert resp.status_code == 200, f"Mark ready failed: {resp.data}"
+    order.refresh_from_db()
+    assert order.status == SellerOrder.Status.READY_FOR_PICKUP
+
+    # 2. Check Candidate Rejection Gates (Step 1 of Prompt)
+    is_match, method, matched = canonical_service_match("two_wheeler_delivery", ["two_wheeler_delivery"], [])
+    assert is_match is True, "Service category matching failed!"
+
+    is_elig, reason, gate_results = check_candidate_eligibility(rider_emp, "two_wheeler_delivery")
+    assert is_elig is False, "Candidate should fail eligibility when vehicle is missing!"
+    assert gate_results["G3"] is False, f"Gate 3 vehicle check should fail! Got {gate_results}"
+    print(f"✅ Step 1: Confirmed rejection gate for candidate with no vehicle on file: '{reason}' (G3=FAIL).")
+
+    # 3. Test Vendor-Visible Available Riders Endpoint (GET /available-riders/)
+    avail_view = SellerOrderAvailableRidersView.as_view()
+    req = factory.get(f"/api/workforce/seller-hub/orders/{order.id}/available-riders/")
+    force_authenticate(req, user=merchant_user)
+    resp = avail_view(req, pk=order.id)
+    assert resp.status_code == 200, f"Available riders query failed: {resp.data}"
+    assert resp.data["eligible_count"] == 0, "Eligible count should be 0 before gate resolution."
+    assert len(resp.data["ineligible_riders"]) >= 1, "Ineligible riders diagnostic should list candidate."
+    print(f"✅ Step 2: Vendor Available-Riders endpoint returned: eligible_count=0, summary='{resp.data['diagnostic_summary']}'.")
+
+    # 4. Resolve Eligibility: Add Two-Wheeler Vehicle, Set Availability, and Send Live GPS Ping
+    today = timezone.now().date()
+    vehicle, _ = Vehicle.objects.get_or_create(
+        company=company,
+        registration_number=f"KA-03-R-{suffix.upper()}",
+        defaults={
+            "employee": rider_emp,
+            "vehicle_type": Vehicle.VehicleType.TWO_WHEELER,
+            "insurance_expiry": today + timedelta(days=120),
+            "permit_expiry": today + timedelta(days=120),
+            "puc_expiry": today + timedelta(days=120),
+            "rc_verified": True,
+            "is_active": True,
+        }
+    )
+    rider_emp.current_availability = "available"
+    rider_emp.save(update_fields=["current_availability"])
+
+    # Fresh GPS telemetry (~0.5 km from store center)
+    now_iso = timezone.now().isoformat()
+    rider_user.last_known_location = {
+        "latitude": 12.9750,
+        "longitude": 77.5980,
+        "captured_at": now_iso,
+        "updated_at": now_iso,
+    }
+    rider_user.save(update_fields=["last_known_location"])
+
+    # Re-check candidate eligibility
+    is_elig_after, reason_after, gate_results_after = check_candidate_eligibility(rider_emp, "two_wheeler_delivery")
+    assert is_elig_after is True, f"Eligibility failed after vehicle & availability: {reason_after}"
+
+    # Re-query Vendor Available Riders Endpoint
+    req = factory.get(f"/api/workforce/seller-hub/orders/{order.id}/available-riders/")
+    force_authenticate(req, user=merchant_user)
+    resp = avail_view(req, pk=order.id)
+    assert resp.status_code == 200
+    assert resp.data["eligible_count"] == 1, f"Expected 1 eligible candidate, got {resp.data['eligible_count']}"
+    assert resp.data["eligible_riders"][0]["employee_id"] == rider_emp.id
+    assert resp.data["eligible_riders"][0]["distance_km"] <= 5.0
+    print(f"✅ Step 3: Verified Vendor Available-Riders endpoint returns 1 eligible candidate ({rider_emp.user.username}, {resp.data['eligible_riders'][0]['distance_km']} km away).")
+
+    # 5. Test Vendor-Triggered Retry Dispatch (POST /retry-dispatch/)
+    retry_view = SellerOrderRetryDispatchView.as_view()
+    req = factory.post(f"/api/workforce/seller-hub/orders/{order.id}/retry-dispatch/", {}, format="json")
+    force_authenticate(req, user=merchant_user)
+    resp = retry_view(req, pk=order.id)
+    assert resp.status_code == 200, f"Retry dispatch failed: {resp.data}"
+    assert resp.data["success"] is True, f"Retry dispatch was not successful: {resp.data}"
+    print(f"✅ Step 4: Vendor-triggered retry dispatch succeeded: '{resp.data['message']}'.")
+
+    # Verify WorkforceJobOffer created
+    offers = WorkforceJobOffer.objects.filter(job=order.dispatch_job, status=WorkforceJobOffer.Status.OFFERED)
+    assert offers.count() == 1, f"Expected exactly 1 active offer, found {offers.count()}"
+    offer = offers.first()
+    assert offer.employee == rider_emp, "Offer was not assigned to candidate rider!"
+
+    # 6. Test Idempotency of Retry Dispatch (No Duplicate / Orphaned Offers)
+    req = factory.post(f"/api/workforce/seller-hub/orders/{order.id}/retry-dispatch/", {}, format="json")
+    force_authenticate(req, user=merchant_user)
+    resp = retry_view(req, pk=order.id)
+    assert resp.status_code == 200
+    offers_after_dup = WorkforceJobOffer.objects.filter(job=order.dispatch_job, status=WorkforceJobOffer.Status.OFFERED)
+    assert offers_after_dup.count() == 1, "Duplicate offer created on retry!"
+    print("✅ Step 5: Verified retry dispatch idempotency (no duplicate/orphaned offers created).")
+
+    # 7. Rider Accepts Offer -> Status transitions to ASSIGNED
+    accept_view = WorkforceJobAcceptOfferView.as_view()
+    req = factory.post(f"/api/workforce/jobs/{order.dispatch_job.id}/accept-offer/", {}, format="json")
+    force_authenticate(req, user=rider_user)
+    resp = accept_view(req, pk=order.dispatch_job.id)
+    assert resp.status_code == 200, f"Accept offer failed: {resp.data}"
+
+    order.refresh_from_db()
+    assert order.status == SellerOrder.Status.ASSIGNED
+    assert order.handling_technician == rider_emp
+    print(f"✅ Step 6: Rider accepted offer -> Order #{order.order_number} is ASSIGNED to {rider_emp.user.username}.")
+
+    # 8. Test Automatic Periodic Reconciliation Sweep (dispatch_pending_jobs)
+    # Create Order #2 when candidate is temporarily busy/holding offer, then frees up
+    order2 = SellerOrder.objects.create(
+        source_order_id=f"ORD-R2-{suffix}",
+        company=company,
+        order_number=f"SO-R2-{suffix}",
+        customer_name="Vikram Seth",
+        customer_phone="9877665544",
+        delivery_address="Indiranagar 100ft Rd, Bengaluru 560038",
+        total_amount=Decimal("68.00"),
+        status=SellerOrder.Status.PACKED,
+    )
+    SellerOrderItem.objects.create(
+        order=order2,
+        product=product,
+        product_title=product.title,
+        sku=product.sku,
+        ordered_quantity=Decimal("1.000"),
+        unit_price=Decimal("68.00"),
+        line_total=Decimal("68.00"),
+    )
+
+    req = factory.post(f"/api/workforce/seller-hub/orders/{order2.id}/transition/", {"action": "mark_ready"}, format="json")
+    force_authenticate(req, user=merchant_user)
+    resp = transition_view(req, pk=order2.id)
+    assert resp.status_code == 200
+    order2.refresh_from_db()
+    assert order2.status == SellerOrder.Status.READY_FOR_PICKUP
+
+    # Set up a second 2-wheeler rider who initially had a stale GPS (> 3600s ago)
+    rider2_user, _ = User.objects.get_or_create(
+        username=f"rider2_r_{suffix}",
+        defaults={"email": f"rider2_r_{suffix}@example.com", "first_name": "Deepak", "last_name": "R"}
+    )
+    rider2_user.company_id = company.id
+    stale_iso = (timezone.now() - timedelta(hours=3)).isoformat()
+    rider2_user.last_known_location = {"latitude": 12.9750, "longitude": 77.6410, "updated_at": stale_iso}
+    rider2_user.save()
+
+    rider2_emp, _ = Employee.objects.get_or_create(
+        user=rider2_user,
+        defaults={
+            "company": company,
+            "employee_id": f"EMP-R2-{suffix.upper()}",
+            "phone": "9876543212",
+            "title": "Delivery Partner",
+            "is_active": True,
+            "is_online": True,
+            "current_availability": "available",
+            "bank_details": {
+                "onboarding": {
+                    "status": "approved",
+                    "services": [{"name": "two_wheeler_delivery", "status": "approved"}]
+                }
+            },
+        }
+    )
+    Vehicle.objects.get_or_create(
+        company=company,
+        registration_number=f"KA-04-R-{suffix.upper()}",
+        defaults={
+            "employee": rider2_emp,
+            "vehicle_type": Vehicle.VehicleType.TWO_WHEELER,
+            "insurance_expiry": today + timedelta(days=120),
+            "permit_expiry": today + timedelta(days=120),
+            "puc_expiry": today + timedelta(days=120),
+            "rc_verified": True,
+            "is_active": True,
+        }
+    )
+
+    # Initially, Order2 has no offers because rider2's GPS is stale
+    offers_ord2_init = WorkforceJobOffer.objects.filter(job=order2.dispatch_job, status=WorkforceJobOffer.Status.OFFERED)
+    assert offers_ord2_init.count() == 0
+
+    # Rider2 refreshes GPS telemetry
+    fresh_iso = timezone.now().isoformat()
+    rider2_user.last_known_location = {"latitude": 12.9750, "longitude": 77.6410, "updated_at": fresh_iso}
+    rider2_user.save(update_fields=["last_known_location"])
+
+    # Run the periodic reconciliation sweep (dispatch_pending_jobs)
+    sweep_result = dispatch_pending_jobs()
+    print(f"✅ Step 7: Periodic reconciliation sweep executed: {sweep_result['pending_jobs_found']} pending found, {sweep_result['dispatched_count']} dispatched.")
+
+    # Confirm Order2 automatically received an offer during the sweep!
+    offers_ord2_after = WorkforceJobOffer.objects.filter(job=order2.dispatch_job, status=WorkforceJobOffer.Status.OFFERED)
+    assert offers_ord2_after.count() == 1, "Periodic sweep should have offered Order #2 to Rider #2!"
+    assert offers_ord2_after.first().employee == rider2_emp
+    print(f"✅ Step 8: Confirmed periodic sweep automatically offered stuck Order #{order2.order_number} to {rider2_emp.user.username} without manual action.")
+
+    print("\n" + "="*80)
+    print("🎉 ALL PHASE R DIAGNOSIS, VISIBILITY & RETRY TESTS PASSED 100%!")
     print("="*80 + "\n")
 
 
 if __name__ == "__main__":
     run_e2e_verification()
     run_phase_q_hardening_verification()
+    run_phase_r_rider_availability_verification()
+
 

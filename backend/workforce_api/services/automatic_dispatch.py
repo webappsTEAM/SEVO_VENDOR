@@ -1526,3 +1526,318 @@ def reconsider_jobs_for_employee(employee_or_id) -> int:
 def reconcile_booking_for_dispatch(job_id_or_obj, use_redis_geo=False):
     """Fallback entry point for post-commit dispatch triggers."""
     return dispatch_job(job_id_or_obj)
+
+
+def get_available_riders_summary(job_or_order, max_gps_age_seconds=None, radius_km=None) -> Dict[str, Any]:
+    """
+    Vendor-visible read-only candidate availability and eligibility diagnostics.
+    Runs the exact same 10-gate candidate discovery and GPS freshness checks as
+    get_eligible_candidates() without creating offers or altering DB state.
+    """
+    from employees.models import Employee
+    from workforce_api.models import Vehicle
+
+    max_gps_age_seconds = max_gps_age_seconds or MAX_GPS_AGE_SECONDS
+    radius_km = radius_km or MAX_DISPATCH_RADIUS_KM
+    now = timezone.now()
+
+    # Resolve ServiceRequest object
+    job_obj = None
+    order_obj = None
+    if hasattr(job_or_order, "dispatch_job") or hasattr(job_or_order, "order_number"):
+        order_obj = job_or_order
+        job_obj = getattr(order_obj, "dispatch_job", None)
+        if not job_obj and hasattr(order_obj, "company"):
+            from workforce_api.models import get_seller_assigned_warehouse
+            warehouse = get_seller_assigned_warehouse(order_obj.company_id)
+            if not warehouse or warehouse.latitude is None or warehouse.longitude is None:
+                return {
+                    "eligible_count": 0,
+                    "eligible_riders": [],
+                    "ineligible_riders": [],
+                    "diagnostic_summary": "Store is not assigned to an active warehouse yet. Contact platform support to assign a fulfillment warehouse.",
+                    "active_offer": None,
+                    "store_location_missing": True,
+                    "warehouse_missing": True,
+                    "code": "WAREHOUSE_ASSIGNMENT_REQUIRED",
+                }
+            pickup_lat = warehouse.latitude
+            pickup_lon = warehouse.longitude
+            pickup_addr = warehouse.address or f"Warehouse: {warehouse.name}"
+            # Synthesize transient job for candidate discovery
+            from service_requests.models import ServiceRequest
+            job_obj = ServiceRequest(
+                company=order_obj.company,
+                service_category="two_wheeler_delivery",
+                job_type="DELIVERY",
+                request_kind=ServiceRequest.RequestKind.DIRECT,
+                customer_name=order_obj.customer_name,
+                phone=order_obj.customer_phone,
+                address=pickup_addr,
+                latitude=pickup_lat,
+                longitude=pickup_lon,
+                drop_address=order_obj.delivery_address,
+                issue_title=f"Marketplace Order Delivery #{order_obj.order_number}",
+                status="new_request",
+            )
+    elif hasattr(job_or_order, "service_category"):
+        job_obj = job_or_order
+    else:
+        job_obj = ServiceRequest.objects.filter(pk=job_or_order).first()
+
+    if not job_obj:
+        return {
+            "eligible_count": 0,
+            "eligible_riders": [],
+            "ineligible_riders": [],
+            "diagnostic_summary": "Order dispatch job not found.",
+            "active_offer": None,
+        }
+
+    if job_obj.latitude is None or job_obj.longitude is None:
+        return {
+            "eligible_count": 0,
+            "eligible_riders": [],
+            "ineligible_riders": [],
+            "diagnostic_summary": "Fulfillment pickup location coordinates are not configured. Store must be assigned to an active warehouse.",
+            "active_offer": None,
+            "store_location_missing": True,
+            "warehouse_missing": True,
+            "code": "WAREHOUSE_ASSIGNMENT_REQUIRED",
+        }
+
+    # Ensure coordinates exist for calculation
+    try:
+        cust_lat = float(job_obj.latitude)
+        cust_lon = float(job_obj.longitude)
+    except (ValueError, TypeError):
+        return {
+            "eligible_count": 0,
+            "eligible_riders": [],
+            "ineligible_riders": [],
+            "diagnostic_summary": "Pickup location coordinates are invalid.",
+            "active_offer": None,
+            "store_location_missing": True,
+            "warehouse_missing": True,
+            "code": "WAREHOUSE_ASSIGNMENT_REQUIRED",
+        }
+
+    service_category = job_obj.service_category or "two_wheeler_delivery"
+
+    # Base candidate pool: active employees
+    today_dow = now.weekday()
+    candidates_qs = (
+        Employee.objects.filter(is_active=True)
+        .select_related("user", "company", "scorecard")
+        .prefetch_related(
+            Prefetch(
+                "compliance_records",
+                queryset=WorkforceEmployeeCompliance.objects.filter(
+                    requirement__is_mandatory=True,
+                    status__in=["EXPIRED", "REJECTED"],
+                ),
+                to_attr="prefetched_invalid_compliance",
+            ),
+            Prefetch(
+                "schedules",
+                queryset=WorkforceEmployeeSchedule.objects.filter(day_of_week=today_dow),
+                to_attr="prefetched_today_schedules",
+            ),
+            Prefetch(
+                "skills",
+                queryset=WorkforceEmployeeSkill.objects.filter(is_verified=True).select_related("skill"),
+                to_attr="prefetched_verified_skills",
+            ),
+        )
+    )
+
+    if not job_obj.company_id or job_obj.company_id == 1:
+        candidates_qs = candidates_qs.filter(Q(company_id=1) | Q(company__isnull=True) | Q(company_id__gt=1))
+    else:
+        candidates_qs = candidates_qs.filter(company_id=job_obj.company_id)
+
+    _employees_holding_offers = employees_with_live_offers(exclude_job=job_obj)
+
+    eligible_riders = []
+    ineligible_riders = []
+
+    for emp in candidates_qs:
+        rider_name = emp.user.get_full_name() or emp.user.username or f"Rider #{emp.id}"
+        rider_phone = emp.phone or emp.user.phone or ""
+
+        # Extract live GPS from User.last_known_location
+        last_loc = getattr(emp.user, "last_known_location", None) or {}
+        emp_lat = last_loc.get("latitude") if last_loc.get("latitude") is not None else last_loc.get("lat")
+        emp_lon = last_loc.get("longitude") if last_loc.get("longitude") is not None else (last_loc.get("lng") or last_loc.get("lon"))
+
+        gps_age_s = None
+        updated_at_str = last_loc.get("updated_at") or last_loc.get("captured_at")
+        if updated_at_str:
+            try:
+                loc_dt = parse_datetime(str(updated_at_str))
+                if loc_dt:
+                    if timezone.is_naive(loc_dt):
+                        loc_dt = timezone.make_aware(loc_dt)
+                    gps_age_s = (now - loc_dt).total_seconds()
+            except Exception:
+                pass
+
+        dist_km = None
+        emp_lat_f = None
+        emp_lon_f = None
+        if emp_lat is not None and emp_lon is not None:
+            try:
+                emp_lat_f = float(emp_lat)
+                emp_lon_f = float(emp_lon)
+                dist_m = haversine_distance(cust_lat, cust_lon, emp_lat_f, emp_lon_f)
+                dist_km = dist_m / 1000.0
+            except (ValueError, TypeError):
+                pass
+
+        # Check Gate 1-10 eligibility
+        is_eligible, reason, gate_results = check_candidate_eligibility(emp, service_category, job=job_obj)
+
+        if not is_eligible:
+            gate_code = "ELIGIBILITY_FAILED"
+            for g_k, g_v in gate_results.items():
+                if not g_v:
+                    gate_code = g_k
+                    break
+            ineligible_riders.append({
+                "employee_id": emp.id,
+                "name": rider_name,
+                "phone": rider_phone,
+                "gate": gate_code,
+                "reason": reason,
+                "is_online": emp.is_online,
+                "current_availability": emp.current_availability,
+                "gps_age_seconds": round(gps_age_s, 1) if gps_age_s is not None else None,
+                "distance_km": round(dist_km, 2) if dist_km is not None else None,
+            })
+            continue
+
+        if emp.id in _employees_holding_offers:
+            ineligible_riders.append({
+                "employee_id": emp.id,
+                "name": rider_name,
+                "phone": rider_phone,
+                "gate": "ALREADY_HAS_LIVE_OFFER",
+                "reason": "Currently reviewing another active dispatch offer",
+                "is_online": emp.is_online,
+                "current_availability": emp.current_availability,
+                "gps_age_seconds": round(gps_age_s, 1) if gps_age_s is not None else None,
+                "distance_km": round(dist_km, 2) if dist_km is not None else None,
+            })
+            continue
+
+        if emp_lat_f is None or emp_lon_f is None:
+            ineligible_riders.append({
+                "employee_id": emp.id,
+                "name": rider_name,
+                "phone": rider_phone,
+                "gate": "GPS_MISSING",
+                "reason": "No GPS ping received yet",
+                "is_online": emp.is_online,
+                "current_availability": emp.current_availability,
+                "gps_age_seconds": None,
+                "distance_km": None,
+            })
+            continue
+
+        if gps_age_s is None or gps_age_s > max_gps_age_seconds or gps_age_s < -60:
+            age_display = f"{int(gps_age_s // 60)}m ago" if (gps_age_s is not None and gps_age_s > 0) else "stale"
+            ineligible_riders.append({
+                "employee_id": emp.id,
+                "name": rider_name,
+                "phone": rider_phone,
+                "gate": "GPS_STALE",
+                "reason": f"Last GPS ping was {age_display} (exceeds {int(max_gps_age_seconds // 60)}m threshold)",
+                "is_online": emp.is_online,
+                "current_availability": emp.current_availability,
+                "gps_age_seconds": round(gps_age_s, 1) if gps_age_s is not None else None,
+                "distance_km": round(dist_km, 2) if dist_km is not None else None,
+            })
+            continue
+
+        if dist_km is None or dist_km > radius_km:
+            ineligible_riders.append({
+                "employee_id": emp.id,
+                "name": rider_name,
+                "phone": rider_phone,
+                "gate": "RADIUS_EXCEEDED",
+                "reason": f"{dist_km:.1f} km away (exceeds {radius_km:.0f} km max radius)",
+                "is_online": emp.is_online,
+                "current_availability": emp.current_availability,
+                "gps_age_seconds": round(gps_age_s, 1) if gps_age_s is not None else None,
+                "distance_km": round(dist_km, 2) if dist_km is not None else None,
+            })
+            continue
+
+        # Proximity score (closer = higher score, max 100)
+        proximity_score = max(0.0, 100.0 - (dist_km * 2.0))
+        eligible_riders.append({
+            "employee_id": emp.id,
+            "name": rider_name,
+            "phone": rider_phone,
+            "distance_km": round(dist_km, 2),
+            "score": round(proximity_score, 1),
+            "gps_age_seconds": round(gps_age_s, 1) if gps_age_s is not None else 0,
+            "is_online": emp.is_online,
+            "current_availability": emp.current_availability,
+        })
+
+    # Sort eligible riders by proximity score descending (closest first)
+    eligible_riders.sort(key=lambda x: x["score"], reverse=True)
+
+    # Active offer check
+    active_offer_data = None
+    if job_obj and getattr(job_obj, "pk", None):
+        active_offer = WorkforceJobOffer.objects.filter(
+            job=job_obj,
+            status=WorkforceJobOffer.Status.OFFERED,
+            expires_at__gt=now,
+        ).select_related("employee__user").first()
+        if active_offer:
+            active_offer_data = {
+                "offer_id": active_offer.id,
+                "employee_id": active_offer.employee_id,
+                "employee_name": active_offer.employee.user.get_full_name() or active_offer.employee.user.username,
+                "expires_at": active_offer.expires_at.isoformat(),
+            }
+
+    # Generate intuitive summary message
+    if eligible_riders:
+        top_r = eligible_riders[0]
+        summary = f"{len(eligible_riders)} rider{'s' if len(eligible_riders) > 1 else ''} online nearby (closest: {top_r['distance_km']:.1f} km away)"
+    elif active_offer_data:
+        summary = f"Offer pending with {active_offer_data['employee_name']}"
+    elif ineligible_riders:
+        # Find most relevant diagnostic highlight
+        stale_riders = [r for r in ineligible_riders if r["gate"] == "GPS_STALE"]
+        offline_riders = [r for r in ineligible_riders if r["gate"] in ["G7", "GATE7_PRESENCE_OFFLINE", "ELIGIBILITY_FAILED"]]
+        vehicle_riders = [r for r in ineligible_riders if r["gate"] == "G3"]
+
+        if stale_riders:
+            r = stale_riders[0]
+            summary = f"0 riders available -- {r['reason']} for {r['name']}"
+        elif vehicle_riders:
+            r = vehicle_riders[0]
+            summary = f"0 riders available -- {r['reason']} ({r['name']})"
+        elif offline_riders:
+            summary = f"0 riders available -- {len(offline_riders)} registered rider(s) currently offline or unavailable"
+        else:
+            r = ineligible_riders[0]
+            summary = f"0 riders available -- {r['reason']}"
+    else:
+        summary = "No delivery riders registered for this zone yet"
+
+    return {
+        "eligible_count": len(eligible_riders),
+        "eligible_riders": eligible_riders,
+        "ineligible_riders": ineligible_riders,
+        "diagnostic_summary": summary,
+        "active_offer": active_offer_data,
+        "service_category": service_category,
+        "pickup_address": job_obj.address,
+    }
+

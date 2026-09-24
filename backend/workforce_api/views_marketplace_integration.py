@@ -27,6 +27,7 @@ from workforce_api.models import (
     SellerOrderItem,
     SellerOrderAuditLog,
     SellerOrderStatusOutbox,
+    get_seller_assigned_warehouse,
 )
 from workforce_api.permissions import IsMarketplaceIntegrationCaller
 from workforce_api.serializers import (
@@ -421,6 +422,7 @@ class MarketplaceProductListView(APIView):
 
             cat_path = build_category_path(p.category)
             cat_hierarchy = build_category_hierarchy(p.category)
+            wh = get_seller_assigned_warehouse(p.company_id)
             results.append({
                 "id": p.id,
                 "sku": p.sku,
@@ -440,6 +442,14 @@ class MarketplaceProductListView(APIView):
                 "hsn_code": p.hsn_code or "",
                 "seller_id": p.company.id,
                 "seller_name": p.company.company_name,
+                "warehouse_id": wh.id if wh else None,
+                "warehouse_name": wh.name if wh else "",
+                "warehouse": {
+                    "id": wh.id,
+                    "name": wh.name,
+                    "code": wh.code,
+                    "city": wh.city,
+                } if wh else None,
                 "category_path": cat_path,
                 "category_hierarchy": cat_hierarchy,
                 "available_stock": float(round(avail_qty, 3)) if (avail_qty % 1) != 0 else int(avail_qty),
@@ -510,6 +520,7 @@ class MarketplaceProductDetailView(APIView):
 
         cat_path = build_category_path(p.category)
         cat_hierarchy = build_category_hierarchy(p.category)
+        wh = get_seller_assigned_warehouse(p.company_id)
         return Response({
             "id": p.id,
             "sku": p.sku,
@@ -529,6 +540,14 @@ class MarketplaceProductDetailView(APIView):
             "hsn_code": p.hsn_code or "",
             "seller_id": p.company.id,
             "seller_name": p.company.company_name,
+            "warehouse_id": wh.id if wh else None,
+            "warehouse_name": wh.name if wh else "",
+            "warehouse": {
+                "id": wh.id,
+                "name": wh.name,
+                "code": wh.code,
+                "city": wh.city,
+            } if wh else None,
             "category_path": cat_path,
             "category_hierarchy": cat_hierarchy,
             "available_stock": float(round(avail_qty, 3)) if (avail_qty % 1) != 0 else int(avail_qty),
@@ -676,29 +695,7 @@ class MarketplaceCartValidateView(APIView):
                 })
                 continue
 
-            # 3. Single-Store Consistency Check (if seller_id provided)
-            if seller_id and str(product.company_id) != str(seller_id):
-                errors.append({
-                    "product_id": p_id,
-                    "sku": product.sku,
-                    "title": product.title,
-                    "code": "STORE_MISMATCH",
-                    "message": f"Product '{product.title}' belongs to another merchant store.",
-                })
-                validated_items.append({
-                    "product_id": p_id,
-                    "sku": product.sku,
-                    "title": product.title,
-                    "status": "STORE_MISMATCH",
-                    "is_available": False,
-                    "requested_quantity": str(round(req_qty, 3)),
-                    "available_quantity": "0.000",
-                    "current_selling_price": str(product.selling_price),
-                    "error": "Store mismatch.",
-                })
-                continue
-
-            # 4. Active Category Lineage Check
+            # 3. Active Category Lineage Check
             if product.category_id not in active_cat_ids:
                 errors.append({
                     "product_id": p_id,
@@ -720,7 +717,7 @@ class MarketplaceCartValidateView(APIView):
                 })
                 continue
 
-            # 5. Live Stock Availability Check
+            # 4. Live Stock Availability Check
             inv = getattr(product, "inventory", None)
             avail_qty = max(Decimal("0.000"), (inv.on_hand_qty - inv.reserved_qty)) if inv else Decimal("0.000")
 
@@ -770,6 +767,7 @@ class MarketplaceCartValidateView(APIView):
 
             avail_disp = float(round(avail_qty, 3)) if (avail_qty % 1) != 0 else int(avail_qty)
             req_disp = float(round(req_qty, 3)) if (req_qty % 1) != 0 else int(req_qty)
+            wh = get_seller_assigned_warehouse(product.company_id)
 
             validated_items.append({
                 "product_id": product.id,
@@ -777,6 +775,8 @@ class MarketplaceCartValidateView(APIView):
                 "title": product.title,
                 "company_id": product.company.id,
                 "seller_name": product.company.company_name,
+                "warehouse_id": wh.id if wh else None,
+                "warehouse_name": wh.name if wh else "",
                 "requested_quantity": req_disp,
                 "available_quantity": avail_disp,
                 "mrp": str(product.mrp),
@@ -915,6 +915,10 @@ class MarketplaceOrderIntakeView(APIView):
             payment_method = str(request.data.get("payment_method") or "ONLINE").strip()
             payment_status = str(request.data.get("payment_status") or "PAID").strip()
 
+        delivery_group_id = str(request.data.get("delivery_group_id") or "").strip()
+        req_wh_id = request.data.get("warehouse_id")
+        req_wh_name = str(request.data.get("warehouse_name") or "").strip()
+
         # ── Atomic Stock Reservation, Validation & Order Creation ─────────────
         product_ids = list(seen_product_ids)
         active_cat_ids = get_active_seller_category_ids()
@@ -927,6 +931,10 @@ class MarketplaceOrderIntakeView(APIView):
                     {"error": f"Active Seller Company #{company_id} not found.", "code": "STORE_INACTIVE"},
                     status=status.HTTP_404_NOT_FOUND,
                 )
+
+            wh = get_seller_assigned_warehouse(company.id)
+            final_wh_id = req_wh_id or (wh.id if wh else None)
+            final_wh_name = req_wh_name or (wh.name if wh else "")
 
             # 2. Lock inventories for update
             inventories = {
@@ -1017,6 +1025,7 @@ class MarketplaceOrderIntakeView(APIView):
                                     "product_id": p_id,
                                     "expected_price": str(passed_dec),
                                     "current_price": str(product.selling_price),
+                                    "error_price": str(product.selling_price),
                                 },
                                 status=status.HTTP_409_CONFLICT,
                             )
@@ -1046,6 +1055,9 @@ class MarketplaceOrderIntakeView(APIView):
                     source_order_id=source_order_id,
                     company=company,
                     order_number=order_number,
+                    delivery_group_id=delivery_group_id,
+                    warehouse_id=final_wh_id,
+                    warehouse_name=final_wh_name,
                     customer_name=customer_name,
                     customer_phone=customer_phone,
                     delivery_address=delivery_address,

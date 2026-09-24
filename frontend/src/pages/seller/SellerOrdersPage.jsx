@@ -84,6 +84,21 @@ export function SellerOrdersPage() {
   const [adminOverrideModal, setAdminOverrideModal] = useState({ isOpen: false, orderId: null, action: '', reason: '' });
   const [trackingJobId, setTrackingJobId] = useState(null);
 
+  // Available Riders Diagnostics & Retry Dispatch State
+  const [availableRidersModal, setAvailableRidersModal] = useState({
+    isOpen: false,
+    orderId: null,
+    orderNumber: null,
+    loading: false,
+    data: null,
+    error: null,
+  });
+  const [retryLoadingId, setRetryLoadingId] = useState(null);
+  const [storeLocationModal, setStoreLocationModal] = useState({
+    isOpen: false,
+    message: '',
+  });
+
   // Debounce search
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -245,6 +260,14 @@ export function SellerOrdersPage() {
 
       const data = await res.json();
       if (!res.ok) {
+        if (data.code === 'WAREHOUSE_ASSIGNMENT_REQUIRED' || data.code === 'STORE_LOCATION_REQUIRED') {
+          setStoreLocationModal({
+            isOpen: true,
+            isWarehouse: data.code === 'WAREHOUSE_ASSIGNMENT_REQUIRED',
+            message: data.error || "Your store isn't assigned to a warehouse yet -- contact platform support.",
+          });
+          return;
+        }
         alert(data.error || 'Failed to update order state.');
         return;
       }
@@ -307,6 +330,74 @@ export function SellerOrdersPage() {
       alert('Network error executing admin override.');
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  // Open Available Riders Diagnostics Modal
+  const openAvailableRiders = async (orderId, orderNumber) => {
+    setAvailableRidersModal({
+      isOpen: true,
+      orderId,
+      orderNumber,
+      loading: true,
+      data: null,
+      error: null,
+    });
+    try {
+      const res = await fetch(`/api/workforce/seller-hub/orders/${orderId}/available-riders/`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Failed to load rider availability.');
+      const data = await res.json();
+      setAvailableRidersModal((prev) => ({ ...prev, loading: false, data }));
+    } catch (err) {
+      setAvailableRidersModal((prev) => ({ ...prev, loading: false, error: err.message }));
+    }
+  };
+
+  // Trigger Vendor Retry Dispatch
+  const handleRetryDispatch = async (orderId) => {
+    try {
+      setRetryLoadingId(orderId);
+      const res = await fetch(`/api/workforce/seller-hub/orders/${orderId}/retry-dispatch/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (data.code === 'WAREHOUSE_ASSIGNMENT_REQUIRED' || data.code === 'STORE_LOCATION_REQUIRED') {
+          setStoreLocationModal({
+            isOpen: true,
+            isWarehouse: data.code === 'WAREHOUSE_ASSIGNMENT_REQUIRED',
+            message: data.error || "Your store isn't assigned to a warehouse yet -- contact platform support.",
+          });
+          return;
+        }
+        alert(data.error || 'Failed to retry dispatch.');
+        return;
+      }
+      // Refresh list & metrics
+      loadOrders();
+      loadMetrics();
+      if (selectedOrderId === orderId && data.order) {
+        setSelectedOrderDetail(data.order);
+      }
+      if (availableRidersModal.isOpen && availableRidersModal.orderId === orderId) {
+        if (data.available_riders) {
+          setAvailableRidersModal((prev) => ({ ...prev, data: data.available_riders }));
+        } else {
+          openAvailableRiders(orderId, availableRidersModal.orderNumber);
+        }
+      }
+    } catch (err) {
+      console.error('Error retrying dispatch:', err);
+      alert('Network error while retrying dispatch.');
+    } finally {
+      setRetryLoadingId(null);
     }
   };
 
@@ -744,17 +835,35 @@ export function SellerOrdersPage() {
                             )}
 
                             {['READY_FOR_PICKUP', 'ASSIGNED'].includes(ord.status) && (
-                              <div className="flex items-center gap-1.5">
+                              <div className="flex items-center gap-1.5 flex-wrap justify-end">
                                 {ord.handling_technician_name ? (
                                   <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
                                     <Truck className="w-3 h-3" />
                                     <span>{ord.handling_technician_name}</span>
                                   </span>
                                 ) : (
-                                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded bg-amber-50 text-amber-700 animate-pulse border border-amber-200">
-                                    <Loader2 className="w-3 h-3 animate-spin" />
-                                    <span>Assigning Rider...</span>
-                                  </span>
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => openAvailableRiders(ord.id, ord.order_number)}
+                                      className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 transition-colors shadow-2xs"
+                                      title="Click to view eligible 2-wheeler riders & GPS status"
+                                    >
+                                      <Loader2 className="w-3 h-3 animate-spin text-amber-600" />
+                                      <span>Assigning Rider...</span>
+                                      <Info className="w-3 h-3 ml-0.5 text-amber-600 opacity-80" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRetryDispatch(ord.id)}
+                                      disabled={retryLoadingId === ord.id}
+                                      className="p-1.5 bg-amber-100 hover:bg-amber-200 text-amber-800 rounded-lg text-xs font-semibold transition-colors border border-amber-300 flex items-center gap-1 disabled:opacity-50"
+                                      title="Retry dispatch immediately for nearest available 2-wheeler riders"
+                                    >
+                                      <RefreshCw className={`w-3.5 h-3.5 ${retryLoadingId === ord.id ? 'animate-spin' : ''}`} />
+                                      <span className="hidden xl:inline text-[10px] font-bold">Retry</span>
+                                    </button>
+                                  </>
                                 )}
                                 {ord.dispatch_job_id && (
                                   <button
@@ -947,7 +1056,7 @@ export function SellerOrdersPage() {
 
                   {/* Rider Assignment & Pickup OTP Banner */}
                   {['READY_FOR_PICKUP', 'ASSIGNED', 'HANDED_OVER'].includes(selectedOrderDetail.status) && (
-                    <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2.5">
+                    <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <div className="p-2 bg-indigo-100 rounded-lg text-indigo-700">
@@ -962,15 +1071,38 @@ export function SellerOrdersPage() {
                             </div>
                           </div>
                         </div>
-                        {selectedOrderDetail.dispatch_job_id && (
-                          <button
-                            onClick={() => setTrackingJobId(selectedOrderDetail.dispatch_job_id)}
-                            className="px-2.5 py-1 bg-white hover:bg-slate-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-semibold flex items-center gap-1 shadow-2xs"
-                          >
-                            <Navigation className="w-3 h-3" />
-                            <span>Track</span>
-                          </button>
-                        )}
+                        <div className="flex items-center gap-1.5">
+                          {!selectedOrderDetail.handling_technician_name && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => openAvailableRiders(selectedOrderDetail.id, selectedOrderDetail.order_number)}
+                                className="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold flex items-center gap-1 shadow-2xs"
+                              >
+                                <Info className="w-3 h-3 text-blue-600" />
+                                <span>Riders Status</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleRetryDispatch(selectedOrderDetail.id)}
+                                disabled={retryLoadingId === selectedOrderDetail.id}
+                                className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-2xs transition-colors disabled:opacity-50"
+                              >
+                                <RefreshCw className={`w-3 h-3 ${retryLoadingId === selectedOrderDetail.id ? 'animate-spin' : ''}`} />
+                                <span>Retry Dispatch</span>
+                              </button>
+                            </>
+                          )}
+                          {selectedOrderDetail.dispatch_job_id && (
+                            <button
+                              onClick={() => setTrackingJobId(selectedOrderDetail.dispatch_job_id)}
+                              className="px-2.5 py-1 bg-white hover:bg-slate-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-semibold flex items-center gap-1 shadow-2xs"
+                            >
+                              <Navigation className="w-3 h-3" />
+                              <span>Track</span>
+                            </button>
+                          )}
+                        </div>
                       </div>
                       {selectedOrderDetail.pickup_otp && (
                         <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg flex items-center justify-between">
@@ -1377,6 +1509,229 @@ export function SellerOrdersPage() {
                 {actionLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                 <span>Confirm Override</span>
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL: 2-WHEELER RIDER AVAILABILITY & ELIGIBILITY DIAGNOSTICS ── */}
+      {availableRidersModal.isOpen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in duration-150 border border-slate-200">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-indigo-100 text-indigo-700 rounded-xl">
+                  <Truck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    2-Wheeler Rider Availability
+                  </h3>
+                  <p className="text-[11px] text-slate-500 font-mono">
+                    Order #{availableRidersModal.orderNumber}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setAvailableRidersModal(prev => ({ ...prev, isOpen: false }))}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {availableRidersModal.loading ? (
+              <div className="p-8 flex flex-col items-center justify-center text-center">
+                <Loader2 className="w-6 h-6 text-blue-600 animate-spin mb-2" />
+                <p className="text-xs font-semibold text-slate-600">Evaluating 10-gate dispatch criteria & live GPS...</p>
+              </div>
+            ) : availableRidersModal.error ? (
+              <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{availableRidersModal.error}</span>
+              </div>
+            ) : (
+              <div className="space-y-3.5">
+                {/* Status Summary Banner */}
+                <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-800">Dispatch Evaluation Status</span>
+                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                      availableRidersModal.data?.store_location_missing
+                        ? 'bg-amber-100 text-amber-800'
+                        : availableRidersModal.data?.eligible_count > 0
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : 'bg-amber-100 text-amber-800'
+                    }`}>
+                      {availableRidersModal.data?.store_location_missing
+                        ? 'Location Not Set'
+                        : `${availableRidersModal.data?.eligible_count || 0} Eligible Rider(s)`}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-600 font-medium">
+                    {availableRidersModal.data?.diagnostic_summary}
+                  </p>
+                </div>
+
+                {/* Store Location Missing Warning Banner */}
+                {availableRidersModal.data?.store_location_missing && (
+                  <div className="p-3.5 bg-amber-50 border border-amber-300 rounded-xl space-y-2.5">
+                    <div className="flex items-start gap-2.5">
+                      <MapPin className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                      <div>
+                        <h4 className="text-xs font-bold text-amber-900">
+                          Store Location Pin Missing
+                        </h4>
+                        <p className="text-[11px] text-amber-800 mt-0.5 leading-relaxed">
+                          Your store or warehouse GPS coordinates have not been configured. Rider matching and dispatch require exact store coordinates to calculate distances and route nearby riders.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="pt-1">
+                      <Link
+                        to="/workforce/seller-hub/store-profile"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition-colors shadow-xs"
+                      >
+                        <MapPin className="w-3.5 h-3.5" />
+                        <span>Configure Store Location</span>
+                      </Link>
+                    </div>
+                  </div>
+                )}
+
+                {/* Active Offer Status */}
+                {availableRidersModal.data?.active_offer && (
+                  <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-xl text-xs text-indigo-900 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold flex items-center gap-1">
+                        <Clock className="w-3.5 h-3.5 text-indigo-600" />
+                        <span>Live Exclusive Offer Active</span>
+                      </span>
+                      <span className="text-[10px] font-mono bg-indigo-200/70 text-indigo-900 px-1.5 py-0.5 rounded font-bold">
+                        Pending Accept
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-indigo-700">
+                      Offered to <span className="font-bold">{availableRidersModal.data.active_offer.employee_name}</span>. Auto-expires if not accepted within the dispatch window.
+                    </p>
+                  </div>
+                )}
+
+                {/* Eligible Riders List */}
+                {availableRidersModal.data?.eligible_riders?.length > 0 && (
+                  <div className="space-y-2">
+                    <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block">
+                      Eligible Technicians Ready For Offer
+                    </span>
+                    <div className="space-y-1.5 max-h-36 overflow-y-auto">
+                      {availableRidersModal.data.eligible_riders.map((r) => (
+                        <div key={r.employee_id} className="p-2.5 bg-emerald-50/60 border border-emerald-200 rounded-xl flex items-center justify-between text-xs">
+                          <div>
+                            <span className="font-bold text-slate-900">{r.name}</span>
+                            <div className="text-[10px] text-slate-500">
+                              {r.distance_km} km away • Proximity score: {r.score} • GPS ping {Math.round(r.gps_age_seconds)}s ago
+                            </div>
+                          </div>
+                          <span className="text-[10px] font-bold px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded">
+                            Ready
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Ineligible Riders Diagnostic Breakdown */}
+                {availableRidersModal.data?.ineligible_riders?.length > 0 && (
+                  <div className="space-y-2">
+                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                      Other Registered Technicians (Rejection Reason)
+                    </span>
+                    <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                      {availableRidersModal.data.ineligible_riders.map((r) => (
+                        <div key={r.employee_id} className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl flex items-start justify-between text-xs gap-2">
+                          <div>
+                            <span className="font-semibold text-slate-800">{r.name}</span>
+                            <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
+                              {r.reason}
+                            </p>
+                          </div>
+                          <span className="text-[9px] font-mono px-1.5 py-0.5 bg-slate-200 text-slate-700 rounded shrink-0">
+                            {r.gate}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Action Footer */}
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+                  <span className="text-[10px] text-slate-400">
+                    Auto-sweep runs continuously in the background
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleRetryDispatch(availableRidersModal.orderId)}
+                    disabled={retryLoadingId === availableRidersModal.orderId}
+                    className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-colors shadow-xs flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${retryLoadingId === availableRidersModal.orderId ? 'animate-spin' : ''}`} />
+                    <span>Retry Dispatch Now</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL: WAREHOUSE / STORE LOCATION REQUIRED ALERT ── */}
+      {storeLocationModal.isOpen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in duration-150 border border-amber-200">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 bg-amber-100 text-amber-700 rounded-xl shrink-0">
+                <MapPin className="w-6 h-6" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-sm font-bold text-slate-900">
+                  {storeLocationModal.isWarehouse
+                    ? 'Warehouse Assignment Required'
+                    : 'Store Location Required for Dispatch'}
+                </h3>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  {storeLocationModal.message}
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-500 space-y-1">
+              <p className="font-semibold text-slate-700">Why is this required?</p>
+              <p className="text-[11px]">
+                {storeLocationModal.isWarehouse
+                  ? 'In SEVO logistics, rider pickups originate from designated regional warehouses where stock is consolidated. Only platform administrators can assign or update your fulfillment warehouse.'
+                  : 'To assign delivery riders automatically, SEVO calculates real driving distances from your store pin to the customer address.'}
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setStoreLocationModal({ isOpen: false, message: '' })}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+              >
+                Close
+              </button>
+              {!storeLocationModal.isWarehouse && (
+                <Link
+                  to="/workforce/seller-hub/store-profile"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-xs transition-colors"
+                >
+                  <MapPin className="w-3.5 h-3.5" />
+                  <span>Set Store Location</span>
+                </Link>
+              )}
             </div>
           </div>
         </div>

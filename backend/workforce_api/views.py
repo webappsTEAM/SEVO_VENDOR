@@ -12383,16 +12383,20 @@ class VendorStoreProfileView(APIView):
     GET   /api/workforce/store/profile/  – Fetch the vendor's store details
     PATCH /api/workforce/store/profile/  – Update store branding, location, hours, and status
     """
-    permission_classes = [permissions.IsAuthenticated, IsGrocerySupplier]
+    permission_classes = [permissions.IsAuthenticated]
 
-    def _get_company(self, user):
+    def _get_company_id(self, user):
         emp = getattr(user, "employee_profile", None)
-        return emp.company_id if (emp and emp.company_id) else getattr(user, "company_id", None)
+        if emp and getattr(emp, "company_id", None):
+            return emp.company_id
+        if getattr(user, "company_id", None):
+            return user.company_id
+        return None
 
     def get(self, request):
         from workforce_api.models import VendorStore
         from companies.models import Company
-        company_id = self._get_company(request.user)
+        company_id = self._get_company_id(request.user)
         if not company_id:
             return Response({"error": "Could not determine company."}, status=status.HTTP_403_FORBIDDEN)
 
@@ -12403,8 +12407,15 @@ class VendorStoreProfileView(APIView):
                 "store_name": getattr(company, "company_name", "My Store"),
                 "store_slug": getattr(company, "slug", f"store-{company_id}"),
                 "store_address": getattr(company, "address", "") or "",
+                "latitude": getattr(company, "latitude", None) if company else None,
+                "longitude": getattr(company, "longitude", None) if company else None,
             },
         )
+
+        effective_lat = store.latitude if store.latitude is not None else (company.latitude if company else None)
+        effective_lon = store.longitude if store.longitude is not None else (company.longitude if company else None)
+        effective_addr = store.store_address or (company.address if company else "") or ""
+
         return Response({
             "id": store.id,
             "company_id": store.company_id,
@@ -12416,9 +12427,9 @@ class VendorStoreProfileView(APIView):
             "logo_url": store.logo_url,
             "banner_url": store.banner_url,
             "fssai_license_number": store.fssai_license_number,
-            "store_address": store.store_address,
-            "latitude": str(store.latitude) if store.latitude is not None else None,
-            "longitude": str(store.longitude) if store.longitude is not None else None,
+            "store_address": effective_addr,
+            "latitude": str(effective_lat) if effective_lat is not None else None,
+            "longitude": str(effective_lon) if effective_lon is not None else None,
             "delivery_radius_km": float(store.delivery_radius_km),
             "minimum_order_amount": str(store.minimum_order_amount),
             "estimated_delivery_mins": store.estimated_delivery_mins,
@@ -12434,7 +12445,7 @@ class VendorStoreProfileView(APIView):
     def patch(self, request):
         from workforce_api.models import VendorStore
         from companies.models import Company
-        company_id = self._get_company(request.user)
+        company_id = self._get_company_id(request.user)
         if not company_id:
             return Response({"error": "Could not determine company."}, status=status.HTTP_403_FORBIDDEN)
 
@@ -12469,22 +12480,57 @@ class VendorStoreProfileView(APIView):
             except Exception:
                 pass
 
-        if "latitude" in data and data["latitude"]:
-            try:
-                store.latitude = Decimal(str(data["latitude"]))
-            except Exception:
-                pass
+        company_update_fields = []
 
-        if "longitude" in data and data["longitude"]:
-            try:
-                store.longitude = Decimal(str(data["longitude"]))
-            except Exception:
-                pass
+        if "latitude" in data:
+            if data["latitude"] is not None and str(data["latitude"]).strip() != "":
+                try:
+                    parsed_lat = Decimal(str(data["latitude"]))
+                    store.latitude = parsed_lat
+                    if company:
+                        company.latitude = parsed_lat
+                        company_update_fields.append("latitude")
+                except Exception:
+                    pass
+            else:
+                store.latitude = None
+                if company:
+                    company.latitude = None
+                    company_update_fields.append("latitude")
+
+        if "longitude" in data:
+            if data["longitude"] is not None and str(data["longitude"]).strip() != "":
+                try:
+                    parsed_lon = Decimal(str(data["longitude"]))
+                    store.longitude = parsed_lon
+                    if company:
+                        company.longitude = parsed_lon
+                        company_update_fields.append("longitude")
+                except Exception:
+                    pass
+            else:
+                store.longitude = None
+                if company:
+                    company.longitude = None
+                    company_update_fields.append("longitude")
+
+        if "store_address" in data and company:
+            company.address = data["store_address"]
+            company_update_fields.append("address")
 
         store.save()
+        if company and company_update_fields:
+            company.save(update_fields=list(set(company_update_fields)))
+
+        effective_lat = store.latitude if store.latitude is not None else (company.latitude if company else None)
+        effective_lon = store.longitude if store.longitude is not None else (company.longitude if company else None)
+
         return Response({
             "message": "Store profile updated successfully.",
             "store_name": store.store_name,
+            "latitude": str(effective_lat) if effective_lat is not None else None,
+            "longitude": str(effective_lon) if effective_lon is not None else None,
+            "store_address": store.store_address,
             "is_accepting_orders": store.is_accepting_orders,
             "delivery_radius_km": float(store.delivery_radius_km),
         }, status=status.HTTP_200_OK)

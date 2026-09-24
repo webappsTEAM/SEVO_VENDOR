@@ -147,16 +147,34 @@ export function BarcodeScannerModal({
       scannerRef.current = html5QrCode;
 
       const qrConfig = {
-        fps: 15,
+        fps: 10,
+        // 1D barcodes (EAN-13/UPC/Code128) decode far more reliably in a WIDE,
+        // SHORT box than in the boxy region that suits QR codes -- the previous
+        // sizing (height = 0.65 * min-edge) produced a near-square box that
+        // often clipped the left/right quiet zones of a wide EAN-13 symbol,
+        // which is enough on its own to make the decoder silently fail every
+        // frame. Bias hard toward width, keep height just tall enough for the
+        // barcode's bars.
         qrbox: (viewfinderWidth, viewfinderHeight) => {
-          const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-          const qrboxSize = Math.floor(minEdge * 0.75);
-          return {
-            width: Math.min(viewfinderWidth - 20, Math.max(220, qrboxSize + 40)),
-            height: Math.min(viewfinderHeight - 20, Math.max(140, Math.floor(qrboxSize * 0.65))),
-          };
+          const width = Math.floor(Math.min(viewfinderWidth - 24, Math.max(280, viewfinderWidth * 0.85)));
+          const height = Math.floor(Math.min(viewfinderHeight - 24, Math.max(120, width * 0.35)));
+          return { width, height };
         },
-        aspectRatio: 1.333334,
+        aspectRatio: 1.777778,
+        disableFlip: true,
+        // Default getUserMedia constraints from html5-qrcode omit an explicit
+        // resolution, so some UBS/webcam drivers hand back a low-res (e.g.
+        // 640x480) stream. That's plenty sharp for a human eye but often not
+        // enough pixel density for the decoder to resolve individual bars on
+        // a real product barcode from normal holding distance -- ask for a
+        // high-res stream explicitly; the browser will fall back gracefully
+        // if the camera can't do it.
+        videoConstraints: {
+          deviceId: targetCamera ? { exact: targetCamera } : undefined,
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          advanced: [{ focusMode: 'continuous' }],
+        },
       };
 
       await html5QrCode.start(
@@ -482,7 +500,7 @@ export function BarcodeScannerModal({
                   <span>Scanner Simulator / USB Wedge Mode</span>
                 </div>
                 <p className="text-[11px] text-emerald-700 leading-relaxed">
-                  Enter or paste any barcode digit string (or use sample barcodes below) to test the exact workflow as if scanned by a physical scanner.
+                  Enter or paste a barcode digit string manually, or focus this field and scan with a physical USB/Bluetooth barcode scanner (keyboard-wedge mode).
                 </p>
               </div>
 
@@ -506,28 +524,6 @@ export function BarcodeScannerModal({
                       <X className="w-4 h-4" />
                     </button>
                   )}
-                </div>
-              </div>
-
-              {/* Quick Sample Presets */}
-              <div className="space-y-1.5">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Quick Test Samples:</span>
-                <div className="flex flex-wrap gap-1.5">
-                  {[
-                    { label: 'Fortune Oil (EAN-13)', val: '8906007281452' },
-                    { label: 'Tata Salt 1kg (EAN-13)', val: '8901058852332' },
-                    { label: 'Aashirvaad Atta (EAN-13)', val: '8901725181223' },
-                    { label: 'Warehouse SKU (Code 128)', val: 'SEVO-GROC-8921' },
-                  ].map((preset) => (
-                    <button
-                      key={preset.val}
-                      type="button"
-                      onClick={() => setManualInput(preset.val)}
-                      className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-mono border border-slate-200 transition-colors"
-                    >
-                      {preset.label}
-                    </button>
-                  ))}
                 </div>
               </div>
 
