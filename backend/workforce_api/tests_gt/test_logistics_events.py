@@ -216,3 +216,38 @@ class CompletionProofEmissionTests(SimpleTestCase):
         with patch("workforce_api.services.customer_webhook.notify_customer_app",
                    side_effect=RuntimeError("customer app down")):
             le.emit_completion_proof(_StubJob(), notes="x")  # must not raise
+
+
+class LogisticsLegConcurrencyTests(SimpleTestCase):
+    def test_concurrent_interleaved_leg_updates_preserve_history_and_ordering(self):
+        """
+        Gap 6: Ensure concurrent updates (e.g. PACKING and DISMANTLING from ARRIVED_PICKUP)
+        obey the authoritative sequence, do not move backwards, and preserve all history.
+        """
+        job = _StubJob(leg="ARRIVED_PICKUP", category="packers_movers")
+
+        with patch.object(le, "emit_leg_changed"):
+            # Leg 1: PACKING arrives
+            changed1, err1 = le.set_logistics_leg(job, "PACKING", actor=SimpleNamespace(id=101))
+            self.assertTrue(changed1)
+            self.assertEqual(job.logistics_leg, "PACKING")
+
+            # Leg 2: DISMANTLING arrives
+            changed2, err2 = le.set_logistics_leg(job, "DISMANTLING", actor=SimpleNamespace(id=102))
+            self.assertTrue(changed2)
+            self.assertEqual(job.logistics_leg, "DISMANTLING")
+
+            # Out of order / delayed PACKING retry arrives late:
+            changed3, err3 = le.set_logistics_leg(job, "PACKING", actor=SimpleNamespace(id=101))
+            self.assertFalse(changed3)
+            self.assertIn("backwards", err3.lower())
+
+            # State remains at latest authoritative forward leg
+            self.assertEqual(job.logistics_leg, "DISMANTLING")
+
+            # History preserves both legs in sequence without duplicate
+            legs_in_history = [h["leg"] for h in job.logistics_leg_history]
+            self.assertIn("PACKING", legs_in_history)
+            self.assertIn("DISMANTLING", legs_in_history)
+            self.assertEqual(len(legs_in_history), 2)
+            self.assertEqual(legs_in_history, ["PACKING", "DISMANTLING"])
