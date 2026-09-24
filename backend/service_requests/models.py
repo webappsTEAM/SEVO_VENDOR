@@ -287,9 +287,9 @@ class ServiceRequest(models.Model):
     # look up the customer's permanent ID (e.g. for a payslip/invoice
     # reference) had no field to read it from.
     customer_code = models.CharField(max_length=30, blank=True, null=True, db_index=True)
-    catalog_service_id = models.IntegerField(default=1, db_column="catalog_service_id")
-    package_id = models.IntegerField(default=1, db_column="package_id")
-    package_version = models.IntegerField(default=1, db_column="package_version")
+    catalog_service_id = models.CharField(max_length=100, blank=True, default="", db_column="catalog_service_id")
+    package_id = models.CharField(max_length=100, blank=True, default="", db_column="package_id")
+    package_version = models.CharField(max_length=50, blank=True, default="", db_column="package_version")
     package_display = models.JSONField(default=dict, blank=True, db_column="package_display")
 
     service_category = models.CharField(max_length=150)

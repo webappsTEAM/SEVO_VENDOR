@@ -3041,6 +3041,13 @@ class WorkforceJobListView(APIView):
 
             jobs = list(jobs_qs.select_related("customer", "assigned_employee", "assigned_employee__user", "company").order_by("-created_at")[:100])
         elif emp:
+            # Opportunistically sweep expired offers and recover stranded dispatch states
+            try:
+                from workforce_api.services.automatic_dispatch import expire_and_reassign_offers
+                expire_and_reassign_offers()
+            except Exception:
+                pass
+
             server_now = timezone.now()
             from workforce_api.models import WorkforceJobOffer, WorkforceJobLifecycleEvent, WorkforceWorkExtension, JobPayment
             from workforce_api.services.workload import ACTIVE_QUEUE_STATUSES, WORKLOAD_OCCUPIED_STATUSES
@@ -3121,7 +3128,7 @@ class WorkforceJobListView(APIView):
             # 5. Future scheduled bookings: upcoming unassigned bookings matching employee's company and capabilities
             # Exclude jobs this technician has declined
             future_jobs_filter = Q(
-                status__in=["confirmed", "unassigned", "new_request", "draft"],
+                status__in=["confirmed", "unassigned", "new_request", "draft", "requested", "received", "searching"],
                 assigned_employee__isnull=True,
                 preferred_date__gte=today,
             )

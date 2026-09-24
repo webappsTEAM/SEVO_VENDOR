@@ -30,6 +30,8 @@ _CUSTOMER_WEBHOOK_EVENT_MAP = {
 ALLOWED_TRANSITIONS = {
     "draft": ["new_request", "confirmed", "offering", "dispatching", "assigned", "unassigned", "cancelled"],
     "new_request": ["confirmed", "offering", "dispatching", "assigned", "unassigned", "cancelled"],
+    "requested": ["new_request", "confirmed", "offering", "dispatching", "assigned", "unassigned", "accepted", "cancelled"],
+    "searching": ["offering", "dispatching", "assigned", "unassigned", "accepted", "cancelled"],
     "unassigned": ["offering", "dispatching", "assigned", "accepted", "redispatching", "cancelled"],
     "offering": ["accepted", "unassigned", "redispatching", "cancelled"],
     "dispatching": ["offering", "accepted", "unassigned", "redispatching", "cancelled"],

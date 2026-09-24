@@ -181,10 +181,33 @@ def _serialize_estimation(sr, est=None, full_detail=False):
             "customer_rejected_at": latest_quote.customer_rejected_at.isoformat() if latest_quote.customer_rejected_at else None,
             "rejection_reason": latest_quote.rejection_reason,
             "rejection_note": latest_quote.rejection_note,
-            "admin_notes": getattr(latest_quote, "admin_notes", ""),
             "admin_reviewed_at": latest_quote.admin_reviewed_at.isoformat() if getattr(latest_quote, "admin_reviewed_at", None) else None,
             "admin_reviewed_by_id": getattr(latest_quote, "admin_reviewed_by_id", None),
             "items_count": latest_quote.items.count(),
+            "items": [
+                {
+                    "id": it.id,
+                    "service_name": it.service_name,
+                    "title": it.service_name,
+                    "description": it.description or "",
+                    "item_type": it.catalog_service_id or "LABOR",
+                    "quantity": float(it.quantity),
+                    "unit": it.unit or "unit",
+                    "unit_price": float(it.unit_price),
+                    "unit_price_snapshot": float(it.unit_price_snapshot or it.unit_price),
+                    "tax_rate": float(it.tax_rate),
+                    "tax_amount": float(it.tax_amount),
+                    "discount_amount": float(it.discount_amount),
+                    "line_total": float(it.line_total),
+                    "category": it.category_name_snapshot or "",
+                    "category_name_snapshot": it.category_name_snapshot or "",
+                    "item_name": it.item_name_snapshot or it.service_name,
+                    "item_name_snapshot": it.item_name_snapshot or it.service_name,
+                    "rate_item_id": it.rate_item_id,
+                    "sort_order": it.sort_order,
+                }
+                for it in latest_quote.items.all().order_by("sort_order", "id")
+            ],
         }
 
     # Technician details
@@ -378,13 +401,6 @@ def _get_target_estimation(pk):
             )
         return sr, est
 
-    # Attempt lookup by Estimation.id directly
-    est = Estimation.objects.filter(pk=pk).first()
-    if est:
-        return est.service_request, est
-
-    return None, None
-
 
 def _sync_workforce_quote(sr, quote, computed_items=None):
     """
@@ -415,9 +431,6 @@ def _sync_workforce_quote(sr, quote, computed_items=None):
 
         company_obj = sr.company or (tech_emp.company if tech_emp else None)
 
-        # Keyed on number AND version: quote_number is shared across revisions
-        # by design, so looking up on it alone returns more than one row as
-        # soon as a v2 exists.
         wf_quote, _ = WorkforceQuote.objects.update_or_create(
             quote_number=quote.quote_ref,
             quote_version=quote.version,
@@ -439,19 +452,33 @@ def _sync_workforce_quote(sr, quote, computed_items=None):
             }
         )
 
+        est_labor = Decimal("0.00")
+        est_materials = Decimal("0.00")
+
         if computed_items:
             WorkforceQuoteItem.objects.filter(quote=wf_quote).delete()
             for c_item in computed_items:
                 raw_type = str(c_item.get("item_type", "LABOR")).upper()
-                item_type = "labor" if "LABOR" in raw_type else ("part" if "PART" in raw_type or "GAS" in raw_type else "item")
+                is_labor = any(k in raw_type for k in ["LABOR", "LABOUR", "SERVICE", "ADJUSTMENT"])
+                item_type = "labor" if is_labor else ("part" if ("PART" in raw_type or "GAS" in raw_type) else "item")
+                section = "LABOUR" if is_labor else "MATERIAL"
+                qty = Decimal(str(c_item.get("quantity", 1)))
+                unit_price = Decimal(str(c_item.get("unit_price", 0)))
+                line_base = qty * unit_price
+                if is_labor:
+                    est_labor += line_base
+                else:
+                    est_materials += line_base
+
                 WorkforceQuoteItem.objects.create(
                     quote=wf_quote,
+                    section=section,
                     name=c_item.get("service_name", "AC Service Item"),
                     description=c_item.get("description", "") or "",
                     item_type=item_type,
                     unit=c_item.get("unit", "unit"),
-                    quantity=Decimal(str(c_item.get("quantity", 1))),
-                    unit_price=Decimal(str(c_item.get("unit_price", 0))),
+                    quantity=qty,
+                    unit_price=unit_price,
                     tax_rate=Decimal(str(c_item.get("tax_rate", 18))),
                     discount_amount=Decimal(str(c_item.get("discount_amount", 0))),
                     total_amount=Decimal(str(c_item.get("line_total", 0))),
@@ -461,9 +488,18 @@ def _sync_workforce_quote(sr, quote, computed_items=None):
             WorkforceQuoteItem.objects.filter(quote=wf_quote).delete()
             for c_item in quote.items.all():
                 raw_type = str(getattr(c_item, "catalog_service_id", "LABOR")).upper()
-                item_type = "labor" if "LABOR" in raw_type else ("part" if "PART" in raw_type or "GAS" in raw_type else "item")
+                is_labor = any(k in raw_type for k in ["LABOR", "LABOUR", "SERVICE", "ADJUSTMENT"])
+                item_type = "labor" if is_labor else ("part" if ("PART" in raw_type or "GAS" in raw_type) else "item")
+                section = "LABOUR" if is_labor else "MATERIAL"
+                line_base = c_item.quantity * c_item.unit_price
+                if is_labor:
+                    est_labor += line_base
+                else:
+                    est_materials += line_base
+
                 WorkforceQuoteItem.objects.create(
                     quote=wf_quote,
+                    section=section,
                     name=c_item.service_name,
                     description=c_item.description or "",
                     item_type=item_type,
@@ -475,6 +511,10 @@ def _sync_workforce_quote(sr, quote, computed_items=None):
                     total_amount=c_item.line_total,
                     sort_order=c_item.sort_order,
                 )
+
+        wf_quote.estimated_labor_cost = est_labor
+        wf_quote.estimated_materials_cost = est_materials
+        wf_quote.save(update_fields=["estimated_labor_cost", "estimated_materials_cost", "updated_at"])
         return wf_quote
     except Exception as err:
         logger.warning(f"Could not synchronize WorkforceQuote: {err}")
@@ -1255,27 +1295,49 @@ class VendorEstimationAdminReviewView(APIView):
             quote.admin_reviewed_by = request.user if request.user.is_authenticated else None
             quote.save(update_fields=["status", "admin_notes", "admin_reviewed_at", "admin_reviewed_by", "updated_at"])
 
-            # Publish to Customer
-            quote.status = "SENT"
-            quote.save(update_fields=["status", "updated_at"])
+            # Populate cart_data from approved quotation line items
+            cart_items = []
+            for it in quote.items.all():
+                cart_items.append({
+                    "title": it.service_name,
+                    "description": it.description or "",
+                    "quantity": float(it.quantity),
+                    "unit": it.unit,
+                    "unit_price": float(it.unit_price),
+                    "tax_rate": float(it.tax_rate),
+                    "tax_amount": float(it.tax_amount),
+                    "line_total": float(it.line_total),
+                    "type": it.catalog_service_id or "LABOR",
+                })
+            sr.cart_data = cart_items
+            sr.quote_number = quote.quote_ref
 
-            est.status = "QUOTATION_SENT"
-            est.save(update_fields=["status", "updated_at"])
+            auto_convert = bool(request.data.get("auto_convert", False))
+            if auto_convert:
+                activate_service_job_from_quotation(sr, est, quote, now=now, actor=request.user)
+                message = f"Quotation {quote.quote_ref} approved by Customer Admin and converted directly to active service booking!"
+            else:
+                # Publish to Customer
+                quote.status = "SENT"
+                quote.save(update_fields=["status", "updated_at"])
 
-            sr.status = "quotation_sent"
-            sr.total_amount = quote.total_amount
-            sr.save(update_fields=["status", "total_amount", "updated_at"])
+                est.status = "QUOTATION_SENT"
+                est.save(update_fields=["status", "updated_at"])
 
-            wf_quote = _sync_workforce_quote(sr, quote)
-            if wf_quote:
-                from workforce_api.models import WorkforceQuote
-                wf_quote.status = WorkforceQuote.Status.SENT_TO_CUSTOMER
-                wf_quote.admin_approved_at = now
-                wf_quote.admin_approval_notes = admin_notes
-                wf_quote.admin_approved_by = request.user if request.user.is_authenticated else None
-                wf_quote.save(update_fields=["status", "admin_approved_at", "admin_approval_notes", "admin_approved_by", "updated_at"])
+                sr.status = "quotation_sent"
+                sr.total_amount = quote.total_amount
+                sr.save(update_fields=["status", "total_amount", "cart_data", "quote_number", "updated_at"])
 
-            message = f"Quotation {quote.quote_ref} approved by Customer Admin and published to Customer."
+                wf_quote = _sync_workforce_quote(sr, quote)
+                if wf_quote:
+                    from workforce_api.models import WorkforceQuote
+                    wf_quote.status = WorkforceQuote.Status.SENT_TO_CUSTOMER
+                    wf_quote.admin_approved_at = now
+                    wf_quote.admin_approval_notes = admin_notes
+                    wf_quote.admin_approved_by = request.user if request.user.is_authenticated else None
+                    wf_quote.save(update_fields=["status", "admin_approved_at", "admin_approval_notes", "admin_approved_by", "updated_at"])
+
+                message = f"Quotation {quote.quote_ref} approved by Customer Admin and published to Customer."
 
         return Response({
             "success": True,
