@@ -217,7 +217,7 @@ def _serialize(q, full=False):
                     }
             except Exception:
                 pass
-        return data
+    return data
 
 
 def _advance_percent(data):
