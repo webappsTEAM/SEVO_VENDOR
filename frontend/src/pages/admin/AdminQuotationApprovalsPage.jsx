@@ -1,16 +1,13 @@
 /**
  * AdminQuotationApprovalsPage.jsx
  *
- * The SEVO back office's quotation approval queues with full itemized details:
+ * The SEVO back office's quotation approval and inspection cockpit.
  *
- *   1. Held before sending (Pre-send review):
- *      Quotes held above review threshold or needing clearance. Releasing sends the
- *      quotation to the customer and synchronizes ServiceRequest database state
- *      (cart_data, quote_number, total_amount, status='quotation_sent') for customer approval.
- *      Also supports direct conversion to active service booking.
+ *   Before the customer sees it — quotes held by the high-value threshold,
+ *   CRM clearance, or the mason structural-clearance gate. Releasing sends the quote.
  *
- *   2. Awaiting SEVO approval (Customer accepted):
- *      The customer has accepted. Approving creates the work booking and issues invoice.
+ *   After the customer accepts — quotes awaiting SEVO's authorization. Approving
+ *   creates the work booking and issues the invoice.
  *
  * Mounted at /workforce/admin/quotations.
  */
@@ -18,18 +15,24 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
+  Calculator,
+  Calendar,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  Clock,
+  Eye,
   FileText,
   Layers,
   Loader2,
+  MapPin,
+  Phone,
   RefreshCw,
+  Ruler,
   Send,
   ShieldCheck,
-  Tag,
   User,
-  Wrench,
+  X,
   XCircle,
 } from 'lucide-react';
 import { apiRequest } from '../../api/client.js';
@@ -37,6 +40,13 @@ import { apiRequest } from '../../api/client.js';
 function money(value) {
   return Number(value || 0).toLocaleString('en-IN', {
     style: 'currency', currency: 'INR', maximumFractionDigits: 0,
+  });
+}
+
+function formatMoney(value) {
+  return Number(value || 0).toLocaleString('en-IN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   });
 }
 
@@ -48,61 +58,94 @@ function ago(iso) {
   return `${Math.round(seconds / 86400)}d ago`;
 }
 
+function roundMoney(num) {
+  return Math.round(Number(num || 0) * 100) / 100;
+}
+
 const TABS = [
   {
     key: 'presend',
     label: 'Held before sending',
+    badgeLabel: 'Awaiting CRM Clearance',
     endpoint: '/workforce/quotes/pending-review/',
-    blurb: 'Quotation submitted by technician. Releasing synchronizes DB cart_data and sends the quote to customer for approval.',
+    blurb: 'Submitted by technician for CRM/Operations clearance. Releasing sends the quote to the customer.',
   },
   {
     key: 'acceptance',
     label: 'Awaiting SEVO approval',
+    badgeLabel: 'Customer Accepted',
     endpoint: '/workforce/quotes/pending-approval/',
     blurb: 'The customer has accepted. Approving creates the work booking and issues the invoice.',
+  },
+  {
+    key: 'all',
+    label: 'All Quotations & History',
+    badgeLabel: 'All Quotes',
+    endpoint: '/workforce/quotes/',
+    blurb: 'Full historical log of all drafted, sent, customer accepted, approved, and converted quotations.',
   },
 ];
 
 export function AdminQuotationApprovalsPage() {
   const [tab, setTab] = useState('presend');
   const [rows, setRows] = useState([]);
-  const [expandedIds, setExpandedIds] = useState(new Set());
+  const [counts, setCounts] = useState({ acceptance: 0, presend: 0, all: 0 });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [flash, setFlash] = useState(null);
+  const [expandedQuoteId, setExpandedQuoteId] = useState(null);
+  const [modalQuote, setModalQuote] = useState(null);
 
-  const active = useMemo(() => TABS.find((t) => t.key === tab), [tab]);
+  const active = useMemo(() => TABS.find((t) => t.key === tab) || TABS[0], [tab]);
+
+  const loadCounts = useCallback(async () => {
+    try {
+      const [presendData, accData, allData] = await Promise.all([
+        apiRequest('/workforce/quotes/pending-review/').catch(() => []),
+        apiRequest('/workforce/quotes/pending-approval/').catch(() => []),
+        apiRequest('/workforce/quotes/').catch(() => []),
+      ]);
+      setCounts({
+        presend: Array.isArray(presendData) ? presendData.length : 0,
+        acceptance: Array.isArray(accData) ? accData.length : 0,
+        all: Array.isArray(allData) ? allData.length : 0,
+      });
+    } catch {
+      // ignore count fetch errors
+    }
+  }, []);
 
   const load = useCallback(async () => {
     setIsLoading(true);
     try {
       const data = await apiRequest(active.endpoint);
-      const list = Array.isArray(data) ? data : [];
-      setRows(list);
-      // Auto-expand all items so admin immediately sees full details
-      setExpandedIds(new Set(list.map((q) => q.id)));
+      const rowList = Array.isArray(data) ? data : [];
+      setRows(rowList);
+      setCounts((prev) => ({ ...prev, [active.key]: rowList.length }));
       setError(null);
     } catch (err) {
       setError(err?.message || 'Could not load the approval queue.');
       setRows([]);
     } finally {
       setIsLoading(false);
+      loadCounts();
     }
-  }, [active]);
+  }, [active, loadCounts]);
 
   useEffect(() => { load(); }, [load]);
 
-  const toggleExpand = (id) => {
-    setExpandedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
+  async function decide(quote, approve, forcedTab = null) {
+    const activeTab = forcedTab || (quote.status === 'PENDING_REVIEW' ? 'presend' : tab);
+    const verb = activeTab === 'presend'
+      ? (approve ? 'release and send to customer' : 'reject')
+      : (approve ? 'approve and create booking' : 'reject');
 
-  async function decide(quote, approve, autoConvert = false) {
+    if (!window.confirm(`${verb.charAt(0).toUpperCase() + verb.slice(1)} ${quote.quote_number}?`)) {
+      return;
+    }
+
+    let notes = '';
     if (!approve) {
       const notes = window.prompt('Reason for rejection (shown in audit trail):') || '';
       if (!notes.trim()) return;
@@ -125,7 +168,7 @@ export function AdminQuotationApprovalsPage() {
   async function submitDecision(quote, approve, autoConvert, notes) {
     setBusyId(quote.id);
     try {
-      const path = tab === 'presend'
+      const path = activeTab === 'presend'
         ? `/workforce/quotes/${quote.id}/pre-send-review/`
         : `/workforce/quotes/${quote.id}/admin-review/`;
       const result = await apiRequest(path, {
@@ -138,397 +181,595 @@ export function AdminQuotationApprovalsPage() {
         },
       });
 
-      if (result.auto_converted || (approve && autoConvert)) {
-        setFlash(`${quote.quote_number} approved and converted to active service booking #${result.work_job_id || quote.job_id}!`);
-      } else if (result.invoice) {
+      if (modalQuote?.id === quote.id) {
+        setModalQuote(null);
+      }
+
+      if (result.invoice) {
         setFlash(`${quote.quote_number} approved. Invoice ${result.invoice.invoice_number} issued for ${money(result.invoice.total_amount)}.`);
-      } else if (tab === 'presend' && approve) {
-        setFlash(`${quote.quote_number} released and published to customer for approval. Service cart saved in database!`);
+      } else if (activeTab === 'presend' && approve) {
+        setFlash(`${quote.quote_number} released and delivered to the customer for approval.`);
       } else {
         setFlash(`${quote.quote_number} ${approve ? 'approved' : 'rejected'}.`);
       }
-      setRows((prev) => prev.filter((r) => r.id !== quote.id));
+      if (tab !== 'all') {
+        setRows((prev) => prev.filter((r) => r.id !== quote.id));
+        setCounts((prev) => ({ ...prev, [tab]: Math.max(0, (prev[tab] || 1) - 1) }));
+      } else {
+        load();
+      }
       setError(null);
     } catch (err) {
       setError(err?.message || `Failed to process ${quote.quote_number}.`);
     } finally {
       setBusyId(null);
+      loadCounts();
     }
   }
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-6">
-      <div className="flex items-start justify-between">
+    <div className="p-4 sm:p-6 max-w-6xl mx-auto space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Quotation Approvals</h1>
-          <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">{active.blurb}</p>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2.5">
+            <Calculator className="w-6 h-6 text-indigo-600" />
+            <span>Quotation Approvals &amp; Review</span>
+          </h1>
+          <p className="text-sm text-slate-600 mt-1">{active.blurb}</p>
         </div>
         <button
           type="button"
           onClick={load}
-          className="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 rounded-xl px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-sm"
+          className="inline-flex items-center gap-2 text-xs font-bold text-slate-700 hover:text-slate-900 border border-slate-300 hover:border-slate-400 rounded-xl px-4 py-2.5 bg-white shadow-xs transition-all cursor-pointer self-start sm:self-auto"
         >
-          <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-          Refresh
+          <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+          <span>Refresh Queue</span>
         </button>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 border-b border-slate-200 dark:border-slate-800">
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => { setTab(t.key); setFlash(null); }}
-            className={`px-5 py-3 text-sm font-semibold border-b-2 -mb-px transition-colors ${
-              t.key === tab
-                ? 'border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400'
-                : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
+      <div className="flex gap-2 border-b border-slate-200 overflow-x-auto pb-px">
+        {TABS.map((t) => {
+          const count = counts[t.key] ?? 0;
+          const isActive = t.key === tab;
+          return (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => { setTab(t.key); setFlash(null); }}
+              className={`flex items-center gap-2 px-4 py-3 text-sm font-semibold border-b-2 -mb-px transition-colors whitespace-nowrap cursor-pointer ${
+                isActive
+                  ? 'border-indigo-600 text-indigo-600 font-bold'
+                  : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+              }`}
+            >
+              <span>{t.label}</span>
+              <span
+                className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${
+                  isActive
+                    ? count > 0 ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600'
+                    : count > 0 ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-400'
+                }`}
+              >
+                {count}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       {/* Flash Banner */}
       {flash && (
-        <div className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl p-4 flex gap-3 animate-in fade-in">
-          <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
-          <p className="text-sm font-medium text-emerald-900 dark:text-emerald-200">{flash}</p>
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-center justify-between gap-3 shadow-xs animate-in fade-in">
+          <div className="flex items-center gap-3">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+            <p className="text-sm font-medium text-emerald-900">{flash}</p>
+          </div>
+          <button type="button" onClick={() => setFlash(null)} className="text-emerald-700 hover:text-emerald-900">
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
 
       {/* Error Banner */}
       {error && (
-        <div className="bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-xl p-4 flex gap-3 animate-in fade-in">
-          <AlertTriangle className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+        <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex gap-3 shadow-xs">
+          <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
           <div className="flex-1">
-            <p className="text-sm font-medium text-rose-900 dark:text-rose-200">{error}</p>
-            <button type="button" onClick={load} className="text-xs font-semibold text-rose-700 dark:text-rose-300 underline mt-1">
+            <p className="text-sm text-rose-900 font-medium">{error}</p>
+            <button type="button" onClick={load} className="text-xs text-rose-700 font-bold underline mt-1 cursor-pointer">
               Try again
             </button>
           </div>
         </div>
       )}
 
-      {/* Content */}
+      {/* Main List */}
       {isLoading ? (
-        <div className="py-20 flex flex-col items-center justify-center text-slate-400 gap-3">
-          <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
-          <span className="text-sm font-medium">Loading quotations...</span>
+        <div className="py-20 flex flex-col items-center justify-center space-y-3">
+          <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+          <p className="text-xs font-semibold text-slate-500">Loading quotations...</p>
         </div>
       ) : rows.length === 0 ? (
-        <div className="py-20 text-center border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl">
-          <FileText className="w-10 h-10 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
-          <p className="text-base font-semibold text-slate-700 dark:text-slate-300">Nothing waiting in this queue</p>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">All quotations have been processed or released.</p>
+        <div className="py-20 text-center bg-white border border-slate-200 rounded-2xl p-8 shadow-xs">
+          <FileText className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+          <h3 className="text-base font-bold text-slate-800">No Quotations Pending</h3>
+          <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+            All quotations in this queue have been processed. New quotations submitted by technicians or accepted by customers will appear here.
+          </p>
         </div>
       ) : (
         <div className="space-y-4">
           {rows.map((q) => {
-            const isExpanded = expandedIds.has(q.id);
+            const isExpanded = expandedQuoteId === q.id;
             const items = Array.isArray(q.items) ? q.items : [];
-            const ac = q.ac_details;
-            const matSubtotal = q.estimated_materials_cost || items.reduce((acc, it) => {
-              const sec = String(it.section || '').toUpperCase();
-              return (!['LABOUR', 'LABOR', 'SERVICE', 'ADJUSTMENT'].includes(sec) && it.item_type !== 'labor')
-                ? acc + (parseFloat(it.total_amount) || 0)
-                : acc;
-            }, 0);
-            const labSubtotal = q.estimated_labor_cost || items.reduce((acc, it) => {
-              const sec = String(it.section || '').toUpperCase();
-              return (['LABOUR', 'LABOR', 'SERVICE', 'ADJUSTMENT'].includes(sec) || it.item_type === 'labor')
-                ? acc + (parseFloat(it.total_amount) || 0)
-                : acc;
-            }, 0);
+            const measurements = Array.isArray(q.measurements) ? q.measurements : [];
+            const totalArea = measurements.reduce((acc, m) => acc + Number(m.area || m.calculated_area || 0), 0);
+            const advanceAmount = q.advance_amount ?? roundMoney((q.net_payable || q.total_amount) * 0.5);
+            const balanceAmount = q.balance_amount ?? roundMoney((q.net_payable || q.total_amount) - advanceAmount);
 
             return (
               <div
                 key={q.id}
-                className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm hover:shadow-md transition-all overflow-hidden"
+                className="bg-white border border-slate-200 hover:border-indigo-300 rounded-2xl p-5 shadow-xs transition-all space-y-4"
               >
-                {/* Header Summary */}
-                <div className="p-5 flex flex-wrap items-start justify-between gap-4 bg-slate-50/50 dark:bg-slate-800/30 border-b border-slate-100 dark:border-slate-800">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-base font-bold text-slate-900 dark:text-white">
+                {/* Top Summary Row */}
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                  <div
+                    className="min-w-0 flex-1 cursor-pointer"
+                    onClick={() => setExpandedQuoteId(isExpanded ? null : q.id)}
+                  >
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      <span className="font-extrabold text-slate-900 text-base font-mono tracking-tight">
                         {q.quote_number}
                       </span>
                       {q.quote_version > 1 && (
-                        <span className="text-[11px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded-full">
+                        <span className="text-[11px] font-mono bg-slate-100 text-slate-700 font-bold px-2 py-0.5 rounded border border-slate-200">
                           v{q.quote_version}
                         </span>
                       )}
-                      <span className="text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300">
-                        {tab === 'presend' ? 'Held for Pre-send Review' : (q.status_display || q.status)}
+                      <span className="text-xs bg-indigo-50 text-indigo-700 font-bold px-2.5 py-0.5 rounded-full border border-indigo-200">
+                        {q.service_category}
                       </span>
+                      {q.status && (
+                        <span className={`text-[11px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider border ${
+                          q.status === 'CUSTOMER_ACCEPTED' || q.status === 'CONVERTED' || q.status === 'ADMIN_APPROVED'
+                            ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                            : q.status === 'SENT_TO_CUSTOMER' || q.status === 'SENT'
+                            ? 'bg-blue-100 text-blue-800 border-blue-300'
+                            : q.status === 'PENDING_REVIEW' || q.status === 'CRM_REVIEW'
+                            ? 'bg-amber-100 text-amber-800 border-amber-300'
+                            : q.status === 'ADMIN_REJECTED' || q.status === 'REJECTED'
+                            ? 'bg-rose-100 text-rose-800 border-rose-300'
+                            : q.status === 'CHANGES_REQUESTED'
+                            ? 'bg-amber-100 text-amber-800 border-amber-300'
+                            : q.status === 'DECLINED' || q.status === 'CUSTOMER_DECLINED'
+                            ? 'bg-rose-100 text-rose-800 border-rose-300'
+                            : 'bg-slate-100 text-slate-700 border-slate-200'
+                        }`}>
+                          {q.status === 'PENDING_REVIEW'
+                            ? 'HELD FOR CRM REVIEW'
+                            : q.status_display || String(q.status || '').replace(/_/g, ' ')}
+                        </span>
+                      )}
                       {q.requires_structural_clearance && !q.is_structurally_cleared && (
-                        <span className="text-[11px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 px-2 py-0.5 rounded-full">
+                        <span className="text-xs bg-amber-50 text-amber-800 font-bold px-2.5 py-0.5 rounded-full border border-amber-200 flex items-center gap-1">
+                          <ShieldCheck className="w-3.5 h-3.5" />
                           Structural clearance needed
                         </span>
                       )}
                     </div>
 
-                    <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 mt-1">
-                      {q.service_name || q.title || 'AC Inspection & Estimation'}
+                    <p className="text-sm font-bold text-slate-800 mt-1.5 flex items-center gap-2 flex-wrap">
+                      <span>{q.service_name || q.title || 'Service Inspection'}</span>
+                      <span className="text-slate-400">&bull;</span>
+                      <span className="font-semibold text-slate-900">{q.customer_name || 'Customer'}</span>
                     </p>
 
-                    <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400 mt-1.5 flex-wrap">
-                      <span className="inline-flex items-center gap-1 font-medium">
-                        <User className="w-3.5 h-3.5 text-slate-400" />
-                        {q.customer_name || 'Customer'}
-                      </span>
-                      {q.technician_name && (
-                        <span className="inline-flex items-center gap-1 font-medium text-slate-600 dark:text-slate-300">
-                          <Wrench className="w-3.5 h-3.5 text-blue-500" />
-                          {q.technician_name}
-                        </span>
+                    <p className="text-xs text-slate-500 mt-1 flex items-center gap-3 flex-wrap">
+                      <span>Job ID: <strong>#{q.job_id || q.job_request_id}</strong></span>
+                      {q.submitted_for_approval_at && (
+                        <span>&bull; Submitted {ago(q.submitted_for_approval_at)}</span>
                       )}
-                      <span className="inline-flex items-center gap-1">
-                        <Tag className="w-3.5 h-3.5 text-slate-400" />
-                        Job #{q.job_id} &middot; {q.service_category}
-                      </span>
-                      {q.updated_at && (
-                        <span>&middot; updated {ago(q.updated_at)}</span>
+                      {q.customer_decided_at && (
+                        <span>&bull; Accepted {ago(q.customer_decided_at)}</span>
                       )}
-                    </div>
+                      {items.length > 0 && (
+                        <span className="text-indigo-600 font-semibold">&bull; {items.length} Scope Item(s)</span>
+                      )}
+                      {measurements.length > 0 && (
+                        <span className="text-indigo-600 font-semibold">&bull; {measurements.length} Area(s) ({totalArea} sq.ft)</span>
+                      )}
+                    </p>
                   </div>
 
-                  {/* Net Amount & Toggle */}
-                  <div className="flex items-center gap-4">
-                    <div className="text-right shrink-0">
-                      <p className="text-xl font-extrabold text-slate-900 dark:text-white">
-                        {money(q.net_payable || q.total_amount)}
-                      </p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        incl. GST {money(q.tax_amount)}
-                      </p>
+                  {/* Financial & Modal Action */}
+                  <div className="text-right shrink-0 flex flex-col items-end">
+                    <p className="text-2xl font-black text-slate-900 font-mono tracking-tight">
+                      {money(q.net_payable || q.total_amount)}
+                    </p>
+                    <p className="text-xs text-slate-500 font-medium">incl. GST {money(q.tax_amount)}</p>
+                    
+                    <div className="mt-2.5 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setModalQuote(q)}
+                        className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-3 py-1.5 rounded-lg transition-all cursor-pointer shadow-2xs"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>View Full Details</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setExpandedQuoteId(isExpanded ? null : q.id)}
+                        className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                        title={isExpanded ? 'Collapse' : 'Expand'}
+                      >
+                        {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                      </button>
                     </div>
-
-                    <button
-                      type="button"
-                      onClick={() => toggleExpand(q.id)}
-                      className="p-2 rounded-xl text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                      title={isExpanded ? 'Hide details' : 'Show details'}
-                    >
-                      {isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-                    </button>
                   </div>
                 </div>
 
-                {/* Full Details Section */}
+                {/* ── EXPANDED INLINE ACCORDION BREAKDOWN ── */}
                 {isExpanded && (
-                  <div className="p-5 space-y-5 bg-white dark:bg-slate-900">
-                    {/* AC Details if present */}
-                    {ac && (
-                      <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80">
-                        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-3 flex items-center gap-1.5">
-                          <Layers className="w-4 h-4 text-blue-500" />
-                          AC Inspection & Unit Specifications
-                        </h4>
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                          <div>
-                            <span className="text-slate-500 dark:text-slate-400 block text-[11px]">Brand / Make</span>
-                            <span className="font-semibold text-slate-800 dark:text-slate-200">{ac.ac_brand || 'General / Multi'}</span>
-                          </div>
-                          <div>
-                            <span className="text-slate-500 dark:text-slate-400 block text-[11px]">AC Type</span>
-                            <span className="font-semibold text-slate-800 dark:text-slate-200">{ac.ac_type || 'Split AC'}</span>
-                          </div>
-                          <div>
-                            <span className="text-slate-500 dark:text-slate-400 block text-[11px]">Tonnage / Qty</span>
-                            <span className="font-semibold text-slate-800 dark:text-slate-200">
-                              {ac.ac_capacity ? ac.ac_capacity.replace(/_/g, ' ') : '1.5 TON'} ({ac.ac_quantity || 1} Unit)
-                            </span>
-                          </div>
-                          <div>
-                            <span className="text-slate-500 dark:text-slate-400 block text-[11px]">Inspection Fee</span>
-                            <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-                              {q.customer_inspection?.diagnostic_fee ? `₹${q.customer_inspection.diagnostic_fee} (Credited)` : 'Credited / Waived'}
-                            </span>
-                          </div>
-                        </div>
+                  <div className="pt-4 border-t border-slate-100 space-y-4 bg-slate-50/80 -mx-5 -mb-5 p-5 rounded-b-2xl animate-in fade-in">
+                    {/* Key Metrics Grid */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-white p-3.5 rounded-xl border border-slate-200 text-xs shadow-2xs">
+                      <div>
+                        <span className="text-slate-500 block text-[10px] uppercase font-bold">Total Quoted</span>
+                        <span className="font-extrabold text-slate-900 text-sm font-mono">₹{formatMoney(q.net_payable || q.total_amount)}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block text-[10px] uppercase font-bold">50% Advance Milestone</span>
+                        <span className="font-extrabold text-indigo-700 text-sm font-mono">₹{formatMoney(advanceAmount)}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block text-[10px] uppercase font-bold">50% Completion Balance</span>
+                        <span className="font-extrabold text-emerald-700 text-sm font-mono">₹{formatMoney(balanceAmount)}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block text-[10px] uppercase font-bold">GST Tax (18%)</span>
+                        <span className="font-extrabold text-slate-800 text-sm font-mono">₹{formatMoney(q.tax_amount)}</span>
+                      </div>
+                    </div>
 
-                        {ac.customer_symptom && (
-                          <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700/60 text-xs">
-                            <span className="text-slate-500 dark:text-slate-400 font-medium">Customer Reported Symptom: </span>
-                            <span className="font-medium text-slate-800 dark:text-slate-200">{ac.customer_symptom}</span>
-                          </div>
-                        )}
+                    {/* Room & Area Measurements */}
+                    {measurements.length > 0 && (
+                      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden text-xs shadow-2xs">
+                        <div className="bg-slate-100/90 px-4 py-2.5 font-bold text-slate-800 flex justify-between items-center">
+                          <span className="flex items-center gap-1.5">
+                            <Ruler className="w-4 h-4 text-indigo-600" />
+                            <span>Room &amp; Surface Measurements</span>
+                          </span>
+                          <span className="text-indigo-700 font-mono font-black text-xs">Total Area: {totalArea} sq.ft</span>
+                        </div>
+                        <div className="p-3.5 space-y-2">
+                          {measurements.map((m, idx) => (
+                            <div key={m.id || idx} className="flex justify-between items-center py-1.5 border-b border-slate-100 last:border-0">
+                              <span className="font-medium text-slate-700">
+                                <strong>{m.name || `Area #${idx + 1}`}</strong>
+                                {m.length && m.width ? ` (${m.length}ft × ${m.width}ft${m.height ? ` × ${m.height}ft` : ''})` : ''}
+                              </span>
+                              <span className="font-mono font-bold text-slate-900">{m.area || m.calculated_area} sq.ft</span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     )}
 
-                    {/* Line Items Table */}
-                    <div>
-                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-2 flex items-center justify-between">
-                        <span>Quoted Line Items ({items.length})</span>
-                        <span className="text-[11px] font-normal text-slate-500">From Rate Card & Technician Findings</span>
-                      </h4>
-
-                      {items.length === 0 ? (
-                        <p className="text-xs text-slate-500 py-3 italic">No line items recorded on this quote.</p>
-                      ) : (
-                        <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden shadow-sm">
-                          <table className="w-full text-left text-xs">
-                            <thead className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold border-b border-slate-200 dark:border-slate-700">
-                              <tr>
-                                <th className="p-3">Scope / Item</th>
-                                <th className="p-3">Category</th>
-                                <th className="p-3 text-center">Qty & Unit</th>
-                                <th className="p-3 text-right">Unit Rate</th>
-                                <th className="p-3 text-right">Tax (GST)</th>
-                                <th className="p-3 text-right">Line Total</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
-                              {items.map((item, idx) => {
-                                const isLabor = ['LABOUR', 'LABOR', 'SERVICE', 'ADJUSTMENT'].includes(String(item.section || '').toUpperCase()) || item.item_type === 'labor';
-                                const isGas = item.item_type === 'gas' || String(item.name || '').toLowerCase().includes('gas');
-                                const tag = isLabor ? 'LABOUR' : isGas ? 'GAS CHARGE' : 'SPARE PART';
-                                const tagClass = isLabor
-                                  ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300'
-                                  : isGas
-                                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
-                                  : 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300';
-
-                                return (
-                                  <tr key={item.id || idx} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors">
-                                    <td className="p-3 font-medium text-slate-900 dark:text-slate-100">
-                                      {item.name}
-                                      {item.description && (
-                                        <p className="text-[11px] text-slate-500 dark:text-slate-400 font-normal mt-0.5">{item.description}</p>
-                                      )}
-                                    </td>
-                                    <td className="p-3">
-                                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${tagClass}`}>
-                                        {tag}
-                                      </span>
-                                    </td>
-                                    <td className="p-3 text-center text-slate-700 dark:text-slate-300">
-                                      {item.quantity} {item.unit || 'unit'}
-                                    </td>
-                                    <td className="p-3 text-right text-slate-700 dark:text-slate-300 font-mono">
-                                      ₹{Number(item.unit_price || 0).toLocaleString()}
-                                    </td>
-                                    <td className="p-3 text-right text-slate-500 font-mono">
-                                      {item.tax_rate || 18}%
-                                    </td>
-                                    <td className="p-3 text-right font-bold text-slate-900 dark:text-slate-100 font-mono">
-                                      ₹{Number(item.total_amount || 0).toLocaleString()}
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
+                    {/* Itemized Line Items */}
+                    {items.length > 0 && (
+                      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden text-xs shadow-2xs">
+                        <div className="bg-slate-100/90 px-4 py-2.5 font-bold text-slate-800 flex justify-between items-center">
+                          <span className="flex items-center gap-1.5">
+                            <Layers className="w-4 h-4 text-indigo-600" />
+                            <span>Itemized Scope &amp; Rate-Card Breakdown</span>
+                          </span>
+                          <span className="text-slate-500 font-semibold">{items.length} item(s)</span>
                         </div>
-                      )}
-                    </div>
-
-                    {/* Financial Summary Cards */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/80">
-                      <div>
-                        <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block">Materials / Parts</span>
-                        <span className="text-sm font-bold text-slate-800 dark:text-slate-200">
-                          {money(matSubtotal)}
-                        </span>
+                        <div className="divide-y divide-slate-100">
+                          {items.map((item, idx) => (
+                            <div key={item.id || idx} className="p-3.5 flex justify-between items-start gap-4 hover:bg-slate-50/60 transition-colors">
+                              <div>
+                                <p className="font-bold text-slate-900 text-xs">{item.name || item.description || 'Quotation Item'}</p>
+                                <p className="text-[11px] text-slate-500 mt-0.5">
+                                  {item.quantity} {item.unit || 'sqft'} &times; ₹{formatMoney(item.unit_price || item.rate)} / {item.unit || 'sqft'}
+                                  {Number(item.tax_rate) > 0 && ` &bull; GST ${item.tax_rate}%`}
+                                  {item.section && ` &bull; ${item.section}`}
+                                </p>
+                              </div>
+                              <p className="font-mono font-black text-slate-900 text-sm shrink-0">
+                                ₹{formatMoney(item.total_amount || item.line_total)}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                      <div>
-                        <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block">Labour Subtotal</span>
-                        <span className="text-sm font-bold text-slate-800 dark:text-slate-200">
-                          {money(labSubtotal)}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block">GST Tax (18%)</span>
-                        <span className="text-sm font-bold text-slate-800 dark:text-slate-200">
-                          {money(q.tax_amount)}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block">Net Customer Total</span>
-                        <span className="text-base font-extrabold text-blue-600 dark:text-blue-400">
-                          {money(q.net_payable || q.total_amount)}
-                        </span>
-                      </div>
-                    </div>
+                    )}
 
-                    {/* Dual Action Decision Bar */}
-                    <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
-                      <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-                        <ShieldCheck className="w-4 h-4 text-emerald-500" />
-                        {tab === 'presend'
-                          ? 'Releasing sends to customer & saves items into ServiceRequest database for customer approval.'
-                          : 'Approving converts quotation into confirmed booking and generates invoice.'}
+                    {/* Scope Notes */}
+                    {q.description && (
+                      <div className="bg-white p-3.5 rounded-xl border border-slate-200 text-xs shadow-2xs">
+                        <span className="text-slate-500 block text-[10px] uppercase font-bold mb-1">Technician Inspection &amp; Scope Notes</span>
+                        <p className="text-slate-700 leading-relaxed">{q.description}</p>
                       </div>
+                    )}
+                  </div>
+                )}
 
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {tab === 'presend' ? (
-                          <>
-                            {/* Primary Action: Release & Send to Customer */}
-                            <button
-                              type="button"
-                              disabled={busyId === q.id}
-                              onClick={() => decide(q, true, false)}
-                              className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 shadow-sm shadow-emerald-600/20 disabled:opacity-40 transition-colors cursor-pointer"
-                              title="Release and send to customer for approval (saves service cart in DB)"
-                            >
-                              {busyId === q.id ? (
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                              ) : (
-                                <Send className="w-4 h-4" />
-                              )}
-                              Release & Send to Customer
-                            </button>
-
-                            {/* Secondary Action: Direct Convert to Service Booking */}
-                            <button
-                              type="button"
-                              disabled={busyId === q.id}
-                              onClick={() => decide(q, true, true)}
-                              className="inline-flex items-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-4 py-2.5 shadow-sm shadow-blue-600/20 disabled:opacity-40 transition-colors cursor-pointer"
-                              title="Directly approve and convert into an active service booking"
-                            >
-                              <CheckCircle2 className="w-4 h-4" />
-                              Approve & Convert to Service
-                            </button>
-                          </>
-                        ) : (
-                          /* Acceptance tab action */
-                          <button
-                            type="button"
-                            disabled={busyId === q.id}
-                            onClick={() => decide(q, true, false)}
-                            className="inline-flex items-center gap-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-4 py-2.5 shadow-sm disabled:opacity-40 transition-colors cursor-pointer"
-                          >
-                            {busyId === q.id ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                              <CheckCircle2 className="w-4 h-4" />
-                            )}
-                            Approve & Issue Invoice
-                          </button>
-                        )}
-
-                        {/* Reject / Send Back Action */}
+                {/* ── ACTION BUTTONS ROW ── */}
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-100">
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    {q.status === 'PENDING_REVIEW' ? (
+                      <>
                         <button
                           type="button"
                           disabled={busyId === q.id}
-                          onClick={() => decide(q, false, false)}
-                          className="inline-flex items-center gap-1.5 rounded-xl border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-xs font-semibold px-3 py-2.5 disabled:opacity-40 transition-colors cursor-pointer"
-                          title="Reject or request revisions"
+                          onClick={() => decide(q, true, 'presend')}
+                          className="inline-flex items-center gap-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-4 py-2.5 shadow-sm transition-all disabled:opacity-40 cursor-pointer"
                         >
-                          <XCircle className="w-4 h-4" />
-                          Reject
+                          {busyId === q.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                          <span>Release &amp; Send to Customer</span>
                         </button>
+                        <button
+                          type="button"
+                          disabled={busyId === q.id}
+                          onClick={() => decide(q, false, 'presend')}
+                          className="inline-flex items-center gap-2 rounded-xl border border-slate-300 hover:bg-rose-50 hover:border-rose-300 hover:text-rose-700 text-slate-700 text-xs font-bold px-4 py-2.5 shadow-xs transition-all disabled:opacity-40 cursor-pointer"
+                        >
+                          <XCircle className="w-3.5 h-3.5" />
+                          <span>Reject Quote</span>
+                        </button>
+                      </>
+                    ) : q.status === 'CUSTOMER_ACCEPTED' || q.status === 'PENDING_ADMIN_APPROVAL' ? (
+                      <>
+                        <button
+                          type="button"
+                          disabled={busyId === q.id}
+                          onClick={() => decide(q, true, 'acceptance')}
+                          className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 shadow-sm transition-all disabled:opacity-40 cursor-pointer"
+                        >
+                          {busyId === q.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                          <span>Approve &amp; Issue Work Invoice</span>
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busyId === q.id}
+                          onClick={() => decide(q, false, 'acceptance')}
+                          className="inline-flex items-center gap-2 rounded-xl border border-slate-300 hover:bg-rose-50 hover:border-rose-300 hover:text-rose-700 text-slate-700 text-xs font-bold px-4 py-2.5 shadow-xs transition-all disabled:opacity-40 cursor-pointer"
+                        >
+                          <XCircle className="w-3.5 h-3.5" />
+                          <span>Reject</span>
+                        </button>
+                      </>
+                    ) : (
+                      <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                        <span>Status: <strong>{q.status_display || String(q.status || '').replace(/_/g, ' ')}</strong></span>
                       </div>
-                    </div>
+                    )}
                   </div>
-                )}
+
+                  <button
+                    type="button"
+                    onClick={() => setModalQuote(q)}
+                    className="text-xs font-bold text-indigo-600 hover:text-indigo-800 transition-colors flex items-center gap-1 cursor-pointer"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    <span>Open Detailed Modal</span>
+                  </button>
+                </div>
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════════════════
+          DEDICATED FULL QUOTATION DETAIL & INSPECTION MODAL
+         ════════════════════════════════════════════════════════════════════════════ */}
+      {modalQuote && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in">
+          <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl border border-slate-200 flex flex-col max-h-[92vh] overflow-hidden">
+            {/* Modal Header */}
+            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-sm">
+                  <Calculator className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-bold text-slate-900 font-mono">
+                      {modalQuote.quote_number}
+                    </h3>
+                    {modalQuote.quote_version > 1 && (
+                      <span className="text-[11px] font-mono bg-indigo-100 text-indigo-800 font-bold px-2 py-0.5 rounded">
+                        v{modalQuote.quote_version}
+                      </span>
+                    )}
+                    <span className="text-xs bg-indigo-50 text-indigo-700 font-bold px-2.5 py-0.5 rounded-full border border-indigo-200">
+                      {modalQuote.service_category}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {modalQuote.service_name || modalQuote.title} &bull; Job #{modalQuote.job_id || modalQuote.job_request_id}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalQuote(null)}
+                className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto space-y-6">
+              {/* Top Financial Breakdown Cards */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+                  <span className="text-[10px] uppercase font-bold text-slate-500 block">Total Quoted (Net)</span>
+                  <span className="text-lg font-black text-slate-900 font-mono">₹{formatMoney(modalQuote.net_payable || modalQuote.total_amount)}</span>
+                </div>
+                <div className="bg-indigo-50/60 p-3.5 rounded-xl border border-indigo-200">
+                  <span className="text-[10px] uppercase font-bold text-indigo-700 block">50% Advance Milestone</span>
+                  <span className="text-lg font-black text-indigo-700 font-mono">
+                    ₹{formatMoney(modalQuote.advance_amount || (modalQuote.net_payable ? modalQuote.net_payable * 0.5 : 0))}
+                  </span>
+                </div>
+                <div className="bg-emerald-50/60 p-3.5 rounded-xl border border-emerald-200">
+                  <span className="text-[10px] uppercase font-bold text-emerald-700 block">50% Balance on Finish</span>
+                  <span className="text-lg font-black text-emerald-700 font-mono">
+                    ₹{formatMoney(modalQuote.balance_amount || (modalQuote.net_payable ? modalQuote.net_payable * 0.5 : 0))}
+                  </span>
+                </div>
+                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+                  <span className="text-[10px] uppercase font-bold text-slate-500 block">GST Tax</span>
+                  <span className="text-lg font-black text-slate-800 font-mono">₹{formatMoney(modalQuote.tax_amount)}</span>
+                </div>
+
+              {/* Customer & Job Info */}
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+                <div>
+                  <span className="text-[10px] font-bold text-slate-500 uppercase block">Customer</span>
+                  <span className="font-bold text-slate-900 text-sm flex items-center gap-1.5 mt-0.5">
+                    <User className="w-3.5 h-3.5 text-slate-400" />
+                    {modalQuote.customer_name || 'Customer'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-slate-500 uppercase block">Consultation Booking</span>
+                  <span className="font-bold text-slate-900 text-sm flex items-center gap-1.5 mt-0.5">
+                    <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                    Job #{modalQuote.job_id || modalQuote.job_request_id}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-slate-500 uppercase block">Status</span>
+                  <span className="font-bold text-amber-700 text-sm flex items-center gap-1.5 mt-0.5">
+                    <Clock className="w-3.5 h-3.5 text-amber-600" />
+                    {modalQuote.status === 'PENDING_REVIEW' ? 'Held for CRM Review' : modalQuote.status}
+                  </span>
+                </div>
+              </div>
+
+              {/* Surface / Area Measurements */}
+              {Array.isArray(modalQuote.measurements) && modalQuote.measurements.length > 0 && (
+                <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+                  <div className="bg-slate-100 px-4 py-3 font-bold text-slate-800 flex justify-between items-center text-xs">
+                    <span className="flex items-center gap-1.5">
+                      <Ruler className="w-4 h-4 text-indigo-600" />
+                      <span>Surface &amp; Room Dimensions ({modalQuote.measurements.length} Areas)</span>
+                    </span>
+                    <span className="font-mono font-black text-indigo-700">
+                      Total: {modalQuote.measurements.reduce((acc, m) => acc + Number(m.area || m.calculated_area || 0), 0)} sq.ft
+                    </span>
+                  </div>
+                  <div className="p-4 divide-y divide-slate-100">
+                    {modalQuote.measurements.map((m, idx) => (
+                      <div key={m.id || idx} className="py-2.5 flex justify-between items-center text-xs">
+                        <div>
+                          <p className="font-bold text-slate-900">{m.name || `Area #${idx + 1}`}</p>
+                          <p className="text-[11px] text-slate-500">
+                            {m.length && m.width ? `Length: ${m.length}ft &times; Width: ${m.width}ft${m.height ? ` &times; Height: ${m.height}ft` : ''}` : 'Direct area measurement'}
+                          </p>
+                        </div>
+                        <span className="font-mono font-black text-slate-900 text-sm">{m.area || m.calculated_area} sq.ft</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Itemized Line Items */}
+              {Array.isArray(modalQuote.items) && modalQuote.items.length > 0 && (
+                <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+                  <div className="bg-slate-100 px-4 py-3 font-bold text-slate-800 flex justify-between items-center text-xs">
+                    <span className="flex items-center gap-1.5">
+                      <Layers className="w-4 h-4 text-indigo-600" />
+                      <span>Itemized Rate-Card &amp; Material Breakdown</span>
+                    </span>
+                    <span className="text-slate-500 font-semibold">{modalQuote.items.length} Item(s)</span>
+                  </div>
+                  <div className="divide-y divide-slate-100">
+                    {modalQuote.items.map((item, idx) => (
+                      <div key={item.id || idx} className="p-4 flex justify-between items-start gap-4 hover:bg-slate-50/60 transition-colors text-xs">
+                        <div>
+                          <p className="font-bold text-slate-900 text-sm">{item.name || item.description || 'Quotation Line Item'}</p>
+                          <p className="text-[11px] text-slate-500 mt-1">
+                            {item.quantity} {item.unit || 'sqft'} &times; ₹{formatMoney(item.unit_price || item.rate)} / {item.unit || 'sqft'}
+                            {Number(item.tax_rate) > 0 && ` &bull; GST ${item.tax_rate}%`}
+                            {item.material_source && ` &bull; Source: ${item.material_source}`}
+                          </p>
+                        </div>
+                        <p className="font-mono font-black text-slate-900 text-base shrink-0">
+                          ₹{formatMoney(item.total_amount || item.line_total)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Technician Notes */}
+              {modalQuote.description && (
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs">
+                  <span className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Scope &amp; Inspection Findings</span>
+                  <p className="text-slate-700 leading-relaxed whitespace-pre-wrap">{modalQuote.description}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => setModalQuote(null)}
+                className="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+
+              <div className="flex items-center gap-2.5">
+                {modalQuote.status === 'PENDING_REVIEW' ? (
+                  <>
+                    <button
+                      type="button"
+                      disabled={busyId === modalQuote.id}
+                      onClick={() => decide(modalQuote, false, 'presend')}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-rose-300 hover:bg-rose-50 text-rose-700 text-xs font-bold px-4 py-2.5 shadow-xs transition-all disabled:opacity-40 cursor-pointer"
+                    >
+                      <XCircle className="w-3.5 h-3.5" />
+                      <span>Reject Quotation</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busyId === modalQuote.id}
+                      onClick={() => decide(modalQuote, true, 'presend')}
+                      className="inline-flex items-center gap-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-5 py-2.5 shadow-sm transition-all disabled:opacity-40 cursor-pointer"
+                    >
+                      {busyId === modalQuote.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                      <span>Release &amp; Send to Customer</span>
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={busyId === modalQuote.id}
+                    onClick={() => decide(modalQuote, true, 'acceptance')}
+                    className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-5 py-2.5 shadow-sm transition-all disabled:opacity-40 cursor-pointer"
+                  >
+                    {busyId === modalQuote.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                    <span>Approve &amp; Issue Invoice</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

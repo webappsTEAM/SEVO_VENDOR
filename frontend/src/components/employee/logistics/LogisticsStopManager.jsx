@@ -11,15 +11,20 @@ import {
   FileText,
 } from 'lucide-react';
 import { apiGetJobStops, apiUpdateJobStop } from '../../../api/workforceService.js';
+import { isLogisticsJob } from './LogisticsLegController.jsx';
 
 export function LogisticsStopManager({ job, onStopsUpdated, className = '' }) {
+  if (!job || !isLogisticsJob(job)) {
+    return null;
+  }
+
   const [stops, setStops] = useState([]);
   const [loading, setLoading] = useState(false);
   const [actionLoadingId, setActionLoadingId] = useState(null);
   const [error, setError] = useState('');
 
   const loadStops = useCallback(async () => {
-    if (!job?.id) return;
+    if (!job?.id || !isLogisticsJob(job)) return;
     try {
       setLoading(true);
       setError('');

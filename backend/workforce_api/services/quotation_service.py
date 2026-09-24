@@ -833,13 +833,15 @@ def release_high_value_quote(quote_id, admin_user, approve=True, notes="", valid
             )
 
         if not approve:
-            quote.status = WorkforceQuote.Status.CANCELLED
+            quote.status = WorkforceQuote.Status.ADMIN_REJECTED
+            quote.admin_rejection_reason = notes or ""
             quote.admin_clearance_notes = f"REJECTED: {notes}".strip()
             quote.admin_cleared_by = admin_user if getattr(admin_user, "is_authenticated", False) else None
             quote.save(update_fields=[
-                "status", "admin_clearance_notes", "admin_cleared_by", "updated_at",
+                "status", "admin_rejection_reason", "admin_clearance_notes", "admin_cleared_by", "updated_at",
             ])
             logger.info("High-value quote %s rejected pre-send by %s", quote.quote_number, admin_user)
+            _project(quote)
             return quote
 
         quote.admin_cleared_by = admin_user if getattr(admin_user, "is_authenticated", False) else None

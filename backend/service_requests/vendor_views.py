@@ -876,6 +876,17 @@ class VendorEstimationVerifyOtpView(APIView):
         sr.status = "inspection_in_progress"
         sr.save(update_fields=["otp_verified", "otp_verified_at", "status", "updated_at"])
 
+        try:
+            from workforce_api.models import PreServiceVerification
+            psv = PreServiceVerification.objects.filter(job=sr).first()
+            if psv:
+                psv.otp_verified = True
+                psv.otp_verified_at = now
+                psv.check_completion()
+                psv.save()
+        except Exception as psv_err:
+            logger.warning(f"Could not sync PSV for sr #{sr.id}: {psv_err}")
+
         if est:
             est.status = "INSPECTION_IN_PROGRESS"
             est.save(update_fields=["status", "updated_at"])
