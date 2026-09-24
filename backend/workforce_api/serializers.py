@@ -2610,6 +2610,30 @@ class AdminSellerApprovalListSerializer(serializers.Serializer):
     rejected_count = serializers.IntegerField(default=0)
     total_count = serializers.IntegerField(default=0)
     latest_submitted_at = serializers.DateTimeField(allow_null=True)
+    warehouse_id = serializers.SerializerMethodField()
+    warehouse_name = serializers.SerializerMethodField()
+    warehouse_city = serializers.SerializerMethodField()
+    warehouse_code = serializers.SerializerMethodField()
+
+    def _get_assignment(self, obj):
+        return getattr(obj, "warehouse_assignment", None)
+
+    def get_warehouse_id(self, obj):
+        assignment = self._get_assignment(obj)
+        return assignment.warehouse_id if assignment and assignment.warehouse and assignment.warehouse.is_active else None
+
+    def get_warehouse_name(self, obj):
+        assignment = self._get_assignment(obj)
+        return assignment.warehouse.name if assignment and assignment.warehouse and assignment.warehouse.is_active else None
+
+    def get_warehouse_city(self, obj):
+        assignment = self._get_assignment(obj)
+        return assignment.warehouse.city if assignment and assignment.warehouse and assignment.warehouse.is_active else None
+
+    def get_warehouse_code(self, obj):
+        assignment = self._get_assignment(obj)
+        return assignment.warehouse.code if assignment and assignment.warehouse and assignment.warehouse.is_active else None
+
 
 
 # ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
@@ -2885,6 +2909,9 @@ class SellerOrderListSerializer(serializers.ModelSerializer):
             "id",
             "source_order_id",
             "order_number",
+            "delivery_group_id",
+            "warehouse_id",
+            "warehouse_name",
             "company",
             "company_name",
             "customer_name",
@@ -3432,3 +3459,112 @@ class SellerClaimIntakeSerializer(serializers.Serializer):
     )
     customer_name = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
     customer_phone = serializers.CharField(max_length=32, required=False, allow_blank=True, default="")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# WAREHOUSE LOGISTICS SERIALIZERS (Phase T)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class WarehouseSerializer(serializers.ModelSerializer):
+    latitude = serializers.FloatField(required=True)
+    longitude = serializers.FloatField(required=True)
+    assigned_sellers_count = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models import Warehouse
+        model = Warehouse
+        fields = [
+            "id",
+            "name",
+            "code",
+            "address",
+            "latitude",
+            "longitude",
+            "city",
+            "region",
+            "contact_phone",
+            "is_active",
+            "assigned_sellers_count",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at", "assigned_sellers_count"]
+
+    def validate_latitude(self, value):
+        try:
+            val = round(float(value), 7)
+            if not (-90.0 <= val <= 90.0):
+                raise serializers.ValidationError("Latitude must be between -90 and 90.")
+            return Decimal(str(val))
+        except (ValueError, TypeError):
+            raise serializers.ValidationError("Invalid latitude coordinate.")
+
+    def validate_longitude(self, value):
+        try:
+            val = round(float(value), 7)
+            if not (-180.0 <= val <= 180.0):
+                raise serializers.ValidationError("Longitude must be between -180 and 180.")
+            return Decimal(str(val))
+        except (ValueError, TypeError):
+            raise serializers.ValidationError("Invalid longitude coordinate.")
+
+    def get_assigned_sellers_count(self, obj):
+        if hasattr(obj, "assigned_sellers_count_annotated"):
+            return obj.assigned_sellers_count_annotated
+        return obj.seller_assignments.count()
+
+
+class WarehouseDetailSerializer(WarehouseSerializer):
+    sellers = serializers.SerializerMethodField()
+
+    class Meta(WarehouseSerializer.Meta):
+        fields = WarehouseSerializer.Meta.fields + ["sellers"]
+
+    def get_sellers(self, obj):
+        assignments = obj.seller_assignments.select_related("company").all()
+        return [
+            {
+                "id": a.id,
+                "company_id": a.company_id,
+                "company_name": getattr(a.company, "company_name", f"Company #{a.company_id}"),
+                "slug": getattr(a.company, "slug", ""),
+                "business_type": getattr(a.company, "business_type", ""),
+                "assigned_at": a.assigned_at.isoformat() if a.assigned_at else None,
+                "notes": a.notes,
+            }
+            for a in assignments
+        ]
+
+
+class SellerWarehouseAssignmentSerializer(serializers.ModelSerializer):
+    company_name = serializers.CharField(source="company.company_name", read_only=True)
+    warehouse_name = serializers.CharField(source="warehouse.name", read_only=True)
+    assigned_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models import SellerWarehouseAssignment
+        model = SellerWarehouseAssignment
+        fields = [
+            "id",
+            "company",
+            "company_name",
+            "warehouse",
+            "warehouse_name",
+            "assigned_at",
+            "assigned_by",
+            "assigned_by_name",
+            "notes",
+        ]
+        read_only_fields = ["id", "assigned_at", "company_name", "warehouse_name", "assigned_by_name"]
+
+    def get_assigned_by_name(self, obj):
+        if obj.assigned_by:
+            return obj.assigned_by.get_full_name() or obj.assigned_by.username
+        return None
+
+
+
+
+
+
+

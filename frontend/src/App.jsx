@@ -77,6 +77,7 @@ import AdminGroceryOrdersPage from './pages/admin/AdminGroceryOrdersPage.jsx';
 import AdminGrocerySettlementsPage from './pages/admin/AdminGrocerySettlementsPage.jsx';
 import { AdminSellerCategoriesPage } from './pages/admin/AdminSellerCategoriesPage.jsx';
 import { AdminCategoriesApprovalPage } from './pages/admin/AdminCategoriesApprovalPage.jsx';
+import { AdminWarehousesPage } from './pages/admin/AdminWarehousesPage.jsx';
 import { AdminSellerCouponsPage } from './pages/admin/AdminSellerCouponsPage.jsx';
 import { SellerDashboardPage } from './pages/seller/SellerDashboardPage.jsx';
 import { SellerOrdersPage } from './pages/seller/SellerOrdersPage.jsx';
@@ -778,6 +779,20 @@ export function App() {
             element={<Navigate to="/workforce/seller/dashboard" replace />}
           />
 
+          {/* 7c. Warehouses Management (Platform Superadmin / Platform Admin Only - Phase T) */}
+          <Route
+            path="/workforce/admin/seller-hub/warehouses"
+            element={
+              <PlatformAdminRoute>
+                <AdminWarehousesPage />
+              </PlatformAdminRoute>
+            }
+          />
+          <Route
+            path="/workforce/admin/warehouses"
+            element={<Navigate to="/workforce/admin/seller-hub/warehouses" replace />}
+          />
+
           {/* 8. Coupons */}
           <Route
             path="/workforce/admin/seller-hub/coupons"
@@ -816,6 +831,36 @@ export function App() {
           <Route
             path="/workforce/seller/reports"
             element={<Navigate to="/workforce/seller-hub/reports" replace />}
+          />
+
+          {/* 10. Store Profile & Operating Controls */}
+          <Route
+            path="/workforce/seller-hub/store-profile"
+            element={
+              <SellerHubRoute>
+                <AdminStoreProfilePage />
+              </SellerHubRoute>
+            }
+          />
+          <Route
+            path="/workforce/admin/seller-hub/store-profile"
+            element={
+              <SellerHubRoute>
+                <AdminStoreProfilePage />
+              </SellerHubRoute>
+            }
+          />
+          <Route
+            path="/workforce/seller/store-profile"
+            element={<Navigate to="/workforce/seller-hub/store-profile" replace />}
+          />
+          <Route
+            path="/workforce/seller-hub/settings"
+            element={<Navigate to="/workforce/seller-hub/store-profile" replace />}
+          />
+          <Route
+            path="/workforce/seller/settings"
+            element={<Navigate to="/workforce/seller-hub/store-profile" replace />}
           />
 
           <Route

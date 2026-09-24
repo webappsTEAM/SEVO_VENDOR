@@ -73,9 +73,11 @@ def render_packing_slip_pdf(order):
 
     story = []
 
-    # -- Header: from / brand --
+    # -- Header: from / brand / warehouse --
     story.append(Paragraph("SEVO GROCERY", brand))
     from_line = f"From: {seller_name}" + (f", {seller_address}" if seller_address else "")
+    if order.warehouse_name:
+        from_line += f"<br/><b>Warehouse Hub:</b> {order.warehouse_name}"
     story.append(Paragraph(from_line, small))
     story.append(Spacer(1, 4 * mm))
     story.append(_divider(content_width))
@@ -91,20 +93,18 @@ def render_packing_slip_pdf(order):
     story.append(Spacer(1, 5 * mm))
 
     # -- Order meta --
-    # The marketplace order number (e.g. MKT00017) is what customer support
-    # and the customer-facing tracking page key off of -- it lives on
-    # order.source_order_id here (the "Immutable canonical marketplace order
-    # reference from Customer app"). order.order_number is a separate,
-    # seller-internal code (e.g. SO-202609-A1B2C3) used for the merchant's
-    # own bookkeeping, so it's shown too but only as a secondary reference.
     item_count = order.items.count()
     order_meta_lines = [
         f"Order #{order.source_order_id}",
         f"Seller Ref: {order.order_number}",
+    ]
+    if order.delivery_group_id:
+        order_meta_lines.append(f"<b>Delivery Group:</b> {order.delivery_group_id}")
+    order_meta_lines.extend([
         f"Placed: {order.created_at.strftime('%d %b %Y, %I:%M %p')}",
         f"Fulfilment: {order.get_fulfillment_type_display()}" + (f" &middot; {order.delivery_slot}" if order.delivery_slot else ""),
         f"{item_count} item{'s' if item_count != 1 else ''} &middot; {order.currency} {order.total_amount}",
-    ]
+    ])
     story.append(Paragraph("<br/>".join(order_meta_lines), meta))
     story.append(Spacer(1, 6 * mm))
     story.append(_divider(content_width))

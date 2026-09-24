@@ -1704,5 +1704,16 @@ export const workforceService = {
   updateSellerHubCoupon: apiUpdateSellerHubCoupon,
   deleteSellerHubCoupon: apiDeleteSellerHubCoupon,
   sellerOrderAdminOverride: apiSellerOrderAdminOverride,
+  getAvailableRiders: apiGetAvailableRiders,
+  retryOrderDispatch: apiRetryOrderDispatch,
+  getWarehouses: apiAdminGetWarehouses,
+  getWarehouseDetail: apiAdminGetWarehouseDetail,
+  createWarehouse: apiAdminCreateWarehouse,
+  updateWarehouse: apiAdminUpdateWarehouse,
+  deleteWarehouse: apiAdminDeleteWarehouse,
+  getSellerWarehouse: apiAdminGetSellerWarehouse,
+  assignSellerWarehouse: apiAdminAssignSellerWarehouse,
+  unassignSellerWarehouse: apiAdminUnassignSellerWarehouse,
 };
+
 

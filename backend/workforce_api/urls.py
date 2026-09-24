@@ -234,6 +234,8 @@ from workforce_api.views_seller_hub import (
     SellerOrderRiderArriveDeliveryView,
     SellerOrderRiderVerifyDeliveryOTPView,
     SellerOrderAdminOverrideView,
+    SellerOrderAvailableRidersView,
+    SellerOrderRetryDispatchView,
     SellerOrderItemPickView,
     SellerOrderPackingSlipView,
     SellerOrderPackingSlipPdfView,
@@ -257,6 +259,9 @@ from workforce_api.views_seller_hub import (
     SellerReportsPerformanceView,
     SellerReportsQualityAuditView,
     SellerReportsExportCSVView,
+    AdminWarehouseListCreateView,
+    AdminWarehouseDetailView,
+    AdminSellerWarehouseAssignView,
 )
 from workforce_api.views_marketplace_integration import (
     MarketplaceCategoryFeedView,
@@ -625,6 +630,11 @@ urlpatterns = [
     path("admin/seller-hub/approval/products/<int:pk>/", AdminProductApprovalDetailView.as_view(), name="admin-product-approval-detail"),
     path("admin/seller-hub/approval/products/<int:pk>/approve/", AdminProductApproveView.as_view(), name="admin-product-approve"),
     path("admin/seller-hub/approval/products/<int:pk>/reject/", AdminProductRejectView.as_view(), name="admin-product-reject"),
+
+    # Phase T: Admin Warehouse Facilities & Seller Warehouse Assignments
+    path("admin/warehouses/", AdminWarehouseListCreateView.as_view(), name="admin-warehouses-list-create"),
+    path("admin/warehouses/<int:pk>/", AdminWarehouseDetailView.as_view(), name="admin-warehouse-detail"),
+    path("admin/sellers/<int:seller_id>/warehouse/", AdminSellerWarehouseAssignView.as_view(), name="admin-seller-warehouse-assign"),
     path("seller-hub/metrics/", SellerHubMetricsView.as_view(), name="seller-hub-metrics"),
 
     # Phase 3: Seller Hub Inventory Management
@@ -644,6 +654,8 @@ urlpatterns = [
     path("seller-hub/orders/<int:pk>/arrive-delivery/", SellerOrderRiderArriveDeliveryView.as_view(), name="seller-hub-orders-arrive-delivery"),
     path("seller-hub/orders/<int:pk>/verify-delivery-otp/", SellerOrderRiderVerifyDeliveryOTPView.as_view(), name="seller-hub-orders-verify-delivery-otp"),
     path("seller-hub/orders/<int:pk>/admin-override/", SellerOrderAdminOverrideView.as_view(), name="seller-hub-orders-admin-override"),
+    path("seller-hub/orders/<int:pk>/available-riders/", SellerOrderAvailableRidersView.as_view(), name="seller-hub-orders-available-riders"),
+    path("seller-hub/orders/<int:pk>/retry-dispatch/", SellerOrderRetryDispatchView.as_view(), name="seller-hub-orders-retry-dispatch"),
     path("seller-hub/orders/<int:pk>/item-pick/", SellerOrderItemPickView.as_view(), name="seller-hub-orders-item-pick"),
     path("seller-hub/orders/<int:pk>/packing-slip/", SellerOrderPackingSlipView.as_view(), name="seller-hub-orders-packing-slip"),
     path("seller-hub/orders/<int:pk>/packing-slip/pdf/", SellerOrderPackingSlipPdfView.as_view(), name="seller-hub-orders-packing-slip-pdf"),

@@ -4336,6 +4336,17 @@ class SellerOrder(models.Model):
         help_text="Human-readable merchant display order number (e.g. SO-2026-0001)",
     )
 
+    # Phase U: Consolidated delivery group & fulfillment warehouse linkage
+    delivery_group_id = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        db_index=True,
+        help_text="Shared identifier linking sibling seller orders from the same checkout and warehouse for consolidated dispatch.",
+    )
+    warehouse_id = models.IntegerField(null=True, blank=True, db_index=True)
+    warehouse_name = models.CharField(max_length=255, blank=True, default="")
+
     # Customer snapshot (privacy minimized for packing/fulfilment)
     customer_name = models.CharField(max_length=200)
     customer_phone = models.CharField(max_length=50, blank=True, default="")
@@ -5116,3 +5127,97 @@ class SellerClaimAuditLog(models.Model):
 
     def __str__(self):
         return f"Claim #{self.claim.claim_number} {self.from_status}->{self.to_status} ({self.action})"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE T: WAREHOUSE LOGISTICS & SELLER WAREHOUSE ASSIGNMENTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class Warehouse(models.Model):
+    """
+    Physical distribution / fulfillment warehouse facility where merchant stock is consolidated.
+    Two-wheeler delivery riders pick up customer orders from the assigned warehouse rather than individual seller premises.
+    """
+    name = models.CharField(max_length=200, help_text="Warehouse facility name (e.g. Central Bangalore Hub)")
+    code = models.CharField(max_length=50, unique=True, null=True, blank=True, help_text="Unique facility code (e.g. WH-BLR-01)")
+    address = models.TextField(help_text="Physical street address for navigation")
+    latitude = models.DecimalField(max_digits=10, decimal_places=7, help_text="GPS latitude coordinate for rider pickup routing")
+    longitude = models.DecimalField(max_digits=10, decimal_places=7, help_text="GPS longitude coordinate for rider pickup routing")
+    city = models.CharField(max_length=100, default="", blank=True, help_text="City or urban district")
+    region = models.CharField(max_length=100, default="", blank=True, help_text="State, province or operating zone")
+    contact_phone = models.CharField(max_length=50, blank=True, default="", help_text="Facility phone number")
+    is_active = models.BooleanField(default=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "workforce_warehouse"
+        ordering = ["name"]
+        indexes = [
+            models.Index(fields=["is_active", "city"], name="wf_wh_active_city_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.name} ({self.city or 'General'})"
+
+
+class SellerWarehouseAssignment(models.Model):
+    """
+    Platform Admin mapping of a merchant seller's Company to their designated fulfilment Warehouse.
+    Each company is assigned to exactly one warehouse for dispatch pickup routing.
+    """
+    company = models.OneToOneField(
+        "companies.Company",
+        on_delete=models.CASCADE,
+        related_name="warehouse_assignment",
+        db_index=True,
+    )
+    warehouse = models.ForeignKey(
+        Warehouse,
+        on_delete=models.PROTECT,
+        related_name="seller_assignments",
+        db_index=True,
+    )
+    assigned_at = models.DateTimeField(auto_now=True)
+    assigned_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="seller_warehouse_assignments",
+    )
+    notes = models.CharField(max_length=255, blank=True, default="")
+
+    class Meta:
+        db_table = "workforce_seller_warehouse_assignment"
+        indexes = [
+            models.Index(fields=["company", "warehouse"], name="wf_slr_wh_comp_wh_idx"),
+        ]
+
+    def __str__(self):
+        return f"Company #{self.company_id} -> Warehouse #{self.warehouse_id} ({self.warehouse.name})"
+
+
+def get_seller_assigned_warehouse(company_or_id):
+    """
+    Resolves the active designated Warehouse for a given Company or company_id.
+    Returns the active Warehouse instance or None.
+    """
+    if not company_or_id:
+        return None
+    company_id = company_or_id.id if hasattr(company_or_id, "id") else company_or_id
+    try:
+        assignment = SellerWarehouseAssignment.objects.select_related("warehouse").filter(
+            company_id=company_id,
+            warehouse__is_active=True,
+        ).first()
+        return assignment.warehouse if assignment else None
+    except Exception:
+        return None
+
+
+
+
+
+
+

@@ -44,6 +44,7 @@ import {
   RotateCcw,
   ShieldAlert,
   UploadCloud,
+  Warehouse as WarehouseIcon,
 } from 'lucide-react';
 
 export function Sidebar({ onCloseMobile = () => {} }) {
@@ -171,12 +172,13 @@ export function Sidebar({ onCloseMobile = () => {} }) {
             {renderNavLink('/workforce/seller-hub/catalog-uploads', UploadCloud, 'Catalog Uploads')}
             {renderNavLink('/workforce/admin/seller-hub/coupons', Tag, 'Coupons')}
             {renderNavLink('/workforce/seller-hub/reports', BarChart3, 'Reports & Quality')}
+            {renderNavLink('/workforce/seller-hub/store-profile', Store, 'Store Profile')}
           </div>
         </div>
 
         {/* Footer Settings */}
         <div className="p-3 border-t border-slate-100">
-          {renderNavLink('/workforce/admin/settings', Settings, 'Store Settings')}
+          {renderNavLink('/workforce/seller-hub/store-profile', Settings, 'Store Settings')}
         </div>
       </aside>
     );
@@ -252,8 +254,10 @@ export function Sidebar({ onCloseMobile = () => {} }) {
                 {renderNavLink('/workforce/seller-hub/catalog-uploads', UploadCloud, 'Catalog Uploads')}
                 {renderNavLink('/workforce/admin/seller-hub/categories', Layers, 'Categories')}
                 {renderNavLink('/workforce/admin/seller-hub/categories-approval', ShieldCheck, 'Categories Approval')}
+                {renderNavLink('/workforce/admin/seller-hub/warehouses', WarehouseIcon, 'Warehouses')}
                 {renderNavLink('/workforce/admin/seller-hub/coupons', Tag, 'Coupons')}
                 {renderNavLink('/workforce/seller-hub/reports', BarChart3, 'Reports & Quality')}
+                {renderNavLink('/workforce/seller-hub/store-profile', Store, 'Store Profile')}
               </div>
             )}
           </div>
