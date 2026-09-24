@@ -1039,14 +1039,10 @@ export function EmployeeJobsPage() {
                 ? `https://maps.google.com/?q=${encodeURIComponent(job.address)}`
                 : null;
 
-              // Bug found: job.estimated_price / job.price are not fields the
-              // vendor API ever returns (WorkforceJobSerializer sends
-              // total_amount and a computed payment{amount_due,...} object) --
-              // so this always fell through to the 450 literal, showing the
-              // exact same payout on every job regardless of its real value.
-              // Matches the correct pattern already used in
-              // EmployeeDashboardPage.jsx (selectedJob.payment?.amount_due || selectedJob.total_amount).
-              const payoutAmount = job.payment?.amount_due || job.total_amount || 0;
+              const quoteAmount = job.active_quote_net_payable ?? job.active_quote_total_amount;
+              const payoutAmount = (quoteAmount !== undefined && quoteAmount !== null && parseFloat(quoteAmount) > 0)
+                ? parseFloat(quoteAmount)
+                : (job.payment?.amount_due || job.total_amount || 0);
 
               return (
                 <div
@@ -1441,7 +1437,13 @@ export function EmployeeJobsPage() {
                     Payout Amount
                   </span>
                   <span className="text-base font-black text-slate-900 font-mono">
-                    ₹{Number(selectedJobForDetails.payment?.amount_due || selectedJobForDetails.total_amount || 0).toLocaleString('en-IN')}
+                    ₹{Number(
+                      selectedJobForDetails.active_quote_net_payable ??
+                      selectedJobForDetails.active_quote_total_amount ??
+                      selectedJobForDetails.payment?.amount_due ??
+                      selectedJobForDetails.total_amount ??
+                      0
+                    ).toLocaleString('en-IN')}
                   </span>
                 </div>
               </div>

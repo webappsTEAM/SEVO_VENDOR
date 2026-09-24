@@ -217,17 +217,18 @@ export async function apiTransitionJob(jobId, targetStatus) {
 // Hold and resume are not plain status transitions: they also open and close
 // the Break that keeps held time out of the technician's worked hours, so they
 // have dedicated endpoints rather than going through /transition/.
-export async function apiHoldJob(jobId, reason) {
+export async function apiHoldJob(jobId, payload) {
+  const body = typeof payload === 'string' ? { reason: payload, reason_text: payload } : payload;
   return await apiRequest(`/workforce/jobs/${jobId}/hold/`, {
     method: 'POST',
-    json: { reason },
+    json: body,
   });
 }
 
-export async function apiResumeJob(jobId) {
+export async function apiResumeJob(jobId, payload = {}) {
   return await apiRequest(`/workforce/jobs/${jobId}/resume/`, {
     method: 'POST',
-    json: {},
+    json: payload,
   });
 }
 
@@ -351,7 +352,7 @@ export async function apiCollectJobCash(jobId, amountReceived) {
     amountReceived !== null &&
     amountReceived !== undefined &&
     !isNaN(amountReceived) &&
-    parseFloat(amountReceived) > 0
+    parseFloat(amountReceived) >= 0
       ? { amount_received: parseFloat(amountReceived) }
       : {};
   return await apiRequest(`/workforce/jobs/${jobId}/payment/collect/`, {
@@ -1711,9 +1712,30 @@ export async function apiAdminCreateWarehouse(payload) {
   });
 }
 
+// -- Multi-Day Contracting, Base Location & Scope Reduction --
+
+export async function apiGetVendorBaseLocation() {
+  return await apiRequest('/workforce/vendor/base-location/');
+}
+
+export async function apiSaveVendorBaseLocation(payload) {
+  return await apiRequest('/workforce/vendor/base-location/', {
+    method: 'POST',
+    json: payload,
+  });
+}
+
 export async function apiAdminUpdateWarehouse(id, payload) {
+
   return await apiRequest(`/workforce/admin/warehouses/${id}/`, {
     method: 'PATCH',
+    json: payload,
+  });
+}
+
+export async function apiCheckServiceability(payload) {
+  return await apiRequest('/workforce/serviceability/check/', {
+    method: 'POST',
     json: payload,
   });
 }
@@ -1741,6 +1763,34 @@ export async function apiAdminUnassignSellerWarehouse(sellerId) {
   });
 }
 
+export async function apiSubmitScopeReduction(jobId, payload) {
+  return await apiRequest(`/workforce/jobs/${jobId}/scope-reduction/`, {
+    method: 'POST',
+    json: payload,
+  });
+}
+
+export async function apiReviewScopeReduction(reductionId, payload) {
+  return await apiRequest(`/workforce/scope-reduction/${reductionId}/review/`, {
+    method: 'POST',
+    json: payload,
+  });
+}
+
+export async function apiSubmitQuoteToCRM(quoteId, payload = {}) {
+  return await apiRequest(`/workforce/quotes/${quoteId}/submit-crm/`, {
+    method: 'POST',
+    json: payload,
+  });
+}
+
+export async function apiApproveQuoteCRM(quoteId, payload = {}) {
+  return await apiRequest(`/workforce/quotes/${quoteId}/crm-approve/`, {
+    method: 'POST',
+    json: payload,
+  });
+}
+
 // Named object export for convenient namespace usage
 export const workforceService = {
   getGroceryOrders: apiGetGroceryOrders,
@@ -1757,6 +1807,9 @@ export const workforceService = {
   submitPublicOrderReview: apiSubmitPublicOrderReview,
   getPublicStores: apiGetPublicStores,
   getPublicStoreDetail: apiGetPublicStoreDetail,
+  getVendorBaseLocation: apiGetVendorBaseLocation,
+  saveVendorBaseLocation: apiSaveVendorBaseLocation,
+  checkServiceability: apiCheckServiceability,
   getSellerHubCategories: apiGetSellerHubCategories,
   createSellerHubCategory: apiCreateSellerHubCategory,
   updateSellerHubCategory: apiUpdateSellerHubCategory,
@@ -1777,6 +1830,10 @@ export const workforceService = {
   getSellerWarehouse: apiAdminGetSellerWarehouse,
   assignSellerWarehouse: apiAdminAssignSellerWarehouse,
   unassignSellerWarehouse: apiAdminUnassignSellerWarehouse,
+  submitScopeReduction: apiSubmitScopeReduction,
+  reviewScopeReduction: apiReviewScopeReduction,
+  submitQuoteToCRM: apiSubmitQuoteToCRM,
+  approveQuoteCRM: apiApproveQuoteCRM,
 };
 
 

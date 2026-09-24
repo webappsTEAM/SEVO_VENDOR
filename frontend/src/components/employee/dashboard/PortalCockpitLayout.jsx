@@ -34,20 +34,24 @@ import { LogisticsStopManager } from '../logistics/LogisticsStopManager.jsx';
 function CountdownBadge({ targetTime, prefix = '', expiredText = 'Expired', tone = 'amber' }) {
   const [remaining, setRemaining] = useState(() => {
     if (!targetTime) return 0;
-    return Math.max(0, Math.floor((new Date(targetTime).getTime() - Date.now()) / 1000));
+    const t = new Date(targetTime).getTime();
+    if (isNaN(t)) return 0;
+    return Math.max(0, Math.floor((t - Date.now()) / 1000));
   });
 
   useEffect(() => {
     if (!targetTime) return;
+    const t = new Date(targetTime).getTime();
+    if (isNaN(t)) return;
     const interval = setInterval(() => {
-      const diff = Math.max(0, Math.floor((new Date(targetTime).getTime() - Date.now()) / 1000));
+      const diff = Math.max(0, Math.floor((t - Date.now()) / 1000));
       setRemaining(diff);
       if (diff <= 0) clearInterval(interval);
     }, 1000);
     return () => clearInterval(interval);
   }, [targetTime]);
 
-  if (remaining <= 0) {
+  if (remaining <= 0 || isNaN(remaining)) {
     return (
       <span className="font-mono text-[11px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
         {expiredText}
@@ -198,19 +202,37 @@ export function PortalCockpitLayout({
   const isProofSubmitted = status === 'PROOF_SUBMITTED' || status === 'PENDING_APPROVAL' || status === 'WAITING_FOR_PAYMENT';
   const isCompleted = status === 'COMPLETED' || status === 'WORK_COMPLETED';
 
-  const isCashJob = (
+  const isCashJob = Boolean(
+    job?.payment_method === 'COD' ||
+    job?.payment_method === 'CASH' ||
+    job?.payment_method === 'CASH_ON_SERVICE' ||
+    job?.payment_method === 'CASH_ON_DELIVERY' ||
+    job?.payment?.payment_method === 'CASH_ON_SERVICE' ||
     activeJob?.payment_method === 'COD' ||
+    activeJob?.payment_method === 'CASH' ||
     activeJob?.payment_method === 'CASH_ON_SERVICE' ||
+    activeJob?.payment_method === 'CASH_ON_DELIVERY' ||
     activeJob?.payment?.payment_method === 'CASH_ON_SERVICE'
   );
-  const isPaid = (
+  const isPaid = Boolean(
+    job?.payment_status === 'paid' ||
+    job?.payment_status === 'collected' ||
+    job?.payment_status === 'advance_paid' ||
+    job?.payment?.payment_status === 'PAID' ||
+    job?.payment?.customer_confirmed_at ||
     activeJob?.payment_status === 'paid' ||
     activeJob?.payment_status === 'collected' ||
-    activeJob?.payment?.payment_status === 'PAID'
+    activeJob?.payment_status === 'advance_paid' ||
+    activeJob?.payment?.payment_status === 'PAID' ||
+    activeJob?.payment?.customer_confirmed_at
   );
-  const isCashPending = (
+  const isCashPending = Boolean(
+    (job?.payment_status === 'cash_pending' ||
+    job?.payment?.payment_status === 'CASH_PENDING' ||
     activeJob?.payment_status === 'cash_pending' ||
-    activeJob?.payment?.payment_status === 'CASH_PENDING'
+    activeJob?.payment?.payment_status === 'CASH_PENDING') &&
+    !isPaid &&
+    !isCompleted
   );
 
   // Verification Gate Statuses (Mandatory gates: Geofence, Customer OTP, Presence Selfie)
@@ -222,13 +244,25 @@ export function PortalCockpitLayout({
   // Mandatory gates satisfied to unlock work execution (geofence + customer OTP + presence selfie)
   const isAllPrerequisitesDone = isGeofencePassed && isOtpVerified && isPresencePhotoDone;
 
-  // Shift elapsed timer calculation (Active only after customer OTP is verified / when clocked in)
+  // Shift elapsed timer calculation (Authoritative real-time shift stopwatch)
   useEffect(() => {
-    if (!isClockedIn || !timeTracking?.clock_in_time) {
+    const rawStartTime = (timeTracking?.clock_in_time)
+      || (activeJob?.clock_in_time)
+      || (activeJob?.started_at)
+      || (activeJob?.otp_verified_at)
+      || (preServiceState?.otp_verified_at)
+      || (isInProgress ? (activeJob?.updated_at || activeJob?.created_at) : null);
+
+    if (!rawStartTime) {
       setShiftElapsedSeconds(0);
       return;
     }
-    const startTime = new Date(timeTracking.clock_in_time).getTime();
+    const startTime = new Date(rawStartTime).getTime();
+    if (isNaN(startTime)) {
+      setShiftElapsedSeconds(0);
+      return;
+    }
+
     const updateElapsed = () => {
       const now = Date.now();
       const diffSecs = Math.max(0, Math.floor((now - startTime) / 1000));
@@ -237,7 +271,17 @@ export function PortalCockpitLayout({
     updateElapsed();
     const interval = setInterval(updateElapsed, 1000);
     return () => clearInterval(interval);
-  }, [isClockedIn, timeTracking?.clock_in_time]);
+  }, [
+    isClockedIn,
+    timeTracking?.clock_in_time,
+    isInProgress,
+    activeJob?.clock_in_time,
+    activeJob?.started_at,
+    activeJob?.otp_verified_at,
+    activeJob?.updated_at,
+    activeJob?.created_at,
+    preServiceState?.otp_verified_at,
+  ]);
 
   const formatElapsed = (totalSecs) => {
     const hours = Math.floor(totalSecs / 3600);
@@ -264,6 +308,14 @@ export function PortalCockpitLayout({
   const payoutAmount = job?.payment?.amount_due ?? job?.total_amount ?? offer?.payment?.amount_due ?? offer?.total_amount ?? 0;
   const distanceKm = job?.distance_km ?? offer?.distance_km ?? null;
 
+  const formatMoney = (val) => {
+    const num = Number(val || 0);
+    return num.toLocaleString('en-IN', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  };
+
   // isEstimationJob is driven EXCLUSIVELY by backend-authoritative fields.
   // DO NOT add keyword/string-matching fallbacks here (e.g. 'painting', 'waterproof',
   // 'consultation') — those cause direct fixed-price jobs to be misclassified as
@@ -284,10 +336,22 @@ export function PortalCockpitLayout({
   const activeQuoteId = job?.active_quote_id || activeJob?.active_quote_id;
   const activeQuoteStatus = job?.active_quote_status || activeJob?.active_quote_status;
   const activeQuoteVersion = job?.active_quote_version || activeJob?.active_quote_version || 1;
+  const activeQuoteTotal = Number(job?.active_quote_net_payable ?? job?.active_quote_total_amount ?? activeJob?.active_quote_net_payable ?? activeJob?.active_quote_total_amount ?? 0);
+  const activeQuoteAdvance = Number(job?.active_quote_advance_amount ?? activeJob?.active_quote_advance_amount ?? (activeQuoteTotal ? activeQuoteTotal * 0.5 : 0));
+  const activeQuoteBalance = Number(job?.active_quote_balance_amount ?? activeJob?.active_quote_balance_amount ?? (activeQuoteTotal ? activeQuoteTotal - activeQuoteAdvance : 0));
+  const activeQuoteCustomerNotes = job?.active_quote_customer_notes || activeJob?.active_quote_customer_notes || '';
+  const activeQuoteCustomerDeclineReason = job?.active_quote_customer_decline_reason || activeJob?.active_quote_customer_decline_reason || '';
+  const activeQuoteAdminRejectionReason = job?.active_quote_admin_rejection_reason || activeJob?.active_quote_admin_rejection_reason || '';
 
   // Approved services from profile
-  const allRequestedServices = profile?.all_requested_services || profile?.bank_details?.onboarding?.services || [];
-  const approvedServices = allRequestedServices.filter((s) => s.status === 'approved' || s.is_approved);
+  const allRequestedServices = Array.isArray(profile?.all_requested_services)
+    ? profile.all_requested_services
+    : Array.isArray(profile?.bank_details?.onboarding?.services)
+    ? profile.bank_details.onboarding.services
+    : [];
+  const approvedServices = Array.isArray(allRequestedServices)
+    ? allRequestedServices.filter((s) => s && (s.status === 'approved' || s.is_approved))
+    : [];
 
   return (
     <div className="w-full h-full flex-1 flex flex-col font-sans bg-slate-100/90 text-slate-900 overflow-hidden p-3 sm:p-4 lg:p-4">
@@ -446,10 +510,10 @@ export function PortalCockpitLayout({
                     <div className="flex flex-wrap gap-1.5 pt-1">
                       {approvedServices.slice(0, 6).map((s, idx) => (
                         <span
-                          key={s.id || idx}
+                          key={s?.id || idx}
                           className="px-2 py-1 bg-white border border-slate-200 rounded-md text-[11px] font-medium text-slate-700 shadow-2xs"
                         >
-                          {s.service_title || s.title || s.name || s.category_name}
+                          {typeof s === 'string' ? s : (s?.service_title || s?.title || s?.name || s?.category_name || 'Service')}
                         </span>
                       ))}
                       {approvedServices.length > 6 && (
@@ -513,8 +577,8 @@ export function PortalCockpitLayout({
                     )}
                   </div>
 
-                  {/* Metrics Row: Distance & Est Payout */}
-                  <div className="flex items-center gap-8 pt-1">
+                  {/* Metrics Row: Distance & Financial Summary */}
+                  <div className="flex items-center gap-6 pt-1 flex-wrap">
                     <div>
                       <span className="text-[10px] font-mono font-bold uppercase text-slate-400 block tracking-wider">
                         DISTANCE
@@ -523,14 +587,35 @@ export function PortalCockpitLayout({
                         {distanceKm != null ? `${parseFloat(distanceKm).toFixed(1)} km away` : 'Nearby'}
                       </span>
                     </div>
-                    <div>
-                      <span className="text-[10px] font-mono font-bold uppercase text-slate-400 block tracking-wider">
-                        EST. PAYOUT
-                      </span>
-                      <span className="text-sm font-mono font-black text-emerald-700">
-                        ₹{Number(payoutAmount).toLocaleString('en-IN')}
-                      </span>
-                    </div>
+                    {isEstimationJob && (activeQuoteTotal > 0 || activeQuoteNumber) ? (
+                      <>
+                        <div>
+                          <span className="text-[10px] font-mono font-bold uppercase text-slate-400 block tracking-wider">
+                            QUOTED TOTAL
+                          </span>
+                          <span className="text-sm font-mono font-black text-slate-900">
+                            ₹{formatMoney(activeQuoteTotal)}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] font-mono font-bold uppercase text-emerald-600 block tracking-wider">
+                            REMAINING BALANCE
+                          </span>
+                          <span className="text-sm font-mono font-black text-emerald-700">
+                            ₹{formatMoney(activeQuoteBalance)}
+                          </span>
+                        </div>
+                      </>
+                    ) : (
+                      <div>
+                        <span className="text-[10px] font-mono font-bold uppercase text-slate-400 block tracking-wider">
+                          EST. PAYOUT
+                        </span>
+                        <span className="text-sm font-mono font-black text-emerald-700">
+                          ₹{formatMoney(payoutAmount)}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Offer Action Buttons (Decline / Accept Job) */}
@@ -634,7 +719,7 @@ export function PortalCockpitLayout({
                       <div className="p-3 bg-white/95 border border-amber-200 rounded-lg space-y-1.5">
                         <div className="flex justify-between items-center text-xs">
                           <span className="text-slate-600 font-semibold">Cash Amount Collected:</span>
-                          <span className="font-mono text-base font-black text-emerald-700">₹{payoutAmount}</span>
+                          <span className="font-mono text-base font-black text-emerald-700">₹{formatMoney(isEstimationJob && activeQuoteBalance > 0 ? activeQuoteBalance : payoutAmount)}</span>
                         </div>
                         <p className="text-[11px] text-amber-950 leading-relaxed pt-1 border-t border-amber-100">
                           Ask customer <strong>{customerName || 'Customer'}</strong> for the <strong>6-digit Cash Payment Confirmation OTP</strong> displayed in their app to verify payment and complete this booking.
@@ -832,9 +917,8 @@ export function PortalCockpitLayout({
                 )}
 
                 {/* ── COMMERCIAL ESTIMATION & QUOTATION WORKFLOW CARD ──
-                    Hide during active execution phases (IN_PROGRESS, PROOF_SUBMITTED, COMPLETED)
-                    so the quotation card doesn't compete with the completion button. */}
-                {isActiveAssignment && isEstimationJob && !isInProgress && !isProofSubmitted && !isCompleted && (
+                    Render for estimation jobs so the technician can draft/view quotations during inspection. */}
+                {isActiveAssignment && isEstimationJob && !isCompleted && (
                   <div className="p-4 bg-indigo-50/70 border border-indigo-200 rounded-xl space-y-3 shadow-xs">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div className="flex items-start gap-2.5">
@@ -853,33 +937,65 @@ export function PortalCockpitLayout({
                             )}
                             {activeQuoteStatus && (
                               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider border ${
-                                activeQuoteStatus === 'CUSTOMER_ACCEPTED' || activeQuoteStatus === 'CONVERTED'
+                                activeQuoteStatus === 'CUSTOMER_ACCEPTED' || activeQuoteStatus === 'CONVERTED' || activeQuoteStatus === 'ADMIN_APPROVED'
                                   ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                                  : activeQuoteStatus === 'SENT_TO_CUSTOMER'
+                                  : activeQuoteStatus === 'SENT_TO_CUSTOMER' || activeQuoteStatus === 'SENT'
                                   ? 'bg-blue-100 text-blue-800 border-blue-300'
+                                  : activeQuoteStatus === 'PENDING_REVIEW' || activeQuoteStatus === 'CRM_REVIEW'
+                                  ? 'bg-amber-100 text-amber-800 border-amber-300'
+                                  : activeQuoteStatus === 'ADMIN_REJECTED' || activeQuoteStatus === 'REJECTED'
+                                  ? 'bg-rose-100 text-rose-800 border-rose-300'
                                   : activeQuoteStatus === 'CHANGES_REQUESTED'
                                   ? 'bg-amber-100 text-amber-800 border-amber-300'
-                                  : activeQuoteStatus === 'PENDING_ADMIN_APPROVAL'
-                                  ? 'bg-purple-100 text-purple-800 border-purple-300'
+                                  : activeQuoteStatus === 'DECLINED' || activeQuoteStatus === 'CUSTOMER_DECLINED'
+                                  ? 'bg-rose-100 text-rose-800 border-rose-300'
                                   : 'bg-indigo-100 text-indigo-800 border-indigo-200'
                               }`}>
-                                {activeQuoteStatus === 'CHANGES_REQUESTED' ? 'RE-QUOTE REQUESTED' : activeQuoteStatus.replace(/_/g, ' ')}
+                                {activeQuoteStatus === 'PENDING_REVIEW'
+                                  ? 'UNDER CRM REVIEW'
+                                  : activeQuoteStatus === 'ADMIN_REJECTED'
+                                  ? 'CRM REJECTED'
+                                  : activeQuoteStatus === 'SENT_TO_CUSTOMER'
+                                  ? 'SENT TO CUSTOMER'
+                                  : activeQuoteStatus === 'CUSTOMER_ACCEPTED'
+                                  ? 'CUSTOMER ACCEPTED'
+                                  : activeQuoteStatus === 'CHANGES_REQUESTED'
+                                  ? 'CHANGES REQUESTED'
+                                  : activeQuoteStatus === 'DECLINED'
+                                  ? 'CUSTOMER DECLINED'
+                                  : String(activeQuoteStatus || '').replace(/_/g, ' ')}
                               </span>
                             )}
                           </div>
-                          <p className="text-[11px] text-indigo-800 mt-1">
-                            {activeQuoteStatus === 'CUSTOMER_ACCEPTED' || activeQuoteStatus === 'CONVERTED'
-                              ? 'Quotation accepted by customer and converted to work booking.'
-                              : activeQuoteStatus === 'CHANGES_REQUESTED'
-                              ? 'Customer requested revision/re-quote. Review details and prepare revised quotation.'
+                          <p className="text-[11px] text-indigo-900 mt-1 font-medium leading-relaxed">
+                            {activeQuoteStatus === 'PENDING_REVIEW'
+                              ? '⏳ Quotation submitted to SEVO Operations / CRM for review. Awaiting approval before sending to customer.'
+                              : activeQuoteStatus === 'ADMIN_REJECTED'
+                              ? `⚠️ SEVO CRM rejected this quote${activeQuoteAdminRejectionReason ? `: "${activeQuoteAdminRejectionReason}"` : ''}. Please adjust rates/items and re-submit a revised quotation.`
                               : activeQuoteStatus === 'SENT_TO_CUSTOMER'
-                              ? 'Formal quotation delivered to customer. Awaiting customer review & decision.'
-                              : activeQuoteStatus === 'PENDING_ADMIN_APPROVAL'
-                              ? 'Customer accepted quote. Awaiting admin approval.'
+                              ? '📩 Formal quotation approved by CRM and delivered to customer. Awaiting customer decision.'
+                              : activeQuoteStatus === 'CUSTOMER_ACCEPTED' || activeQuoteStatus === 'CONVERTED'
+                              ? '🎉 Quotation accepted by customer! 50% Advance milestone payable. Ready for service execution.'
+                              : activeQuoteStatus === 'CHANGES_REQUESTED'
+                              ? `📝 Customer requested changes${activeQuoteCustomerNotes ? `: "${activeQuoteCustomerNotes}"` : ''}. Review and prepare revised quotation.`
+                              : activeQuoteStatus === 'DECLINED' || activeQuoteStatus === 'CUSTOMER_DECLINED'
+                              ? `❌ Customer declined quote${activeQuoteCustomerDeclineReason ? `: "${activeQuoteCustomerDeclineReason}"` : ''}. You can prepare a revised quotation.`
                               : isAllPrerequisitesDone || job?.can_create_quote
                               ? 'Site inspection unlocked. Record dimensions, select rate-card items, and deliver formal quote to customer.'
                               : 'Complete Step 1 Arrival and Step 2 OTP/Selfie verification above to unlock Quotation Builder.'}
                           </p>
+                          {activeQuoteTotal > 0 && (
+                            <div className="mt-2.5 pt-2 border-t border-indigo-200/70 flex items-center gap-4 flex-wrap text-xs">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[10px] font-mono font-bold text-indigo-700 uppercase">Quoted Total:</span>
+                                <span className="font-mono font-black text-slate-900">₹{formatMoney(activeQuoteTotal)}</span>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[10px] font-mono font-bold text-emerald-700 uppercase">Remaining Balance:</span>
+                                <span className="font-mono font-black text-emerald-700">₹{formatMoney(activeQuoteBalance)}</span>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -889,18 +1005,24 @@ export function PortalCockpitLayout({
                         disabled={!isAllPrerequisitesDone && !job?.can_create_quote && !activeQuoteNumber}
                         className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm shrink-0 cursor-pointer ${
                           isAllPrerequisitesDone || job?.can_create_quote || activeQuoteNumber
-                            ? activeQuoteStatus === 'CHANGES_REQUESTED'
+                            ? activeQuoteStatus === 'ADMIN_REJECTED' || activeQuoteStatus === 'CHANGES_REQUESTED' || activeQuoteStatus === 'DECLINED'
                               ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-amber-500/20'
+                              : activeQuoteStatus === 'CUSTOMER_ACCEPTED' || activeQuoteStatus === 'CONVERTED'
+                              ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-500/20'
                               : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-500/20'
                             : 'bg-slate-200 text-slate-400 cursor-not-allowed'
                         }`}
                       >
                         <Calculator className="w-3.5 h-3.5" />
                         <span>
-                          {activeQuoteStatus === 'CUSTOMER_ACCEPTED' || activeQuoteStatus === 'CONVERTED'
+                          {activeQuoteStatus === 'PENDING_REVIEW'
+                            ? `View Submitted Quote (v${activeQuoteVersion})`
+                            : activeQuoteStatus === 'ADMIN_REJECTED'
+                            ? `Re-Draft Revision (v${activeQuoteVersion + 1})`
+                            : activeQuoteStatus === 'CUSTOMER_ACCEPTED' || activeQuoteStatus === 'CONVERTED'
                             ? `View Accepted Quote (v${activeQuoteVersion})`
                             : activeQuoteStatus === 'CHANGES_REQUESTED'
-                            ? `Draft Revised Quote (v${activeQuoteVersion})`
+                            ? `Draft Revised Quote (v${activeQuoteVersion + 1})`
                             : activeQuoteStatus === 'SENT_TO_CUSTOMER'
                             ? `View Sent Quote (v${activeQuoteVersion})`
                             : activeQuoteNumber
@@ -937,7 +1059,7 @@ export function PortalCockpitLayout({
                     className="w-full py-3.5 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white shadow-md cursor-pointer"
                   >
                     <ShieldCheck className="w-4 h-4" />
-                    <span>Confirm Customer Cash Payment (₹{payoutAmount})</span>
+                    <span>Confirm Customer Cash Payment (₹{formatMoney(isEstimationJob && activeQuoteBalance > 0 ? activeQuoteBalance : payoutAmount)})</span>
                   </button>
                 ) : isCashJob && !isPaid ? (
                   <button
@@ -946,7 +1068,7 @@ export function PortalCockpitLayout({
                     className="w-full py-3.5 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 bg-emerald-700 hover:bg-emerald-800 active:bg-emerald-900 text-white shadow-md cursor-pointer"
                   >
                     <Banknote className="w-4 h-4" />
-                    <span>Collect Cash Payment (₹{payoutAmount})</span>
+                    <span>Collect Cash Payment (₹{formatMoney(isEstimationJob && activeQuoteBalance > 0 ? activeQuoteBalance : payoutAmount)})</span>
                   </button>
                 ) : (
                   <div className="w-full py-3.5 rounded-xl font-bold text-xs bg-indigo-50 text-indigo-800 border border-indigo-200 flex items-center justify-center gap-2">
@@ -962,58 +1084,8 @@ export function PortalCockpitLayout({
                   className="w-full py-3.5 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 bg-[#2d6a4f] hover:bg-[#1b4332] active:bg-[#153427] text-white shadow-md cursor-pointer"
                 >
                   <CheckCircle2 className="w-4 h-4" />
-                  <span>Complete Service &amp; Submit Proof</span>
+                  <span>Complete {isEstimationJob ? 'Consultation' : 'Service'} &amp; Submit Proof</span>
                 </button>
-              ) : isEstimationJob ? (
-                activeQuoteStatus === 'CUSTOMER_ACCEPTED' || activeQuoteStatus === 'CONVERTED' ? (
-                  // Quote accepted: show "Start Execution" so the job moves to IN_PROGRESS,
-                  // after which the standard "Complete Service & Submit Proof" button (isInProgress branch above)
-                  // will be shown automatically. Previously this was a static badge with no action,
-                  // leaving the technician with no path to completion.
-                  <button
-                    type="button"
-                    onClick={() => handleJobAction(activeJob.id, 'IN_PROGRESS')}
-                    disabled={actionLoading || !isAllPrerequisitesDone}
-                    className={`w-full py-3.5 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 ${
-                      isAllPrerequisitesDone
-                        ? 'bg-[#2d6a4f] hover:bg-[#1b4332] active:bg-[#153427] text-white shadow-md cursor-pointer'
-                        : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                    }`}
-                  >
-                    <Play className="w-3.5 h-3.5 fill-current" />
-                    <span>Start Service Execution (Quote Accepted)</span>
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => onOpenQuotationModal && onOpenQuotationModal(activeJob)}
-                    disabled={actionLoading || (!isAllPrerequisitesDone && !activeJob.can_create_quote && !activeQuoteNumber)}
-                    className={`w-full py-3.5 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 ${
-                      isAllPrerequisitesDone || activeJob.can_create_quote || activeQuoteNumber
-                        ? activeQuoteStatus === 'CHANGES_REQUESTED'
-                          ? 'bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white shadow-md cursor-pointer'
-                          : 'bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white shadow-md cursor-pointer'
-                        : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                    }`}
-                  >
-                    <Calculator className="w-3.5 h-3.5 fill-current" />
-                    <span>
-                      {activeQuoteStatus === 'CHANGES_REQUESTED'
-                        ? `Draft Revised Quote (v${activeQuoteVersion})`
-                        : activeQuoteStatus === 'SENT_TO_CUSTOMER'
-                        ? `View Sent Quotation (v${activeQuoteVersion})`
-                        : activeQuoteNumber
-                        ? `Open Quotation Builder (v${activeQuoteVersion})`
-                        : isAllPrerequisitesDone
-                        ? 'Draft Quotation'
-                        : !isOtpVerified
-                        ? 'Draft Quotation (Verify Customer OTP)'
-                        : !isPresencePhotoDone
-                        ? 'Draft Quotation (Capture Tech Selfie Above)'
-                        : 'Draft Quotation (Complete Prerequisites)'}
-                    </span>
-                  </button>
-                )
               ) : (
                 <button
                   type="button"
@@ -1028,12 +1100,18 @@ export function PortalCockpitLayout({
                   <Play className="w-3.5 h-3.5 fill-current" />
                   <span>
                     {isAllPrerequisitesDone
-                      ? 'Start Service Execution'
+                      ? (isEstimationJob && (activeQuoteStatus === 'CUSTOMER_ACCEPTED' || activeQuoteStatus === 'CONVERTED')
+                          ? 'Start Service Execution (Quote Accepted)'
+                          : isEstimationJob
+                          ? 'Start Site Consultation / Execution'
+                          : 'Start Service Execution')
+                      : !isGeofencePassed
+                      ? 'Start Service (Click "Verify GPS" in Step 1)'
                       : !isOtpVerified
-                      ? 'Start Service Execution (Verify Customer OTP)'
+                      ? 'Start Service (Verify Customer Start OTP in Step 2)'
                       : !isPresencePhotoDone
-                      ? 'Start Service Execution (Capture Tech Selfie Above)'
-                      : 'Start Service Execution (Complete Prerequisites)'}
+                      ? 'Start Service (Capture Tech Selfie in Step 3)'
+                      : 'Start Service (Complete Prerequisites)'}
                   </span>
                 </button>
               )}
