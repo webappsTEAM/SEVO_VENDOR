@@ -19,6 +19,7 @@ import {
   setAuthTokens,
   clearAuthTokens,
 } from '../utils/authTokens.js';
+import { setSentryUser, clearSentryUser } from '../utils/sentry.js';
 
 const CACHED_USER_KEY = 'calservice_workforce_cached_user';
 const CACHED_EMP_KEY = 'calservice_workforce_cached_emp';
@@ -316,6 +317,15 @@ export function AuthProvider({ children }) {
       window.removeEventListener('workforce:auth-unauthorized', handleUnauthorized);
     };
   }, []);
+
+  // Synchronize safe user context to Sentry
+  useEffect(() => {
+    if (user) {
+      setSentryUser(user);
+    } else {
+      clearSentryUser();
+    }
+  }, [user]);
 
   useEffect(() => {
     // A hard 4s timer used to force isReady=true even while the profile fetch

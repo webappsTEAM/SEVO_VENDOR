@@ -9,6 +9,7 @@
     "preview": "vite preview --port 5176"
   },
   "dependencies": {
+    "@sentry/react": "^11.0.0",
     "clsx": "^2.1.1",
     "html5-qrcode": "^2.3.8",
     "jsbarcode": "^3.12.3",

@@ -10,6 +10,7 @@ import {
   clearAuthTokens,
 } from '../utils/authTokens.js';
 import { classifyApiError } from '../utils/apiErrors.js';
+import { captureUnexpectedApiError } from '../utils/sentry.js';
 
 let inFlightRefreshPromise = null;
 let lastRefreshFailure = null;
@@ -143,6 +144,7 @@ export async function apiRequest(path, options = {}) {
     error.status = 0;
     error.code = 'NETWORK_ERROR';
     error.originalError = netErr;
+    captureUnexpectedApiError(error, { path, method: config.method, status: 0 });
     throw error;
   }
 
@@ -234,6 +236,9 @@ export async function apiRequest(path, options = {}) {
     error.data = data;
     if (data && data.fields) {
       error.fields = data.fields;
+    }
+    if (response.status >= 500) {
+      captureUnexpectedApiError(error, { path, method: config.method, status: response.status });
     }
     throw error;
   }

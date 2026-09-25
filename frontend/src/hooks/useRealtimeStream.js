@@ -12,6 +12,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { getAccessToken, isTokenExpired } from '../utils/authTokens.js';
 import { apiRefreshToken } from '../api/client.js';
+import { addSentryBreadcrumb, captureSentryException } from '../utils/sentry.js';
 
 export const SSE_STATE = {
   DISCONNECTED: 'DISCONNECTED',
@@ -337,6 +338,9 @@ export function useRealtimeStream({
       };
     } catch (err) {
       console.warn('[Realtime AUTH FAILURE] Error creating EventSource stream:', err?.message || err);
+      captureSentryException(err, {
+        tags: { component: 'useRealtimeStream', error_type: 'sse_connect_error' },
+      });
       setConnectionState(SSE_STATE.DISCONNECTED);
     } finally {
       isConnectingRef.current = false;
