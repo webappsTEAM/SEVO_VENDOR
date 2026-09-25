@@ -41,12 +41,12 @@ logger = logging.getLogger(__name__)
 # summary from their side -- they did approve it.
 STATUS_MAP = {
     "DRAFT": "DRAFT",
-    "PENDING_REVIEW": "DRAFT",           # held for admin; not the customer's business yet
+    "PENDING_REVIEW": "SUBMITTED_FOR_ADMIN_REVIEW",
+    "CHANGES_REQUESTED": "SENT_BACK_TO_TECHNICIAN",
+    "ADMIN_APPROVED": "ADMIN_APPROVED",
     "SENT_TO_CUSTOMER": "SENT",
-    "CHANGES_REQUESTED": "SENT",         # still the live version until v2 supersedes it
     "CUSTOMER_ACCEPTED": "APPROVED",
     "PENDING_ADMIN_APPROVAL": "APPROVED",
-    "ADMIN_APPROVED": "APPROVED",
     "CONVERSION_PENDING": "APPROVED",
     "CONVERTED": "APPROVED",
     "DECLINED": "REJECTED",
@@ -59,10 +59,12 @@ STATUS_MAP = {
 # WorkforceQuote.Status -> Estimation.Status, so the customer's booking screen
 # moves through its own lifecycle as the quote does.
 ESTIMATION_STATUS_MAP = {
+    "PENDING_REVIEW": "SUBMITTED_FOR_ADMIN_REVIEW",
+    "CHANGES_REQUESTED": "SENT_BACK_TO_TECHNICIAN",
+    "ADMIN_APPROVED": "ADMIN_APPROVED",
     "SENT_TO_CUSTOMER": "QUOTATION_SENT",
     "CUSTOMER_ACCEPTED": "CUSTOMER_APPROVED",
     "PENDING_ADMIN_APPROVAL": "CUSTOMER_APPROVED",
-    "ADMIN_APPROVED": "CUSTOMER_APPROVED",
     "CONVERTED": "CONVERTED_TO_SERVICE",
     "DECLINED": "CUSTOMER_REJECTED",
     "ADMIN_REJECTED": "CUSTOMER_REJECTED",
@@ -179,6 +181,9 @@ def _project(quote):
                 "customer_rejected_at": (
                     quote.customer_decided_at if quote.customer_decision == "DECLINED" else None
                 ),
+                "admin_reviewed_at": quote.admin_approved_at or quote.admin_cleared_at,
+                "admin_reviewed_by": quote.admin_approved_by or quote.admin_cleared_by,
+                "admin_notes": quote.admin_approval_notes or quote.admin_clearance_notes or "",
                 "rejection_note": quote.customer_decline_reason or "",
             },
         )

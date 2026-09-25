@@ -20,32 +20,56 @@ logger = logging.getLogger("workforce.workload")
 ACTIVE_QUEUE_STATUSES: List[str] = [
     "assigned",
     "accepted",
+    "customer_approved",
+    "repair_authorized",
     "on_the_way",
     "en_route",
     "arrived",
     "in_progress",
+    "in_service",
+    "inspection",
     "proof_submitted",
+    "quotation_created",
+    "quotation_pending_approval",
+    "quotation_sent",
+    "inspection_completed",
 ]
 
 # Authoritative definition of all statuses where an employee is actively executing work
 ACTIVE_WORKLOAD_STATUSES: List[str] = [
     "accepted",
+    "customer_approved",
+    "repair_authorized",
     "on_the_way",
     "en_route",
     "arrived",
     "in_progress",
+    "in_service",
+    "inspection",
     "proof_submitted",
+    "quotation_created",
+    "quotation_pending_approval",
+    "quotation_sent",
+    "inspection_completed",
 ]
 
 # Workload blocking statuses that prevent new exclusive offers (ONE EMPLOYEE = ONE ACTIVE JOB)
 WORKLOAD_OCCUPIED_STATUSES: List[str] = [
     "assigned",
     "accepted",
+    "customer_approved",
+    "repair_authorized",
     "on_the_way",
     "en_route",
     "arrived",
     "in_progress",
+    "in_service",
+    "inspection",
     "proof_submitted",
+    "quotation_created",
+    "quotation_pending_approval",
+    "quotation_sent",
+    "inspection_completed",
 ]
 
 # Terminal statuses where an assignment has fully ended

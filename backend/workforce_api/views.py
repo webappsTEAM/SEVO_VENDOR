@@ -2334,8 +2334,6 @@ class WorkforceAdminRejectApplicationView(APIView):
         }, status=status.HTTP_200_OK)
 
 
-# ─── 7. Decoupled Presence & Availability Toggle (Rule 3) ──────────────────────
-
 class WorkforcePresenceToggleView(APIView):
     permission_classes = [IsApprovedTechnician]
 
@@ -2370,7 +2368,6 @@ class WorkforcePresenceToggleView(APIView):
         emp.save(update_fields=["is_online"])
         reconcile_employee_availability(emp)
         emp.refresh_from_db(fields=["current_availability", "is_online"])
-
 
         try:
             PresenceLog.objects.create(
@@ -3164,7 +3161,15 @@ class WorkforceJobProofView(APIView):
                 return Response({"error": "Unauthorized: Job belongs to another vendor company.", "code": "CROSS_TENANT_FORBIDDEN"}, status=status.HTTP_403_FORBIDDEN)
 
         if job.status not in ["in_progress", "proof_submitted"]:
-            return Response({"error": f"Cannot submit completion proof for job in status '{job.status}'. Expected 'in_progress'."}, status=status.HTTP_400_BAD_REQUEST)
+            valid_pre_proof_statuses = ["assigned", "accepted", "arrived", "quotation_sent", "inspection_completed"]
+            if job.status in valid_pre_proof_statuses:
+                try:
+                    apply_transition(job, "in_progress", actor=request.user)
+                except Exception as ex:
+                    logger.warning("[PROOF_SUBMIT] Auto-transition to in_progress failed: %s", ex)
+
+            if job.status not in ["in_progress", "proof_submitted"]:
+                return Response({"error": f"Cannot submit completion proof for job in status '{job.status}'. Expected 'in_progress'."}, status=status.HTTP_400_BAD_REQUEST)
 
         completion_notes = request.data.get("notes", "").strip() or request.data.get("completion_notes", "").strip()
         after_presence = request.FILES.get("after_presence_photo") or request.FILES.get("after_selfie") or request.FILES.get("presence_photo")

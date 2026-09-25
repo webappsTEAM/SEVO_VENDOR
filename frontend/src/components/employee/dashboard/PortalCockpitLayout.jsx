@@ -189,10 +189,11 @@ export function PortalCockpitLayout({
 
   const status = (isActiveAssignment ? (activeJob?.status || activeJob?.job_status || '') : (isOffer ? 'OFFERED' : 'STANDBY')).toUpperCase();
 
-  const isAssigned = status === 'ASSIGNED' || status === 'ACCEPTED';
+  const isCustomerApproved = status === 'CUSTOMER_APPROVED' || status === 'REPAIR_AUTHORIZED';
+  const isAssigned = status === 'ASSIGNED' || status === 'ACCEPTED' || isCustomerApproved;
   const isEnRoute = status === 'EN_ROUTE' || status === 'ON_THE_WAY';
   const isArrived = status === 'ARRIVED';
-  const isInProgress = status === 'IN_PROGRESS' || status === 'IN_SERVICE' || status === 'INSPECTION';
+  const isInProgress = status === 'IN_PROGRESS' || status === 'IN_SERVICE' || status === 'INSPECTION' || status === 'QUOTATION_SENT' || status === 'QUOTATION_PENDING_APPROVAL' || status === 'QUOTATION_CREATED' || status === 'INSPECTION_COMPLETED';
   const isProofSubmitted = status === 'PROOF_SUBMITTED' || status === 'PENDING_APPROVAL' || status === 'WAITING_FOR_PAYMENT';
   const isCompleted = status === 'COMPLETED' || status === 'WORK_COMPLETED';
 
@@ -973,8 +974,8 @@ export function PortalCockpitLayout({
                   <CheckCircle2 className="w-4 h-4" />
                   <span>Complete Service &amp; Submit Proof</span>
                 </button>
-              ) : isEstimationJob ? (
-                activeQuoteStatus === 'CUSTOMER_ACCEPTED' || activeQuoteStatus === 'CONVERTED' ? (
+              ) : (isEstimationJob || isCustomerApproved || activeQuoteStatus === 'CUSTOMER_ACCEPTED' || activeQuoteStatus === 'CONVERTED') ? (
+                (activeQuoteStatus === 'CUSTOMER_ACCEPTED' || activeQuoteStatus === 'CONVERTED' || isCustomerApproved) ? (
                   // Quote accepted: show "Start Execution" so the job moves to IN_PROGRESS,
                   // after which the standard "Complete Service & Submit Proof" button (isInProgress branch above)
                   // will be shown automatically. Previously this was a static badge with no action,

@@ -99,7 +99,7 @@ def _visible_quotes(request):
 
     # Plain technician: their own work only. company_id is also matched so a
     # reassigned employee cannot reach quotes left behind at a previous vendor.
-    scoped = qs.filter(technician_id=emp.id)
+    scoped = qs.filter(Q(technician_id=emp.id) | Q(job__assigned_employee_id=emp.id))
     if emp.company_id:
         scoped = scoped.filter(Q(company_id=emp.company_id) | Q(company__isnull=True))
     return scoped

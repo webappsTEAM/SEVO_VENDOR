@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useParams, useSearchParams } from 'react-router-dom';
 import {
   Calculator,
   Search,
@@ -38,6 +39,10 @@ const STATUS_TABS = [
 ];
 
 export default function EmployeeEstimatesPage() {
+  const { id: urlParamId } = useParams();
+  const [searchParams] = useSearchParams();
+  const urlJobId = searchParams.get('job_id') || urlParamId;
+
   const [activeTab, setActiveTab] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [quotes, setQuotes] = useState([]);
@@ -77,6 +82,17 @@ export default function EmployeeEstimatesPage() {
     setSelectedJob(quote.job_details || { id: quote.job_id, issue_title: quote.service_name, customer_name: quote.customer_name });
     setIsModalOpen(true);
   };
+
+  // Auto-open modal if URL specifies an estimate or job ID
+  useEffect(() => {
+    if (!quotes || quotes.length === 0 || (!urlParamId && !urlJobId)) return;
+    const match = quotes.find(
+      (q) => String(q.id) === String(urlParamId) || String(q.job_id) === String(urlJobId)
+    );
+    if (match) {
+      handleOpenQuote(match);
+    }
+  }, [quotes, urlParamId, urlJobId]);
 
   const handleRevise = async (quote, e) => {
     e.stopPropagation();
