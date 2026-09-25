@@ -29,6 +29,7 @@ The driver-visible trip flow this supports:
 """
 import logging
 
+from django.db import transaction
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
@@ -125,26 +126,62 @@ def set_logistics_leg(job, leg, actor=None):
     established pattern for every shared table here.
     """
     leg = (leg or "").strip().upper()
-    allowed, reason = can_advance_to(job.logistics_leg, leg, service_category=job.service_category)
-    if not allowed:
-        return False, reason
 
-    if job.logistics_leg == leg:
-        return False, ""
+    if hasattr(job, "pk") and job.pk and hasattr(type(job), "objects"):
+        with transaction.atomic():
+            locked = type(job).objects.select_for_update().filter(pk=job.pk).first()
+            target = locked if locked is not None else job
 
-    now = timezone.now()
-    history = list(job.logistics_leg_history or [])
-    history.append({
-        "leg": leg,
-        "at": now.isoformat(),
-        "by": getattr(actor, "id", None),
-    })
-    job.logistics_leg = leg
-    job.logistics_leg_updated_at = now
-    job.logistics_leg_history = history
-    job.save(update_fields=[
-        "logistics_leg", "logistics_leg_updated_at", "logistics_leg_history", "updated_at",
-    ])
+            allowed, reason = can_advance_to(target.logistics_leg, leg, service_category=target.service_category)
+            if not allowed:
+                return False, reason
+
+            if target.logistics_leg == leg:
+                job.logistics_leg = target.logistics_leg
+                job.logistics_leg_updated_at = target.logistics_leg_updated_at
+                job.logistics_leg_history = target.logistics_leg_history
+                return False, ""
+
+            now = timezone.now()
+            history = list(target.logistics_leg_history or [])
+            if not any(h.get("leg") == leg for h in history):
+                history.append({
+                    "leg": leg,
+                    "at": now.isoformat(),
+                    "by": getattr(actor, "id", None),
+                })
+            target.logistics_leg = leg
+            target.logistics_leg_updated_at = now
+            target.logistics_leg_history = history
+            target.save(update_fields=[
+                "logistics_leg", "logistics_leg_updated_at", "logistics_leg_history", "updated_at",
+            ])
+            job.logistics_leg = target.logistics_leg
+            job.logistics_leg_updated_at = target.logistics_leg_updated_at
+            job.logistics_leg_history = target.logistics_leg_history
+    else:
+        allowed, reason = can_advance_to(job.logistics_leg, leg, service_category=getattr(job, "service_category", None))
+        if not allowed:
+            return False, reason
+
+        if job.logistics_leg == leg:
+            return False, ""
+
+        now = timezone.now()
+        history = list(job.logistics_leg_history or [])
+        if not any(h.get("leg") == leg for h in history):
+            history.append({
+                "leg": leg,
+                "at": now.isoformat(),
+                "by": getattr(actor, "id", None),
+            })
+        job.logistics_leg = leg
+        job.logistics_leg_updated_at = now
+        job.logistics_leg_history = history
+        if hasattr(job, "save"):
+            job.save(update_fields=[
+                "logistics_leg", "logistics_leg_updated_at", "logistics_leg_history", "updated_at",
+            ])
 
     emit_leg_changed(job, leg)
     return True, ""
@@ -185,18 +222,31 @@ def record_stop_progress(job, stop, completed, actor=None):
     """
     now = timezone.now()
     fields = []
-    if stop.arrived_at is None:
-        stop.arrived_at = now
-        fields.append("arrived_at")
-    if completed and stop.completed_at is None:
-        stop.completed_at = now
-        fields.append("completed_at")
+    
+    if hasattr(stop, "pk") and stop.pk and hasattr(type(stop), "objects"):
+        with transaction.atomic():
+            locked_stop = type(stop).objects.select_for_update().filter(pk=stop.pk).first()
+            target = locked_stop if locked_stop is not None else stop
+            if target.arrived_at is None:
+                target.arrived_at = now
+                fields.append("arrived_at")
+            if completed and target.completed_at is None:
+                target.completed_at = now
+                fields.append("completed_at")
+            if fields:
+                target.save(update_fields=fields)
+            stop.arrived_at = target.arrived_at
+            stop.completed_at = target.completed_at
+    else:
+        if stop.arrived_at is None:
+            stop.arrived_at = now
+            fields.append("arrived_at")
+        if completed and stop.completed_at is None:
+            stop.completed_at = now
+            fields.append("completed_at")
+        if fields and hasattr(stop, "save"):
+            stop.save(update_fields=fields)
 
-    if fields:
-        stop.save(update_fields=fields)
-
-    # Emit even on a no-op save: the customer's app may have missed the
-    # first delivery, and the receiver is itself idempotent.
     emit_stop_progress(job, stop, completed)
     return bool(fields)
 

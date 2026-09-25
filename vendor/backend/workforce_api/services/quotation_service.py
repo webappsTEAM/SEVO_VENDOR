@@ -102,8 +102,16 @@ def can_create_quote(job, psv=None):
     # returned a verdict and the estimation workflow could not start at all.
     # getattr() lets the expression fall through to is_quotation_service(), which
     # is the classifier that actually works (service id / slug / name / category).
-    _is_estimation = getattr(job, "is_estimation", False)
-    if not (_is_estimation or is_quotation_service(name=job.issue_title, category=job.service_category)):
+    _is_estimation = (
+        getattr(job, "is_estimation", False) or
+        getattr(job, "request_kind", "") == "ESTIMATION" or
+        getattr(job, "job_type", "") == "ESTIMATION"
+    )
+    if not (_is_estimation or is_quotation_service(
+        service_id=getattr(job, "catalog_service_id", None),
+        name=job.issue_title,
+        category=job.service_category
+    )):
         return False, {
             "code": "NOT_A_QUOTATION_SERVICE",
             "message": "This job is a standard direct service and does not require an estimation quote.",
@@ -707,6 +715,7 @@ def quotes_awaiting_admin_approval():
         WorkforceQuote.objects
         .filter(status=WorkforceQuote.Status.PENDING_ADMIN_APPROVAL)
         .select_related("job", "technician", "company", "customer")
+        .prefetch_related("items", "measurements")
         .order_by("submitted_for_approval_at", "id")
     )
 
@@ -868,13 +877,15 @@ def release_high_value_quote(quote_id, admin_user, approve=True, notes="", valid
             )
 
         if not approve:
-            quote.status = WorkforceQuote.Status.CANCELLED
+            quote.status = WorkforceQuote.Status.ADMIN_REJECTED
+            quote.admin_rejection_reason = notes or ""
             quote.admin_clearance_notes = f"REJECTED: {notes}".strip()
             quote.admin_cleared_by = admin_user if getattr(admin_user, "is_authenticated", False) else None
             quote.save(update_fields=[
-                "status", "admin_clearance_notes", "admin_cleared_by", "updated_at",
+                "status", "admin_rejection_reason", "admin_clearance_notes", "admin_cleared_by", "updated_at",
             ])
             logger.info("High-value quote %s rejected pre-send by %s", quote.quote_number, admin_user)
+            _project(quote)
             return quote
 
         quote.admin_cleared_by = admin_user if getattr(admin_user, "is_authenticated", False) else None
@@ -896,5 +907,6 @@ def quotes_awaiting_pre_send_review():
         WorkforceQuote.objects
         .filter(status=WorkforceQuote.Status.PENDING_REVIEW)
         .select_related("job", "technician", "company", "customer")
+        .prefetch_related("items", "measurements")
         .order_by("updated_at", "id")
     )

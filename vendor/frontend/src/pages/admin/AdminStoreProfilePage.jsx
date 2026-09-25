@@ -9,6 +9,7 @@ import {
 } from '../../api/workforceService.js';
 import { AppShell } from '../../components/common/AppShell.jsx';
 import { PageHeader } from '../../components/common/PageHeader.jsx';
+import { LocationPickerMap } from '../../components/common/LocationPickerMap.jsx';
 import {
   Store,
   Save,
@@ -21,6 +22,7 @@ import {
   Power,
   RefreshCw,
   ExternalLink,
+  Navigation,
 } from 'lucide-react';
 
 export default function AdminStoreProfilePage() {
@@ -37,6 +39,8 @@ export default function AdminStoreProfilePage() {
   const [bannerUrl, setBannerUrl] = useState('');
   const [fssaiLicense, setFssaiLicense] = useState('');
   const [storeAddress, setStoreAddress] = useState('');
+  const [latitude, setLatitude] = useState(null);
+  const [longitude, setLongitude] = useState(null);
   const [deliveryRadius, setDeliveryRadius] = useState(5.0);
   const [minOrder, setMinOrder] = useState('0.00');
   const [deliveryMins, setDeliveryMins] = useState(30);
@@ -60,6 +64,8 @@ export default function AdminStoreProfilePage() {
         setBannerUrl(res.banner_url || '');
         setFssaiLicense(res.fssai_license_number || '');
         setStoreAddress(res.store_address || '');
+        setLatitude(res.latitude !== undefined && res.latitude !== null ? parseFloat(res.latitude) : null);
+        setLongitude(res.longitude !== undefined && res.longitude !== null ? parseFloat(res.longitude) : null);
         setDeliveryRadius(res.delivery_radius_km || 5.0);
         setMinOrder(res.minimum_order_amount || '0.00');
         setDeliveryMins(res.estimated_delivery_mins || 30);
@@ -85,6 +91,8 @@ export default function AdminStoreProfilePage() {
         banner_url: bannerUrl,
         fssai_license_number: fssaiLicense,
         store_address: storeAddress,
+        latitude: latitude != null ? latitude : null,
+        longitude: longitude != null ? longitude : null,
         delivery_radius_km: deliveryRadius,
         minimum_order_amount: minOrder,
         estimated_delivery_mins: deliveryMins,
@@ -304,6 +312,47 @@ export default function AdminStoreProfilePage() {
                   className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   placeholder="Shop #12, Market Road, Hosur, Tamil Nadu"
                 />
+              </div>
+
+              {/* Store GPS Pin & Coordinates */}
+              <div className="pt-2 border-t border-slate-100 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-800">
+                      Store Pickup Pin & Coordinates (Required for Rider Dispatch)
+                    </label>
+                    <p className="text-[11px] text-slate-500">
+                      Drop a pin on your exact store/warehouse location or search your address. Riders use this exact coordinate for pickup matching and navigation.
+                    </p>
+                  </div>
+                  {latitude != null && longitude != null ? (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                      Pin Set ({Number(latitude).toFixed(4)}, {Number(longitude).toFixed(4)})
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                      <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
+                      Location Pin Missing
+                    </span>
+                  )}
+                </div>
+
+                <LocationPickerMap
+                  latitude={latitude}
+                  longitude={longitude}
+                  onPositionChange={(lat, lng) => {
+                    setLatitude(lat);
+                    setLongitude(lng);
+                  }}
+                  geofenceRadius={deliveryRadius * 1000}
+                  height="320px"
+                  showSearch={true}
+                />
+
+                <p className="text-[11px] text-slate-400">
+                  Tip: The blue circle on the map shows your configured <strong className="text-slate-600">{deliveryRadius} km delivery zone</strong> around your store pin.
+                </p>
               </div>
             </div>
 

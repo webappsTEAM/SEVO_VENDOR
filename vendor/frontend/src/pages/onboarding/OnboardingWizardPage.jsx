@@ -9,7 +9,10 @@ import {
   apiUploadDocument,
   apiSubmitOnboarding,
   apiGetCatalog,
+  apiSaveVendorBaseLocation,
 } from '../../api/workforceService.js';
+import { forwardGeocode, reverseGeocode } from '../../hooks/useReverseGeocode.js';
+import { LocationPickerMap } from '../../components/common/LocationPickerMap.jsx';
 import { StatusBadge } from '../../components/enterprise/StatusBadge.jsx';
 import { ErrorState } from '../../components/enterprise/ErrorState.jsx';
 import { LoadingState } from '../../components/enterprise/LoadingState.jsx';
@@ -27,12 +30,18 @@ import {
   AlertCircle,
   HelpCircle,
   Lock,
+  Eye,
+  EyeOff,
+  LocateFixed,
+  Compass,
+  Building2,
+  Navigation,
 } from 'lucide-react';
 
 
 const STEPS = [
   { id: 1, label: 'Personal', icon: User },
-  { id: 2, label: 'Address & Territory', icon: MapPin },
+  { id: 2, label: 'Address', icon: MapPin },
   { id: 3, label: 'Services', icon: Wrench },
   { id: 4, label: 'Skills & Tools', icon: Award },
   { id: 5, label: 'Documents', icon: FileText },
@@ -45,13 +54,31 @@ export function OnboardingWizardPage() {
   const navigate = useNavigate();
 
   const [currentStep, setCurrentStep] = useState(1);
+  const [completedSteps, setCompletedSteps] = useState([]);
+  const [fieldErrors, setFieldErrors] = useState({});
   const [catalog, setCatalog] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
+  const [showAccountNumber, setShowAccountNumber] = useState(false);
+  const [showConfirmAccountNumber, setShowConfirmAccountNumber] = useState(false);
+
+  const clearBankFieldError = (fieldKey) => {
+    setFieldErrors((prev) => {
+      if (!prev[fieldKey] && !prev[`bank.${fieldKey}`]) return prev;
+      const next = { ...prev };
+      delete next[fieldKey];
+      delete next[`bank.${fieldKey}`];
+      return next;
+    });
+  };
+
   const isLocked = ['approved', 'submitted', 'under_review'].includes(registrationStatus);
+  const [isDetectingGps, setIsDetectingGps] = useState(false);
+  const [gpsFeedback, setGpsFeedback] = useState(null);
+  const [showLiveMap, setShowLiveMap] = useState(true);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -67,14 +94,13 @@ export function OnboardingWizardPage() {
       city: '',
       state: '',
       pincode: '',
-      serviceRadius: '',
     },
     services: [],
     skills: {
       experienceYears: '',
       tools: [],
       languages: [],
-      vehicleType: '',
+      vehicleType: 'two_wheeler',
       licenseNumber: '',
     },
     documents: {},
@@ -114,8 +140,16 @@ export function OnboardingWizardPage() {
             services: draft.services || prev.services,
             skills: { ...prev.skills, ...(draft.skills || {}) },
             documents: ob.documents || draft.documents || {},
-            bank: { ...prev.bank, ...(draft.bank || {}) },
+            bank: {
+              ...prev.bank,
+              ...(draft.bank || {}),
+              confirmAccountNumber: (draft.bank && draft.bank.accountNumber) ? draft.bank.accountNumber : prev.bank.confirmAccountNumber,
+            },
           }));
+
+          if (Array.isArray(ob.completed_steps)) {
+            setCompletedSteps(ob.completed_steps);
+          }
 
           if (ob.step && ob.step >= 1 && ob.step <= 7) {
             setCurrentStep(ob.step);
@@ -130,75 +164,309 @@ export function OnboardingWizardPage() {
     loadData();
   }, []);
 
-  const saveCurrentDraft = async (nextStep = null) => {
+  const getMaxDob = () => {
+    const d = new Date();
+    d.setFullYear(d.getFullYear() - 18);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  };
+
+  const getMinDob = () => {
+    const d = new Date();
+    d.setFullYear(d.getFullYear() - 100);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  };
+
+  const canNavigateToStep = (targetStep) => {
+    if (isLocked) return true;
+    if (targetStep === currentStep) return true;
+    // Backward navigation is always allowed for editable applications
+    if (targetStep < currentStep) return true;
+    // Forward navigation requires all steps up to targetStep - 1 to be validated & completed
+    for (let s = 1; s < targetStep; s++) {
+      if (!completedSteps.includes(s)) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const getDraftDataForStep = (step) => {
+    switch (step) {
+      case 1:
+        return { personal: formData.personal };
+      case 2:
+        return { address: formData.address };
+      case 3:
+        return { services: formData.services };
+      case 4:
+        return { skills: formData.skills };
+      case 5:
+        return { documents: formData.documents };
+      case 6:
+        return { bank: formData.bank };
+      default:
+        return { personal: formData.personal };
+    }
+  };
+
+  const extractOnboardingError = (err) => {
+    const data = err?.data || {};
+    const fields = err?.fields || data.fields || {};
+
+    const fieldMsgs = [];
+    if (fields && typeof fields === 'object') {
+      for (const val of Object.values(fields)) {
+        if (Array.isArray(val)) {
+          val.forEach((m) => { if (m) fieldMsgs.push(String(m)); });
+        } else if (typeof val === 'string' && val.trim()) {
+          fieldMsgs.push(val.trim());
+        }
+      }
+    }
+
+    let msg = '';
+    if (fieldMsgs.length > 0) {
+      msg = fieldMsgs.join(' • ');
+    } else if (data.message && data.message !== 'Please correct the highlighted fields.' && !data.message.includes('ONBOARDING_VALIDATION_FAILED')) {
+      msg = data.message;
+    } else if (err?.message && !err.message.includes('ONBOARDING_VALIDATION_FAILED') && !err.message.includes('ONBOARDING_STEP_SKIPPED')) {
+      msg = err.message;
+    } else if (data.message) {
+      msg = data.message;
+    } else {
+      msg = 'Validation failed. Please review your entries and try again.';
+    }
+
+    return { message: msg, fields: fields && typeof fields === 'object' ? fields : {} };
+  };
+
+  const saveCurrentDraft = async (targetStep = null) => {
     if (isLocked) {
-      if (nextStep) setCurrentStep(nextStep);
-      return;
+      if (targetStep) setCurrentStep(targetStep);
+      return true;
     }
     try {
       setIsSaving(true);
       setError('');
-      await apiSaveOnboardingDraft(nextStep || currentStep, {
-        personal: formData.personal,
-        address: formData.address,
-        services: formData.services,
-        skills: formData.skills,
-        documents: formData.documents,
-        bank: formData.bank,
-      });
-      if (nextStep) setCurrentStep(nextStep);
+      setFieldErrors({});
+      const stepToSave = targetStep !== null ? targetStep : currentStep;
+      // Only send the active step's data so subsequent empty steps are not prematurely validated
+      const payload = getDraftDataForStep(currentStep);
+      const res = await apiSaveOnboardingDraft(stepToSave, payload);
+
+      if (res && res.onboarding_data && Array.isArray(res.onboarding_data.completed_steps)) {
+        setCompletedSteps(res.onboarding_data.completed_steps);
+      }
+      if (targetStep !== null) {
+        setCurrentStep(targetStep);
+      }
+      return true;
     } catch (err) {
-      setError(err.message || 'Failed to save draft.');
+      const { message: errMsg, fields } = extractOnboardingError(err);
+      setError(errMsg);
+      if (fields && typeof fields === 'object') {
+        setFieldErrors(fields);
+      }
+      return false;
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (isLocked) {
       if (currentStep < 7) setCurrentStep(currentStep + 1);
       return;
     }
+    // Step UX validations before hitting server
     if (currentStep === 1) {
       if (!formData.personal.dob) {
         setError('Please enter your date of birth.');
+        setFieldErrors({ dob: 'Date of birth is required.' });
         return;
+      }
+      const dobDate = new Date(formData.personal.dob);
+      const today = new Date();
+      let age = today.getFullYear() - dobDate.getFullYear();
+      const m = today.getMonth() - dobDate.getMonth();
+      if (m < 0 || (m === 0 && today.getDate() < dobDate.getDate())) {
+        age--;
+      }
+      if (isNaN(dobDate.getTime()) || dobDate > today) {
+        setError('Date of birth cannot be in the future.');
+        setFieldErrors({ dob: 'Date of birth cannot be in the future.' });
+        return;
+      }
+      if (age < 18) {
+        setError('Technician candidates must be at least 18 years of age.');
+        setFieldErrors({ dob: 'Must be at least 18 years old.' });
+        return;
+      }
+      if (formData.personal.emergencyPhone) {
+        const cleanPhone = String(formData.personal.emergencyPhone).replace(/\D/g, '');
+        if (cleanPhone.length < 10) {
+          setError('Emergency contact phone must be at least 10 digits.');
+          setFieldErrors({ emergencyPhone: 'Must be at least 10 digits.' });
+          return;
+        }
       }
     } else if (currentStep === 2) {
       if (!formData.address.street || !formData.address.city || !formData.address.pincode) {
-        setError('Please complete your address details.');
+        setError('Please complete your address details (street, city, and pincode).');
+        return;
+      }
+      const cleanPin = String(formData.address.pincode).replace(/\D/g, '');
+      if (cleanPin.length !== 6) {
+        setError('Pincode must be exactly 6 digits.');
+        setFieldErrors({ pincode: 'Pincode must be exactly 6 digits.' });
         return;
       }
     } else if (currentStep === 3) {
-      if (formData.services.length === 0) {
+      if (!formData.services || formData.services.length === 0) {
         setError('Please select at least ONE service you provide.');
         return;
       }
-    } else if (currentStep === 6) {
-      if (!formData.bank.accountHolder || !formData.bank.accountNumber || !formData.bank.ifsc) {
-        setError('Please complete your bank account details for direct deposit.');
+    } else if (currentStep === 4) {
+      if (formData.skills.experienceYears === '' || formData.skills.experienceYears === undefined || isNaN(formData.skills.experienceYears)) {
+        setError('Please enter your years of experience (0 to 50).');
+        setFieldErrors({ experienceYears: 'Years of experience is required.' });
         return;
       }
-      if (formData.bank.accountNumber !== formData.bank.confirmAccountNumber) {
+      const exp = parseFloat(formData.skills.experienceYears);
+      if (exp < 0 || exp > 50) {
+        setError('Years of experience must be between 0 and 50.');
+        setFieldErrors({ experienceYears: 'Must be between 0 and 50.' });
+        return;
+      }
+      if (['two_wheeler', 'four_wheeler'].includes(formData.skills.vehicleType)) {
+        if (!formData.skills.licenseNumber || !formData.skills.licenseNumber.trim()) {
+          setError('Driver license number is required for motorized vehicles.');
+          setFieldErrors({ licenseNumber: 'License number is required.' });
+          return;
+        }
+      }
+    } else if (currentStep === 5) {
+      const docs = formData.documents || {};
+      const missing = [];
+      if (!docs.aadhaar) missing.push('Aadhaar Card');
+      if (!docs.address_proof) missing.push('Address Proof');
+      if (!docs.bank_proof) missing.push('Bank Proof');
+      if (missing.length > 0) {
+        setError(`Please upload required documents: ${missing.join(', ')}.`);
+        return;
+      }
+    } else if (currentStep === 6) {
+      // Validate in exact order:
+      // 1. Account Holder Name
+      // 2. IFSC format
+      // 3. Account Number format/length
+      // 4. Confirm Account Number format/length
+      // 5. Account Number match
+
+      // 1. Account Holder Name
+      const rawHolder = (formData.bank.accountHolder || '').replace(/\s+/g, ' ').trim();
+      if (!rawHolder) {
+        setError('Account holder name is required.');
+        setFieldErrors({ accountHolder: 'Account holder name is required.' });
+        document.getElementById('bank-account-holder')?.focus();
+        return;
+      }
+      if (rawHolder.length < 2) {
+        setError('Account holder name must be at least 2 characters.');
+        setFieldErrors({ accountHolder: 'Account holder name must be at least 2 characters.' });
+        document.getElementById('bank-account-holder')?.focus();
+        return;
+      }
+      if (rawHolder.length > 100) {
+        setError('Account holder name cannot exceed 100 characters.');
+        setFieldErrors({ accountHolder: 'Account holder name cannot exceed 100 characters.' });
+        document.getElementById('bank-account-holder')?.focus();
+        return;
+      }
+      const holderRegex = /^[A-Za-z][A-Za-z\s.'-]*[A-Za-z.]$/;
+      const alphaCount = (rawHolder.match(/[A-Za-z]/g) || []).length;
+      const hasBadPunctuation = /\.\.|--|''|\.-|-\./.test(rawHolder);
+      if (!holderRegex.test(rawHolder) || alphaCount < 2 || hasBadPunctuation) {
+        setError('Enter a valid account holder name using English letters and standard punctuation only.');
+        setFieldErrors({ accountHolder: 'Enter a valid account holder name (English letters only).' });
+        document.getElementById('bank-account-holder')?.focus();
+        return;
+      }
+
+      // 2. IFSC Code
+      const rawIfsc = (formData.bank.ifsc || '').trim().toUpperCase();
+      const ifscRegex = /^[A-Z]{4}0[A-Z0-9]{6}$/;
+      if (!rawIfsc) {
+        setError('IFSC code is required.');
+        setFieldErrors({ ifsc: 'IFSC code is required.' });
+        document.getElementById('bank-ifsc')?.focus();
+        return;
+      }
+      if (rawIfsc.length !== 11 || !ifscRegex.test(rawIfsc)) {
+        setError('Enter a valid 11-character IFSC code, e.g. SBIN0001234.');
+        setFieldErrors({ ifsc: 'Enter a valid 11-character IFSC code, e.g. SBIN0001234.' });
+        document.getElementById('bank-ifsc')?.focus();
+        return;
+      }
+
+      // 3. Account Number format/length
+      const rawAcc = (formData.bank.accountNumber || '').trim();
+      const accRegex = /^\d{9,18}$/;
+      if (!rawAcc) {
+        setError('Account number is required.');
+        setFieldErrors({ accountNumber: 'Account number is required.' });
+        document.getElementById('bank-account-number')?.focus();
+        return;
+      }
+      if (!accRegex.test(rawAcc)) {
+        setError('Account number must be between 9 and 18 digits (numbers only).');
+        setFieldErrors({ accountNumber: 'Account number must be between 9 and 18 digits.' });
+        document.getElementById('bank-account-number')?.focus();
+        return;
+      }
+
+      // 4. Confirm Account Number format/length
+      const rawConfirm = (formData.bank.confirmAccountNumber || '').trim();
+      if (!rawConfirm) {
+        setError('Please confirm your account number.');
+        setFieldErrors({ confirmAccountNumber: 'Please confirm your account number.' });
+        document.getElementById('bank-confirm-account-number')?.focus();
+        return;
+      }
+      if (!accRegex.test(rawConfirm)) {
+        setError('Confirm account number must be between 9 and 18 digits (numbers only).');
+        setFieldErrors({ confirmAccountNumber: 'Confirm account number must be between 9 and 18 digits.' });
+        document.getElementById('bank-confirm-account-number')?.focus();
+        return;
+      }
+
+      // 5. Account Number match
+      if (rawAcc !== rawConfirm) {
         setError('Account numbers do not match.');
+        setFieldErrors({ confirmAccountNumber: 'Account numbers do not match.' });
+        document.getElementById('bank-confirm-account-number')?.focus();
         return;
       }
     }
 
     setError('');
+    setFieldErrors({});
     const next = currentStep + 1;
-    saveCurrentDraft(next);
+    // Await server-side validation & persistence. Only advance if server verifies validity!
+    await saveCurrentDraft(next);
   };
 
   const handleBack = () => {
     setError('');
+    setFieldErrors({});
     if (currentStep > 1) {
-      const prev = currentStep - 1;
-      if (isLocked) {
-        setCurrentStep(prev);
-      } else {
-        saveCurrentDraft(prev);
-      }
+      setCurrentStep(currentStep - 1);
     }
   };
 
@@ -285,12 +553,34 @@ export function OnboardingWizardPage() {
     try {
       setIsSaving(true);
       setError('');
-      await saveCurrentDraft(7);
-      await apiSubmitOnboarding();
-      await refreshProfile();
-      navigate('/workforce/onboarding/pending-review');
+      setFieldErrors({});
+
+      try {
+        await apiSubmitOnboarding({ declaration_accepted: true });
+      } catch (submitErr) {
+        // If already submitted (409 Conflict or ALREADY_SUBMITTED), proceed gracefully
+        const errData = submitErr?.data || {};
+        if (
+          submitErr?.status === 409 ||
+          errData?.error === 'ALREADY_SUBMITTED' ||
+          errData?.code === 'ALREADY_SUBMITTED' ||
+          errData?.status === 'submitted' ||
+          errData?.status === 'under_review'
+        ) {
+          // Already submitted on server
+        } else {
+          throw submitErr;
+        }
+      }
+
+      await refreshProfile(true);
+      navigate('/workforce/onboarding/pending-review', { replace: true });
     } catch (err) {
-      setError(err.message || 'Submission failed. Please check all mandatory documents.');
+      const { message: errMsg, fields } = extractOnboardingError(err);
+      setError(errMsg);
+      if (fields && typeof fields === 'object') {
+        setFieldErrors(fields);
+      }
     } finally {
       setIsSaving(false);
     }
@@ -345,26 +635,28 @@ export function OnboardingWizardPage() {
           <div className="hidden sm:flex items-center justify-between gap-1">
             {STEPS.map((s) => {
               const Icon = s.icon;
-              const isDone = s.id < currentStep;
+              const isDone = completedSteps.includes(s.id);
               const isCurrent = s.id === currentStep;
+              const canAccess = canNavigateToStep(s.id);
 
               return (
                 <button
                   key={s.id}
                   type="button"
                   onClick={() => {
-                    if (isLocked || s.id < currentStep) setCurrentStep(s.id);
+                    if (canAccess) setCurrentStep(s.id);
                   }}
-                  disabled={!isLocked && s.id > currentStep}
+                  disabled={!canAccess}
                   className={`flex-1 py-1 px-2 border-b-2 flex items-center justify-center gap-1.5 transition-colors ${
                     isCurrent
                       ? 'border-blue-600 text-blue-700 font-bold'
                       : isDone
                       ? 'border-emerald-600 text-emerald-700 font-medium hover:bg-slate-50'
-                      : 'border-transparent text-slate-400 opacity-60'
+                      : canAccess
+                      ? 'border-slate-300 text-slate-600 hover:bg-slate-50'
+                      : 'border-transparent text-slate-400 opacity-50 cursor-not-allowed'
                   }`}
                 >
-
                   <span
                     className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold ${
                       isCurrent
@@ -385,7 +677,24 @@ export function OnboardingWizardPage() {
 
         {/* Main Step Form Card */}
         <div className="bg-white border border-slate-200 rounded p-5 sm:p-6 shadow-sm space-y-4">
-          {error && <ErrorState message={error} onDismiss={() => setError('')} />}
+          {error && (
+            <div className="space-y-1">
+              <ErrorState message={error} onDismiss={() => { setError(''); setFieldErrors({}); }} />
+              {Object.keys(fieldErrors).length > 0 && (
+                <div className="p-2.5 bg-rose-50 border border-rose-200 rounded text-[11px] text-rose-800">
+                  <span className="font-bold">Required Corrections:</span>
+                  <ul className="list-disc list-inside mt-1 space-y-0.5">
+                    {Object.entries(fieldErrors).map(([field, msg]) => (
+                      <li key={field}>
+                        <span className="font-semibold capitalize">{field.replace(/_/g, ' ').replace(/^.*\./, '')}:</span>{' '}
+                        {Array.isArray(msg) ? msg.join(', ') : String(msg)}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
           {successMsg && (
             <div className="p-3 rounded border border-emerald-200 bg-emerald-50 text-emerald-800 text-xs font-semibold flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
@@ -413,16 +722,35 @@ export function OnboardingWizardPage() {
                   </label>
                   <input
                     type="date"
+                    max={getMaxDob()}
+                    min={getMinDob()}
                     value={formData.personal.dob}
-                    onChange={(e) =>
+                    onChange={(e) => {
                       setFormData({
                         ...formData,
                         personal: { ...formData.personal, dob: e.target.value },
-                      })
-                    }
-                    className="w-full p-2"
+                      });
+                      if (fieldErrors.dob || fieldErrors['personal.dob']) {
+                        setFieldErrors((prev) => {
+                          const next = { ...prev };
+                          delete next.dob;
+                          delete next['personal.dob'];
+                          return next;
+                        });
+                      }
+                    }}
+                    className={`w-full p-2 rounded border text-xs ${
+                      fieldErrors.dob || fieldErrors['personal.dob']
+                        ? 'border-rose-500 bg-rose-50'
+                        : 'border-slate-300'
+                    }`}
                     required
                   />
+                  {(fieldErrors.dob || fieldErrors['personal.dob']) && (
+                    <p className="text-[11px] text-rose-500 mt-1">
+                      {fieldErrors.dob || fieldErrors['personal.dob']}
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -482,16 +810,16 @@ export function OnboardingWizardPage() {
             </div>
           )}
 
-          {/* ── STEP 2: ADDRESS & TERRITORY ── */}
+          {/* ── STEP 2: ADDRESS ── */}
           {currentStep === 2 && (
             <div className="space-y-3 text-xs">
               <div>
                 <h2 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
                   <MapPin className="w-4 h-4 text-blue-600" />
-                  2. Residential Address & Travel Territory
+                  2. Residential Address
                 </h2>
                 <p className="text-slate-500 text-[11px]">
-                  Set your base address and operational radius for job dispatch.
+                  Set your base residential address for operational records.
                 </p>
               </div>
 
@@ -504,15 +832,34 @@ export function OnboardingWizardPage() {
                     rows={2}
                     placeholder="House/Flat No, Street, Landmark"
                     value={formData.address.street}
-                    onChange={(e) =>
+                    onChange={(e) => {
                       setFormData({
                         ...formData,
                         address: { ...formData.address, street: e.target.value },
-                      })
-                    }
-                    className="w-full p-2"
+                      });
+                      if (fieldErrors.street || fieldErrors['address.street']) {
+                        setFieldErrors((prev) => {
+                          const next = { ...prev };
+                          delete next.street;
+                          delete next['address.street'];
+                          return next;
+                        });
+                      }
+                    }}
+                    className={`w-full p-2 rounded border text-xs ${
+                      fieldErrors.street || fieldErrors['address.street']
+                        ? 'border-rose-500 bg-rose-50'
+                        : 'border-slate-300'
+                    }`}
                     required
                   />
+                  {(fieldErrors.street || fieldErrors['address.street']) && (
+                    <p className="text-[11px] text-rose-500 mt-1">
+                      {Array.isArray(fieldErrors.street || fieldErrors['address.street'])
+                        ? (fieldErrors.street || fieldErrors['address.street']).join(', ')
+                        : String(fieldErrors.street || fieldErrors['address.street'])}
+                    </p>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -523,15 +870,34 @@ export function OnboardingWizardPage() {
                     <input
                       type="text"
                       value={formData.address.city}
-                      onChange={(e) =>
+                      onChange={(e) => {
                         setFormData({
                           ...formData,
                           address: { ...formData.address, city: e.target.value },
-                        })
-                      }
-                      className="w-full p-2"
+                        });
+                        if (fieldErrors.city || fieldErrors['address.city']) {
+                          setFieldErrors((prev) => {
+                            const next = { ...prev };
+                            delete next.city;
+                            delete next['address.city'];
+                            return next;
+                          });
+                        }
+                      }}
+                      className={`w-full p-2 rounded border text-xs ${
+                        fieldErrors.city || fieldErrors['address.city']
+                          ? 'border-rose-500 bg-rose-50'
+                          : 'border-slate-300'
+                      }`}
                       required
                     />
+                    {(fieldErrors.city || fieldErrors['address.city']) && (
+                      <p className="text-[11px] text-rose-500 mt-1">
+                        {Array.isArray(fieldErrors.city || fieldErrors['address.city'])
+                          ? (fieldErrors.city || fieldErrors['address.city']).join(', ')
+                          : String(fieldErrors.city || fieldErrors['address.city'])}
+                      </p>
+                    )}
                   </div>
 
                   <div>
@@ -545,7 +911,7 @@ export function OnboardingWizardPage() {
                           address: { ...formData.address, state: e.target.value },
                         })
                       }
-                      className="w-full p-2"
+                      className="w-full p-2 rounded border border-slate-300 text-xs"
                     />
                   </div>
 
@@ -557,41 +923,360 @@ export function OnboardingWizardPage() {
                       type="text"
                       placeholder="500001"
                       value={formData.address.pincode}
-                      onChange={(e) =>
+                      onChange={(e) => {
                         setFormData({
                           ...formData,
                           address: { ...formData.address, pincode: e.target.value },
-                        })
-                      }
-                      className="w-full p-2"
+                        });
+                        if (fieldErrors.pincode || fieldErrors['address.pincode']) {
+                          setFieldErrors((prev) => {
+                            const next = { ...prev };
+                            delete next.pincode;
+                            delete next['address.pincode'];
+                            return next;
+                          });
+                        }
+                      }}
+                      className={`w-full p-2 rounded border text-xs ${
+                        fieldErrors.pincode || fieldErrors['address.pincode']
+                          ? 'border-rose-500 bg-rose-50'
+                          : 'border-slate-300'
+                      }`}
                       required
                     />
+                    {(fieldErrors.pincode || fieldErrors['address.pincode']) && (
+                      <p className="text-[11px] text-rose-500 mt-1">
+                        {Array.isArray(fieldErrors.pincode || fieldErrors['address.pincode'])
+                          ? (fieldErrors.pincode || fieldErrors['address.pincode']).join(', ')
+                          : String(fieldErrors.pincode || fieldErrors['address.pincode'])}
+                      </p>
+                    )}
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                    Max Travel Radius: <strong className="text-blue-700">{formData.address.serviceRadius} km</strong>
-                  </label>
-                  <input
-                    type="range"
-                    min="5"
-                    max="50"
-                    step="5"
-                    value={formData.address.serviceRadius}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        address: { ...formData.address, serviceRadius: parseInt(e.target.value) },
-                      })
-                    }
-                    className="w-full accent-blue-600 cursor-pointer"
-                  />
-                  <div className="flex justify-between text-[10px] text-slate-400 mt-0.5">
-                    <span>5 km</span>
-                    <span>25 km (Standard)</span>
-                    <span>50 km</span>
+                {/* Vendor Physical Office / Warehouse Base Location */}
+                <div className="mt-4 p-4 bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/70 rounded-xl space-y-3.5">
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                    <div>
+                      <h4 className="text-xs font-bold text-blue-900 dark:text-blue-200 flex items-center gap-1.5">
+                        <Building2 className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                        Physical Shop / Workshop / Office Base Address
+                      </h4>
+                      <p className="text-[10px] text-blue-700 dark:text-blue-300 mt-0.5">
+                        The physical dispatch location for your business. Travel policy: <strong>0–15 km is free consultation</strong>, and <strong>15–50 km adds ₹300</strong>.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        disabled={isDetectingGps}
+                        onClick={async () => {
+                          const isSame = formData.address.is_same_as_residential !== false;
+                          const tStreet = isSame ? formData.address.street : (formData.address.office_street || formData.address.street);
+                          const tCity = isSame ? formData.address.city : (formData.address.office_city || formData.address.city);
+                          const tState = isSame ? formData.address.state : (formData.address.office_state || formData.address.state);
+                          const tPin = isSame ? formData.address.pincode : (formData.address.office_pincode || formData.address.pincode);
+                          const fullAddr = [tStreet, tCity, tState, tPin].filter(Boolean).join(', ');
+
+                          if (!tCity && !tPin) {
+                            setGpsFeedback({ type: 'error', text: 'Please enter City and Pincode first.' });
+                            return;
+                          }
+
+                          setIsDetectingGps(true);
+                          setGpsFeedback(null);
+                          const geo = await forwardGeocode(fullAddr);
+                          setIsDetectingGps(false);
+
+                          if (geo && geo.latitude && geo.longitude) {
+                            setFormData((prev) => ({
+                              ...prev,
+                              address: {
+                                ...prev.address,
+                                base_latitude: geo.latitude,
+                                base_longitude: geo.longitude,
+                                base_address: geo.formatted_address || fullAddr,
+                              },
+                            }));
+                            setGpsFeedback({
+                              type: 'success',
+                              text: `Base GPS resolved from address: ${geo.formatted_address || fullAddr}`,
+                            });
+                            apiSaveVendorBaseLocation({
+                              base_latitude: geo.latitude,
+                              base_longitude: geo.longitude,
+                              base_address: geo.formatted_address || fullAddr,
+                              max_service_radius_km: 50,
+                            }).catch(() => {});
+                          } else {
+                            setGpsFeedback({
+                              type: 'error',
+                              text: `Could not automatically pinpoint "${fullAddr}". Please check city/pincode or try Auto-Detect GPS.`,
+                            });
+                          }
+                        }}
+                        className="inline-flex items-center gap-1 text-[11px] font-bold px-3 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 shadow-sm cursor-pointer disabled:opacity-60"
+                      >
+                        <MapPin className="w-3.5 h-3.5" />
+                        {isDetectingGps ? 'Locating...' : 'Locate Address on Map'}
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={isDetectingGps}
+                        onClick={() => {
+                          if (!navigator.geolocation) {
+                            setGpsFeedback({ type: 'error', text: 'Geolocation is not supported by your browser.' });
+                            return;
+                          }
+                          setIsDetectingGps(true);
+                          setGpsFeedback(null);
+                          navigator.geolocation.getCurrentPosition(
+                            (pos) => {
+                              const lat = Math.round(pos.coords.latitude * 1000000) / 1000000;
+                              const lng = Math.round(pos.coords.longitude * 1000000) / 1000000;
+                              setFormData((prev) => ({
+                                ...prev,
+                                address: {
+                                  ...prev.address,
+                                  base_latitude: lat,
+                                  base_longitude: lng,
+                                },
+                              }));
+                              setIsDetectingGps(false);
+                              setGpsFeedback({ type: 'success', text: `Current GPS detected: ${lat}, ${lng}` });
+                              apiSaveVendorBaseLocation({
+                                base_latitude: lat,
+                                base_longitude: lng,
+                                base_address: `${formData.address.street || ''} ${formData.address.city || ''}`.trim(),
+                                max_service_radius_km: 50,
+                              }).catch(() => {});
+                            },
+                            (err) => {
+                              setIsDetectingGps(false);
+                              let msg = 'Failed to detect location. Please allow browser location access or use "Locate Address on Map".';
+                              if (err.code === 1) msg = 'Location permission was denied. Please allow location access or click "Locate Address on Map".';
+                              setGpsFeedback({ type: 'error', text: msg });
+                            },
+                            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                          );
+                        }}
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border border-blue-300 dark:border-blue-700 bg-white dark:bg-gray-800 text-blue-700 dark:text-blue-300 hover:bg-blue-50 cursor-pointer disabled:opacity-60"
+                        title="Use if currently at physical shop"
+                      >
+                        <LocateFixed className="w-3.5 h-3.5" />
+                        Current GPS
+                      </button>
+                    </div>
                   </div>
+
+                  {/* Same as residential toggle */}
+                  <label className="flex items-center gap-2 cursor-pointer bg-white/70 dark:bg-gray-800/70 p-2 rounded-lg border border-blue-200 dark:border-blue-800/50">
+                    <input
+                      type="checkbox"
+                      checked={formData.address.is_same_as_residential !== false}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          address: { ...formData.address, is_same_as_residential: e.target.checked },
+                        })
+                      }
+                      className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                    />
+                    <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                      My Shop / Workshop / Office is at this same Residential Address
+                    </span>
+                  </label>
+
+                  {/* Separate Shop Address Form if not same */}
+                  {formData.address.is_same_as_residential === false && (
+                    <div className="p-3.5 bg-white dark:bg-gray-800 rounded-lg border border-slate-200 dark:border-slate-700 space-y-3 animate-in fade-in">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                          Shop / Warehouse Street Address <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Shop/Building Name, Street, Landmark"
+                          value={formData.address.office_street || ''}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              address: { ...formData.address, office_street: e.target.value },
+                            })
+                          }
+                          className="w-full p-2 rounded border border-slate-300 text-xs"
+                        />
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                            City <span className="text-rose-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Hosur"
+                            value={formData.address.office_city || ''}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                address: { ...formData.address, office_city: e.target.value },
+                              })
+                            }
+                            className="w-full p-2 rounded border border-slate-300 text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">State</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Tamil Nadu"
+                            value={formData.address.office_state || ''}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                address: { ...formData.address, office_state: e.target.value },
+                              })
+                            }
+                            className="w-full p-2 rounded border border-slate-300 text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                            Pincode <span className="text-rose-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="635001"
+                            value={formData.address.office_pincode || ''}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                address: { ...formData.address, office_pincode: e.target.value },
+                              })
+                            }
+                            className="w-full p-2 rounded border border-slate-300 text-xs"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Interactive Live Map Picker */}
+                  <div className="space-y-2 pt-1">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                        <Navigation className="w-3.5 h-3.5 text-blue-600" />
+                        Live Map Pinpoint & Address Search (Auto-Fills Details)
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setShowLiveMap(!showLiveMap)}
+                        className="text-[10px] text-blue-600 hover:underline font-semibold"
+                      >
+                        {showLiveMap ? 'Hide Map' : 'Show Live Map'}
+                      </button>
+                    </div>
+
+                    {showLiveMap && (
+                      <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 shadow-inner">
+                        <LocationPickerMap
+                          latitude={formData.address.base_latitude ? parseFloat(formData.address.base_latitude) : 12.754468}
+                          longitude={formData.address.base_longitude ? parseFloat(formData.address.base_longitude) : 77.83438}
+                          showSearch={true}
+                          height="240px"
+                          onPositionChange={async (lat, lng) => {
+                            const latNum = Math.round(Number(lat) * 1000000) / 1000000;
+                            const lngNum = Math.round(Number(lng) * 1000000) / 1000000;
+                            const addr = await reverseGeocode(latNum, lngNum);
+                            const isSame = formData.address.is_same_as_residential !== false;
+
+                            if (addr) {
+                              const locality = addr.locality || addr.area || '';
+                              const street = locality || addr.formatted_address || '';
+                              const city = addr.city || '';
+                              const state = addr.state || '';
+                              const pincode = addr.pincode || '';
+                              const full = addr.formatted_address || [street, city, state, pincode].filter(Boolean).join(', ');
+
+                              setFormData((prev) => {
+                                const next = { ...prev };
+                                if (isSame) {
+                                  next.address = {
+                                    ...next.address,
+                                    street: street || next.address.street,
+                                    city: city || next.address.city,
+                                    state: state || next.address.state,
+                                    pincode: pincode || next.address.pincode,
+                                    base_latitude: latNum,
+                                    base_longitude: lngNum,
+                                    base_address: full,
+                                  };
+                                } else {
+                                  next.address = {
+                                    ...next.address,
+                                    office_street: street || next.address.office_street,
+                                    office_city: city || next.address.office_city,
+                                    office_state: state || next.address.office_state,
+                                    office_pincode: pincode || next.address.office_pincode,
+                                    base_latitude: latNum,
+                                    base_longitude: lngNum,
+                                    base_address: full,
+                                  };
+                                }
+                                return next;
+                              });
+
+                              setGpsFeedback({
+                                type: 'success',
+                                text: `Address auto-filled from map: ${full}`,
+                              });
+
+                              apiSaveVendorBaseLocation({
+                                base_latitude: latNum,
+                                base_longitude: lngNum,
+                                base_address: full,
+                                max_service_radius_km: 50,
+                              }).catch(() => {});
+                            }
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {gpsFeedback && (
+                    <div
+                      className={`p-2.5 rounded-lg text-[11px] font-medium flex items-center gap-2 ${
+                        gpsFeedback.type === 'success'
+                          ? 'bg-green-100 dark:bg-green-950/40 text-green-800 dark:text-green-300 border border-green-200 dark:border-green-800'
+                          : 'bg-rose-100 dark:bg-rose-950/40 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
+                      }`}
+                    >
+                      {gpsFeedback.type === 'success' ? (
+                        <CheckCircle2 className="w-4 h-4 shrink-0 text-green-600" />
+                      ) : (
+                        <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                      )}
+                      <span>{gpsFeedback.text}</span>
+                    </div>
+                  )}
+
+                  {/* Resolved GPS Coordinates Summary */}
+                  {formData.address.base_latitude && formData.address.base_longitude ? (
+                    <div className="p-2.5 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800/50 rounded-lg flex items-center justify-between text-[11px] text-green-800 dark:text-green-300">
+                      <div className="flex items-center gap-1.5">
+                        <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />
+                        <span>
+                          <strong>Dispatch Base:</strong> {formData.address.base_address || `${formData.address.street || ''}, ${formData.address.city || ''}`} ({formData.address.base_latitude}, {formData.address.base_longitude})
+                        </span>
+                      </div>
+                      <span className="text-[10px] bg-green-200 dark:bg-green-900 text-green-900 dark:text-green-100 px-2 py-0.5 rounded font-bold shrink-0 ml-2">
+                        Verified Hub
+                      </span>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -623,6 +1308,14 @@ export function OnboardingWizardPage() {
                   </button>
                 )}
               </div>
+
+              {(fieldErrors.services || fieldErrors['services']) && (
+                <div className="p-2.5 bg-rose-50 border border-rose-200 rounded text-[11px] text-rose-700">
+                  {Array.isArray(fieldErrors.services || fieldErrors['services'])
+                    ? (fieldErrors.services || fieldErrors['services']).join(' • ')
+                    : String(fieldErrors.services || fieldErrors['services'])}
+                </div>
+              )}
 
               <div className="space-y-3 pt-1 max-h-[420px] overflow-y-auto pr-1">
                 {catalog && catalog.length > 0 ? (
@@ -707,21 +1400,43 @@ export function OnboardingWizardPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
                 <div>
                   <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                    Years of Experience
+                    Years of Experience <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="number"
                     min="0"
-                    max="40"
+                    max="50"
+                    placeholder="e.g. 3"
                     value={formData.skills.experienceYears}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      const val = e.target.value === '' ? '' : parseFloat(e.target.value);
                       setFormData({
                         ...formData,
-                        skills: { ...formData.skills, experienceYears: parseFloat(e.target.value) },
-                      })
-                    }
-                    className="w-full p-2"
+                        skills: { ...formData.skills, experienceYears: val },
+                      });
+                      if (fieldErrors.experienceYears || fieldErrors['skills.experienceYears']) {
+                        setFieldErrors((prev) => {
+                          const next = { ...prev };
+                          delete next.experienceYears;
+                          delete next['skills.experienceYears'];
+                          return next;
+                        });
+                      }
+                    }}
+                    className={`w-full p-2 rounded border text-xs ${
+                      fieldErrors.experienceYears || fieldErrors['skills.experienceYears']
+                        ? 'border-rose-500 bg-rose-50'
+                        : 'border-slate-300'
+                    }`}
+                    required
                   />
+                  {(fieldErrors.experienceYears || fieldErrors['skills.experienceYears']) && (
+                    <p className="text-[11px] text-rose-500 mt-1">
+                      {Array.isArray(fieldErrors.experienceYears || fieldErrors['skills.experienceYears'])
+                        ? (fieldErrors.experienceYears || fieldErrors['skills.experienceYears']).join(', ')
+                        : String(fieldErrors.experienceYears || fieldErrors['skills.experienceYears'])}
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -729,38 +1444,58 @@ export function OnboardingWizardPage() {
                     Vehicle Type
                   </label>
                   <select
-                    value={formData.skills.vehicleType}
+                    value={formData.skills.vehicleType || 'two_wheeler'}
                     onChange={(e) =>
                       setFormData({
                         ...formData,
                         skills: { ...formData.skills, vehicleType: e.target.value },
                       })
                     }
-                    className="w-full p-2"
+                    className="w-full p-2 rounded border border-slate-300 text-xs"
                   >
                     <option value="two_wheeler">Two Wheeler (Motorcycle/Scooter)</option>
                     <option value="four_wheeler">Four Wheeler / Van</option>
                     <option value="bicycle">Bicycle</option>
                     <option value="public_transit">Public Transit</option>
+                    <option value="none">No vehicle / Walking</option>
                   </select>
                 </div>
 
                 <div className="sm:col-span-2">
                   <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                    Driving License Number (If applicable)
+                    Driving License Number {['two_wheeler', 'four_wheeler'].includes(formData.skills.vehicleType) ? <span className="text-rose-500">*</span> : '(If applicable)'}
                   </label>
                   <input
                     type="text"
                     placeholder="e.g. DL-0420110012345"
                     value={formData.skills.licenseNumber}
-                    onChange={(e) =>
+                    onChange={(e) => {
                       setFormData({
                         ...formData,
                         skills: { ...formData.skills, licenseNumber: e.target.value },
-                      })
-                    }
-                    className="w-full p-2"
+                      });
+                      if (fieldErrors.licenseNumber || fieldErrors['skills.licenseNumber']) {
+                        setFieldErrors((prev) => {
+                          const next = { ...prev };
+                          delete next.licenseNumber;
+                          delete next['skills.licenseNumber'];
+                          return next;
+                        });
+                      }
+                    }}
+                    className={`w-full p-2 rounded border text-xs ${
+                      fieldErrors.licenseNumber || fieldErrors['skills.licenseNumber']
+                        ? 'border-rose-500 bg-rose-50'
+                        : 'border-slate-300'
+                    }`}
                   />
+                  {(fieldErrors.licenseNumber || fieldErrors['skills.licenseNumber']) && (
+                    <p className="text-[11px] text-rose-500 mt-1">
+                      {Array.isArray(fieldErrors.licenseNumber || fieldErrors['skills.licenseNumber'])
+                        ? (fieldErrors.licenseNumber || fieldErrors['skills.licenseNumber']).join(', ')
+                        : String(fieldErrors.licenseNumber || fieldErrors['skills.licenseNumber'])}
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
@@ -845,79 +1580,184 @@ export function OnboardingWizardPage() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  <label htmlFor="bank-account-holder" className="block text-[11px] font-bold text-slate-700 mb-1">
                     Account Holder Name <span className="text-rose-500">*</span>
                   </label>
                   <input
+                    id="bank-account-holder"
+                    name="caltrack_account_holder"
                     type="text"
+                    autoComplete="name"
+                    maxLength={100}
                     placeholder="As printed on bank passbook"
                     value={formData.bank.accountHolder}
-                    onChange={(e) =>
+                    onChange={(e) => {
                       setFormData({
                         ...formData,
                         bank: { ...formData.bank, accountHolder: e.target.value },
-                      })
-                    }
-                    className="w-full p-2"
+                      });
+                      clearBankFieldError('accountHolder');
+                    }}
+                    className={`w-full p-2 rounded border text-xs ${
+                      fieldErrors.accountHolder || fieldErrors['bank.accountHolder']
+                        ? 'border-rose-500 bg-rose-50'
+                        : 'border-slate-300'
+                    }`}
                     required
                   />
+                  {(fieldErrors.accountHolder || fieldErrors['bank.accountHolder']) && (
+                    <p className="text-[11px] text-rose-500 mt-1">
+                      {Array.isArray(fieldErrors.accountHolder || fieldErrors['bank.accountHolder'])
+                        ? (fieldErrors.accountHolder || fieldErrors['bank.accountHolder']).join(', ')
+                        : String(fieldErrors.accountHolder || fieldErrors['bank.accountHolder'])}
+                    </p>
+                  )}
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  <label htmlFor="bank-ifsc" className="block text-[11px] font-bold text-slate-700 mb-1">
                     IFSC / Routing Code <span className="text-rose-500">*</span>
                   </label>
                   <input
+                    id="bank-ifsc"
+                    name="caltrack_bank_ifsc"
                     type="text"
+                    autoComplete="off"
+                    data-lpignore="true"
+                    data-1p-ignore="true"
                     placeholder="e.g. SBIN0001234"
+                    maxLength={11}
                     value={formData.bank.ifsc}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      const val = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 11);
                       setFormData({
                         ...formData,
-                        bank: { ...formData.bank, ifsc: e.target.value.toUpperCase() },
-                      })
-                    }
-                    className="w-full p-2 uppercase"
+                        bank: { ...formData.bank, ifsc: val },
+                      });
+                      clearBankFieldError('ifsc');
+                    }}
+                    className={`w-full p-2 uppercase rounded border text-xs font-mono tracking-wider ${
+                      fieldErrors.ifsc || fieldErrors['bank.ifsc']
+                        ? 'border-rose-500 bg-rose-50'
+                        : 'border-slate-300'
+                    }`}
                     required
                   />
+                  {(fieldErrors.ifsc || fieldErrors['bank.ifsc']) && (
+                    <p className="text-[11px] text-rose-500 mt-1">
+                      {Array.isArray(fieldErrors.ifsc || fieldErrors['bank.ifsc'])
+                        ? (fieldErrors.ifsc || fieldErrors['bank.ifsc']).join(', ')
+                        : String(fieldErrors.ifsc || fieldErrors['bank.ifsc'])}
+                    </p>
+                  )}
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  <label htmlFor="bank-account-number" className="block text-[11px] font-bold text-slate-700 mb-1">
                     Account Number <span className="text-rose-500">*</span>
                   </label>
-                  <input
-                    type="password"
-                    placeholder="••••••••••••"
-                    value={formData.bank.accountNumber}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        bank: { ...formData.bank, accountNumber: e.target.value },
-                      })
-                    }
-                    className="w-full p-2"
-                    required
-                  />
+                  <div className="relative">
+                    <input
+                      id="bank-account-number"
+                      name="caltrack_acct_num"
+                      type={showAccountNumber ? "text" : "password"}
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={18}
+                      autoComplete="off"
+                      data-lpignore="true"
+                      data-1p-ignore="true"
+                      placeholder={showAccountNumber ? "Enter 9-18 digits" : "••••••••••••"}
+                      value={formData.bank.accountNumber}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/\D/g, '').slice(0, 18);
+                        setFormData({
+                          ...formData,
+                          bank: { ...formData.bank, accountNumber: val },
+                        });
+                        clearBankFieldError('accountNumber');
+                      }}
+                      className={`w-full p-2 pr-10 rounded border text-xs font-mono ${
+                        fieldErrors.accountNumber || fieldErrors['bank.accountNumber']
+                          ? 'border-rose-500 bg-rose-50'
+                          : 'border-slate-300'
+                      }`}
+                      required
+                    />
+                    <button
+                      type="button"
+                      aria-label={showAccountNumber ? "Hide account number" : "Show account number"}
+                      onClick={() => setShowAccountNumber((prev) => !prev)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none p-1 rounded hover:bg-slate-100"
+                    >
+                      {showAccountNumber ? (
+                        <EyeOff className="w-4 h-4" />
+                      ) : (
+                        <Eye className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
+                  {(fieldErrors.accountNumber || fieldErrors['bank.accountNumber']) && (
+                    <p className="text-[11px] text-rose-500 mt-1">
+                      {Array.isArray(fieldErrors.accountNumber || fieldErrors['bank.accountNumber'])
+                        ? (fieldErrors.accountNumber || fieldErrors['bank.accountNumber']).join(', ')
+                        : String(fieldErrors.accountNumber || fieldErrors['bank.accountNumber'])}
+                    </p>
+                  )}
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  <label htmlFor="bank-confirm-account-number" className="block text-[11px] font-bold text-slate-700 mb-1">
                     Confirm Account Number <span className="text-rose-500">*</span>
                   </label>
-                  <input
-                    type="text"
-                    placeholder="Re-enter account number"
-                    value={formData.bank.confirmAccountNumber}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        bank: { ...formData.bank, confirmAccountNumber: e.target.value },
-                      })
-                    }
-                    className="w-full p-2"
-                    required
-                  />
+                  <div className="relative">
+                    <input
+                      id="bank-confirm-account-number"
+                      name="caltrack_confirm_acct_num"
+                      type={showConfirmAccountNumber ? "text" : "password"}
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={18}
+                      autoComplete="off"
+                      data-lpignore="true"
+                      data-1p-ignore="true"
+                      placeholder={showConfirmAccountNumber ? "Re-enter 9-18 digits" : "••••••••••••"}
+                      value={formData.bank.confirmAccountNumber}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/\D/g, '').slice(0, 18);
+                        setFormData({
+                          ...formData,
+                          bank: { ...formData.bank, confirmAccountNumber: val },
+                        });
+                        clearBankFieldError('confirmAccountNumber');
+                      }}
+                      className={`w-full p-2 pr-10 rounded border text-xs font-mono ${
+                        fieldErrors.confirmAccountNumber || fieldErrors['bank.confirmAccountNumber']
+                          ? 'border-rose-500 bg-rose-50'
+                          : 'border-slate-300'
+                      }`}
+                      required
+                    />
+                    <button
+                      type="button"
+                      aria-label={showConfirmAccountNumber ? "Hide confirm account number" : "Show confirm account number"}
+                      onClick={() => setShowConfirmAccountNumber((prev) => !prev)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none p-1 rounded hover:bg-slate-100"
+                    >
+                      {showConfirmAccountNumber ? (
+                        <EyeOff className="w-4 h-4" />
+                      ) : (
+                        <Eye className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
+                  {(fieldErrors.confirmAccountNumber || fieldErrors['bank.confirmAccountNumber']) && (
+                    <p className="text-[11px] text-rose-500 mt-1">
+                      {Array.isArray(fieldErrors.confirmAccountNumber || fieldErrors['bank.confirmAccountNumber'])
+                        ? (fieldErrors.confirmAccountNumber || fieldErrors['bank.confirmAccountNumber']).join(', ')
+                        : String(fieldErrors.confirmAccountNumber || fieldErrors['bank.confirmAccountNumber'])}
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
@@ -938,8 +1778,8 @@ export function OnboardingWizardPage() {
 
               <div className="border border-slate-200 rounded p-4 bg-slate-50/50 space-y-2">
                 <div className="flex justify-between border-b border-slate-200 pb-1">
-                  <span className="text-slate-500">City / Territory:</span>
-                  <span className="font-bold text-slate-800">{formData.address.city} ({formData.address.serviceRadius} km)</span>
+                  <span className="text-slate-500">City / Location:</span>
+                  <span className="font-bold text-slate-800">{formData.address.city}{formData.address.state ? `, ${formData.address.state}` : ''} {formData.address.pincode ? `(${formData.address.pincode})` : ''}</span>
                 </div>
                 <div className="flex justify-between border-b border-slate-200 pb-1">
                   <span className="text-slate-500">Requested Services ({formData.services.length}):</span>

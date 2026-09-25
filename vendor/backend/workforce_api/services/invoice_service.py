@@ -182,12 +182,52 @@ def generate_invoice_for_job(service_request, actor=None, due_days=7):
         from service_requests.models import ServiceRequest
         service_request = ServiceRequest.objects.get(id=service_request)
 
+    active_quote = (
+        WorkforceQuote.objects.filter(job=service_request)
+        .filter(status__in=[
+            WorkforceQuote.Status.CUSTOMER_ACCEPTED,
+            WorkforceQuote.Status.ADMIN_APPROVED,
+            WorkforceQuote.Status.CONVERTED,
+        ])
+        .order_by("-quote_version", "-id")
+        .first()
+    )
+    if not active_quote:
+        active_quote = (
+            WorkforceQuote.objects.filter(work_job=service_request)
+            .filter(status__in=[
+                WorkforceQuote.Status.CUSTOMER_ACCEPTED,
+                WorkforceQuote.Status.ADMIN_APPROVED,
+                WorkforceQuote.Status.CONVERTED,
+            ])
+            .order_by("-quote_version", "-id")
+            .first()
+        )
+
+    if active_quote:
+        return generate_invoice_for_quote(active_quote, work_job=service_request, actor=actor, due_days=due_days)
+
     existing = (
         WorkforceInvoice.objects.filter(job=service_request)
         .exclude(status=WorkforceInvoice.Status.CANCELLED)
         .first()
     )
     if existing:
+        payment = JobPayment.objects.filter(job=service_request).first()
+        is_paid = (
+            (payment and payment.payment_status in (JobPayment.PaymentStatus.PAID, "PAID", "paid"))
+            or str(getattr(service_request, "payment_status", "")).lower() in ("paid", "collected")
+            or existing.total_amount == ZERO
+        )
+        if is_paid and existing.status != WorkforceInvoice.Status.PAID:
+            existing.status = WorkforceInvoice.Status.PAID
+            existing.amount_paid = existing.total_amount
+            existing.balance_due = ZERO
+            existing.balance_amount = ZERO
+        if existing.subtotal_amount == ZERO and existing.tax_amount == ZERO and existing.total_amount > ZERO:
+            existing.subtotal_amount = (existing.total_amount / Decimal("1.18")).quantize(CENT)
+            existing.tax_amount = existing.total_amount - existing.subtotal_amount
+        existing.save()
         return existing
 
     now = timezone.now()
@@ -554,3 +594,52 @@ def blocking_reason_for_execution(job):
         f"is not settled ({outstanding} outstanding). Work starts once the "
         "advance is received."
     )
+
+
+@transaction.atomic
+def recalculate_invoice_for_scope_reduction(job, reduction_amount, actor=None):
+    """
+    Recalculates the live invoice when an approved scope reduction occurs.
+    Reduces total_amount and balance_due/balance_amount, while keeping advance payment records intact.
+    """
+    reduction_amount = _money(reduction_amount)
+    if reduction_amount <= ZERO:
+        return None
+
+    invoice = (
+        WorkforceInvoice.objects
+        .select_for_update()
+        .filter(job=job)
+        .exclude(status=WorkforceInvoice.Status.CANCELLED)
+        .first()
+    )
+    if not invoice:
+        return None
+
+    invoice.total_amount = max(ZERO, invoice.total_amount - reduction_amount)
+    invoice.balance_due = max(ZERO, invoice.total_amount - invoice.amount_paid)
+    invoice.balance_amount = invoice.balance_due
+
+    if invoice.balance_due == ZERO and invoice.amount_paid > ZERO:
+        invoice.status = WorkforceInvoice.Status.PAID
+    elif invoice.amount_paid > ZERO:
+        invoice.status = WorkforceInvoice.Status.PARTIALLY_PAID
+
+    meta = invoice.metadata or {}
+    reductions = meta.get("scope_reductions", [])
+    reductions.append({
+        "reduction_amount": str(reduction_amount),
+        "recalculated_at": timezone.now().isoformat(),
+        "actor_id": getattr(actor, "id", None),
+    })
+    meta["scope_reductions"] = reductions
+    invoice.metadata = meta
+
+    invoice.save(update_fields=[
+        "total_amount", "balance_due", "balance_amount", "status", "metadata", "updated_at"
+    ])
+    logger.info(
+        "[INVOICE_SCOPE_REDUCED] %s reduced by %s -> new total=%s balance=%s",
+        invoice.invoice_number, reduction_amount, invoice.total_amount, invoice.balance_due
+    )
+    return invoice

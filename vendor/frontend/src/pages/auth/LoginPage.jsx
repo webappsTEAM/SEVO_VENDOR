@@ -40,7 +40,16 @@ export function LoginPage() {
         throw new Error('Authentication failed. Please check credentials.');
       }
 
-      if (user.isAdmin) {
+      const isSeller = Boolean(
+        user.isSeller ||
+        (user.businessType === 'grocery_supplier' && !user.isPlatformAdmin) ||
+        user.role === 'seller'
+      );
+
+      if (isSeller) {
+        navigate('/workforce/seller/dashboard');
+      } else if (user.isAdmin) {
+
         navigate('/workforce/admin');
       } else {
         const regStatus = user.registrationStatus || 'not_started';
@@ -96,7 +105,7 @@ export function LoginPage() {
       <div className="hidden lg:flex lg:w-5/12 xl:w-[42%] flex-col justify-between bg-slate-900 text-white p-10 xl:p-14 border-r border-slate-800">
         <div>
           <div className="text-sm font-bold tracking-widest text-slate-200 uppercase">
-            CAL SERVICES
+            SEVO PARTNER
           </div>
           <div className="text-xs text-blue-400 font-medium tracking-wide">
             Workforce Operations
@@ -166,7 +175,7 @@ export function LoginPage() {
         {/* Top Spacer / Mobile Brand Badge */}
         <div className="w-full flex justify-between items-center lg:justify-end">
           <div className="lg:hidden text-xs font-bold text-slate-800 uppercase tracking-wider">
-            CAL SERVICES
+            SEVO PARTNER
           </div>
           <button
             type="button"
@@ -183,7 +192,7 @@ export function LoginPage() {
           {/* Header */}
           <div>
             <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">
-              CAL SERVICES &bull; Workforce
+              SEVO Partner &bull; Workforce
             </div>
             <h2 className="text-xl font-bold text-slate-900 tracking-tight">
               Employee Sign In
@@ -258,9 +267,9 @@ export function LoginPage() {
           {/* Footer Registration Link */}
           <div className="pt-4 border-t border-slate-100 text-center">
             <p className="text-xs text-slate-500">
-              New technician?{' '}
+              New to SEVO?{' '}
               <Link
-                to="/workforce/signup"
+                to="/workforce/create-account"
                 className="text-blue-600 font-semibold hover:text-blue-700 hover:underline"
               >
                 Create Account

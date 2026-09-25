@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { apiGetWorkforceJobs } from '../../api/workforceService.js';
+import { apiGetWorkforceJobs, apiTransitionJob } from '../../api/workforceService.js';
 import { AppShell } from '../../components/common/AppShell.jsx';
 import { PageHeader } from '../../components/common/PageHeader.jsx';
 import { Toolbar } from '../../components/enterprise/Toolbar.jsx';
@@ -9,7 +9,7 @@ import { StatusBadge } from '../../components/enterprise/StatusBadge.jsx';
 import { Pagination } from '../../components/enterprise/Pagination.jsx';
 import { LoadFailure } from '../../components/enterprise/LoadFailure.jsx';
 import { CustomerLiveTrackingModal } from '../../components/common/CustomerLiveTrackingModal.jsx';
-import { Briefcase, ArrowRight, User, Send, MapPin, Calendar, Navigation } from 'lucide-react';
+import { Briefcase, ArrowRight, User, Send, MapPin, Calendar, Navigation, CheckCircle2, RotateCw } from 'lucide-react';
 
 export function AdminJobsPage() {
   const [jobs, setJobs] = useState([]);
@@ -19,6 +19,7 @@ export function AdminJobsPage() {
   const [pageSize] = useState(12);
   const [isLoading, setIsLoading] = useState(true);
   const [liveTrackingJobId, setLiveTrackingJobId] = useState(null);
+  const [actionInProgressId, setActionInProgressId] = useState(null);
 
   const [loadError, setLoadError] = useState(null);
 
@@ -37,6 +38,19 @@ export function AdminJobsPage() {
       setLoadError(err?.message || 'The job list could not be loaded.');
     } finally {
       if (showLoading) setIsLoading(false);
+    }
+  };
+
+  const handleApproveProof = async (jobId) => {
+    if (!window.confirm(`Approve service proof and mark Job #${jobId} as COMPLETED?`)) return;
+    try {
+      setActionInProgressId(jobId);
+      await apiTransitionJob(jobId, 'completed');
+      await loadJobs(false);
+    } catch (err) {
+      alert(err?.message || 'Failed to complete job.');
+    } finally {
+      setActionInProgressId(null);
     }
   };
 
@@ -145,8 +159,27 @@ export function AdminJobsPage() {
       render: (_, row) => {
         const isTrackable = ['assigned', 'accepted', 'on_the_way', 'arrived', 'in_progress', 'completed'].includes((row.status || '').toLowerCase());
         const isEstimation = row.job_type === 'ESTIMATION' || (row.status || '').includes('quotation') || (row.status || '').includes('inspection');
+        const isProofSubmitted = (row.status || '').toLowerCase() === 'proof_submitted';
+        const isActionLoading = actionInProgressId === row.id;
+
         return (
           <div className="flex items-center justify-end gap-1.5">
+            {isProofSubmitted && (
+              <button
+                type="button"
+                onClick={() => handleApproveProof(row.id)}
+                disabled={isActionLoading}
+                className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:opacity-50 text-white font-bold text-xs shadow-xs transition-all inline-flex items-center gap-1.5 cursor-pointer shrink-0"
+                title="Approve Submitted Service Proof & Mark Job Completed"
+              >
+                {isActionLoading ? (
+                  <RotateCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                )}
+                <span>Approve &amp; Complete</span>
+              </button>
+            )}
             {isEstimation && (
               <Link
                 to="/workforce/vendor/estimations"
@@ -205,6 +238,7 @@ export function AdminJobsPage() {
                 { value: 'accepted', label: 'Accepted' },
                 { value: 'on_the_way', label: 'On The Way' },
                 { value: 'in_progress', label: 'In Progress' },
+                { value: 'proof_submitted', label: 'Proof Submitted (Review & Approve)' },
                 { value: 'completed', label: 'Completed' },
               ],
             },

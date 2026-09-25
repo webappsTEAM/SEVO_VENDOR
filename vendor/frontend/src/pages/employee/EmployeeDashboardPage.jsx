@@ -86,6 +86,7 @@ import {
   Compass,
   Briefcase,
   RefreshCw,
+  RotateCw,
   Ban,
   XCircle,
   Navigation,
@@ -96,8 +97,9 @@ import {
   Calculator,
   Power,
   Loader2,
-  RotateCw,
+  Lock,
 } from 'lucide-react';
+
 import QuotationBuilderModal from '../../components/estimates/QuotationBuilderModal.jsx';
 
 /**
@@ -163,6 +165,7 @@ export function EmployeeDashboardPage() {
     reconcileJobAccepted,
     reconcileJobCompleted,
     reconcileOfferRemoved,
+    declineOfferOptimistic,
     liveLocation,
     locationError,
     scanCurrentLocation,
@@ -246,8 +249,14 @@ export function EmployeeDashboardPage() {
   const isClockedIn = Boolean(timeTracking?.is_clocked_in);
   const isBreak = timeTracking?.shift_status === 'on_break';
 
-  const allRequestedServices = profile?.all_requested_services || (profile?.bank_details?.onboarding?.services) || [];
-  const approvedServices = allRequestedServices.filter((s) => s.status === 'approved');
+  const allRequestedServices = Array.isArray(profile?.all_requested_services)
+    ? profile.all_requested_services
+    : Array.isArray(profile?.bank_details?.onboarding?.services)
+    ? profile.bank_details.onboarding.services
+    : [];
+  const approvedServices = Array.isArray(allRequestedServices)
+    ? allRequestedServices.filter((s) => s && s.status === 'approved')
+    : [];
 
   const [currentLocation, setCurrentLocation] = useState(
     user?.last_known_location || employee?.user?.last_known_location || null
@@ -296,6 +305,31 @@ export function EmployeeDashboardPage() {
   const [isUploadingDoc, setIsUploadingDoc] = useState(false);
   const [uploadingDocKey, setUploadingDocKey] = useState(null);
 
+  const loadDashboard = useCallback(async (options = {}) => {
+    const hasCachedData = Boolean(localStorage.getItem(CACHED_PROFILE_KEY) || employee);
+    const isSilent = options?.silent === true || hasCachedData;
+    try {
+      if (!isSilent) setIsLoading(true);
+      const [timeData, profileData] = await Promise.all([
+        apiGetTimeTracking().catch(() => null),
+        apiGetOnboardingProfile().catch(() => null),
+        typeof refreshActiveJobs === 'function' ? refreshActiveJobs(options) : Promise.resolve(),
+        typeof refreshCompletedJobs === 'function' ? refreshCompletedJobs(options) : Promise.resolve(),
+      ]);
+      if (profileData) {
+        setProfile(profileData);
+        try { localStorage.setItem(CACHED_PROFILE_KEY, JSON.stringify(profileData)); } catch (_) {}
+      }
+      if (timeData) {
+        setTimeTracking(timeData);
+        try { localStorage.setItem(CACHED_TIMETRACKING_KEY, JSON.stringify(timeData)); } catch (_) {}
+      }
+    } catch (_) {
+    } finally {
+      setIsLoading(false);
+    }
+  }, [refreshActiveJobs, refreshCompletedJobs, employee]);
+
   const handleDocUpload = async (docKey, file, title = '') => {
     if (!file) return;
     try {
@@ -343,6 +377,23 @@ export function EmployeeDashboardPage() {
       setCashModalJob(null);
       if (typeof reconcileJobCompleted === 'function') {
         reconcileJobCompleted(jobId, { status: 'completed', payment_status: 'PAID' });
+      } else {
+        setSelectedJob(null);
+      }
+      if (typeof refreshActiveJobs === 'function') {
+        await refreshActiveJobs({ force: true });
+      }
+      if (typeof refreshCompletedJobs === 'function') {
+        await refreshCompletedJobs({ silent: true });
+      }
+      if (typeof refreshProfile === 'function') {
+        refreshProfile(true).catch(() => {});
+      }
+      if (typeof refreshCompletedJobs === 'function') {
+        refreshCompletedJobs({ force: true }).catch(() => {});
+      }
+      if (typeof refreshActiveJobs === 'function') {
+        refreshActiveJobs({ force: true }).catch(() => {});
       }
       await loadDashboard({ force: true });
       setTimeout(() => setSuccessMsg(''), 5000);
@@ -756,30 +807,6 @@ export function EmployeeDashboardPage() {
   const [catalogCategories, setCatalogCategories] = useState([]);
   const [serviceActionLoading, setServiceActionLoading] = useState(null);
 
-  const loadDashboard = useCallback(async (options = {}) => {
-    const hasCachedData = Boolean(localStorage.getItem(CACHED_PROFILE_KEY) || employee);
-    const isSilent = options?.silent === true || hasCachedData;
-    try {
-      if (!isSilent) setIsLoading(true);
-      const [timeData, profileData] = await Promise.all([
-        apiGetTimeTracking().catch(() => null),
-        apiGetOnboardingProfile().catch(() => null),
-        refreshActiveJobs(options),
-      ]);
-      if (profileData) {
-        setProfile(profileData);
-        try { localStorage.setItem(CACHED_PROFILE_KEY, JSON.stringify(profileData)); } catch (_) {}
-      }
-      if (timeData) {
-        setTimeTracking(timeData);
-        try { localStorage.setItem(CACHED_TIMETRACKING_KEY, JSON.stringify(timeData)); } catch (_) {}
-      }
-    } catch (_) {
-    } finally {
-      setIsLoading(false);
-    }
-  }, [refreshActiveJobs, employee]);
-
   // Initial dashboard load on mount
   useEffect(() => {
     loadDashboard();
@@ -1019,37 +1046,62 @@ export function EmployeeDashboardPage() {
       if (!candidateJob) return;
 
       const targetJob = (activeJobs && activeJobs.find(j => j.id === candidateJob.id)) || candidateJob;
-      const amtDue = (customAmount !== null && customAmount !== undefined && !isNaN(customAmount) && parseFloat(customAmount) > 0)
+      const quoteAmt = targetJob.active_quote_balance_amount ?? targetJob.active_quote_net_payable ?? targetJob.active_quote_total_amount;
+      const amtDue = (customAmount !== null && customAmount !== undefined && !isNaN(customAmount) && parseFloat(customAmount) >= 0)
         ? parseFloat(customAmount)
-        : (targetJob.payment?.amount_due ? parseFloat(targetJob.payment.amount_due) : (targetJob.total_amount ? parseFloat(targetJob.total_amount) : null));
+        : (quoteAmt !== undefined && quoteAmt !== null && parseFloat(quoteAmt) > 0)
+        ? parseFloat(quoteAmt)
+        : (targetJob.payment?.amount_due !== undefined && targetJob.payment?.amount_due !== null ? parseFloat(targetJob.payment.amount_due) : (targetJob.total_amount !== undefined && targetJob.total_amount !== null ? parseFloat(targetJob.total_amount) : 0));
 
       try {
         setIsCollectingCash(true);
         setError('');
         const res = await apiCollectJobCash(targetJob.id, amtDue);
 
-        setCashModalJob(null);
-        setCashAmountReceived('');
-        setSuccessMsg(res.message || 'Cash payment collected and confirmed! Job is COMPLETED.');
+        if (res.payment_status === 'PAID') {
+          setCashModalJob(null);
+          setCashAmountReceived('');
+          setSuccessMsg(res.message || 'Cash payment collected and confirmed! Job is COMPLETED.');
 
-        // Instant Authoritative Reconciliation: Flips UI to AVAILABLE with zero manual refresh
-        if (typeof reconcileJobCompleted === 'function') {
-          reconcileJobCompleted(targetJob.id, { ...targetJob, status: 'completed', payment_status: 'PAID' });
+          // Instant Authoritative Reconciliation: Flips UI to AVAILABLE with zero manual refresh
+          if (typeof reconcileJobCompleted === 'function') {
+            reconcileJobCompleted(targetJob.id, { ...targetJob, status: 'completed', payment_status: 'PAID' });
+          } else {
+            setSelectedJob(null);
+          }
+
+          if (typeof refreshActiveJobs === 'function') {
+            await refreshActiveJobs({ force: true });
+          }
+          if (typeof refreshCompletedJobs === 'function') {
+            await refreshCompletedJobs({ silent: true });
+          }
+          if (typeof refreshProfile === 'function') {
+            refreshProfile(true).catch(() => {});
+          }
+          await loadDashboard({ force: true });
+          setTimeout(() => setSuccessMsg(''), 4000);
         } else {
-          setSelectedJob(null);
+          // Authoritative CASH_PENDING: Cash received, awaiting customer OTP confirmation
+          const updatedJob = {
+            ...targetJob,
+            payment_status: 'cash_pending',
+            payment: {
+              ...(targetJob.payment || {}),
+              payment_status: 'CASH_PENDING',
+              amount_due: res.amount_due || amtDue,
+              amount_received: res.amount_received || amtDue,
+              change_returned: res.change_returned || 0,
+            },
+          };
+          setCashModalJob(updatedJob);
+          setSuccessMsg(res.message || 'Cash collection recorded. Awaiting customer confirmation OTP.');
+          if (typeof refreshActiveJobs === 'function') {
+            await refreshActiveJobs({ force: true });
+          }
+          await loadDashboard({ force: true });
+          setTimeout(() => setSuccessMsg(''), 5000);
         }
-
-        if (typeof refreshActiveJobs === 'function') {
-          await refreshActiveJobs({ force: true });
-        }
-        if (typeof refreshCompletedJobs === 'function') {
-          await refreshCompletedJobs({ silent: true });
-        }
-        if (typeof refreshProfile === 'function') {
-          refreshProfile(true).catch(() => {});
-        }
-        await loadDashboard({ force: true });
-        setTimeout(() => setSuccessMsg(''), 4000);
       } catch (err) {
         setError(err.message || 'Cash collection failed.');
       } finally {
@@ -1128,6 +1180,8 @@ export function EmployeeDashboardPage() {
       try {
         setIsDecliningOffer(true);
         setActionLoading(decliningId);
+        // Optimistically remove from runtime state instantly
+        declineOfferOptimistic?.(decliningId);
         await apiRejectJobOffer(decliningId, finalReason);
         setDeclineModalJob(null);
         setSelectedJob((prev) => (prev?.id === decliningId ? null : prev));
@@ -1136,6 +1190,8 @@ export function EmployeeDashboardPage() {
         await loadDashboard();
         setTimeout(() => setSuccessMsg(''), 4000);
       } catch (err) {
+        // Rollback optimistic removal on error
+        refreshActiveJobs({ force: true });
         setError(err.message || 'Failed to decline job offer.');
       } finally {
         setIsDecliningOffer(false);
@@ -1360,7 +1416,15 @@ export function EmployeeDashboardPage() {
             handleDirectJobClockIn={handleDirectJobClockIn}
             onOpenCancelModal={handleOpenCancelModal}
             onOpenProofModal={(j) => setProofModalJob(j || activeAssignedJob)}
-            onOpenCashModal={(j) => setCashModalJob(j || activeAssignedJob)}
+            onOpenCashModal={(j) => {
+              const target = j || activeAssignedJob;
+              setCashModalJob(target);
+              const quoteAmt = target?.active_quote_balance_amount ?? target?.active_quote_net_payable ?? target?.active_quote_total_amount;
+              const due = (quoteAmt !== undefined && quoteAmt !== null && parseFloat(quoteAmt) > 0)
+                ? parseFloat(quoteAmt)
+                : (target?.payment?.amount_due ?? target?.total_amount ?? '');
+              setCashAmountReceived(due ? String(due) : '');
+            }}
             preServiceState={preServiceState}
             otpInput={otpInput}
             setOtpInput={setOtpInput}
@@ -1380,6 +1444,10 @@ export function EmployeeDashboardPage() {
             onClockOut={handleClockOutAction}
             onStartBreak={handleStartBreakAction}
             onEndBreak={handleEndBreakAction}
+            onOpenQuotationModal={(jobToQuote) => {
+              setSelectedJob(jobToQuote || activeAssignedJob);
+              setIsQuotationModalOpen(true);
+            }}
           />
 
           {/* Real-Time Live Camera Viewfinder & Snapshot Modal */}
@@ -1397,17 +1465,14 @@ export function EmployeeDashboardPage() {
           />
 
           {/* Estimation & Commercial Quotation Builder Modal */}
-          {isQuotationModalOpen && selectedJob && (
+          {isQuotationModalOpen && (selectedJob || activeAssignedJob) && (
             <QuotationBuilderModal
-              job={selectedJob}
-              quoteId={selectedJob.active_quote_id}
+              job={selectedJob || activeAssignedJob}
+              quoteId={(selectedJob || activeAssignedJob)?.active_quote_id}
               isOpen={isQuotationModalOpen}
               onClose={() => {
                 setIsQuotationModalOpen(false);
-                // Refresh the dashboard after the modal is dismissed so the
-                // job card shows the updated quote number / status. We do this
-                // on close (not inside onQuoteSaved) to avoid triggering a
-                // selectedJob refresh while the technician is still editing.
+                if (typeof refreshActiveJobs === 'function') refreshActiveJobs({ force: true });
                 loadDashboard({ silent: true });
               }}
               onQuoteSaved={() => {
@@ -1762,7 +1827,7 @@ export function EmployeeDashboardPage() {
                   <div className="flex justify-between items-center text-xs">
                     <span className="text-amber-800 font-semibold">Authoritative Amount Due:</span>
                     <span className="font-mono font-bold text-base text-amber-950">
-                      ₹{cashModalJob.payment?.amount_due || cashModalJob.total_amount || 0}
+                      ₹{cashModalJob.active_quote_balance_amount || cashModalJob.active_quote_net_payable || cashModalJob.payment?.amount_due || cashModalJob.total_amount || 0}
                     </span>
                   </div>
                 </div>
@@ -1841,7 +1906,7 @@ export function EmployeeDashboardPage() {
                       </button>
                       <button
                         type="submit"
-                        disabled={isCollectingCash || !cashAmountReceived}
+                        disabled={isCollectingCash || cashAmountReceived === '' || cashAmountReceived === null || cashAmountReceived === undefined || isNaN(Number(cashAmountReceived))}
                         className="px-5 py-2 rounded-lg bg-emerald-600 disabled:opacity-50 text-white font-bold hover:bg-emerald-700 shadow-sm cursor-pointer"
                       >
                         {isCollectingCash ? 'Confirming...' : 'Confirm Cash Received'}
@@ -2926,8 +2991,18 @@ export function EmployeeDashboardPage() {
                           )}
                         </div>
 
-                        {/* Offer Action Buttons OR Live Tracking CTA */}
-                        {isOffer ? (
+                        {/* Offer Action Buttons OR Scheduled Future Lock OR Live Tracking CTA */}
+                        {job.is_scheduled_future ? (
+                          <div className="mt-2.5 p-2.5 rounded-lg bg-purple-50 border border-purple-200 text-purple-950 space-y-1">
+                            <div className="flex items-center gap-1.5 text-purple-800 font-bold text-[10px] uppercase tracking-wider">
+                              <Lock className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                              <span>SCHEDULED BOOKING • LOCKED</span>
+                            </div>
+                            <p className="text-[11px] text-purple-900 leading-tight">
+                              {job.scheduled_hold_reason || `Service scheduled for ${job.preferred_date}. Acceptance opens before service.`}
+                            </p>
+                          </div>
+                        ) : isOffer ? (
                           <div className="mt-2.5 p-2.5 rounded-lg bg-amber-50 border border-amber-300 text-amber-950 space-y-2">
                             <div className="flex items-center justify-between">
                               <span className="font-bold text-[10px] text-amber-800 uppercase tracking-wider flex items-center gap-1">
@@ -3137,6 +3212,25 @@ export function EmployeeDashboardPage() {
                       Action Steps
                     </h3>
                     <div className="flex flex-col gap-2.5">
+                      {/* 0. STATE: SCHEDULED FUTURE (Acceptance locked until window opens) */}
+                      {selectedJob.is_scheduled_future && (
+                        <div className="w-full p-3 bg-purple-50 border border-purple-200 rounded-lg space-y-2">
+                          <div className="flex items-center gap-1.5 text-purple-900 font-bold text-xs uppercase tracking-wider">
+                            <Lock className="w-4 h-4 text-purple-600 shrink-0" />
+                            <span>Scheduled Booking • Acceptance Locked</span>
+                          </div>
+                          <p className="text-xs text-purple-950 leading-relaxed">
+                            {selectedJob.scheduled_hold_reason || `Service scheduled for ${selectedJob.preferred_date}. Acceptance opens before the appointment.`}
+                          </p>
+                          <div className="pt-0.5">
+                            <span className="text-[11px] font-semibold text-purple-700 bg-purple-100/80 px-2.5 py-1 rounded-md border border-purple-200 inline-flex items-center gap-1">
+                              <Lock className="w-3 h-3 text-purple-600" />
+                              Acceptance unlocks 45 mins before scheduled service
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
                       {/* 1. STATE: OFFERED (Technician hasn't accepted yet) */}
                       {(selectedJob.active_offer?.status === 'OFFERED' && !selectedJob.active_offer?.is_expired) && (
                         <div className="w-full p-3 bg-amber-50 border border-amber-300 rounded-lg space-y-2.5">
@@ -3698,6 +3792,29 @@ export function EmployeeDashboardPage() {
                               </div>
                             )
                           )}
+
+                          {selectedJob.status === 'proof_submitted' && (
+                            <div className="w-full pt-2">
+                              <button
+                                type="button"
+                                disabled={actionLoading === selectedJob.id}
+                                onClick={() => handleTransitionJob(selectedJob.id, 'completed')}
+                                className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:opacity-60 text-white font-bold rounded-lg text-xs shadow-md flex items-center justify-center gap-2 transition-all cursor-pointer"
+                              >
+                                {actionLoading === selectedJob.id ? (
+                                  <>
+                                    <RotateCw className="w-4 h-4 animate-spin" />
+                                    <span>FINALIZING COMPLETION...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <CheckCircle2 className="w-4 h-4" />
+                                    <span>FINALIZE &amp; COMPLETE JOB</span>
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                          )}
                         </div>
                       )}
 
@@ -4253,7 +4370,7 @@ export function EmployeeDashboardPage() {
         <Modal
           isOpen={Boolean(cashModalJob)}
           onClose={() => setCashModalJob(null)}
-          title={`Collect Cash — Job #${cashModalJob?.id || ''}`}
+          title={`Collect Cash — Job #${cashModalJob?.request_id || cashModalJob?.id || ''}`}
         >
           {cashModalJob && (
             <form onSubmit={handleCashCollectSubmit} className="space-y-4">
@@ -4265,61 +4382,111 @@ export function EmployeeDashboardPage() {
                 <div className="flex justify-between items-center text-xs">
                   <span className="text-amber-800 font-semibold">Authoritative Amount Due:</span>
                   <span className="font-mono font-bold text-base text-amber-950">
-                    ₹{cashModalJob.payment?.amount_due || cashModalJob.total_amount}
+                    ₹{cashModalJob.active_quote_balance_amount || cashModalJob.active_quote_net_payable || cashModalJob.payment?.amount_due || cashModalJob.total_amount || 0}
                   </span>
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Cash Amount Received from Customer (₹)
-                </label>
-                <div className="relative">
-                  <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-sm">₹</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min={parseFloat(cashModalJob.payment?.amount_due || cashModalJob.total_amount || 0)}
-                    required
-                    value={cashAmountReceived}
-                    onChange={(e) => setCashAmountReceived(e.target.value)}
-                    placeholder={String(cashModalJob.payment?.amount_due || cashModalJob.total_amount || '')}
-                    className="w-full pl-7 pr-3 py-2 border border-slate-300 rounded-lg text-sm font-mono font-bold text-slate-800 focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white"
-                  />
-                </div>
-              </div>
+              {(cashModalJob.payment?.payment_status === 'CASH_PENDING' || cashModalJob.payment_status === 'cash_pending') ? (
+                <div className="space-y-3">
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-900 text-xs space-y-1">
+                    <p className="font-bold flex items-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4 text-blue-700" />
+                      <span>Customer Confirmation Code Required</span>
+                    </p>
+                    <p className="text-[11px] text-blue-800 leading-relaxed">
+                      Cash collection was recorded. Ask customer for the <strong>6-digit Cash Payment Confirmation OTP</strong> displayed in their app to verify payment and complete the job.
+                    </p>
+                  </div>
 
-              {/* Calculated Change Returned */}
-              {parseFloat(cashAmountReceived || 0) > parseFloat(cashModalJob.payment?.amount_due || cashModalJob.total_amount || 0) && (
-                <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 flex justify-between items-center">
-                  <span className="text-xs font-semibold text-emerald-800">Change to Return Customer:</span>
-                  <span className="font-mono font-bold text-sm text-emerald-950">
-                    ₹{(parseFloat(cashAmountReceived || 0) - parseFloat(cashModalJob.payment?.amount_due || cashModalJob.total_amount || 0)).toFixed(2)}
-                  </span>
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1">
+                      Customer Cash OTP (6-digits) <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={6}
+                      required
+                      value={paymentOtpInput}
+                      onChange={(e) => setPaymentOtpInput(e.target.value)}
+                      placeholder="• • • • • •"
+                      className="w-full border border-slate-300 rounded-lg p-2.5 font-mono text-base font-bold text-slate-900 tracking-[0.3em] text-center outline-none focus:border-slate-800"
+                    />
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-2 border-t border-slate-200">
+                    <button
+                      type="button"
+                      onClick={() => setCashModalJob(null)}
+                      className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 font-bold hover:bg-slate-50 cursor-pointer"
+                    >
+                      Close
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleVerifyPaymentOtpSubmit(cashModalJob.id, paymentOtpInput)}
+                      disabled={isVerifyingPaymentOtp || !paymentOtpInput || paymentOtpInput.trim().length !== 6}
+                      className="px-5 py-2 rounded-lg bg-emerald-600 disabled:opacity-50 text-white font-bold hover:bg-emerald-700 shadow-sm cursor-pointer flex items-center gap-1.5"
+                    >
+                      {isVerifyingPaymentOtp ? <RotateCw className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                      <span>Verify OTP &amp; Complete</span>
+                    </button>
+                  </div>
                 </div>
+              ) : (
+                <>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Cash Amount Received from Customer (₹)
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-sm">₹</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min={parseFloat(cashModalJob.payment?.amount_due || cashModalJob.total_amount || 0)}
+                        required
+                        value={cashAmountReceived}
+                        onChange={(e) => setCashAmountReceived(e.target.value)}
+                        placeholder={String(cashModalJob.payment?.amount_due || cashModalJob.total_amount || '')}
+                        className="w-full pl-7 pr-3 py-2 border border-slate-300 rounded-lg text-sm font-mono font-bold text-slate-800 focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Calculated Change Returned */}
+                  {parseFloat(cashAmountReceived || 0) > parseFloat(cashModalJob.payment?.amount_due || cashModalJob.total_amount || 0) && (
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 flex justify-between items-center">
+                      <span className="text-xs font-semibold text-emerald-800">Change to Return Customer:</span>
+                      <span className="font-mono font-bold text-sm text-emerald-950">
+                        ₹{(parseFloat(cashAmountReceived || 0) - parseFloat(cashModalJob.payment?.amount_due || cashModalJob.total_amount || 0)).toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+
+                  <p className="text-[11px] text-slate-500">
+                    Submitting records the cash received and requests customer confirmation OTP to verify payment and complete the job.
+                  </p>
+
+                  <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
+                    <button
+                      type="button"
+                      onClick={() => setCashModalJob(null)}
+                      className="px-3.5 py-1.5 rounded border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-50 cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isCollectingCash || !cashAmountReceived || parseFloat(cashAmountReceived) < parseFloat(cashModalJob.payment?.amount_due || cashModalJob.total_amount || 0)}
+                      className="px-4 py-2 rounded bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-bold text-xs shadow-sm flex items-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <DollarSign className="w-4 h-4" />
+                      <span>{isCollectingCash ? 'Recording...' : 'Confirm Cash Received'}</span>
+                    </button>
+                  </div>
+                </>
               )}
-
-              <p className="text-[11px] text-slate-500">
-                Submitting will record the cash collection and immediately confirm the payment as PAID.
-              </p>
-
-              <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
-                <button
-                  type="button"
-                  onClick={() => setCashModalJob(null)}
-                  className="px-3.5 py-1.5 rounded border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-50 cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isCollectingCash || !cashAmountReceived || parseFloat(cashAmountReceived) < parseFloat(cashModalJob.payment?.amount_due || cashModalJob.total_amount || 0)}
-                  className="px-4 py-2 rounded bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-bold text-xs shadow-sm flex items-center gap-1.5 transition-colors cursor-pointer"
-                >
-                  <DollarSign className="w-4 h-4" />
-                  <span>{isCollectingCash ? 'Recording...' : 'Confirm Cash Received'}</span>
-                </button>
-              </div>
             </form>
           )}
         </Modal>
@@ -4439,18 +4606,19 @@ export function EmployeeDashboardPage() {
         />
 
         {/* Estimation & Commercial Quotation Builder Modal */}
-        {isQuotationModalOpen && selectedJob && (
+        {isQuotationModalOpen && (selectedJob || activeAssignedJob) && (
           <QuotationBuilderModal
-            job={selectedJob}
-            quoteId={selectedJob.active_quote_id}
+            job={selectedJob || activeAssignedJob}
+            quoteId={(selectedJob || activeAssignedJob)?.active_quote_id}
             isOpen={isQuotationModalOpen}
             onClose={() => {
               setIsQuotationModalOpen(false);
-              // Refresh after close, not during editing — see comment above.
+              if (typeof refreshActiveJobs === 'function') refreshActiveJobs({ force: true });
               loadDashboard({ silent: true });
             }}
             onQuoteSaved={() => {
-              // Intentionally a no-op. See the comment in the first instance.
+              if (typeof refreshActiveJobs === 'function') refreshActiveJobs({ force: true });
+              loadDashboard({ silent: true });
             }}
           />
         )}

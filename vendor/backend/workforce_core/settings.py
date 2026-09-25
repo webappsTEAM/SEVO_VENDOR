@@ -6,6 +6,7 @@ Shared database with primary backend, zero duplicated tables (managed=False).
 
 
 import os
+import sys
 from datetime import timedelta
 from pathlib import Path
 from dotenv import load_dotenv
@@ -41,7 +42,9 @@ _allowed_hosts_env = os.getenv("ALLOWED_HOSTS") or os.getenv("DJANGO_ALLOWED_HOS
 if _allowed_hosts_env:
     ALLOWED_HOSTS = [h.strip() for h in _allowed_hosts_env.split(",") if h.strip()]
 else:
-    ALLOWED_HOSTS = ["*"] if DEBUG else ["localhost", "127.0.0.1"]
+    ALLOWED_HOSTS = ["*"] if DEBUG else ["localhost", "127.0.0.1", "testserver"]
+if "testserver" not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append("testserver")
 
 # Application definition
 INSTALLED_APPS = [
@@ -65,6 +68,7 @@ INSTALLED_APPS = [
     "workforce_api",
     "time_tracking",
     "vendor_wallet",
+    "inventory",
 ]
 
 MIDDLEWARE = [
@@ -102,10 +106,19 @@ ASGI_APPLICATION = "workforce_core.asgi.application"
 
 # ─── Database Configuration (Shared Supabase PostgreSQL) ──────────────────────
 
-USE_POSTGRES = os.getenv("DB_NAME") or os.getenv("DB_HOST")
+IS_TESTING = "test" in sys.argv or os.getenv("DJANGO_TEST_SQLITE") == "1"
+USE_POSTGRES = bool(os.getenv("DB_NAME") or os.getenv("DB_HOST"))
 
-if USE_POSTGRES:
+if IS_TESTING:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": ":memory:",
+        }
+    }
+elif USE_POSTGRES:
     _db_options = {
+        "connect_timeout": int(os.getenv("DB_CONNECT_TIMEOUT", "10")),
         "keepalives": 1,
         "keepalives_idle": 30,
         "keepalives_interval": 10,
@@ -143,6 +156,33 @@ else:
         }
     }
 
+REDIS_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
+
+_cache_backend = "django.core.cache.backends.locmem.LocMemCache"
+_cache_location = "workforce-local-cache"
+_cache_url = os.getenv("CACHE_URL") or (os.getenv("REDIS_URL") if not DEBUG else None)
+
+if _cache_url and ("redis://" in _cache_url or "rediss://" in _cache_url):
+    try:
+        import redis
+        # Quick liveness probe (0.2s timeout) to ensure Redis is actually online and accepting connections
+        _probe_client = redis.from_url(_cache_url, socket_timeout=0.2, socket_connect_timeout=0.2)
+        _probe_client.ping()
+        _cache_backend = "django.core.cache.backends.redis.RedisCache"
+        _cache_location = _cache_url
+    except Exception:
+        # Redis offline or unreachable; safely fallback to LocMemCache so throttling and caching do not fail
+        _cache_backend = "django.core.cache.backends.locmem.LocMemCache"
+        _cache_location = "workforce-local-cache"
+
+CACHES = {
+    "default": {
+        "BACKEND": _cache_backend,
+        "LOCATION": _cache_location,
+        "TIMEOUT": 300,
+        "KEY_PREFIX": "workforce",
+    }
+}
 AUTH_USER_MODEL = "accounts.User"
 
 AUTH_PASSWORD_VALIDATORS = [
@@ -323,3 +363,10 @@ SEVO_INDIVIDUAL_PROMO_RATE = os.getenv("SEVO_INDIVIDUAL_PROMO_RATE", "0.08")
 SEVO_PROMO_PERIOD_DAYS = os.getenv("SEVO_PROMO_PERIOD_DAYS", "90")
 SEVO_DISPUTE_HOLD_HOURS = os.getenv("SEVO_DISPUTE_HOLD_HOURS", "48")
 # env-reload: 2026-09-08
+
+# ─── Authoritative Dispatch & GPS Freshness Configuration ───────────────────
+# Canonical GPS freshness requirement in seconds for dispatch candidate eligibility.
+# Technicians whose last GPS fix is older than this will not be considered fresh for dispatch.
+DISPATCH_MAX_GPS_AGE_SECONDS = int(os.getenv("DISPATCH_MAX_GPS_AGE_SECONDS", "14400"))
+DISPATCH_LOCATION_MAX_AGE_SECONDS = DISPATCH_MAX_GPS_AGE_SECONDS
+
