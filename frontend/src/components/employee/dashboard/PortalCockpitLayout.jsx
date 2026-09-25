@@ -27,6 +27,7 @@ import { TechnicianNavigationView } from '../navigation/TechnicianNavigationView
 import { ACTIVE_QUEUE_STATUSES } from '../../../context/EmployeeRuntimeContext.jsx';
 import { LogisticsLegController, isLogisticsJob } from '../logistics/LogisticsLegController.jsx';
 import { LogisticsStopManager } from '../logistics/LogisticsStopManager.jsx';
+import { PackersMoversManifestCard } from '../logistics/PackersMoversManifestCard.jsx';
 
 /**
  * Real-time Countdown Badge for Offer Expiration & Cancellation Window
@@ -680,6 +681,13 @@ export function PortalCockpitLayout({
                       </div>
                     </div>
                   </div>
+                )}
+
+                {/* ── PACKERS & MOVERS MANIFEST & SPECIFICATIONS (Customer Inventory & Requirements) ── */}
+                {isActiveAssignment && activeJob && (
+                  <PackersMoversManifestCard
+                    job={activeJob}
+                  />
                 )}
 
                 {/* ── LOGISTICS JOURNEY & LEG PROGRESSION (P&M 13 Stages & GT 5 Stages) ── */}

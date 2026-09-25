@@ -357,3 +357,88 @@ def emit_completion_proof(job, *, notes="", photo_url="", signature_url="",
     except Exception as exc:
         logger.info("Could not emit job.completion_proof_submitted for job %s: %s", job.id, exc)
 
+
+def extract_pm_job_details(job):
+    """
+    Extracts Packers & Movers relocation details, crew size, item inventory,
+    and access specifications from either fare_breakdown or cart_data on the ServiceRequest.
+    Returns (crew_size, inventory_items, relocation_details).
+    """
+    cat = (getattr(job, "service_category", "") or "").strip().lower()
+    title = (getattr(job, "service_title", "") or getattr(job, "issue_title", "") or "").strip().lower()
+    if cat != "packers_movers" and "packer" not in title and "mover" not in title:
+        return None, None, None
+
+    fb = getattr(job, "fare_breakdown", None) or {}
+    if not isinstance(fb, dict):
+        fb = {}
+
+    cd = getattr(job, "cart_data", None) or []
+    c0 = cd[0] if isinstance(cd, list) and len(cd) > 0 and isinstance(cd[0], dict) else (cd if isinstance(cd, dict) else {})
+
+    # 1. Crew size
+    crew_size = (
+        fb.get("crew_size")
+        or (fb.get("vehicle") or {}).get("crew_size")
+        or c0.get("helpers_requested")
+        or c0.get("crew_size")
+    )
+    if crew_size is not None:
+        try:
+            crew_size = int(crew_size)
+        except (ValueError, TypeError):
+            pass
+
+    # 2. Inventory items
+    raw_items = (
+        fb.get("items")
+        or fb.get("item_snapshots")
+        or (fb.get("inventory_summary") or {}).get("items")
+        or c0.get("inventory")
+        or c0.get("items")
+    )
+    inventory_items = []
+    if isinstance(raw_items, list):
+        for it in raw_items:
+            if isinstance(it, dict):
+                inventory_items.append({
+                    "name": it.get("name") or it.get("item_name") or f"Item #{it.get('goods_item_id', '')}",
+                    "quantity": int(it.get("quantity") or 1),
+                    "cft": it.get("cft") or it.get("unit_cft"),
+                    "category": it.get("category") or it.get("group") or "",
+                    "is_fragile": bool(it.get("is_fragile") or it.get("fragile")),
+                })
+
+    # 3. Relocation details
+    access = fb.get("access") or {}
+    pricing = fb.get("pricing") or {}
+    vehicle = fb.get("vehicle") or {}
+
+    pickup_floor = access.get("pickup_floor", c0.get("pickup_floor", 0))
+    pickup_has_lift = access.get("pickup_has_lift", c0.get("pickup_has_lift", True))
+    drop_floor = access.get("drop_floor", c0.get("drop_floor", 0))
+    drop_has_lift = access.get("drop_has_lift", c0.get("drop_has_lift", True))
+
+    packing_tier = pricing.get("packing_label") or pricing.get("packing_tier") or c0.get("packing_tier") or "Standard"
+    dismantling_required = pricing.get("dismantling_required", c0.get("dismantling_required", False))
+    unpacking_required = pricing.get("unpacking_required", c0.get("unpacking_required", False))
+    relocation_type = c0.get("relocation_type") or "Within City"
+    volume_cft = fb.get("total_cft") or (fb.get("inventory_summary") or {}).get("total_cft") or 0
+    vehicle_name = vehicle.get("name") or c0.get("package") or ""
+
+    relocation_details = {
+        "pickup_floor": pickup_floor,
+        "pickup_has_lift": bool(pickup_has_lift),
+        "drop_floor": drop_floor,
+        "drop_has_lift": bool(drop_has_lift),
+        "packing_tier": str(packing_tier).capitalize(),
+        "dismantling_required": bool(dismantling_required),
+        "unpacking_required": bool(unpacking_required),
+        "relocation_type": relocation_type,
+        "volume_cft": volume_cft,
+        "vehicle_name": vehicle_name,
+    }
+
+    return crew_size, inventory_items, relocation_details
+
+

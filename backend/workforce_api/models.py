@@ -656,7 +656,7 @@ class PreServiceVerification(models.Model):
         # Work area photo and appliance photo are optional evidence.
         # Mandatory gates: arrival geofence check-in, customer OTP verification, and technician presence selfie.
         if self.job and getattr(self.job, "otp_verified", False) and not self.otp_verified:
-            self.otp_verified = True
+            setattr(self, "otp_verified", True)
             if getattr(self.job, "otp_verified_at", None) and not self.otp_verified_at:
                 self.otp_verified_at = self.job.otp_verified_at
         ready = bool(
@@ -664,7 +664,7 @@ class PreServiceVerification(models.Model):
             and (self.otp_verified or (self.job and getattr(self.job, "otp_verified", False)))
             and self.presence_photo
         )
-        self.is_complete = ready
+        setattr(self, "is_complete", ready)
         if ready and not self.completed_at:
             from django.utils import timezone
             self.completed_at = timezone.now()
@@ -979,7 +979,7 @@ class PostServiceProof(models.Model):
         )
         if ready and not self.is_submitted:
             from django.utils import timezone
-            self.is_submitted = True
+            setattr(self, "is_submitted", True)
             self.submitted_at = timezone.now()
         return self.is_submitted
 
@@ -1486,7 +1486,7 @@ class JobPayment(models.Model):
         Canonical derived property representing whether cash has been physically collected.
         Returns True if cash_collected_at is recorded, False otherwise.
         """
-        return bool(self.cash_collected_at is not None)
+        return self.cash_collected_at is not None
 
 
 class CashSettlement(models.Model):
@@ -2607,8 +2607,9 @@ class WorkforceQuote(models.Model):
                 if "quote_number" not in str(exc):
                     raise
                 last_error = exc
-                self.quote_number = ""
-        raise last_error
+                setattr(self, "quote_number", "")
+        if last_error is not None:
+            raise last_error
 
 
 class WorkforceQuoteItem(models.Model):
@@ -2980,8 +2981,9 @@ class WorkforceInvoice(models.Model):
                 if "invoice_number" not in str(exc):
                     raise
                 last_error = exc
-                self.invoice_number = ""
-        raise last_error
+                setattr(self, "invoice_number", "")
+        if last_error is not None:
+            raise last_error
 
 
 class WorkforceInvoiceItem(models.Model):
@@ -4105,7 +4107,7 @@ class SellerProduct(models.Model):
 
     @rejection_reason.setter
     def rejection_reason(self, value):
-        self.admin_review_note = value or ""
+        setattr(self, "admin_review_note", str(value or ""))
 
     def __str__(self):
         return f"{self.title} ({self.sku}) - {self.company.company_name}"

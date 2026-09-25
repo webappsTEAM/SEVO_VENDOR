@@ -69,6 +69,8 @@ from .serializers import (
     WorkforceJobFeedbackSerializer,
     JobPaymentSerializer,
     PaymentCollectionEventSerializer,
+    GrocerySellerSignupSerializer,
+    GrocerySellerApplicationDetailSerializer,
 )
 from .models import (
     WorkforceEmployeeSchedule,
@@ -4927,6 +4929,18 @@ class WorkforceJobAcceptOfferView(APIView):
             job_obj.save(update_fields=["assigned_employee"])
             apply_transition(job_obj, "accepted", actor=request.user)
 
+            # Initialize logistics leg (EN_ROUTE_PICKUP for GT, ASSIGNED for P&M)
+            try:
+                from workforce_api.services.automatic_dispatch import LOGISTICS_SERVICE_CATEGORIES
+                from workforce_api.services.logistics_events import initial_leg_for_category, set_logistics_leg
+                cat_clean = (job_obj.service_category or "").strip().lower()
+                if cat_clean in LOGISTICS_SERVICE_CATEGORIES and not job_obj.logistics_leg:
+                    init_leg = initial_leg_for_category(job_obj.service_category)
+                    if init_leg:
+                        set_logistics_leg(job_obj, init_leg, actor=request.user)
+            except Exception as leg_err:
+                logger.warning("Could not set initial logistics leg on accept for job %s: %s", job_obj.id, leg_err)
+
             # Synchronize WorkforceDispatchState to ASSIGNED
             from workforce_api.models import WorkforceDispatchState
             WorkforceDispatchState.objects.filter(job=job_obj).update(
@@ -5168,6 +5182,19 @@ class WorkforceJobCancelAssignmentView(APIView):
                     "code": "CANCELLATION_NOT_ALLOWED_IN_CURRENT_STATE",
                 }, status=status.HTTP_409_CONFLICT)
 
+            # Logistics / P&M physical progress cancellation lock: Once loading, packing, or transit has started,
+            # technician self-service cancellation is locked (same physical progress lock enforced on customer app).
+            _LOGISTICS_CANCEL_LOCK_LEGS = {
+                "LOADING", "EN_ROUTE_DROP", "UNLOADING", "DELIVERED",
+                "PACKING", "DISMANTLING", "IN_TRANSIT", "ARRIVED_DROP", "REASSEMBLY", "UNPACKING", "COMPLETED",
+            }
+            _leg = str(getattr(job_obj, "logistics_leg", "") or "").strip().upper()
+            if _leg in _LOGISTICS_CANCEL_LOCK_LEGS:
+                return Response({
+                    "error": f"Cannot cancel job: Trip has already reached stage '{_leg}'. Please contact dispatch support.",
+                    "code": "TRIP_PROGRESS_CANCELLATION_LOCKED",
+                }, status=status.HTTP_409_CONFLICT)
+
             # 5-minute cancellation window check
             from service_requests.models import EmployeeJob
             from workforce_api.models import WorkforceJobLifecycleEvent, JobTrackingSession, WorkforceEventLog
@@ -5379,6 +5406,19 @@ class WorkforceJobTechnicianCancelView(APIView):
                 return Response({
                     "error": f"Cancellation is not allowed in current job state '{job.status}'. Cancellation window is only open prior to arrival.",
                     "code": "CANCELLATION_NOT_ALLOWED_IN_CURRENT_STATE",
+                }, status=status.HTTP_409_CONFLICT)
+
+            # Logistics / P&M physical progress cancellation lock: Once loading, packing, or transit has started,
+            # technician self-service cancellation is locked (same physical progress lock enforced on customer app).
+            _LOGISTICS_CANCEL_LOCK_LEGS = {
+                "LOADING", "EN_ROUTE_DROP", "UNLOADING", "DELIVERED",
+                "PACKING", "DISMANTLING", "IN_TRANSIT", "ARRIVED_DROP", "REASSEMBLY", "UNPACKING", "COMPLETED",
+            }
+            _leg = str(getattr(job, "logistics_leg", "") or "").strip().upper()
+            if _leg in _LOGISTICS_CANCEL_LOCK_LEGS:
+                return Response({
+                    "error": f"Cannot cancel job: Trip has already reached stage '{_leg}'. Please contact dispatch support.",
+                    "code": "TRIP_PROGRESS_CANCELLATION_LOCKED",
                 }, status=status.HTTP_409_CONFLICT)
 
             # 5-minute cancellation window check
@@ -7771,6 +7811,19 @@ class WorkforceJobLiveTrackingView(APIView):
             } if is_logistics else None,
         }
 
+        # P&M audit fix: surface crew_size, inventory_items, and relocation_details
+        # from either fare_breakdown or cart_data so the crew/coordinator knows the full manifest
+        # and access requirements. Read-only, additive, scoped to packers_movers.
+        pm_crew_size = None
+        pm_items = None
+        pm_relocation = None
+        if (job.service_category or "").strip().lower() == "packers_movers":
+            try:
+                from workforce_api.services.logistics_events import extract_pm_job_details
+                pm_crew_size, pm_items, pm_relocation = extract_pm_job_details(job)
+            except Exception:
+                logger.exception("Could not extract P&M details for job %s", job.id)
+
         # Privacy Guard: If job is completed/cancelled/closed/redispatching, or has no assigned technician
         if job.status in ["completed", "cancelled", "closed", "redispatching"] or not job.assigned_employee:
             logger.info(f"[MAP_RECONCILIATION] job_id={job.id} status={job.status} technician_masked=True")
@@ -7789,6 +7842,9 @@ class WorkforceJobLiveTrackingView(APIView):
                 "freshness_state": "FINDING_NEW_PROFESSIONAL" if job.status == "redispatching" else "LOCATION_LOST",
                 "age_seconds": None,
                 "updated_at": now.isoformat(),
+                "crew_size": pm_crew_size,
+                "inventory_items": pm_items,
+                "relocation_details": pm_relocation,
                 **route_points,
             }, status=status.HTTP_200_OK)
 
@@ -7928,24 +7984,6 @@ class WorkforceJobLiveTrackingView(APIView):
             except Exception:
                 logger.exception("Could not resolve vehicle info for job %s live tracking", job.id)
 
-        # P&M audit fix: fare_breakdown["crew_size"]/["items"] (the customer's
-        # selected item inventory, already captured verbatim at booking time
-        # by packers_movers_pricing.py) were computed at quote time but never
-        # surfaced anywhere in the vendor app -- the crew had no way to see
-        # how many workers the job was priced for or what inventory to expect,
-        # despite the data already sitting in fare_breakdown that this view
-        # already loads above. Read-only, additive, scoped to packers_movers
-        # so no other category's response payload changes shape.
-        pm_crew_size = None
-        pm_items = None
-        if (job.service_category or "").strip().lower() == "packers_movers":
-            try:
-                _fb = getattr(job, "fare_breakdown", None) or {}
-                if isinstance(_fb, dict):
-                    pm_crew_size = _fb.get("crew_size")
-                    pm_items = _fb.get("items")
-            except Exception:
-                logger.exception("Could not read crew_size/items from fare_breakdown for job %s", job.id)
 
         logger.info(f"[MAP_RECONCILIATION] job_id={job.id} freshness_state={freshness_state} distance_m={distance_m} age_seconds={age_seconds}")
 
@@ -7982,6 +8020,7 @@ class WorkforceJobLiveTrackingView(APIView):
             "updated_at": now.isoformat(),
             "crew_size": pm_crew_size,
             "inventory_items": pm_items,
+            "relocation_details": pm_relocation,
             **route_points,
         }, status=status.HTTP_200_OK)
 

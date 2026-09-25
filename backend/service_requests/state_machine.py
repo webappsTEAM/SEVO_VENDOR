@@ -260,6 +260,13 @@ def apply_transition(service_request, target_status: str, actor=None) -> str:
                         service_request.pk, _notify_err,
                     )
 
+            if (service_request.service_category or "").strip().lower() == "packers_movers":
+                try:
+                    from workforce_api.services.logistics_events import set_logistics_leg
+                    set_logistics_leg(service_request, "COMPLETED", actor=actor)
+                except Exception as _leg_err:
+                    logger.info("Could not set COMPLETED leg for P&M job %s: %s", service_request.pk, _leg_err)
+
             try:
                 from workforce_api.services.invoice_service import generate_invoice_for_job
                 generate_invoice_for_job(service_request)

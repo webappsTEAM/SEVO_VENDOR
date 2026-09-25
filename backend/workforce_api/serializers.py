@@ -532,6 +532,10 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
     scheduled_window_open = serializers.SerializerMethodField()
     scheduled_hold_reason = serializers.SerializerMethodField()
     clock_in_time = serializers.SerializerMethodField()
+    # P&M Relocation Manifest & Specifications
+    crew_size = serializers.SerializerMethodField()
+    inventory_items = serializers.SerializerMethodField()
+    relocation_details = serializers.SerializerMethodField()
 
     class Meta:
         model = ServiceRequest
@@ -612,6 +616,10 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
             "can_accept",
             "scheduled_window_open",
             "scheduled_hold_reason",
+            # P&M Relocation Manifest & Specifications
+            "crew_size",
+            "inventory_items",
+            "relocation_details",
         ]
 
     def get_clock_in_time(self, obj):
@@ -635,6 +643,34 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
     def get_is_logistics(self, obj):
         from workforce_api.services.automatic_dispatch import LOGISTICS_SERVICE_CATEGORIES
         return (obj.service_category or "").strip().lower() in LOGISTICS_SERVICE_CATEGORIES
+
+    def _get_pm_details(self, obj):
+        if hasattr(obj, "_cached_pm_details"):
+            return obj._cached_pm_details
+        cat = (getattr(obj, "service_category", "") or "").strip().lower()
+        title = (getattr(obj, "service_title", "") or getattr(obj, "issue_title", "") or "").strip().lower()
+        if cat != "packers_movers" and "packer" not in title and "mover" not in title:
+            res = (None, None, None)
+        else:
+            try:
+                from workforce_api.services.logistics_events import extract_pm_job_details
+                res = extract_pm_job_details(obj)
+            except Exception:
+                res = (None, None, None)
+        obj._cached_pm_details = res
+        return res
+
+    def get_crew_size(self, obj):
+        cs, _, _ = self._get_pm_details(obj)
+        return cs
+
+    def get_inventory_items(self, obj):
+        _, items, _ = self._get_pm_details(obj)
+        return items
+
+    def get_relocation_details(self, obj):
+        _, _, details = self._get_pm_details(obj)
+        return details
 
     def _get_scheduled_window(self, obj):
         if hasattr(obj, "_cached_scheduled_window"):
@@ -690,8 +726,15 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
         emp_offers_map = self.context.get("emp_offers_map")
         if emp_offers_map is not None:
             return emp_offers_map.get(obj.id)
-        from .models import WorkforceJobOffer
-        return WorkforceJobOffer.objects.filter(job=obj, employee=emp).order_by("-offered_at").first()
+        jid = getattr(obj, "id", None) or getattr(obj, "pk", None)
+        emp_id = getattr(emp, "id", None) or getattr(emp, "pk", None)
+        if isinstance(jid, int) and isinstance(emp_id, int):
+            try:
+                from .models import WorkforceJobOffer
+                return WorkforceJobOffer.objects.filter(job_id=jid, employee_id=emp_id).order_by("-offered_at").first()
+            except Exception:
+                return None
+        return None
 
     def _resolve_wallet_channel(self, obj):
         """Cheap, best-effort: which wallet this job would settle into if
@@ -699,12 +742,16 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
         whose worker has no wallet yet simply has no channel to show."""
         if hasattr(obj, "_cached_wallet_channel"):
             return obj._cached_wallet_channel
-        if not obj.assigned_employee_id:
+        assigned_emp_id = getattr(obj, "assigned_employee_id", None)
+        if not assigned_emp_id:
+            assigned_emp = getattr(obj, "assigned_employee", None)
+            assigned_emp_id = getattr(assigned_emp, "id", None)
+        if not assigned_emp_id:
             obj._cached_wallet_channel = (None, None)
             return None, None
         wallets_map = self.context.get("wallets_map")
         if wallets_map is not None:
-            res = wallets_map.get(obj.assigned_employee_id, (None, None))
+            res = wallets_map.get(assigned_emp_id, (None, None))
             obj._cached_wallet_channel = res
             return res
         try:
@@ -736,7 +783,8 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
         if not emp:
             return False
         from workforce_api.services.workload import ACTIVE_WORKLOAD_STATUSES
-        is_assigned = (obj.assigned_employee_id == emp.id)
+        assigned_emp_id = getattr(obj, "assigned_employee_id", None) or getattr(getattr(obj, "assigned_employee", None), "id", None)
+        is_assigned = (assigned_emp_id == emp.id)
         is_active = str(obj.status).lower() in ACTIVE_WORKLOAD_STATUSES
         return bool(is_assigned and is_active)
 
@@ -744,7 +792,8 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
         emp = self._get_context_emp()
         if not emp:
             return False
-        return bool(obj.assigned_employee_id == emp.id)
+        assigned_emp_id = getattr(obj, "assigned_employee_id", None) or getattr(getattr(obj, "assigned_employee", None), "id", None)
+        return bool(assigned_emp_id == emp.id)
 
     def get_is_offer(self, obj):
         if self.get_is_accepted_by_current_employee(obj) or self.get_is_assigned_to_current_employee(obj):
@@ -790,12 +839,19 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
         if lifecycle_events_map is not None:
             accept_event = lifecycle_events_map.get(obj.id)
         else:
-            from .models import WorkforceJobLifecycleEvent
-            accept_event = WorkforceJobLifecycleEvent.objects.filter(
-                job=obj,
-                employee=emp,
-                event_type=WorkforceJobLifecycleEvent.EventType.EMPLOYEE_JOB_ACCEPTED,
-            ).order_by("-created_at").first()
+            accept_event = None
+            jid = getattr(obj, "id", None) or getattr(obj, "pk", None)
+            emp_id = getattr(emp, "id", None) or getattr(emp, "pk", None)
+            if isinstance(jid, int) and isinstance(emp_id, int):
+                try:
+                    from .models import WorkforceJobLifecycleEvent
+                    accept_event = WorkforceJobLifecycleEvent.objects.filter(
+                        job_id=jid,
+                        employee_id=emp_id,
+                        event_type=WorkforceJobLifecycleEvent.EventType.EMPLOYEE_JOB_ACCEPTED,
+                    ).order_by("-created_at").first()
+                except Exception:
+                    accept_event = None
         if accept_event and accept_event.accepted_at:
             return accept_event.accepted_at.isoformat()
         return (obj.updated_at or obj.created_at).isoformat() if (obj.updated_at or obj.created_at) else None
@@ -810,12 +866,19 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
         if lifecycle_events_map is not None:
             accept_event = lifecycle_events_map.get(obj.id)
         else:
-            from .models import WorkforceJobLifecycleEvent
-            accept_event = WorkforceJobLifecycleEvent.objects.filter(
-                job=obj,
-                employee=emp,
-                event_type=WorkforceJobLifecycleEvent.EventType.EMPLOYEE_JOB_ACCEPTED,
-            ).order_by("-created_at").first()
+            accept_event = None
+            jid = getattr(obj, "id", None) or getattr(obj, "pk", None)
+            emp_id = getattr(emp, "id", None) or getattr(emp, "pk", None)
+            if isinstance(jid, int) and isinstance(emp_id, int):
+                try:
+                    from .models import WorkforceJobLifecycleEvent
+                    accept_event = WorkforceJobLifecycleEvent.objects.filter(
+                        job_id=jid,
+                        employee_id=emp_id,
+                        event_type=WorkforceJobLifecycleEvent.EventType.EMPLOYEE_JOB_ACCEPTED,
+                    ).order_by("-created_at").first()
+                except Exception:
+                    accept_event = None
         if accept_event and accept_event.cancellation_deadline:
             return accept_event.cancellation_deadline.isoformat()
         from datetime import timedelta
@@ -915,11 +978,18 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
         if active_offers_map is not None:
             offer = active_offers_map.get(obj.id)
         else:
-            from .models import WorkforceJobOffer
-            from django.utils import timezone
-            offer = WorkforceJobOffer.objects.filter(job=obj, employee=emp, status="OFFERED").first()
-            if offer and offer.expires_at <= timezone.now():
-                offer = None
+            offer = None
+            if emp and isinstance(getattr(emp, "id", None), int):
+                jid = getattr(obj, "id", None) or getattr(obj, "pk", None)
+                if isinstance(jid, int):
+                    try:
+                        from .models import WorkforceJobOffer
+                        from django.utils import timezone
+                        offer = WorkforceJobOffer.objects.filter(job_id=jid, employee_id=emp.id, status="OFFERED").first()
+                        if offer and offer.expires_at <= timezone.now():
+                            offer = None
+                    except Exception:
+                        offer = None
         if not offer:
             return None
         return {
@@ -955,9 +1025,15 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
                 }
                 for ext in exts
             ]
-        from .models import WorkforceWorkExtension
-        exts = WorkforceWorkExtension.objects.filter(job=obj).order_by("-created_at")
-        return WorkforceWorkExtensionSerializer(exts, many=True).data
+        jid = getattr(obj, "id", None) or getattr(obj, "pk", None)
+        if isinstance(jid, int):
+            try:
+                from .models import WorkforceWorkExtension
+                exts = WorkforceWorkExtension.objects.filter(job_id=jid).order_by("-created_at")
+                return WorkforceWorkExtensionSerializer(exts, many=True).data
+            except Exception:
+                pass
+        return []
 
     def get_active_extension(self, obj):
         active_extensions_map = self.context.get("active_extensions_map")
@@ -983,13 +1059,18 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
                     "created_at": active.created_at.isoformat() if active.created_at else None,
                 }
             return None
-        from .models import WorkforceWorkExtension
-        active = WorkforceWorkExtension.objects.filter(
-            job=obj,
-            status__in=["REQUESTED", "ADMIN_APPROVED", "CUSTOMER_ACCEPTED", "IN_PROGRESS"]
-        ).first()
-        if active:
-            return WorkforceWorkExtensionSerializer(active).data
+        jid = getattr(obj, "id", None) or getattr(obj, "pk", None)
+        if isinstance(jid, int):
+            try:
+                from .models import WorkforceWorkExtension
+                active = WorkforceWorkExtension.objects.filter(
+                    job_id=jid,
+                    status__in=["REQUESTED", "ADMIN_APPROVED", "CUSTOMER_ACCEPTED", "IN_PROGRESS"]
+                ).first()
+                if active:
+                    return WorkforceWorkExtensionSerializer(active).data
+            except Exception:
+                pass
         return None
 
     def get_payment(self, obj):
@@ -1000,7 +1081,12 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
             from .models import JobPayment
             pmt = getattr(obj, "payment_record", None)
             if not pmt:
-                pmt = JobPayment.objects.filter(job=obj).first()
+                jid = getattr(obj, "id", None) or getattr(obj, "pk", None)
+                if isinstance(jid, int):
+                    try:
+                        pmt = JobPayment.objects.filter(job_id=jid).first()
+                    except Exception:
+                        pmt = None
         if not pmt:
             is_online = (obj.payment_method or "").upper() in ["ONLINE", "PREPAID"]
             is_paid = obj.payment_status in ["paid", "collected"]
@@ -1039,8 +1125,15 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
         if emp_jobs_map is not None:
             emp_job = emp_jobs_map.get(obj.id)
         else:
-            from service_requests.models import EmployeeJob
-            emp_job = EmployeeJob.objects.filter(service_request=obj, employee=emp).first()
+            jid = getattr(obj, "id", None) or getattr(obj, "pk", None)
+            emp_id = getattr(emp, "id", None) or getattr(emp, "pk", None)
+            emp_job = None
+            if isinstance(jid, int) and isinstance(emp_id, int):
+                try:
+                    from service_requests.models import EmployeeJob
+                    emp_job = EmployeeJob.objects.filter(service_request_id=jid, employee_id=emp_id).first()
+                except Exception:
+                    emp_job = None
         accepted_at = (emp_job.accepted_date if emp_job and emp_job.accepted_date else None) or obj.updated_at
         if not accepted_at:
             return None
@@ -1078,13 +1171,20 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
         if quotes_map is not None:
             return quotes_map.get(obj.id)
         if not hasattr(obj, "_cached_active_quote"):
-            from .models import WorkforceQuote
-            obj._cached_active_quote = (
-                WorkforceQuote.objects.filter(job=obj)
-                .exclude(status__in=[WorkforceQuote.Status.SUPERSEDED, WorkforceQuote.Status.CANCELLED])
-                .order_by("-quote_version")
-                .first()
-            )
+            jid = getattr(obj, "id", None) or getattr(obj, "pk", None)
+            if isinstance(jid, int):
+                try:
+                    from .models import WorkforceQuote
+                    obj._cached_active_quote = (
+                        WorkforceQuote.objects.filter(job_id=jid)
+                        .exclude(status__in=[WorkforceQuote.Status.SUPERSEDED, WorkforceQuote.Status.CANCELLED])
+                        .order_by("-quote_version")
+                        .first()
+                    )
+                except Exception:
+                    obj._cached_active_quote = None
+            else:
+                obj._cached_active_quote = None
         return obj._cached_active_quote
 
     def get_is_estimation(self, obj):
@@ -1128,13 +1228,15 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
         return round(float(q.net_payable) * (adv_pct / 100.0), 2)
 
     def get_active_quote_balance_amount(self, obj):
-        try:
-            from workforce_api.models import WorkforceInvoice
-            inv = WorkforceInvoice.objects.filter(job=obj).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
-            if inv:
-                return round(float(inv.balance_due), 2)
-        except Exception:
-            pass
+        jid = getattr(obj, "id", None) or getattr(obj, "pk", None)
+        if isinstance(jid, int):
+            try:
+                from workforce_api.models import WorkforceInvoice
+                inv = WorkforceInvoice.objects.filter(job_id=jid).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
+                if inv:
+                    return round(float(inv.balance_due), 2)
+            except Exception:
+                pass
 
         q = self._get_active_quote(obj)
         if not q or q.net_payable is None:
@@ -2634,7 +2736,8 @@ class SellerProductCreateUpdateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(err_msg, code=err_code)
         return value
 
-    def validate(self, data):
+    def validate(self, attrs):
+        data = attrs
         mrp = data.get("mrp")
         selling_price = data.get("selling_price")
 
@@ -2672,7 +2775,7 @@ class SellerProductCreateUpdateSerializer(serializers.ModelSerializer):
                     {"sku": f"A product with SKU '{sku}' already exists in your store catalog."}
                 )
 
-        return data
+        return attrs
 
 
 class AdminSellerApprovalListSerializer(serializers.Serializer):
@@ -2887,9 +2990,9 @@ class SellerInventoryAdjustSerializer(serializers.Serializer):
     expiry_date = serializers.DateField(required=False, allow_null=True)
     cost_price = serializers.DecimalField(max_digits=10, decimal_places=2, required=False, allow_null=True)
 
-    def validate(self, data):
-        movement_type = data.get("movement_type")
-        reason = (data.get("reason") or "").strip()
+    def validate(self, attrs):
+        movement_type = attrs.get("movement_type")
+        reason = (attrs.get("reason") or "").strip()
 
         # Rule: Decreases, Damages, Expiries and Adjustments require a mandatory reason
         if movement_type in ("ADJUSTMENT_DECREASE", "DAMAGE", "EXPIRED", "ADJUSTMENT_INCREASE") and not reason:
@@ -2897,7 +3000,7 @@ class SellerInventoryAdjustSerializer(serializers.Serializer):
                 {"reason": f"A reason is mandatory when recording '{movement_type}'."}
             )
 
-        return data
+        return attrs
 
 
 # ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
@@ -3112,15 +3215,15 @@ class SellerOrderStatusTransitionSerializer(serializers.Serializer):
     cancellation_reason = serializers.CharField(max_length=500, required=False, allow_blank=True)
     handover_ref = serializers.CharField(max_length=100, required=False, allow_blank=True)
 
-    def validate(self, data):
-        action = data.get("action")
+    def validate(self, attrs):
+        action = attrs.get("action")
         if action == "cancel":
-            reason = (data.get("cancellation_reason") or "").strip()
+            reason = (attrs.get("cancellation_reason") or "").strip()
             if not reason:
                 raise serializers.ValidationError(
                     {"cancellation_reason": "A cancellation reason is required to cancel an order."}
                 )
-        return data
+        return attrs
 
 
 class SellerOrderItemPickSerializer(serializers.Serializer):
@@ -3293,15 +3396,15 @@ class SellerReturnReviewSerializer(serializers.Serializer):
     seller_notes = serializers.CharField(max_length=500, required=False, allow_blank=True)
     rejection_reason = serializers.CharField(max_length=500, required=False, allow_blank=True)
 
-    def validate(self, data):
-        decision = data.get("decision")
+    def validate(self, attrs):
+        decision = attrs.get("decision")
         if decision == "reject":
-            reason = (data.get("rejection_reason") or "").strip()
+            reason = (attrs.get("rejection_reason") or "").strip()
             if not reason:
                 raise serializers.ValidationError(
                     {"rejection_reason": "A rejection reason is mandatory when rejecting a return request."}
                 )
-        return data
+        return attrs
 
 
 class SellerReturnQualityCheckSerializer(serializers.Serializer):

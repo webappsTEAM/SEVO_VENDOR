@@ -19,6 +19,7 @@ import { Modal } from '../../components/enterprise/Modal.jsx';
 import { LogisticsLegController } from '../../components/employee/logistics/LogisticsLegController.jsx';
 import { LogisticsRouteMap } from '../../components/employee/logistics/LogisticsRouteMap.jsx';
 import { LogisticsStopManager } from '../../components/employee/logistics/LogisticsStopManager.jsx';
+import { PackersMoversManifestCard } from '../../components/employee/logistics/PackersMoversManifestCard.jsx';
 import {
   Search,
   MapPin,
@@ -1517,6 +1518,9 @@ export function EmployeeJobsPage() {
                   </a>
                 )}
               </div>
+
+              {/* Packers & Movers Relocation Manifest & Access Card (self-gated for P&M) */}
+              <PackersMoversManifestCard job={selectedJobForDetails} />
 
               {/* Pickup / drop / live-location map (logistics jobs only; self-gated) */}
               <LogisticsRouteMap job={selectedJobForDetails} />

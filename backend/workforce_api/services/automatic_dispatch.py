@@ -1567,7 +1567,7 @@ def get_effective_radius_km(failed_cycle_count: int, service_category: str = "")
     including two_wheeler -- is byte-identical to before this fix: it falls
     straight back to the same shared settings used today.
     """
-    cat = str(service_category or "").strip().lower()
+    cat = (service_category or "").strip().lower()
     # P&M audit fix: extend the same optional per-category override to
     # packers_movers -- a relocation's realistic candidate-search area is
     # arguably wider than an urban parcel/courier job's, and there was no
