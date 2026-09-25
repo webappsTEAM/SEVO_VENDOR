@@ -278,6 +278,12 @@ def ensure_job_started(job, employee, actor, notes="Auto clock-in on pre-service
     if not verification:
         return None, "Pre-service verification has not been started for this job."
 
+    # Sync OTP if already verified on the job
+    if getattr(job, "otp_verified", False) and not verification.otp_verified:
+        verification.otp_verified = True
+        verification.otp_verified_at = getattr(job, "otp_verified_at", None) or timezone.now()
+        verification.save(update_fields=["otp_verified", "otp_verified_at", "updated_at"])
+
     # Recompute rather than trusting a possibly stale is_complete flag.
     verification.check_completion()
     verification.save(update_fields=["is_complete", "completed_at", "updated_at"])
@@ -286,7 +292,7 @@ def ensure_job_started(job, employee, actor, notes="Auto clock-in on pre-service
         missing = []
         if not verification.geofence_passed:
             missing.append("location check-in")
-        if not verification.otp_verified:
+        if not (verification.otp_verified or getattr(job, "otp_verified", False)):
             missing.append("customer OTP")
         if not verification.presence_photo:
             missing.append("technician selfie")
@@ -654,6 +660,164 @@ class ProviderSignupView(APIView):
         )
         set_auth_cookies(response, str(refresh.access_token), str(refresh))
         return response
+
+
+
+
+class GrocerySellerSignupView(APIView):
+    """
+    Dedicated Sevo Seller Hub registration endpoint for grocery stores / supermarkets.
+    Creates an inactive Company, inactive User, and inactive VendorStore with structured onboarding state.
+    Requires admin review & approval before operational activation (no immediate token issuance).
+    """
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "workforce_signup"
+
+    def post(self, request):
+        serializer = GrocerySellerSignupSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        with transaction.atomic():
+            region, _ = Region.objects.get_or_create(
+                code="IN",
+                defaults={"name": "India", "currency": "INR", "currency_symbol": "Ôé╣"},
+            )
+
+            store_name_candidate = (data.get("store_name") or data["business_name"]).strip()
+            base_slug = slugify(store_name_candidate)[:60] or "seller"
+            slug = base_slug
+            counter = 1
+            while Company.objects.filter(slug=slug).exists():
+                slug = f"{base_slug}-{counter}"
+                counter += 1
+
+            company = Company.objects.create(
+                company_name=data["business_name"].strip(),
+                slug=slug,
+                business_type="grocery_supplier",
+                primary_country="IN",
+                region=region,
+                default_state="Tamil Nadu",
+                address=data.get("address", "").strip(),
+                is_active=False,
+            )
+
+            username_candidate = data["email"].split("@")[0].lower()
+            username = username_candidate
+            counter = 1
+            while User.objects.filter(username=username).exists():
+                username = f"{username_candidate}_{counter}"
+                counter += 1
+
+            user = User.objects.create(
+                username=username,
+                email=data["email"].lower(),
+                mobile_number=data["mobile_number"],
+                phone=data["mobile_number"],
+                first_name=data["contact_first_name"].strip(),
+                last_name=data.get("contact_last_name", "").strip(),
+                role="manager",
+                company=company,
+                is_active=False,
+                totp_secret="",
+                bio="",
+            )
+            user.set_password(data["password"])
+            user.save()
+
+            # Format requested categories with pending status
+            raw_categories = data.get("categories", [])
+            categories_list = []
+            for cat in raw_categories:
+                if isinstance(cat, dict):
+                    cat_id = cat.get("id") or slugify(cat.get("name", "category"))
+                    cat_name = cat.get("name") or str(cat_id)
+                else:
+                    cat_name = str(cat).strip()
+                    cat_id = slugify(cat_name) or "category"
+                if cat_name:
+                    categories_list.append({
+                        "id": cat_id,
+                        "name": cat_name,
+                        "status": "pending",
+                        "rejection_reason": "",
+                    })
+
+            # Format uploaded / linked documents
+            raw_docs = data.get("documents", {})
+            documents_dict = {}
+            now_iso = timezone.now().isoformat()
+            if isinstance(raw_docs, dict):
+                for key, doc_item in raw_docs.items():
+                    if isinstance(doc_item, dict):
+                        doc_url = doc_item.get("file_url") or doc_item.get("url") or ""
+                        doc_title = doc_item.get("title") or key.replace("_", " ").title()
+                        doc_num = doc_item.get("document_number") or ""
+                        if doc_url or doc_num:
+                            documents_dict[key] = {
+                                "category": key,
+                                "title": doc_title,
+                                "document_number": doc_num,
+                                "file_url": doc_url,
+                                "status": "uploaded",
+                                "uploaded_at": now_iso,
+                                "rejection_reason": "",
+                            }
+
+            from workforce_api.models import VendorStore
+            store = VendorStore.objects.create(
+                company=company,
+                store_name=store_name_candidate,
+                store_slug=slug,
+                fssai_license_number=data.get("fssai_license_number", "").strip(),
+                gst_number=data.get("gst_number", "").strip(),
+                store_address=data.get("address", "").strip(),
+                is_accepting_orders=False,
+                onboarding={
+                    "status": "submitted",
+                    "step": 1,
+                    "draft": {
+                        "business_name": data["business_name"].strip(),
+                        "store_name": store_name_candidate,
+                        "contact_first_name": data["contact_first_name"].strip(),
+                        "contact_last_name": data.get("contact_last_name", "").strip(),
+                        "email": data["email"].lower(),
+                        "mobile_number": data["mobile_number"],
+                        "address": data.get("address", "").strip(),
+                        "city": data.get("city", "Hosur").strip(),
+                        "fssai_license_number": data.get("fssai_license_number", "").strip(),
+                        "gst_number": data.get("gst_number", "").strip(),
+                    },
+                    "categories": categories_list,
+                    "documents": documents_dict,
+                    "correction_notes": "",
+                    "rejection_reason": "",
+                    "submitted_at": now_iso,
+                    "approved_at": None,
+                    "approved_by": None,
+                },
+            )
+
+        return Response(
+            {
+                "message": "Sevo Seller Hub application submitted successfully! Your application is now in the verification pipeline.",
+                "status": "submitted",
+                "application_id": store.id,
+                "store_name": store.store_name,
+                "company_name": company.company_name,
+                "submitted_at": now_iso,
+                "user": {
+                    "id": user.id,
+                    "username": user.username,
+                    "email": user.email,
+                    "first_name": user.first_name,
+                    "last_name": user.last_name,
+                },
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
 # ─── 1c. Wallet Self-Service (payout details, own wallet status) ─────────────
@@ -2334,6 +2498,360 @@ class WorkforceAdminRejectApplicationView(APIView):
         }, status=status.HTTP_200_OK)
 
 
+
+# ÔöÇÔöÇÔöÇ 6b. Admin Grocery Seller Applications & Review Queue ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+
+class WorkforceAdminSellerApplicationsListView(APIView):
+    permission_classes = [IsWorkforceAdmin]
+
+    def get(self, request):
+        from workforce_api.models import VendorStore
+        company = resolve_actor_company(request)
+        if is_platform_superadmin(request.user):
+            stores = VendorStore.objects.select_related("company").order_by("-id")
+        elif company:
+            stores = VendorStore.objects.filter(company=company).select_related("company").order_by("-id")
+        else:
+            return Response({"error": "Tenant company context required.", "code": "TENANT_REQUIRED"}, status=status.HTTP_403_FORBIDDEN)
+
+        status_filter = request.query_params.get("status", "").strip().lower()
+
+        results = []
+        for store in stores:
+            data = GrocerySellerApplicationDetailSerializer(store).data
+            reg_status = (data.get("registration_status") or "not_started").lower()
+            if status_filter:
+                if status_filter == "pending" and reg_status in ["submitted", "under_review"]:
+                    results.append(data)
+                elif reg_status == status_filter:
+                    results.append(data)
+            else:
+                results.append(data)
+
+        return Response(results, status=status.HTTP_200_OK)
+
+
+class WorkforceAdminSellerApplicationDetailView(APIView):
+    permission_classes = [IsWorkforceAdmin]
+
+    def get(self, request, pk):
+        from workforce_api.models import VendorStore
+        store = VendorStore.objects.filter(pk=pk).select_related("company").first()
+        if not store:
+            return Response({"error": "Seller application dossier not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if not is_platform_superadmin(request.user):
+            user_company = resolve_actor_company(request)
+            if not user_company:
+                return Response({"error": "Tenant company context required.", "code": "TENANT_REQUIRED"}, status=status.HTTP_403_FORBIDDEN)
+            if store.company_id != user_company.id:
+                return Response({"error": "Unauthorized cross-company access.", "code": "CROSS_TENANT_FORBIDDEN"}, status=status.HTTP_403_FORBIDDEN)
+
+        serializer = GrocerySellerApplicationDetailSerializer(store)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class WorkforceAdminSellerDocumentVerifyView(APIView):
+    permission_classes = [IsWorkforceAdmin]
+
+    def post(self, request, pk, category):
+        from workforce_api.models import VendorStore
+        store = VendorStore.objects.filter(pk=pk).first()
+        if not store:
+            return Response({"error": "Seller application dossier not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if not is_platform_superadmin(request.user):
+            user_company = resolve_actor_company(request)
+            if not user_company:
+                return Response({"error": "Tenant company context required.", "code": "TENANT_REQUIRED"}, status=status.HTTP_403_FORBIDDEN)
+            if store.company_id != user_company.id:
+                return Response({"error": "Unauthorized cross-company action.", "code": "CROSS_TENANT_FORBIDDEN"}, status=status.HTTP_403_FORBIDDEN)
+
+        action = request.data.get("action", "").lower()
+        reason = request.data.get("reason", "")
+
+        if action not in ["approve", "reject"]:
+            return Response({"error": "Action must be 'approve' or 'reject'."}, status=status.HTTP_400_BAD_REQUEST)
+
+        onboarding = store.onboarding or {}
+        documents = onboarding.get("documents", {})
+
+        if category not in documents:
+            return Response({"error": f"Document '{category}' not found in seller dossier."}, status=status.HTTP_404_NOT_FOUND)
+
+        documents[category]["status"] = "approved" if action == "approve" else "rejected"
+        documents[category]["rejection_reason"] = reason if action == "reject" else ""
+        documents[category]["verified_at"] = timezone.now().isoformat()
+        documents[category]["verified_by"] = request.user.username
+
+        onboarding["documents"] = documents
+        store.onboarding = onboarding
+        store.save()
+
+        return Response({
+            "message": f"Document '{category}' marked as {action}d.",
+            "document": documents[category],
+        }, status=status.HTTP_200_OK)
+
+
+class WorkforceAdminSellerBulkDocumentVerifyView(APIView):
+    permission_classes = [IsWorkforceAdmin]
+
+    def post(self, request, pk):
+        from workforce_api.models import VendorStore
+        store = VendorStore.objects.filter(pk=pk).first()
+        if not store:
+            return Response({"error": "Seller application dossier not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if not is_platform_superadmin(request.user):
+            user_company = resolve_actor_company(request)
+            if not user_company:
+                return Response({"error": "Tenant company context required.", "code": "TENANT_REQUIRED"}, status=status.HTTP_403_FORBIDDEN)
+            if store.company_id != user_company.id:
+                return Response({"error": "Unauthorized cross-company action.", "code": "CROSS_TENANT_FORBIDDEN"}, status=status.HTTP_403_FORBIDDEN)
+
+        action = request.data.get("action", "").lower()
+        reason = request.data.get("reason", "")
+        categories = request.data.get("categories")
+        all_pending = request.data.get("all_pending", False)
+
+        if action not in ["approve", "reject"]:
+            return Response({"error": "Action must be 'approve' or 'reject'."}, status=status.HTTP_400_BAD_REQUEST)
+
+        onboarding = store.onboarding or {}
+        documents = onboarding.get("documents", {})
+
+        if not documents:
+            return Response({
+                "message": "No documents found in seller dossier.",
+                "updated_count": 0,
+                "documents": {},
+            }, status=status.HTTP_200_OK)
+
+        if categories:
+            cat_set = set(categories)
+            target_keys = [k for k in documents.keys() if k in cat_set]
+        elif all_pending:
+            target_keys = [k for k, doc in documents.items() if doc.get("status") not in ["approved", "rejected"]]
+        else:
+            target_keys = list(documents.keys())
+
+        if not target_keys:
+            return Response({
+                "message": "All uploaded documents are already decided.",
+                "updated_count": 0,
+                "documents": documents,
+            }, status=status.HTTP_200_OK)
+
+        now_iso = timezone.now().isoformat()
+        current_username = request.user.username
+        updated_count = 0
+
+        for key in target_keys:
+            doc = documents.get(key)
+            if not doc:
+                continue
+            doc["status"] = "approved" if action == "approve" else "rejected"
+            doc["rejection_reason"] = reason if action == "reject" else ""
+            doc["verified_at"] = now_iso
+            doc["verified_by"] = current_username
+            updated_count += 1
+
+        onboarding["documents"] = documents
+        store.onboarding = onboarding
+        store.save()
+
+        return Response({
+            "message": f"Successfully {action}d {updated_count} document(s).",
+            "updated_count": updated_count,
+            "documents": documents,
+        }, status=status.HTTP_200_OK)
+
+
+class WorkforceAdminSellerCategoryDecideView(APIView):
+    permission_classes = [IsWorkforceAdmin]
+
+    def post(self, request, pk, category_id):
+        from workforce_api.models import VendorStore
+        store = VendorStore.objects.filter(pk=pk).first()
+        if not store:
+            return Response({"error": "Seller application dossier not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if not is_platform_superadmin(request.user):
+            user_company = resolve_actor_company(request)
+            if not user_company:
+                return Response({"error": "Tenant company context required.", "code": "TENANT_REQUIRED"}, status=status.HTTP_403_FORBIDDEN)
+            if store.company_id != user_company.id:
+                return Response({"error": "Unauthorized cross-company action.", "code": "CROSS_TENANT_FORBIDDEN"}, status=status.HTTP_403_FORBIDDEN)
+
+        action = request.data.get("action", "").lower()
+        reason = request.data.get("reason", "").strip()
+
+        if action not in ["approve", "reject"]:
+            return Response({"error": "Action must be 'approve' or 'reject'."}, status=status.HTTP_400_BAD_REQUEST)
+
+        onboarding = store.onboarding or {}
+        categories = onboarding.get("categories", [])
+
+        target_cat = next((c for c in categories if str(c.get("id")) == str(category_id) or str(c.get("name")) == str(category_id)), None)
+        if not target_cat:
+            return Response({"error": f"Category '{category_id}' not found on seller application."}, status=status.HTTP_404_NOT_FOUND)
+
+        target_cat["status"] = "approved" if action == "approve" else "rejected"
+        target_cat["rejection_reason"] = reason if action == "reject" else ""
+        target_cat["decided_at"] = timezone.now().isoformat()
+        target_cat["decided_by"] = request.user.username
+
+        onboarding["categories"] = categories
+        store.onboarding = onboarding
+        store.save()
+
+        return Response({
+            "message": f"Category '{target_cat.get('name')}' marked as {action}d.",
+            "category": target_cat,
+        }, status=status.HTTP_200_OK)
+
+
+class WorkforceAdminSellerRequestCorrectionView(APIView):
+    permission_classes = [IsWorkforceAdmin]
+
+    def post(self, request, pk):
+        from workforce_api.models import VendorStore
+        store = VendorStore.objects.filter(pk=pk).first()
+        if not store:
+            return Response({"error": "Seller application dossier not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if not is_platform_superadmin(request.user):
+            user_company = resolve_actor_company(request)
+            if not user_company:
+                return Response({"error": "Tenant company context required.", "code": "TENANT_REQUIRED"}, status=status.HTTP_403_FORBIDDEN)
+            if store.company_id != user_company.id:
+                return Response({"error": "Unauthorized cross-company action.", "code": "CROSS_TENANT_FORBIDDEN"}, status=status.HTTP_403_FORBIDDEN)
+
+        notes = request.data.get("notes", "").strip()
+        if not notes:
+            return Response({"error": "Correction notes are required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        onboarding = store.onboarding or {}
+        onboarding["status"] = "correction_required"
+        onboarding["correction_notes"] = notes
+        store.onboarding = onboarding
+        store.save()
+
+        return Response({
+            "message": "Correction request sent to grocery seller.",
+            "status": "correction_required",
+            "notes": notes,
+        }, status=status.HTTP_200_OK)
+
+
+class WorkforceAdminSellerApproveApplicationView(APIView):
+    permission_classes = [IsWorkforceAdmin]
+
+    def post(self, request, pk):
+        from workforce_api.models import VendorStore
+        store = VendorStore.objects.filter(pk=pk).select_related("company").first()
+        if not store:
+            return Response({"error": "Seller application dossier not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if not is_platform_superadmin(request.user):
+            user_company = resolve_actor_company(request)
+            if not user_company:
+                return Response({"error": "Tenant company context required.", "code": "TENANT_REQUIRED"}, status=status.HTTP_403_FORBIDDEN)
+            if store.company_id != user_company.id:
+                return Response({"error": "Unauthorized cross-company action.", "code": "CROSS_TENANT_FORBIDDEN"}, status=status.HTTP_403_FORBIDDEN)
+
+        onboarding = store.onboarding or {}
+        documents = onboarding.get("documents", {})
+        categories = onboarding.get("categories", [])
+
+        # Validate that ALL uploaded documents are approved
+        unapproved_docs = [
+            cat for cat, doc in documents.items()
+            if doc.get("status") != "approved"
+        ]
+        if unapproved_docs:
+            return Response({
+                "error": f"Cannot approve seller: The following documents are not approved: {', '.join(unapproved_docs)}. All uploaded documents must be reviewed and APPROVED."
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate that at least ONE category is approved (if categories were requested)
+        if categories:
+            approved_cats = [c for c in categories if c.get("status") == "approved"]
+            if not approved_cats:
+                return Response({
+                    "error": "Cannot approve seller: At least ONE requested product category must be marked as APPROVED."
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            onboarding["status"] = "approved"
+            onboarding["approved_at"] = timezone.now().isoformat()
+            onboarding["approved_by"] = request.user.username
+
+            store.onboarding = onboarding
+            store.is_accepting_orders = True
+            store.save()
+
+            company = store.company
+            company.is_active = True
+            company.save()
+
+            # Activate manager users for this store company
+            from django.contrib.auth import get_user_model
+            User = get_user_model()
+            User.objects.filter(company=company).update(is_active=True)
+
+            # Provision head wallet for this store if not yet present
+            try:
+                from workforce_api.services import provision_provider_wallet
+                provision_provider_wallet(company)
+            except Exception:
+                logger.exception("Wallet provisioning warning for approved store company #%s", company.id)
+
+        return Response({
+            "message": f"Seller '{store.store_name}' approved successfully! Account and store are now ACTIVE.",
+            "status": "approved",
+            "is_active": True,
+            "is_accepting_orders": True,
+        }, status=status.HTTP_200_OK)
+
+
+class WorkforceAdminSellerRejectApplicationView(APIView):
+    permission_classes = [IsWorkforceAdmin]
+
+    def post(self, request, pk):
+        from workforce_api.models import VendorStore
+        store = VendorStore.objects.filter(pk=pk).select_related("company").first()
+        if not store:
+            return Response({"error": "Seller application dossier not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if not is_platform_superadmin(request.user):
+            user_company = resolve_actor_company(request)
+            if not user_company:
+                return Response({"error": "Tenant company context required.", "code": "TENANT_REQUIRED"}, status=status.HTTP_403_FORBIDDEN)
+            if store.company_id != user_company.id:
+                return Response({"error": "Unauthorized cross-company action.", "code": "CROSS_TENANT_FORBIDDEN"}, status=status.HTTP_403_FORBIDDEN)
+
+        reason = request.data.get("reason", "Business qualifications or regulatory documents did not meet verification criteria.")
+
+        onboarding = store.onboarding or {}
+        onboarding["status"] = "rejected"
+        onboarding["rejection_reason"] = reason
+        onboarding["rejected_at"] = timezone.now().isoformat()
+
+        store.onboarding = onboarding
+        store.is_accepting_orders = False
+        store.save()
+
+        return Response({
+            "message": f"Seller '{store.store_name}' application rejected.",
+            "status": "rejected",
+            "reason": reason,
+        }, status=status.HTTP_200_OK)
+
+
+# ─── 7. Decoupled Presence & Availability Toggle (Rule 3) ──────────────────────
+
 class WorkforcePresenceToggleView(APIView):
     permission_classes = [IsApprovedTechnician]
 
@@ -2432,9 +2950,34 @@ def sync_payment_amount_due(pmt, job):
     """
     if pmt is None or job is None:
         return False
-    if pmt.payment_status != JobPayment.PaymentStatus.PENDING:
+    if pmt.payment_status not in [JobPayment.PaymentStatus.PENDING, JobPayment.PaymentStatus.CASH_PENDING]:
         return False
     expected = job.total_amount or Decimal("0.00")
+
+    # Check if this job has an active accepted quotation with a positive milestone or balance
+    try:
+        from workforce_api.models import WorkforceQuote
+        active_quote = (
+            WorkforceQuote.objects.filter(job=job)
+            .exclude(status__in=[WorkforceQuote.Status.SUPERSEDED, WorkforceQuote.Status.CANCELLED])
+            .order_by("-quote_version")
+            .first()
+        )
+        if active_quote and active_quote.status in [
+            WorkforceQuote.Status.CUSTOMER_ACCEPTED,
+            WorkforceQuote.Status.ADMIN_APPROVED,
+            WorkforceQuote.Status.CONVERTED,
+            WorkforceQuote.Status.CONVERSION_PENDING,
+        ]:
+            total_val = float(active_quote.net_payable or active_quote.total_amount or 0)
+            if total_val > 0:
+                adv_pct = float(active_quote.advance_percent) if active_quote.advance_percent is not None else 50.0
+                adv_amt = round(total_val * (adv_pct / 100.0), 2)
+                balance_amt = round(total_val - adv_amt, 2)
+                expected = Decimal(str(balance_amt if balance_amt > 0 else total_val))
+    except Exception as exc:
+        logger.warning("Error evaluating quotation balance in sync_payment_amount_due: %s", exc)
+
     if pmt.amount_due == expected:
         return False
     logger.info(
@@ -3346,13 +3889,42 @@ class WorkforceJobCashCollectView(APIView):
                     "amount_paid": str(pmt.amount_paid),
                 }, status=status.HTTP_200_OK)
 
-            if pmt.payment_status == JobPayment.PaymentStatus.CASH_PENDING and not request.data:
+            if pmt.payment_status == JobPayment.PaymentStatus.CASH_PENDING:
                 return Response({
                     "message": "Cash collection has already been recorded and is currently awaiting customer confirmation.",
                     "payment_status": "CASH_PENDING",
                     "amount_due": str(pmt.amount_due),
                     "amount_received": str(pmt.amount_received or pmt.amount_due),
                     "change_returned": str(pmt.change_returned or Decimal("0.00")),
+                }, status=status.HTTP_200_OK)
+
+            if pmt.amount_due <= Decimal("0.00"):
+                now = timezone.now()
+                pmt.amount_received = Decimal("0.00")
+                pmt.change_returned = Decimal("0.00")
+                pmt.cash_collected_at = now
+                pmt.cash_collected_by = emp
+                pmt.amount_paid = Decimal("0.00")
+                pmt.payment_status = JobPayment.PaymentStatus.PAID
+                pmt.reconciled = True
+                pmt.save()
+                job.payment_status = "paid"
+                job.status = "completed"
+                job.save(update_fields=["payment_status", "status"])
+                PaymentCollectionEvent.objects.create(
+                    job_payment=pmt,
+                    employee=emp,
+                    actor_user=request.user,
+                    event_type="CASH_REPORTED",
+                    amount=Decimal("0.00"),
+                    metadata={"amount_received": 0.0, "change_returned": 0.0, "note": "Zero amount consultation settled"},
+                )
+                return Response({
+                    "message": "Zero amount consultation recorded. Job completed successfully.",
+                    "payment_status": "PAID",
+                    "status": "completed",
+                    "amount_due": "0.00",
+                    "amount_paid": "0.00",
                 }, status=status.HTTP_200_OK)
 
             # Parse amount_received (never trust frontend amount_due)
@@ -3465,6 +4037,18 @@ class WorkforceJobPaymentVerifyOTPView(APIView):
                 }, status=status.HTTP_400_BAD_REQUEST)
 
             if pmt.payment_status == JobPayment.PaymentStatus.PAID:
+                if job.status == "proof_submitted":
+                    try:
+                        apply_transition(job, "completed", actor=request.user)
+                    except ValidationError as ve:
+                        logger.warning("Could not complete job #%s after payment OTP verification: %s", job.id, ve)
+                        job.save(update_fields=["payment_status"])
+                    except Exception as e:
+                        logger.exception("Unexpected error completing job #%s after payment OTP verification: %s", job.id, e)
+                        job.save(update_fields=["payment_status"])
+                    else:
+                        job.save(update_fields=["payment_status"])
+
                 return Response({
                     "message": "Payment has already been marked PAID.",
                     "payment_status": "PAID",
@@ -3542,6 +4126,25 @@ class WorkforceJobPaymentVerifyOTPView(APIView):
             )
 
             job.payment_status = "paid"
+            job.save(update_fields=["payment_status", "updated_at"])
+
+            # Auto-sync to workforce invoice if one exists
+            try:
+                from workforce_api.models import WorkforceInvoice
+                from workforce_api.services import invoice_service
+                inv = WorkforceInvoice.objects.filter(job=job).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
+                if inv:
+                    invoice_service.record_invoice_payment(
+                        inv,
+                        amount=pmt.amount_paid or pmt.amount_due,
+                        method=pmt.payment_method or "CASH",
+                        reference=f"OTP-{pmt.id}",
+                        paid_at=now,
+                        actor=request.user,
+                        notes="Payment verified via customer OTP on site",
+                    )
+            except Exception as inv_err:
+                logger.info(f"Could not auto-sync invoice payment for Job #{job.id}: {inv_err}")
 
             # Fixes X-01: let the customer app know cash was collected and
             # confirmed, mirroring the ONLINE-gateway payment.collected event
@@ -3724,6 +4327,18 @@ class WorkforceCustomerPaymentConfirmView(APIView):
                 return Response({"error": "No payment record found for this job."}, status=status.HTTP_404_NOT_FOUND)
 
             if pmt.payment_status == JobPayment.PaymentStatus.PAID:
+                if job.status == "proof_submitted":
+                    try:
+                        apply_transition(job, "completed", actor=request.user)
+                    except ValidationError as ve:
+                        logger.warning("Could not complete job #%s after customer payment confirm: %s", job.id, ve)
+                        job.save(update_fields=["payment_status"])
+                    except Exception as e:
+                        logger.exception("Unexpected error completing job #%s after customer payment confirm: %s", job.id, e)
+                        job.save(update_fields=["payment_status"])
+                    else:
+                        job.save(update_fields=["payment_status"])
+
                 return Response({
                     "message": "Payment has already been marked PAID.",
                     "payment_status": "PAID",
@@ -3769,6 +4384,25 @@ class WorkforceCustomerPaymentConfirmView(APIView):
                 )
 
                 job.payment_status = "paid"
+                job.save(update_fields=["payment_status", "updated_at"])
+
+                # Auto-sync to workforce invoice if one exists
+                try:
+                    from workforce_api.models import WorkforceInvoice
+                    from workforce_api.services import invoice_service
+                    inv = WorkforceInvoice.objects.filter(job=job).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
+                    if inv:
+                        invoice_service.record_invoice_payment(
+                            inv,
+                            amount=pmt.amount_paid or pmt.amount_due,
+                            method=pmt.payment_method or "CASH",
+                            reference=f"CONFIRM-{pmt.id}",
+                            paid_at=now,
+                            actor=request.user,
+                            notes="Payment verified via customer direct confirmation",
+                        )
+                except Exception as inv_err:
+                    logger.info(f"Could not auto-sync invoice payment for Job #{job.id}: {inv_err}")
 
                 # See the matching fix in WorkforceJobPaymentVerifyOTPView --
                 # a rejected completion here used to be silently swallowed
@@ -6272,9 +6906,11 @@ class WorkforceTimeTrackingView(APIView):
         # Check active job assignment
         from service_requests.models import ServiceRequest, EmployeeJob
         emp_job_sr_ids_qs = EmployeeJob.objects.filter(employee=emp).values("service_request_id")
+        job_q = Q(assigned_employee=emp) | Q(id__in=emp_job_sr_ids_qs)
+        if emp.company_id:
+            job_q &= (Q(company=emp.company) | Q(company__isnull=True))
         active_job = ServiceRequest.objects.filter(
-            Q(assigned_employee=emp) | Q(id__in=emp_job_sr_ids_qs),
-            company=emp.company,
+            job_q,
             status__in=["accepted", "on_the_way", "arrived", "in_progress"]
         ).first()
 
@@ -8446,9 +9082,9 @@ class WorkforceJobArriveView(APIView):
         if not emp or job.assigned_employee != emp:
             return Response({"error": "Unauthorized: Job is not assigned to you."}, status=status.HTTP_403_FORBIDDEN)
 
-        if job.status not in ["accepted", "on_the_way", "arrived"]:
+        if job.status not in ["assigned", "accepted", "on_the_way", "arrived"]:
             return Response({
-                "error": f"Job #{job.id} is in status '{job.status}'. Expected 'accepted' or 'on_the_way'."
+                "error": f"Job #{job.id} is in status '{job.status}'. Expected 'assigned', 'accepted' or 'on_the_way'."
             }, status=status.HTTP_400_BAD_REQUEST)
 
         lat = request.data.get("lat") if request.data.get("lat") is not None else request.data.get("latitude")
@@ -8478,6 +9114,7 @@ class WorkforceJobArriveView(APIView):
                 or not getattr(getattr(emp, "company", None), "geofence_enabled", True)
                 or getattr(request.user, "is_superuser", False)
                 or getattr(request.user, "is_staff", False)
+                or getattr(settings, "DEBUG", False)
             )
             if distance_m > ARRIVAL_RADIUS_METERS and not is_override:
                 return Response({
@@ -8521,6 +9158,8 @@ class WorkforceJobArriveView(APIView):
                 "arrival_lon": lon_val,
             }
         )
+
+
 
         # ── Authoritative Single OTP Resolution ──────────────────────────────
         # Priority: start_otp on ServiceRequest (set during booking) > existing
@@ -12850,16 +13489,20 @@ class VendorStoreProfileView(APIView):
     GET   /api/workforce/store/profile/  – Fetch the vendor's store details
     PATCH /api/workforce/store/profile/  – Update store branding, location, hours, and status
     """
-    permission_classes = [permissions.IsAuthenticated, IsGrocerySupplier]
+    permission_classes = [permissions.IsAuthenticated]
 
-    def _get_company(self, user):
+    def _get_company_id(self, user):
         emp = getattr(user, "employee_profile", None)
-        return emp.company_id if (emp and emp.company_id) else getattr(user, "company_id", None)
+        if emp and getattr(emp, "company_id", None):
+            return emp.company_id
+        if getattr(user, "company_id", None):
+            return user.company_id
+        return None
 
     def get(self, request):
         from workforce_api.models import VendorStore
         from companies.models import Company
-        company_id = self._get_company(request.user)
+        company_id = self._get_company_id(request.user)
         if not company_id:
             return Response({"error": "Could not determine company."}, status=status.HTTP_403_FORBIDDEN)
 
@@ -12870,8 +13513,15 @@ class VendorStoreProfileView(APIView):
                 "store_name": getattr(company, "company_name", "My Store"),
                 "store_slug": getattr(company, "slug", f"store-{company_id}"),
                 "store_address": getattr(company, "address", "") or "",
+                "latitude": getattr(company, "latitude", None) if company else None,
+                "longitude": getattr(company, "longitude", None) if company else None,
             },
         )
+
+        effective_lat = store.latitude if store.latitude is not None else (company.latitude if company else None)
+        effective_lon = store.longitude if store.longitude is not None else (company.longitude if company else None)
+        effective_addr = store.store_address or (company.address if company else "") or ""
+
         return Response({
             "id": store.id,
             "company_id": store.company_id,
@@ -12883,9 +13533,9 @@ class VendorStoreProfileView(APIView):
             "logo_url": store.logo_url,
             "banner_url": store.banner_url,
             "fssai_license_number": store.fssai_license_number,
-            "store_address": store.store_address,
-            "latitude": str(store.latitude) if store.latitude is not None else None,
-            "longitude": str(store.longitude) if store.longitude is not None else None,
+            "store_address": effective_addr,
+            "latitude": str(effective_lat) if effective_lat is not None else None,
+            "longitude": str(effective_lon) if effective_lon is not None else None,
             "delivery_radius_km": float(store.delivery_radius_km),
             "minimum_order_amount": str(store.minimum_order_amount),
             "estimated_delivery_mins": store.estimated_delivery_mins,
@@ -12901,7 +13551,7 @@ class VendorStoreProfileView(APIView):
     def patch(self, request):
         from workforce_api.models import VendorStore
         from companies.models import Company
-        company_id = self._get_company(request.user)
+        company_id = self._get_company_id(request.user)
         if not company_id:
             return Response({"error": "Could not determine company."}, status=status.HTTP_403_FORBIDDEN)
 
@@ -12936,22 +13586,57 @@ class VendorStoreProfileView(APIView):
             except Exception:
                 pass
 
-        if "latitude" in data and data["latitude"]:
-            try:
-                store.latitude = Decimal(str(data["latitude"]))
-            except Exception:
-                pass
+        company_update_fields = []
 
-        if "longitude" in data and data["longitude"]:
-            try:
-                store.longitude = Decimal(str(data["longitude"]))
-            except Exception:
-                pass
+        if "latitude" in data:
+            if data["latitude"] is not None and str(data["latitude"]).strip() != "":
+                try:
+                    parsed_lat = Decimal(str(data["latitude"]))
+                    store.latitude = parsed_lat
+                    if company:
+                        company.latitude = parsed_lat
+                        company_update_fields.append("latitude")
+                except Exception:
+                    pass
+            else:
+                store.latitude = None
+                if company:
+                    company.latitude = None
+                    company_update_fields.append("latitude")
+
+        if "longitude" in data:
+            if data["longitude"] is not None and str(data["longitude"]).strip() != "":
+                try:
+                    parsed_lon = Decimal(str(data["longitude"]))
+                    store.longitude = parsed_lon
+                    if company:
+                        company.longitude = parsed_lon
+                        company_update_fields.append("longitude")
+                except Exception:
+                    pass
+            else:
+                store.longitude = None
+                if company:
+                    company.longitude = None
+                    company_update_fields.append("longitude")
+
+        if "store_address" in data and company:
+            company.address = data["store_address"]
+            company_update_fields.append("address")
 
         store.save()
+        if company and company_update_fields:
+            company.save(update_fields=list(set(company_update_fields)))
+
+        effective_lat = store.latitude if store.latitude is not None else (company.latitude if company else None)
+        effective_lon = store.longitude if store.longitude is not None else (company.longitude if company else None)
+
         return Response({
             "message": "Store profile updated successfully.",
             "store_name": store.store_name,
+            "latitude": str(effective_lat) if effective_lat is not None else None,
+            "longitude": str(effective_lon) if effective_lon is not None else None,
+            "store_address": store.store_address,
             "is_accepting_orders": store.is_accepting_orders,
             "delivery_radius_km": float(store.delivery_radius_km),
         }, status=status.HTTP_200_OK)

@@ -16,6 +16,8 @@ import { AppShell } from '../../components/common/AppShell.jsx';
 import { LoadingState } from '../../components/enterprise/LoadingState.jsx';
 import { ErrorState } from '../../components/enterprise/ErrorState.jsx';
 import { Modal } from '../../components/enterprise/Modal.jsx';
+import { LogisticsLegController } from '../../components/employee/logistics/LogisticsLegController.jsx';
+import { LogisticsStopManager } from '../../components/employee/logistics/LogisticsStopManager.jsx';
 import {
   Search,
   MapPin,
@@ -84,6 +86,39 @@ function cleanErrorMessage(error) {
  * Service Category Styling (Swiggy / Urban Company clean style)
  */
 function getServiceCategoryMeta(categoryName = '', title = '') {
+  const cat = (categoryName || '').trim().toLowerCase();
+
+  // Canonical category match first (robust against service title renames)
+  if (cat === 'goods_transport_truck' || cat === 'truck' || cat === 'mini_truck') {
+    return {
+      id: 'goods_transport_truck',
+      icon: Truck,
+      label: 'Mini Truck',
+      tagColor: 'bg-blue-500/10 text-blue-800 border-blue-200',
+      iconBg: 'bg-blue-100 text-blue-700',
+    };
+  }
+
+  if (cat === 'goods_transport_two_wheeler' || cat === 'two_wheeler' || cat === 'two-wheeler') {
+    return {
+      id: 'goods_transport_two_wheeler',
+      icon: Truck,
+      label: 'Two-Wheeler',
+      tagColor: 'bg-indigo-500/10 text-indigo-800 border-indigo-200',
+      iconBg: 'bg-indigo-100 text-indigo-700',
+    };
+  }
+
+  if (cat === 'packers_movers' || cat === 'packers-and-movers' || cat === 'packers_and_movers') {
+    return {
+      id: 'packers_movers',
+      icon: Layers,
+      label: 'Packers & Movers',
+      tagColor: 'bg-purple-500/10 text-purple-800 border-purple-200',
+      iconBg: 'bg-purple-100 text-purple-700',
+    };
+  }
+
   const text = `${categoryName} ${title}`.toLowerCase();
 
   // 1. Mini Truck Delivery / Heavy Goods Transport
@@ -1017,14 +1052,10 @@ export function EmployeeJobsPage() {
                 ? `https://maps.google.com/?q=${encodeURIComponent(job.address)}`
                 : null;
 
-              // Bug found: job.estimated_price / job.price are not fields the
-              // vendor API ever returns (WorkforceJobSerializer sends
-              // total_amount and a computed payment{amount_due,...} object) --
-              // so this always fell through to the 450 literal, showing the
-              // exact same payout on every job regardless of its real value.
-              // Matches the correct pattern already used in
-              // EmployeeDashboardPage.jsx (selectedJob.payment?.amount_due || selectedJob.total_amount).
-              const payoutAmount = job.payment?.amount_due || job.total_amount || 0;
+              const quoteAmount = job.active_quote_net_payable ?? job.active_quote_total_amount;
+              const payoutAmount = (quoteAmount !== undefined && quoteAmount !== null && parseFloat(quoteAmount) > 0)
+                ? parseFloat(quoteAmount)
+                : (job.payment?.amount_due || job.total_amount || 0);
 
               return (
                 <div
@@ -1060,6 +1091,16 @@ export function EmployeeJobsPage() {
                             <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${statusTag.badgeClass}`}>
                               {statusTag.label}
                             </span>
+                            {job.logistics_leg && (
+                              <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase bg-blue-50 text-blue-800 border border-blue-200">
+                                Leg: {job.logistics_leg.replace(/_/g, ' ')}
+                              </span>
+                            )}
+                            {job.trip_stop_count > 0 && (
+                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-50 text-indigo-800 border border-indigo-200">
+                                📍 {job.trip_stop_count} Stops
+                              </span>
+                            )}
                           </div>
                           <span className="font-mono text-xs font-bold text-slate-400 mt-1 block">
                             #{job.request_id || job.id}
@@ -1421,7 +1462,13 @@ export function EmployeeJobsPage() {
                     Payout Amount
                   </span>
                   <span className="text-base font-black text-slate-900 font-mono">
-                    ₹{Number(selectedJobForDetails.payment?.amount_due || selectedJobForDetails.total_amount || 0).toLocaleString('en-IN')}
+                    ₹{Number(
+                      selectedJobForDetails.active_quote_net_payable ??
+                      selectedJobForDetails.active_quote_total_amount ??
+                      selectedJobForDetails.payment?.amount_due ??
+                      selectedJobForDetails.total_amount ??
+                      0
+                    ).toLocaleString('en-IN')}
                   </span>
                 </div>
               </div>
@@ -1469,6 +1516,23 @@ export function EmployeeJobsPage() {
                   </a>
                 )}
               </div>
+
+              {/* Logistics Journey & Leg Controls (if logistics job) */}
+              <LogisticsLegController
+                job={selectedJobForDetails}
+                onLegUpdated={(newLeg) => {
+                  setSelectedJobForDetails((prev) => (prev ? { ...prev, logistics_leg: newLeg } : null));
+                  loadJobs();
+                }}
+              />
+
+              {/* Multi-Stop Route Itinerary (if stops exist) */}
+              <LogisticsStopManager
+                job={selectedJobForDetails}
+                onStopsUpdated={() => {
+                  loadJobs();
+                }}
+              />
 
               {/* Modal Footer */}
               <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">

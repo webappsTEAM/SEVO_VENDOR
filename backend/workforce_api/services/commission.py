@@ -164,9 +164,8 @@ def settle_completed_job(service_request):
 
     gross = payment.amount_due or payment.amount_paid or Decimal("0")
     if gross <= 0:
-        msg = f"[SETTLEMENT_ZERO_AMOUNT] Job #{service_request.id} has gross amount {gross} -- skipping settlement."
-        logger.warning(msg)
-        raise SettlementError(msg)
+        logger.info(f"Job #{service_request.id} has zero gross amount (consultation/free service) -- skipping commission settlement.")
+        return None
 
     rate = commission_rate_for(wallet, channel)
     commission = (gross * rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)

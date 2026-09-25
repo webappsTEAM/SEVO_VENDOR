@@ -211,6 +211,15 @@ EXPLICIT_SERVICE_ALIASES = {
     "goods_transport": {"goods_transport", "goods & transport", "goods and transport", "goods transport", "truck", "two wheeler", "packer & mover", "packers & movers", "logistics", "shifting", "packers_movers", "relocation", "goods_transport_truck", "goods_transport_two_wheeler"},
     "goods_transport_truck": {"goods_transport_truck", "truck", "mini truck", "goods & transport", "goods and transport", "goods transport", "logistics", "packer & mover", "packers & movers"},
     "goods_transport_two_wheeler": {"goods_transport_two_wheeler", "two wheeler", "bike", "scooter", "goods & transport", "goods and transport", "goods transport", "logistics"},
+    "paintings": {"paintings", "painting", "interior painting", "exterior painting", "waterproofing", "wood & metal", "texture decor", "house painting", "commercial painting", "wall painting"},
+    "painting": {"paintings", "painting", "interior painting", "exterior painting", "waterproofing", "wood & metal", "texture decor", "house painting", "commercial painting", "wall painting"},
+    "interior painting": {"paintings", "painting", "interior painting", "wall painting"},
+    "exterior painting": {"paintings", "painting", "exterior painting", "wall painting", "waterproofing"},
+    "waterproofing": {"waterproofing", "painting", "paintings", "exterior painting", "damp proofing"},
+    "mason": {"mason", "masonry", "bathroom tile fixing", "minor masonry", "brick & block work", "plastering", "civil work", "tile fixing", "floor tiling", "wall tiling"},
+    "masonry": {"mason", "masonry", "bathroom tile fixing", "minor masonry", "brick & block work", "plastering", "civil work", "tile fixing", "floor tiling", "wall tiling"},
+    "tile fixing": {"tile fixing", "floor tiling", "wall tiling", "bathroom tile fixing", "mason", "masonry"},
+    "bathroom tile fixing": {"bathroom tile fixing", "tile fixing", "mason", "masonry"},
 }
 
 

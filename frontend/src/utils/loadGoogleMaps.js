@@ -62,7 +62,7 @@ export function loadMapsApi(explicitKey) {
 
       const script = document.createElement('script');
       script.id = 'gmap-script';
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&libraries=places,geometry&loading=async&callback=__initGoogleMapsWorkforce`;
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&libraries=places,geometry,marker&loading=async&callback=__initGoogleMapsWorkforce`;
       script.async = true;
       script.defer = true;
       script.onerror = (e) => reject(new Error(`Failed to load Google Maps script: ${e?.message || 'Network error'}`));

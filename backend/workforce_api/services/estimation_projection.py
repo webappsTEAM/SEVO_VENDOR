@@ -94,6 +94,21 @@ def project_quote(quote):
         return None
 
 
+CUSTOMER_VISIBLE_STATUSES = {
+    "SENT_TO_CUSTOMER",
+    "CUSTOMER_ACCEPTED",
+    "PENDING_ADMIN_APPROVAL",
+    "ADMIN_APPROVED",
+    "CONVERSION_PENDING",
+    "CONVERTED",
+    "DECLINED",
+    "ADMIN_REJECTED",
+    "EXPIRED",
+    "SUPERSEDED",
+    "CANCELLED",
+}
+
+
 def _project(quote):
     from service_requests.models import (
         Estimation,
@@ -103,6 +118,16 @@ def _project(quote):
 
     job = quote.job
     if job is None:
+        return None
+
+    # Hard customer privacy gate: Quotes that are in DRAFT or PENDING_REVIEW
+    # (held for CRM/SEVO review) must NOT be visible to the customer under any circumstances.
+    if quote.status not in CUSTOMER_VISIBLE_STATUSES:
+        EstimationQuotation.objects.filter(quote_ref=quote_ref_for(quote)).delete()
+        logger.debug(
+            "Quote %s is in status %s (held before CRM approval); projection omitted.",
+            quote.quote_number, quote.status,
+        )
         return None
 
     # A quote that CAME FROM the AC path already has its customer-side row --
@@ -185,6 +210,7 @@ def _project(quote):
                 "admin_reviewed_by": quote.admin_approved_by or quote.admin_cleared_by,
                 "admin_notes": quote.admin_approval_notes or quote.admin_clearance_notes or "",
                 "rejection_note": quote.customer_decline_reason or "",
+                "admin_notes": quote.admin_approval_notes or quote.admin_clearance_notes or "",
             },
         )
 

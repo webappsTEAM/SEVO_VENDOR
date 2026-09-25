@@ -68,6 +68,24 @@ export function TechnicianStandbyMapView({
     };
   }, [retryTick]);
 
+  // Helper to create custom HTML content for AdvancedMarkerElement
+  const createMarkerContent = (online) => {
+    const container = document.createElement('div');
+    container.style.width = '36px';
+    container.style.height = '36px';
+    container.style.display = 'flex';
+    container.style.alignItems = 'center';
+    container.style.justifyContent = 'center';
+    container.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36">
+        <circle cx="18" cy="18" r="16" fill="${online ? '#10B981' : '#64748B'}" fill-opacity="0.2"/>
+        <circle cx="18" cy="18" r="11" fill="${online ? '#059669' : '#475569'}" stroke="#FFFFFF" stroke-width="3"/>
+        <circle cx="18" cy="18" r="4.5" fill="#FFFFFF"/>
+      </svg>
+    `;
+    return container;
+  };
+
   // Initialize Standby map
   useEffect(() => {
     if (!apiLoaded || !mapContainerRef.current || mapRef.current) return;
@@ -76,6 +94,7 @@ export function TechnicianStandbyMapView({
     try {
       const google = window.google;
       const map = new google.maps.Map(mapContainerRef.current, {
+        mapId: 'CALTRACK_STANDBY_MAP',
         center: { lat: techLat, lng: techLon },
         zoom: 15,
         tilt: 0,
@@ -96,6 +115,24 @@ export function TechnicianStandbyMapView({
     }
   }, [apiLoaded, techLat, techLon]);
 
+  // Cleanup marker and radar circle on unmount
+  useEffect(() => {
+    return () => {
+      if (techMarkerRef.current) {
+        if ('map' in techMarkerRef.current) {
+          techMarkerRef.current.map = null;
+        } else if (typeof techMarkerRef.current.setMap === 'function') {
+          techMarkerRef.current.setMap(null);
+        }
+        techMarkerRef.current = null;
+      }
+      if (radarCircleRef.current) {
+        radarCircleRef.current.setMap(null);
+        radarCircleRef.current = null;
+      }
+    };
+  }, []);
+
   // Update Technician Marker and Radar Circle on location changes
   useEffect(() => {
     if (!apiLoaded || !mapRef.current || !window.google?.maps) return;
@@ -103,25 +140,42 @@ export function TechnicianStandbyMapView({
     const map = mapRef.current;
     const techPos = { lat: techLat, lng: techLon };
 
-    if (!techMarkerRef.current) {
-      techMarkerRef.current = new google.maps.Marker({
-        position: techPos,
-        map,
-        title: 'Your Current Location',
-        icon: {
-          url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
-            <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36">
-              <circle cx="18" cy="18" r="16" fill="${isOnline ? '#10B981' : '#64748B'}" fill-opacity="0.2"/>
-              <circle cx="18" cy="18" r="11" fill="${isOnline ? '#059669' : '#475569'}" stroke="#FFFFFF" stroke-width="3"/>
-              <circle cx="18" cy="18" r="4.5" fill="#FFFFFF"/>
-            </svg>
-          `)}`,
-          scaledSize: new google.maps.Size(32, 32),
-          anchor: new google.maps.Point(16, 16),
-        },
-      });
-    } else {
-      techMarkerRef.current.setPosition(techPos);
+    const AdvancedMarkerElement = google.maps.marker?.AdvancedMarkerElement;
+
+    if (AdvancedMarkerElement) {
+      if (!techMarkerRef.current) {
+        techMarkerRef.current = new AdvancedMarkerElement({
+          map,
+          position: techPos,
+          title: 'Your Current Location',
+          content: createMarkerContent(isOnline),
+        });
+      } else {
+        techMarkerRef.current.position = techPos;
+        techMarkerRef.current.content = createMarkerContent(isOnline);
+      }
+    } else if (google.maps.Marker) {
+      // Graceful fallback if AdvancedMarkerElement is not available in environment
+      if (!techMarkerRef.current) {
+        techMarkerRef.current = new google.maps.Marker({
+          position: techPos,
+          map,
+          title: 'Your Current Location',
+          icon: {
+            url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
+              <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36">
+                <circle cx="18" cy="18" r="16" fill="${isOnline ? '#10B981' : '#64748B'}" fill-opacity="0.2"/>
+                <circle cx="18" cy="18" r="11" fill="${isOnline ? '#059669' : '#475569'}" stroke="#FFFFFF" stroke-width="3"/>
+                <circle cx="18" cy="18" r="4.5" fill="#FFFFFF"/>
+              </svg>
+            `)}`,
+            scaledSize: new google.maps.Size(32, 32),
+            anchor: new google.maps.Point(16, 16),
+          },
+        });
+      } else {
+        techMarkerRef.current.setPosition(techPos);
+      }
     }
 
     // Radar perimeter circle (1km standby zone)
