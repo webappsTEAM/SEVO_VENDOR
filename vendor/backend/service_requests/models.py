@@ -250,6 +250,10 @@ class ServiceRequest(models.Model):
     # look up the customer's permanent ID (e.g. for a payslip/invoice
     # reference) had no field to read it from.
     customer_code = models.CharField(max_length=30, blank=True, null=True, db_index=True)
+    catalog_service_id = models.IntegerField(default=1, db_column="catalog_service_id")
+    package_id = models.IntegerField(default=1, db_column="package_id")
+    package_version = models.IntegerField(default=1, db_column="package_version")
+    package_display = models.JSONField(default=dict, blank=True, db_column="package_display")
 
     service_category = models.CharField(max_length=150)
     issue_title = models.CharField(max_length=300)
@@ -322,14 +326,6 @@ class ServiceRequest(models.Model):
 
     status = models.CharField(max_length=30, choices=Status.choices, default=Status.NEW_REQUEST)
     priority = models.CharField(max_length=20, choices=Priority.choices, default=Priority.NORMAL)
-    # X-04: were missing -- this app's own request_id auto-numbering only
-    # makes sense in the context of what KIND of request it is, and quote
-    # jobs are a first-class case the workforce app should be able to see.
-    request_kind = models.CharField(max_length=30, default="standard", db_index=True,
-                                     choices=[("standard", "Standard"),
-                                              ("inspection", "Inspection"),
-                                              ("quoted_work", "Quoted Work")])
-    quote_number = models.CharField(max_length=100, blank=True, null=True, unique=True, db_index=True)
 
     # X-04: pricing snapshot fields, all missing from this mirror -- a
     # technician-facing payslip/earnings view that wants to show what a
@@ -448,6 +444,18 @@ class ServiceRequest(models.Model):
                 if self.assigned_employee:
                     from workforce_api.services.workload import reconcile_employee_availability
                     reconcile_employee_availability(self.assigned_employee)
+
+                from workforce_api.models import WorkforceDispatchState
+                target_state = (
+                    WorkforceDispatchState.DispatchStatus.COMPLETED
+                    if self.status == "completed"
+                    else WorkforceDispatchState.DispatchStatus.CANCELLED
+                )
+                WorkforceDispatchState.objects.filter(job=self).update(
+                    dispatch_status=target_state,
+                    retry_at=None,
+                    locked_at=None,
+                )
             except Exception as e:
                 import logging
                 logging.getLogger("workforce.cancel").warning(
@@ -1107,46 +1115,3 @@ class SettingsHubInvoice(models.Model):
 
     def __str__(self):
         return f"Invoice {self.invoice_number} - ₹{self.amount} ({self.status})"
-
-
-class PackageStatus(models.TextChoices):
-    DRAFT    = "DRAFT",    "Draft"
-    ACTIVE   = "ACTIVE",   "Active"
-    INACTIVE = "INACTIVE", "Inactive"
-    ARCHIVED = "ARCHIVED", "Archived"
-
-
-class Package(models.Model):
-    """
-    Vendor-facing mirror of Customer/backend/service_requests/models.py's
-    Package -- unmanaged, same shared table. Only carries the fields the
-    Vendor Stock Management feature needs (price, stock linkage); Customer
-    backend remains the owner of every other Package field (reviews, faqs,
-    includes/excludes, customization, etc.) and this app never migrates
-    this table.
-    """
-    service = models.ForeignKey(Service, on_delete=models.CASCADE, related_name="packages", db_column="service_id")
-    name = models.CharField(max_length=200)
-    slug = models.SlugField(unique=True)
-    base_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    offer_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-    duration = models.CharField(max_length=50, blank=True)
-    image = models.CharField(max_length=500, blank=True)
-    tag = models.CharField(max_length=50, blank=True)
-    status = models.CharField(max_length=20, choices=PackageStatus.choices, default=PackageStatus.DRAFT)
-    sort_order = models.PositiveIntegerField(default=0)
-    stock_item = models.OneToOneField(
-        "inventory.InventoryItem",
-        on_delete=models.SET_NULL,
-        null=True, blank=True,
-        related_name="vendor_vegetable_package",
-        db_column="stock_item_id",
-    )
-
-    class Meta:
-        managed = False
-        db_table = "service_requests_package"
-        ordering = ["sort_order", "id"]
-
-    def __str__(self):
-        return self.name

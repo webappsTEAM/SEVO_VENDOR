@@ -21,22 +21,62 @@ class WorkforceSignupSerializer(serializers.Serializer):
     mobile_number = serializers.CharField(max_length=20)
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True, min_length=6)
+    account_type = serializers.CharField(required=False, default="independent")
+    provider_id = serializers.IntegerField(required=False, allow_null=True)
+    provider_slug = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    company_id = serializers.IntegerField(required=False, allow_null=True)
+    company_slug = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+
+    def validate_first_name(self, value):
+        cleaned = value.strip()
+        if not cleaned:
+            raise serializers.ValidationError("First name cannot be empty.")
+        return cleaned
+
+    def validate_last_name(self, value):
+        return (value or "").strip()
 
     def validate_email(self, value):
-        if User.objects.filter(email__iexact=value).exists():
+        cleaned = value.strip().lower()
+        if User.objects.filter(email__iexact=cleaned).exists():
             raise serializers.ValidationError("An account with this email already exists.")
-        return value.lower()
+        return cleaned
 
     def validate_mobile_number(self, value):
         cleaned = value.strip().replace(" ", "").replace("-", "")
+        if len(cleaned) < 10:
+            raise serializers.ValidationError("Please enter a valid mobile number with at least 10 digits.")
         if User.objects.filter(mobile_number=cleaned).exists():
             raise serializers.ValidationError("An account with this mobile number already exists.")
         return cleaned
 
 
+ALLOWED_DRAFT_SECTIONS = {"personal", "address", "services", "skills", "documents", "bank"}
+FORBIDDEN_DRAFT_KEYS = {
+    "status", "step", "completed_steps", "submitted_at", "approved_at",
+    "approved_by", "rejected_at", "rejected_by", "rejection_reason",
+    "verified_at", "verified_by", "verification_status", "correction_notes"
+}
+
+
 class WorkforceOnboardingDraftSerializer(serializers.Serializer):
     step = serializers.IntegerField(min_value=1, max_value=7, required=False)
     draft_data = serializers.DictField(required=True)
+
+    def validate_draft_data(self, value):
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("draft_data must be a dictionary.")
+        for forbidden in FORBIDDEN_DRAFT_KEYS:
+            if forbidden in value:
+                raise serializers.ValidationError(
+                    f"Field '{forbidden}' is server-controlled and cannot be supplied in draft_data."
+                )
+        unknown = set(value.keys()) - ALLOWED_DRAFT_SECTIONS
+        if unknown:
+            raise serializers.ValidationError(
+                f"Unknown onboarding sections: {', '.join(sorted(unknown))}."
+            )
+        return value
 
 
 class WorkforceEmployeeProfileSerializer(serializers.ModelSerializer):
@@ -114,19 +154,12 @@ class WorkforceEmployeeProfileSerializer(serializers.ModelSerializer):
         return ""
 
     def get_onboarding_data(self, obj):
-        return (obj.bank_details or {}).get("onboarding", {
-            "status": "not_started",
-            "step": 1,
-            "draft": {},
-            "services": [],
-            "documents": {},
-            "correction_notes": "",
-            "rejection_reason": "",
-        })
+        from workforce_api.services.registration import get_employee_onboarding_dict
+        return get_employee_onboarding_dict(obj)
 
     def get_registration_status(self, obj):
-        ob = (obj.bank_details or {}).get("onboarding", {})
-        return ob.get("status", "not_started")
+        from workforce_api.services.registration import get_employee_registration_status
+        return get_employee_registration_status(obj)
 
     def get_approved_services(self, obj):
         ob = (obj.bank_details or {}).get("onboarding", {})
@@ -485,6 +518,10 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
     # nothing in the job payload told the app they applied.
     is_logistics = serializers.SerializerMethodField()
     trip_stop_count = serializers.SerializerMethodField()
+    is_scheduled_future = serializers.SerializerMethodField()
+    can_accept = serializers.SerializerMethodField()
+    scheduled_window_open = serializers.SerializerMethodField()
+    scheduled_hold_reason = serializers.SerializerMethodField()
 
     class Meta:
         model = ServiceRequest
@@ -550,11 +587,47 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
             "logistics_leg",
             "logistics_leg_updated_at",
             "trip_stop_count",
+            "is_scheduled_future",
+            "can_accept",
+            "scheduled_window_open",
+            "scheduled_hold_reason",
         ]
 
     def get_is_logistics(self, obj):
         from workforce_api.services.automatic_dispatch import LOGISTICS_SERVICE_CATEGORIES
         return (obj.service_category or "").strip().lower() in LOGISTICS_SERVICE_CATEGORIES
+
+    def _get_scheduled_window(self, obj):
+        if hasattr(obj, "_cached_scheduled_window"):
+            return obj._cached_scheduled_window
+        from workforce_api.services.automatic_dispatch import get_scheduled_dispatch_window
+        from django.utils import timezone
+        res = get_scheduled_dispatch_window(obj, now=timezone.now())
+        obj._cached_scheduled_window = res
+        return res
+
+    def get_is_scheduled_future(self, obj):
+        is_future, _, _ = self._get_scheduled_window(obj)
+        return bool(is_future)
+
+    def get_can_accept(self, obj):
+        is_future, _, _ = self._get_scheduled_window(obj)
+        if is_future:
+            return False
+        return True
+
+    def get_scheduled_window_open(self, obj):
+        is_future, _, window_open = self._get_scheduled_window(obj)
+        if is_future and window_open:
+            return window_open.isoformat()
+        return None
+
+    def get_scheduled_hold_reason(self, obj):
+        is_future, scheduled_dt, window_open = self._get_scheduled_window(obj)
+        if is_future and scheduled_dt and window_open:
+            lead_mins = int(round((scheduled_dt - window_open).total_seconds() / 60))
+            return f"Service scheduled for {scheduled_dt.strftime('%d %b %Y at %I:%M %p')}. Acceptance opens at {window_open.strftime('%I:%M %p')} ({lead_mins} mins prior)."
+        return None
 
     def get_trip_stop_count(self, obj):
         trip_stops_map = self.context.get("trip_stops_map")

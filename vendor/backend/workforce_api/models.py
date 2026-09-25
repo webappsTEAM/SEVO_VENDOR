@@ -4,7 +4,6 @@ Relational database models for Workforce Scheduling, Skills, Compliance, Notific
 """
 from decimal import Decimal
 import uuid
-import django
 from django.conf import settings
 from django.db import IntegrityError, models, transaction
 from django.utils import timezone
@@ -448,12 +447,8 @@ class WorkforceJobOffer(models.Model):
         # database.
         constraints = [
             models.CheckConstraint(
-                **{
-                    ("condition" if django.VERSION >= (5, 1) else "check"): (
-                        models.Q(wave_number__gte=1, wave_number__lte=6)
-                    ),
-                    "name": "valid_wave_number_1_to_6",
-                }
+                check=models.Q(wave_number__gte=1, wave_number__lte=6),
+                name="valid_wave_number_1_to_6",
             ),
             models.UniqueConstraint(
                 fields=("job", "employee"),
@@ -471,6 +466,52 @@ class WorkforceJobOffer(models.Model):
         return f"Offer Job #{self.job_id} to {self.employee} ({self.status})"
 
 
+class WorkforceDispatchState(models.Model):
+    """
+    Dedicated dispatch-control state for ServiceRequest.
+    Controls retry scheduling, backoff, and dispatch claim locking.
+    ServiceRequest remains the authoritative booking/job record.
+    """
+    class DispatchStatus(models.TextChoices):
+        NEVER_ATTEMPTED = "NEVER_ATTEMPTED", "Never Attempted"
+        DISPATCHING = "DISPATCHING", "Dispatching"
+        RETRY_SCHEDULED = "RETRY_SCHEDULED", "Retry Scheduled"
+        OFFER_ACTIVE = "OFFER_ACTIVE", "Offer Active"
+        ASSIGNED = "ASSIGNED", "Assigned"
+        CANCELLED = "CANCELLED", "Cancelled"
+        COMPLETED = "COMPLETED", "Completed"
+        EXPIRED = "EXPIRED", "Expired"
+
+    job = models.OneToOneField(
+        "service_requests.ServiceRequest",
+        on_delete=models.CASCADE,
+        related_name="dispatch_state",
+    )
+    dispatch_status = models.CharField(
+        max_length=32,
+        choices=DispatchStatus.choices,
+        default=DispatchStatus.NEVER_ATTEMPTED,
+        db_index=True,
+    )
+    attempt_count = models.PositiveIntegerField(default=0)
+    last_attempt_at = models.DateTimeField(null=True, blank=True)
+    retry_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    locked_at = models.DateTimeField(null=True, blank=True)
+    unassigned_reason_code = models.CharField(max_length=64, blank=True, default="")
+    unassigned_reason_message = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "workforce_dispatch_state"
+        indexes = [
+            models.Index(fields=["dispatch_status", "retry_at"], name="wf_disp_st_retry_idx"),
+        ]
+
+    def __str__(self):
+        return f"DispatchState Job #{self.job_id} [{self.dispatch_status}] (Attempt {self.attempt_count}, retry_at: {self.retry_at})"
+
+
 class WorkforceJobLifecycleEvent(models.Model):
     """
     Immutable audit event for workforce job state transitions.
@@ -478,6 +519,7 @@ class WorkforceJobLifecycleEvent(models.Model):
     class EventType(models.TextChoices):
         EMPLOYEE_JOB_ACCEPTED = "EMPLOYEE_JOB_ACCEPTED", "Employee Job Accepted"
         EMPLOYEE_JOB_CANCELLED = "EMPLOYEE_JOB_CANCELLED", "Employee Job Cancelled"
+        EMPLOYEE_JOB_DECLINED = "EMPLOYEE_JOB_DECLINED", "Employee Job Declined"
         EMPLOYEE_JOB_REDISPATCH_STARTED = "EMPLOYEE_JOB_REDISPATCH_STARTED", "Employee Job Redispatch Started"
         NEW_EMPLOYEE_ASSIGNED = "NEW_EMPLOYEE_ASSIGNED", "New Employee Assigned"
 
@@ -1563,13 +1605,11 @@ class WalletAccount(models.Model):
         db_table = "workforce_wallet_account"
         constraints = [
             models.CheckConstraint(
-                **{
-                    ("condition" if django.VERSION >= (5, 1) else "check"): (
-                        models.Q(account_type="PROVIDER_HEAD", company__isnull=False, employee__isnull=True)
-                        | models.Q(account_type="INDIVIDUAL_WORKER", employee__isnull=False, company__isnull=True)
-                    ),
-                    "name": "wallet_account_type_matches_owner",
-                }
+                check=(
+                    models.Q(account_type="PROVIDER_HEAD", company__isnull=False, employee__isnull=True)
+                    | models.Q(account_type="INDIVIDUAL_WORKER", employee__isnull=False, company__isnull=True)
+                ),
+                name="wallet_account_type_matches_owner",
             ),
         ]
         indexes = [
