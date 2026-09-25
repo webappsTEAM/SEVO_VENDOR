@@ -25,6 +25,8 @@ import {
 } from 'lucide-react';
 import { TechnicianNavigationView } from '../navigation/TechnicianNavigationView.jsx';
 import { ACTIVE_QUEUE_STATUSES } from '../../../context/EmployeeRuntimeContext.jsx';
+import { LogisticsLegController, isLogisticsJob } from '../logistics/LogisticsLegController.jsx';
+import { LogisticsStopManager } from '../logistics/LogisticsStopManager.jsx';
 
 /**
  * Real-time Countdown Badge for Offer Expiration & Cancellation Window
@@ -682,6 +684,22 @@ export function PortalCockpitLayout({
                   </div>
                 )}
 
+                {/* ── LOGISTICS JOURNEY & LEG PROGRESSION (P&M 13 Stages & GT 5 Stages) ── */}
+                {isActiveAssignment && activeJob && (
+                  <LogisticsLegController
+                    job={activeJob}
+                    onLegUpdated={() => onRefreshData && onRefreshData()}
+                  />
+                )}
+
+                {/* ── MULTI-STOP ROUTE ITINERARY (When trip stops exist) ── */}
+                {isActiveAssignment && activeJob && isLogisticsJob(activeJob) && (
+                  <LogisticsStopManager
+                    job={activeJob}
+                    onStopsUpdated={() => onRefreshData && onRefreshData()}
+                  />
+                )}
+
                 {/* ── CASH PAYMENT CONFIRMATION SECTION (When proof is submitted & cash is pending) ── */}
                 {isCashPending && (
                   <div className="pt-2 space-y-3">
@@ -1063,6 +1081,32 @@ export function PortalCockpitLayout({
                     <span>{actionLoading ? 'COMPLETING JOB...' : 'FINALIZE & COMPLETE JOB'}</span>
                   </button>
                 )
+              ) : isInProgress && isEstimationJob && activeQuoteStatus !== 'CUSTOMER_ACCEPTED' && activeQuoteStatus !== 'CONVERTED' ? (
+                // Estimation job in IN_PROGRESS without an accepted quote:
+                // show Quotation Builder — technician must draft & send quote before service execution
+                <button
+                  type="button"
+                  onClick={() => onOpenQuotationModal && onOpenQuotationModal(activeJob)}
+                  disabled={actionLoading || (!isAllPrerequisitesDone && !activeJob?.can_create_quote && !activeQuoteNumber)}
+                  className={`w-full py-3.5 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 ${
+                    isAllPrerequisitesDone || activeJob?.can_create_quote || activeQuoteNumber
+                      ? activeQuoteStatus === 'CHANGES_REQUESTED'
+                        ? 'bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white shadow-md cursor-pointer'
+                        : 'bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white shadow-md cursor-pointer'
+                      : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                  }`}
+                >
+                  <Calculator className="w-3.5 h-3.5 fill-current" />
+                  <span>
+                    {activeQuoteStatus === 'CHANGES_REQUESTED'
+                      ? `Draft Revised Quote (v${activeQuoteVersion})`
+                      : activeQuoteStatus === 'SENT_TO_CUSTOMER'
+                      ? `View Sent Quotation (v${activeQuoteVersion})`
+                      : activeQuoteNumber
+                      ? `Open Quotation Builder (v${activeQuoteVersion})`
+                      : 'Draft Quotation'}
+                  </span>
+                </button>
               ) : isInProgress ? (
                 <button
                   type="button"

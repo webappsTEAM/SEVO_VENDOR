@@ -22,6 +22,7 @@ import time
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 from workforce_api.services.automatic_dispatch import dispatch_pending_jobs, expire_and_reassign_offers
+from workforce_api.services.customer_webhook import process_pending_outbound_webhooks
 
 logger = logging.getLogger("workforce.dispatch.worker")
 
@@ -88,18 +89,21 @@ class Command(BaseCommand):
 
         if run_once or not run_loop:
             # Single pass reconciliation
+            webhook_res = process_pending_outbound_webhooks(limit=25)
             result = dispatch_pending_jobs(limit=limit)
             _write_heartbeat("ok", {
                 "mode": "single_pass",
                 "pending_jobs_found": result.get("pending_jobs_found", 0),
                 "dispatched_count": result.get("dispatched_count", 0),
                 "expired_offers_swept": result.get("expired_offers_swept", 0),
+                "webhooks_delivered": webhook_res.get("delivered", 0),
             })
             self.stdout.write(
                 self.style.SUCCESS(
                     f"[DISPATCH ENGINE] Completed single pass: {result['pending_jobs_found']} pending found, "
                     f"{result['dispatched_count']} offered, {result['unassigned_count']} unassigned, "
-                    f"{result['expired_offers_swept']} expired offers swept."
+                    f"{result['expired_offers_swept']} expired offers swept, "
+                    f"{webhook_res.get('delivered', 0)} webhooks delivered."
                 )
             )
             for detail in result.get("details", []):
@@ -138,19 +142,24 @@ class Command(BaseCommand):
             cycle += 1
             cycle_start = time.time()
             try:
+                # 1. Sweep pending/retrying customer webhook notifications
+                webhook_res = process_pending_outbound_webhooks(limit=25)
+                # 2. Dispatch pending jobs and sweep expired offers
                 result = dispatch_pending_jobs(limit=limit)
                 pending_found = result.get("pending_jobs_found", 0)
                 dispatched_count = result.get("dispatched_count", 0)
                 expired_swept = result.get("expired_offers_swept", 0)
                 unassigned_count = result.get("unassigned_count", 0)
+                webhooks_delivered = webhook_res.get("delivered", 0)
 
                 now_ts = time.time()
-                activity = (pending_found > 0 or expired_swept > 0)
+                activity = (pending_found > 0 or expired_swept > 0 or webhooks_delivered > 0)
 
                 if activity:
                     self.stdout.write(
                         f"[DISPATCH cycle={cycle}] Swept {expired_swept} expired, "
-                        f"Evaluated {pending_found} pending -> {dispatched_count} offered, {unassigned_count} unassigned."
+                        f"Evaluated {pending_found} pending -> {dispatched_count} offered, {unassigned_count} unassigned, "
+                        f"{webhooks_delivered} webhooks delivered."
                     )
                     for detail in result.get("details", []):
                         self.stdout.write(f"  * Job #{detail.get('job_id')}: {detail.get('message')}")
@@ -162,6 +171,7 @@ class Command(BaseCommand):
                         "pending_jobs_found": pending_found,
                         "dispatched_count": dispatched_count,
                         "expired_offers_swept": expired_swept,
+                        "webhooks_delivered": webhooks_delivered,
                     })
                     last_heartbeat_time = now_ts
                     last_status = "ok"

@@ -671,6 +671,7 @@ def quotes_awaiting_admin_approval():
         WorkforceQuote.objects
         .filter(status=WorkforceQuote.Status.PENDING_ADMIN_APPROVAL)
         .select_related("job", "technician", "company", "customer")
+        .prefetch_related("items", "measurements")
         .order_by("submitted_for_approval_at", "id")
     )
 
@@ -862,5 +863,6 @@ def quotes_awaiting_pre_send_review():
         WorkforceQuote.objects
         .filter(status=WorkforceQuote.Status.PENDING_REVIEW)
         .select_related("job", "technician", "company", "customer")
+        .prefetch_related("items", "measurements")
         .order_by("updated_at", "id")
     )

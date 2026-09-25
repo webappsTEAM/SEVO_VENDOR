@@ -12,10 +12,24 @@ import {
   Calendar,
   Wrench,
   FileText,
+  FileSpreadsheet,
+  Receipt,
+  Tag,
   CreditCard,
   Zap,
+  ShieldCheck,
+  ShieldAlert,
+  Send,
+  Play,
+  CheckCheck,
+  Gauge,
 } from 'lucide-react';
-import { apiReviseQuotation, apiCustomerDecide } from '../../api/vendorEstimationService.js';
+import {
+  apiReviseQuotation,
+  apiCustomerDecide,
+  apiAdminReviewQuotation,
+  apiProgressRepair,
+} from '../../api/vendorEstimationService.js';
 import EstimationInvoiceModal from './EstimationInvoiceModal.jsx';
 
 export default function CustomerDecisionPanel({
@@ -26,13 +40,18 @@ export default function CustomerDecisionPanel({
 }) {
   const [revising, setRevising] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [showSimMenu, setShowSimMenu] = useState(false);
+  const [adminActionLoading, setAdminActionLoading] = useState(false);
+  const [repairActionLoading, setRepairActionLoading] = useState(false);
   const [error, setError] = useState(null);
 
   // Modals
   const [showApproveModal, setShowApproveModal] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  const [showAdminReviewModal, setShowAdminReviewModal] = useState(false);
+  const [adminReviewAction, setAdminReviewAction] = useState('APPROVE');
+  const [adminAutoConvert, setAdminAutoConvert] = useState(false);
+  const [adminNotes, setAdminNotes] = useState('');
 
   // Approval / Booking Schedule Form
   const todayStr = new Date().toISOString().split('T')[0];
@@ -45,10 +64,44 @@ export default function CustomerDecisionPanel({
   const [feePaymentMethod, setFeePaymentMethod] = useState('UPI');
 
   const quote = estimation?.latest_quotation || (estimation?.quotations && estimation.quotations[0]);
-  const status = (quote?.status || estimation?.status || 'DRAFT').toUpperCase();
+  const quoteStatus = (quote?.status || '').toUpperCase();
+  const estimationStatus = (estimation?.status || 'DRAFT').toUpperCase();
   const fee = estimation?.fee;
   const isSameDay = scheduledDate === todayStr;
   const techName = estimation?.inspection?.technician_name || estimation?.technician_name || 'Assigned Technician';
+
+  // Admin review handlers
+  const handleOpenAdminReview = (action, autoConvert = false) => {
+    setAdminReviewAction(action);
+    setAdminAutoConvert(autoConvert);
+    setAdminNotes(
+      action === 'SEND_BACK'
+        ? 'Please adjust the labor cost and re-verify capacitor ratings.'
+        : autoConvert
+        ? 'Approved and converted directly to active service booking.'
+        : 'Approved based on on-site inspection findings.'
+    );
+    setShowAdminReviewModal(true);
+  };
+
+  const handleConfirmAdminReview = async () => {
+    if (!quote?.id) return;
+    setAdminActionLoading(true);
+    setError(null);
+    try {
+      const res = await apiAdminReviewQuotation(estimation.id, quote.id, {
+        action: adminReviewAction,
+        admin_notes: adminNotes,
+        auto_convert: adminReviewAction === 'APPROVE' && adminAutoConvert,
+      });
+      setShowAdminReviewModal(false);
+      onUpdate?.(res?.data || res);
+    } catch (err) {
+      setError(err.message || 'Failed to submit admin review decision.');
+    } finally {
+      setAdminActionLoading(false);
+    }
+  };
 
   const handleRevise = async () => {
     if (!quote?.id) return;
@@ -102,6 +155,19 @@ export default function CustomerDecisionPanel({
     }
   };
 
+  const handleAdvanceRepair = async (stage) => {
+    setRepairActionLoading(true);
+    setError(null);
+    try {
+      const res = await apiProgressRepair(estimation.id, stage);
+      onUpdate?.(res?.data || res);
+    } catch (err) {
+      setError(err.message || `Failed to advance repair stage to ${stage}.`);
+    } finally {
+      setRepairActionLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       {error && (
@@ -111,47 +177,418 @@ export default function CustomerDecisionPanel({
         </div>
       )}
 
-      {/* Decision Status Banners */}
-      {status === 'APPROVED' || estimation?.status === 'CUSTOMER_APPROVED' || estimation?.status === 'CONVERTED_TO_JOB' ? (
-        <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl space-y-3">
-          <div className="flex items-start gap-3">
-            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <h4 className="text-xs font-bold text-emerald-900">
-                  Customer Accepted Quotation #{quote?.quote_ref || ''} — Converted into Service Job
-                </h4>
-                <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-extrabold rounded-full">
-                  JOB CONVERTED
-                </span>
+      {/* QUOTATION DETAILS & LINE ITEMS CARD */}
+      {quote && (
+        <div className="p-4 bg-white border border-zinc-200 rounded-2xl shadow-xs space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-zinc-100 gap-2">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+                <Receipt className="w-4 h-4" />
               </div>
-              <p className="text-xs text-emerald-700 leading-relaxed">
-                Accepted total: <strong>₹{quote?.total_amount?.toLocaleString('en-IN')}</strong>. The ₹199 estimation visit fee is waived/credited towards the job. Only the service job payment will be collected upon completion.
-              </p>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="text-xs font-bold text-zinc-900">
+                    Quotation #{quote?.quote_ref} (v{quote?.version || 1})
+                  </h4>
+                  <span
+                    className={`px-2 py-0.5 text-[10px] font-extrabold rounded-full ${
+                      quoteStatus === 'SUBMITTED_FOR_ADMIN_REVIEW'
+                        ? 'bg-indigo-100 text-indigo-800'
+                        : quoteStatus === 'APPROVED' || quoteStatus === 'CUSTOMER_APPROVED'
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : quoteStatus === 'SENT' || quoteStatus === 'QUOTATION_SENT'
+                        ? 'bg-blue-100 text-blue-800'
+                        : quoteStatus === 'SENT_BACK_TO_TECHNICIAN'
+                        ? 'bg-amber-100 text-amber-800'
+                        : 'bg-zinc-100 text-zinc-700'
+                    }`}
+                  >
+                    {quoteStatus.replace(/_/g, ' ')}
+                  </span>
+                </div>
+                <p className="text-[11px] text-zinc-500">
+                  Created for AC Inspection #{estimation?.request_id} • Customer: {estimation?.customer_name}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {onReviseQuote && (
+                <button
+                  type="button"
+                  onClick={onReviseQuote}
+                  className="px-2.5 py-1 text-xs font-semibold text-zinc-700 bg-white hover:bg-zinc-50 border border-zinc-200 rounded-lg flex items-center gap-1 shadow-2xs"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-zinc-500" />
+                  <span>Edit Quote</span>
+                </button>
+              )}
             </div>
           </div>
-          <div className="pt-2.5 border-t border-emerald-200/80 flex items-center justify-between">
-            <span className="text-[11px] text-emerald-800 font-medium">
-              Scheduled with technician: <strong>{techName}</strong>
-            </span>
+
+          {/* Line Items Table */}
+          {quote?.items && quote.items.length > 0 ? (
+            <div className="border border-zinc-200 rounded-xl overflow-hidden text-xs">
+              <div className="bg-zinc-50 px-3 py-2 border-b border-zinc-200 grid grid-cols-12 font-bold text-zinc-600 text-[10px] uppercase tracking-wider">
+                <span className="col-span-5">Scope / Component</span>
+                <span className="col-span-2 text-center">Type</span>
+                <span className="col-span-1 text-center">Qty</span>
+                <span className="col-span-2 text-right">Unit Price</span>
+                <span className="col-span-2 text-right">Amount</span>
+              </div>
+              <div className="divide-y divide-zinc-100">
+                {quote.items.map((it, idx) => {
+                  const qty = Number(it.quantity) || 1;
+                  const unitPrice = Number(it.unit_price) || 0;
+                  const rowAmount = qty * unitPrice;
+                  return (
+                    <div key={idx} className="px-3 py-2 grid grid-cols-12 items-center hover:bg-zinc-50/50">
+                      <div className="col-span-5 min-w-0 pr-2">
+                        <span className="font-semibold text-zinc-900 block truncate">{it.service_name || it.title}</span>
+                        {it.category_name_snapshot && (
+                          <span className="text-[10px] text-zinc-400 block truncate">{it.category_name_snapshot}</span>
+                        )}
+                      </div>
+                      <div className="col-span-2 text-center">
+                        <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase rounded bg-zinc-100 text-zinc-700">
+                          {it.item_type || 'PART'}
+                        </span>
+                      </div>
+                      <div className="col-span-1 text-center font-mono text-zinc-700 text-[11px]">
+                        {qty} <span className="text-[10px] text-zinc-400">{it.unit || 'unit'}</span>
+                      </div>
+                      <div className="col-span-2 text-right font-mono text-zinc-600 text-[11px]">
+                        ₹{unitPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </div>
+                      <div className="col-span-2 text-right font-mono font-bold text-zinc-900 text-xs">
+                        ₹{rowAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="p-3 bg-zinc-50 border border-dashed border-zinc-200 rounded-xl text-center text-xs text-zinc-500">
+              Quotation total: <strong>₹{Number(quote?.total_amount || 0).toLocaleString('en-IN')}</strong> ({quote?.items_count || 0} line items)
+            </div>
+          )}
+
+          {/* Pricing Summary */}
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-zinc-50 p-3 rounded-xl border border-zinc-200 gap-2 text-xs">
+            <div className="text-[11px] text-zinc-500">
+              {quote?.notes ? <span>Terms: {quote.notes}</span> : <span>Warranty: 90 days on replacement parts & service</span>}
+            </div>
+            <div className="space-y-1 text-right w-full sm:w-auto font-mono">
+              <div className="flex justify-between sm:justify-end gap-4 text-zinc-600">
+                <span className="font-sans text-[11px]">Subtotal:</span>
+                <span>₹{Number(quote?.subtotal || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+              </div>
+              {Number(quote?.tax_amount || 0) > 0 && (
+                <div className="flex justify-between sm:justify-end gap-4 text-zinc-600">
+                  <span className="font-sans text-[11px]">GST (18%):</span>
+                  <span>₹{Number(quote?.tax_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                </div>
+              )}
+              {Number(quote?.discount_amount || 0) > 0 && (
+                <div className="flex justify-between sm:justify-end gap-4 text-emerald-600">
+                  <span className="font-sans text-[11px]">Discount:</span>
+                  <span>- ₹{Number(quote?.discount_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                </div>
+              )}
+              <div className="flex justify-between sm:justify-end gap-4 text-sm font-black text-indigo-700 pt-1 border-t border-zinc-200">
+                <span className="font-sans text-xs">Grand Total:</span>
+                <span>₹{Number(quote?.total_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* STATE 1: ADMIN ACTION CONTROLS */}
+          {quoteStatus === 'SUBMITTED_FOR_ADMIN_REVIEW' && (
+            <div className="p-3.5 bg-indigo-50/80 border border-indigo-200 rounded-xl space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-indigo-700 shrink-0" />
+                  <span className="text-xs font-bold text-indigo-950">
+                    Vendor Admin Approval Required
+                  </span>
+                </div>
+                <span className="text-[10px] text-indigo-700 font-semibold">
+                  Review parts rates against agreed snapshot before releasing
+                </span>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => handleOpenAdminReview('APPROVE', false)}
+                  className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg shadow-xs flex items-center gap-1.5 transition-colors"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Admin Approve & Release to Customer</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleOpenAdminReview('APPROVE', true)}
+                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg shadow-xs flex items-center gap-1.5 transition-colors"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Admin Approve & Convert to Service Booking</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleOpenAdminReview('SEND_BACK', false)}
+                  className="px-3 py-1.5 bg-white border border-indigo-300 hover:bg-indigo-50 text-indigo-800 font-bold text-xs rounded-lg shadow-xs flex items-center gap-1.5 transition-colors"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Send Back to Tech</span>
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* STATE 2: SENT BACK TO TECHNICIAN WITH REVISION FEEDBACK */}
+      {quoteStatus === 'SENT_BACK_TO_TECHNICIAN' && (
+        <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl space-y-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <h4 className="text-xs font-bold text-amber-950">
+                    Quotation #{quote?.quote_ref || ''} Sent Back by Customer Admin
+                  </h4>
+                  <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-[10px] font-extrabold rounded-full">
+                    CHANGES REQUESTED
+                  </span>
+                </div>
+                {quote?.admin_notes && (
+                  <p className="text-xs text-amber-900 bg-amber-100/70 p-2 rounded-lg border border-amber-200/80 font-medium">
+                    Admin Feedback: "{quote.admin_notes}"
+                  </p>
+                )}
+                <p className="text-[11px] text-amber-800">
+                  Please revise the quotation items and pricing according to admin notes and resubmit for review.
+                </p>
+              </div>
+            </div>
+
             <button
               type="button"
-              onClick={() => setShowInvoiceModal(true)}
-              className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs rounded-lg shadow-xs flex items-center gap-1.5 transition-colors"
+              disabled={revising}
+              onClick={handleRevise}
+              className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 transition-colors shrink-0"
             >
-              <FileText className="w-3.5 h-3.5" />
-              <span>View Invoice</span>
+              {revising ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+              <span>Revise Quotation</span>
             </button>
           </div>
         </div>
-      ) : status === 'REJECTED' || estimation?.status === 'CUSTOMER_REJECTED' || estimation?.status === 'CANCELLED' ? (
+      )}
+
+      {/* STATE 3: ADMIN APPROVED / SENT TO CUSTOMER */}
+      {(quoteStatus === 'SENT' || quoteStatus === 'ADMIN_APPROVED' || estimationStatus === 'QUOTATION_SENT') && (
+        <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Clock className="w-5 h-5 text-blue-600 animate-pulse shrink-0" />
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="text-xs font-bold text-blue-900">
+                    Quotation #{quote?.quote_ref || ''} Approved & Dispatched to Customer
+                  </h4>
+                  <span className="px-2 py-0.5 bg-blue-100 text-blue-800 text-[10px] font-bold rounded-full">
+                    AWAITING CUSTOMER
+                  </span>
+                </div>
+                <p className="text-[11px] text-blue-700 mt-0.5">
+                  Quotation total: <strong>₹{Number(quote?.total_amount || 0).toLocaleString('en-IN')}</strong>. Customer can review line items and accept or reject.
+                </p>
+              </div>
+            </div>
+
+            {/* Quick Actions / Customer Simulator */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowApproveModal(true)}
+                className="px-3 py-1.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-xs flex items-center gap-1.5 transition-colors"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>Customer Accepts</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowRejectModal(true)}
+                className="px-2.5 py-1.5 text-xs font-bold bg-white border border-rose-300 text-rose-700 hover:bg-rose-50 rounded-lg shadow-xs flex items-center gap-1.5 transition-colors"
+              >
+                <XCircle className="w-3.5 h-3.5" />
+                <span>Customer Rejects</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* STATE 4: CUSTOMER ACCEPTED & REPAIR EXECUTION LIFECYCLE */}
+      {(quoteStatus === 'APPROVED' ||
+        ['CUSTOMER_APPROVED', 'CONVERTED_TO_JOB', 'REPAIR_IN_PROGRESS', 'REPAIR_COMPLETED', 'TESTING_AC', 'COMPLETED'].includes(
+          estimationStatus
+        )) && (
+        <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl space-y-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <h4 className="text-xs font-bold text-emerald-900">
+                    Customer Accepted Quotation #{quote?.quote_ref || ''} — Approved for AC Repair
+                  </h4>
+                  <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-extrabold rounded-full">
+                    {estimationStatus === 'COMPLETED' ? 'JOB COMPLETED' : 'REPAIR ACTIVE'}
+                  </span>
+                </div>
+                <p className="text-xs text-emerald-700 leading-relaxed">
+                  Authorized repair total: <strong>₹{Number(quote?.total_amount || 0).toLocaleString('en-IN')}</strong>. The ₹199 diagnostic fee is waived / credited.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowInvoiceModal(true)}
+              className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs rounded-lg shadow-xs flex items-center gap-1.5 transition-colors shrink-0"
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>Invoice</span>
+            </button>
+          </div>
+
+          {/* Progressive Repair Lifecycle Stepper */}
+          <div className="pt-3 border-t border-emerald-200/80 space-y-3">
+            <span className="text-[10px] font-bold text-emerald-900 uppercase tracking-wider block">
+              Repair Execution & Verification Progress:
+            </span>
+
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 text-xs">
+              {/* Step 1: Start Repair */}
+              <div
+                className={`p-2.5 rounded-lg border text-center ${
+                  ['REPAIR_IN_PROGRESS', 'REPAIR_COMPLETED', 'TESTING_AC', 'COMPLETED'].includes(estimationStatus)
+                    ? 'bg-emerald-600 text-white border-emerald-600'
+                    : 'bg-white text-zinc-700 border-zinc-200'
+                }`}
+              >
+                <span className="text-[10px] block opacity-80 font-bold">Step 1</span>
+                <span className="font-bold block">Start Repair</span>
+                {estimationStatus === 'CUSTOMER_APPROVED' || estimationStatus === 'CONVERTED_TO_JOB' ? (
+                  <button
+                    type="button"
+                    disabled={repairActionLoading}
+                    onClick={() => handleAdvanceRepair('START_REPAIR')}
+                    className="mt-1.5 w-full py-1 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-[11px] rounded shadow-xs"
+                  >
+                    Start Work
+                  </button>
+                ) : (
+                  <span className="text-[10px] opacity-90 mt-1 block">✓ Initiated</span>
+                )}
+              </div>
+
+              {/* Step 2: Complete Repair */}
+              <div
+                className={`p-2.5 rounded-lg border text-center ${
+                  ['REPAIR_COMPLETED', 'TESTING_AC', 'COMPLETED'].includes(estimationStatus)
+                    ? 'bg-emerald-600 text-white border-emerald-600'
+                    : 'bg-white text-zinc-700 border-zinc-200'
+                }`}
+              >
+                <span className="text-[10px] block opacity-80 font-bold">Step 2</span>
+                <span className="font-bold block">Complete Repair</span>
+                {estimationStatus === 'REPAIR_IN_PROGRESS' ? (
+                  <button
+                    type="button"
+                    disabled={repairActionLoading}
+                    onClick={() => handleAdvanceRepair('COMPLETE_REPAIR')}
+                    className="mt-1.5 w-full py-1 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-[11px] rounded shadow-xs"
+                  >
+                    Mark Fixed
+                  </button>
+                ) : ['REPAIR_COMPLETED', 'TESTING_AC', 'COMPLETED'].includes(estimationStatus) ? (
+                  <span className="text-[10px] opacity-90 mt-1 block">✓ Completed</span>
+                ) : (
+                  <span className="text-[10px] text-zinc-400 mt-1 block">Pending</span>
+                )}
+              </div>
+
+              {/* Step 3: Test AC */}
+              <div
+                className={`p-2.5 rounded-lg border text-center ${
+                  ['TESTING_AC', 'COMPLETED'].includes(estimationStatus)
+                    ? 'bg-emerald-600 text-white border-emerald-600'
+                    : 'bg-white text-zinc-700 border-zinc-200'
+                }`}
+              >
+                <span className="text-[10px] block opacity-80 font-bold">Step 3</span>
+                <span className="font-bold block">Test AC & Cooling</span>
+                {estimationStatus === 'REPAIR_COMPLETED' ? (
+                  <button
+                    type="button"
+                    disabled={repairActionLoading}
+                    onClick={() => handleAdvanceRepair('TEST_AC')}
+                    className="mt-1.5 w-full py-1 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-[11px] rounded shadow-xs"
+                  >
+                    Run Test
+                  </button>
+                ) : ['TESTING_AC', 'COMPLETED'].includes(estimationStatus) ? (
+                  <span className="text-[10px] opacity-90 mt-1 block">✓ Verified</span>
+                ) : (
+                  <span className="text-[10px] text-zinc-400 mt-1 block">Pending</span>
+                )}
+              </div>
+
+              {/* Step 4: Customer Confirmation & Close */}
+              <div
+                className={`p-2.5 rounded-lg border text-center ${
+                  estimationStatus === 'COMPLETED'
+                    ? 'bg-emerald-600 text-white border-emerald-600'
+                    : 'bg-white text-zinc-700 border-zinc-200'
+                }`}
+              >
+                <span className="text-[10px] block opacity-80 font-bold">Step 4</span>
+                <span className="font-bold block">Customer Sign-Off</span>
+                {estimationStatus === 'TESTING_AC' ? (
+                  <button
+                    type="button"
+                    disabled={repairActionLoading}
+                    onClick={() => handleAdvanceRepair('CUSTOMER_CONFIRM')}
+                    className="mt-1.5 w-full py-1 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-[11px] rounded shadow-xs"
+                  >
+                    Sign Off
+                  </button>
+                ) : estimationStatus === 'COMPLETED' ? (
+                  <span className="text-[10px] opacity-90 mt-1 block">✓ Closed</span>
+                ) : (
+                  <span className="text-[10px] text-zinc-400 mt-1 block">Pending</span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* STATE 5: CUSTOMER REJECTED / INSPECTION-ONLY CLOSURE */}
+      {(quoteStatus === 'REJECTED' ||
+        ['CUSTOMER_REJECTED', 'CANCELLED', 'CLOSED_INSPECTION_ONLY'].includes(estimationStatus)) && (
         <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl space-y-3">
           <div className="flex items-start gap-3">
             <XCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
             <div className="space-y-1 flex-1">
               <div className="flex items-center justify-between">
                 <h4 className="text-xs font-bold text-rose-900">
-                  Estimation Cancelled / Quotation #{quote?.quote_ref || ''} Rejected
+                  Quotation Rejected — Job Closed as Inspection-Only
                 </h4>
                 {estimation?.invoice_id && (
                   <span className="text-[11px] font-mono text-rose-800 bg-rose-100 px-2 py-0.5 rounded-md font-semibold">
@@ -164,10 +601,11 @@ export default function CustomerDecisionPanel({
                 {quote?.rejection_note ? ` — "${quote.rejection_note}"` : ''}
               </p>
               <p className="text-[11px] text-zinc-600 mt-1">
-                Diagnostic fee of ₹199 was collected. An official invoice is generated in the database and accessible by the customer.
+                Per policy, no repair work was performed. Diagnostic visit fee of ₹199 was collected with zero repair charges. Downloadable invoice generated for the customer.
               </p>
             </div>
           </div>
+
           <div className="pt-2 border-t border-rose-200 flex items-center justify-between">
             <button
               type="button"
@@ -175,7 +613,7 @@ export default function CustomerDecisionPanel({
               className="px-3 py-1.5 bg-white border border-rose-300 hover:bg-rose-100 text-rose-800 font-bold text-xs rounded-lg shadow-xs flex items-center gap-1.5 transition-colors"
             >
               <FileText className="w-3.5 h-3.5 text-rose-600" />
-              <span>Download / View Invoice</span>
+              <span>View ₹199 Diagnostic Invoice</span>
             </button>
 
             <button
@@ -189,47 +627,7 @@ export default function CustomerDecisionPanel({
             </button>
           </div>
         </div>
-      ) : status === 'SENT' || estimation?.status === 'QUOTATION_SENT' ? (
-        <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Clock className="w-5 h-5 text-blue-600 animate-pulse shrink-0" />
-              <div>
-                <h4 className="text-xs font-bold text-blue-900">
-                  Quotation #{quote?.quote_ref || ''} Sent — Awaiting Customer Decision
-                </h4>
-                <p className="text-[11px] text-blue-700">
-                  Customer proposal total: <strong>₹{quote?.total_amount?.toLocaleString('en-IN')}</strong>.
-                </p>
-              </div>
-            </div>
-
-            {/* Quick Actions / Simulator Trigger */}
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setShowApproveModal(true)}
-                className="px-3 py-1.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-xs flex items-center gap-1.5 transition-colors"
-              >
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>Customer Accepts & Books</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowRejectModal(true)}
-                className="px-2.5 py-1.5 text-xs font-bold bg-white border border-rose-300 text-rose-700 hover:bg-rose-50 rounded-lg shadow-xs flex items-center gap-1.5 transition-colors"
-              >
-                <XCircle className="w-3.5 h-3.5" />
-                <span>Customer Rejects</span>
-              </button>
-            </div>
-          </div>
-
-          <div className="text-[11px] text-blue-800 bg-blue-100/60 p-2.5 rounded-lg">
-            <strong>Flow Note:</strong> When the customer accepts, the estimation is automatically converted into an active Job. The customer can reschedule or pick today's date (which auto-assigns the same technician).
-          </div>
-        </div>
-      ) : null}
+      )}
 
       {/* ₹199 Inspection Visit Fee Card */}
       <div className="p-4 bg-zinc-50 border border-zinc-200 rounded-xl flex items-center justify-between">
@@ -259,7 +657,7 @@ export default function CustomerDecisionPanel({
                 ? `Collected via ${fee.payment_method || 'UPI'}`
                 : fee?.status === 'WAIVED'
                 ? `Waived: "${fee.waived_reason || 'Credited towards accepted service booking'}"`
-                : 'Fee collected if cancelled, or waived when customer accepts quotation and books job.'}
+                : 'Fee collected if inspection-only / cancelled, or waived when customer accepts quotation and books job.'}
             </p>
           </div>
         </div>
@@ -288,6 +686,105 @@ export default function CustomerDecisionPanel({
           )}
         </div>
       </div>
+
+      {/* Admin Review Action Modal */}
+      {showAdminReviewModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-zinc-200 p-6 space-y-5">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-indigo-600" />
+                <h3 className="text-sm font-bold text-zinc-900">
+                  {adminReviewAction === 'APPROVE' ? 'Customer Admin: Approve Quotation' : 'Customer Admin: Send Back to Technician'}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAdminReviewModal(false)}
+                className="text-zinc-400 hover:text-zinc-700"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-200 space-y-1">
+                <div className="flex justify-between font-bold text-zinc-800">
+                  <span>Quotation: #{quote?.quote_ref}</span>
+                  <span className="font-mono text-indigo-700">₹{Number(quote?.total_amount).toLocaleString('en-IN')}</span>
+                </div>
+                <p className="text-[11px] text-zinc-500">
+                  {adminReviewAction === 'APPROVE'
+                    ? 'Approving will release this quotation directly to the customer for decision.'
+                    : 'Sending back will notify the technician with your feedback notes to revise line items.'}
+                </p>
+              </div>
+
+              {adminReviewAction === 'APPROVE' && (
+                <div className="flex items-start gap-2.5 p-3 bg-indigo-50 border border-indigo-200 rounded-xl">
+                  <input
+                    type="checkbox"
+                    id="autoConvertBookingModal"
+                    checked={adminAutoConvert}
+                    onChange={(e) => setAdminAutoConvert(e.target.checked)}
+                    className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <label htmlFor="autoConvertBookingModal" className="text-xs font-semibold text-indigo-950 cursor-pointer">
+                    <span>Directly convert to active Service Booking</span>
+                    <span className="block text-[10px] font-normal text-indigo-700 mt-0.5">
+                      Activates the job immediately, stores quotation line items into booking scope, and waives the consultation fee.
+                    </span>
+                  </label>
+                </div>
+              )}
+
+              <div>
+                <label className="block font-semibold text-zinc-700 mb-1">
+                  Admin Verification Notes / Feedback
+                </label>
+                <textarea
+                  rows={3}
+                  value={adminNotes}
+                  onChange={(e) => setAdminNotes(e.target.value)}
+                  placeholder="Notes explaining approval or required revisions..."
+                  className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-zinc-100">
+              <button
+                type="button"
+                onClick={() => setShowAdminReviewModal(false)}
+                className="px-3.5 py-2 text-xs font-semibold text-zinc-600 hover:text-zinc-800 rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={adminActionLoading}
+                onClick={handleConfirmAdminReview}
+                className={`px-4 py-2 text-xs font-bold text-white rounded-lg shadow-sm flex items-center gap-1.5 transition-colors ${
+                  adminReviewAction === 'APPROVE'
+                    ? adminAutoConvert
+                      ? 'bg-emerald-600 hover:bg-emerald-700'
+                      : 'bg-indigo-600 hover:bg-indigo-700'
+                    : 'bg-amber-600 hover:bg-amber-700'
+                }`}
+              >
+                {adminActionLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                <span>
+                  {adminReviewAction === 'APPROVE'
+                    ? adminAutoConvert
+                      ? 'Approve & Convert to Service Booking'
+                      : 'Approve & Release to Customer'
+                    : 'Send Back to Technician'}
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Customer Acceptance & Job Booking Modal */}
       {showApproveModal && (
@@ -361,7 +858,7 @@ export default function CustomerDecisionPanel({
                     Because this job is scheduled for today, it will be <strong>automatically assigned to the same technician ({techName})</strong> who performed the inspection!
                   </p>
                   <p className="text-[11px] text-emerald-700 font-medium mt-1">
-                    ✓ The ₹199 diagnostic visit fee is waived. Only the actual job total (₹{quote?.total_amount}) will be collected upon job completion.
+                    ✓ The ₹199 diagnostic visit fee is waived. Only the actual job total (₹{Number(quote?.total_amount || 0).toLocaleString('en-IN')}) will be collected upon job completion.
                   </p>
                 </div>
               ) : (

@@ -287,9 +287,9 @@ class ServiceRequest(models.Model):
     # look up the customer's permanent ID (e.g. for a payslip/invoice
     # reference) had no field to read it from.
     customer_code = models.CharField(max_length=30, blank=True, null=True, db_index=True)
-    catalog_service_id = models.IntegerField(default=1, db_column="catalog_service_id")
-    package_id = models.IntegerField(default=1, db_column="package_id")
-    package_version = models.IntegerField(default=1, db_column="package_version")
+    catalog_service_id = models.CharField(max_length=100, blank=True, default="", db_column="catalog_service_id")
+    package_id = models.CharField(max_length=100, blank=True, default="", db_column="package_id")
+    package_version = models.CharField(max_length=50, blank=True, default="", db_column="package_version")
     package_display = models.JSONField(default=dict, blank=True, db_column="package_display")
 
     service_category = models.CharField(max_length=150)
@@ -446,21 +446,11 @@ class ServiceRequest(models.Model):
         return f"{self.request_id or f'SR #{self.pk}'} - {self.issue_title} ({self.status})"
 
     def save(self, *args, **kwargs):
-        is_new = self.pk is None
         if not self.request_id:
             self.request_id = _generate_request_id()
         super().save(*args, **kwargs)
 
-        if is_new and self.status in ["new_request", "confirmed", "draft"]:
-            try:
-                from workforce_api.services.automatic_dispatch import dispatch_job
-                dispatch_job(self)
-            except Exception as e:
-                import logging
-                logging.getLogger("workforce.dispatch").exception(
-                    f"[AUTO_DISPATCH_TRIGGER_FAILED] Failed to trigger automatic dispatch for Job #{self.id}: {e}"
-                )
-        elif self.status in ["cancelled", "completed", "unable_to_complete"]:
+        if self.status in ["cancelled", "completed", "unable_to_complete"]:
             try:
                 from service_requests.models import EmployeeJob
                 from workforce_api.models import JobTrackingSession
@@ -986,12 +976,158 @@ class InspectionPhoto(models.Model):
         return f"Photo #{self.id} for Inspection #{self.inspection_id}"
 
 
+class ACInspectionConfiguration(models.Model):
+    """
+    AC Inspection Configuration (service_requests_acinspectionconfiguration).
+    """
+    diagnostic_fee = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("199.00"))
+    currency = models.CharField(max_length=10, default="INR")
+    is_active = models.BooleanField(default=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        managed = False
+        db_table = "service_requests_acinspectionconfiguration"
+
+    def __str__(self):
+        return f"AC Inspection Config ₹{self.diagnostic_fee} ({self.currency})"
+
+
+class ACInspectionRateCategory(models.Model):
+    """
+    AC Inspection Rate Card Category (service_requests_acinspectionratecategory).
+    """
+    name = models.CharField(max_length=200)
+    slug = models.CharField(max_length=200)
+    description = models.TextField(blank=True, default="")
+    display_order = models.IntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        managed = False
+        db_table = "service_requests_acinspectionratecategory"
+        ordering = ["display_order", "id"]
+
+    def __str__(self):
+        return self.name
+
+
+class ACInspectionRateItem(models.Model):
+    """
+    AC Inspection Rate Card Item (service_requests_acinspectionrateitem).
+    """
+    category = models.ForeignKey(
+        ACInspectionRateCategory,
+        on_delete=models.CASCADE,
+        related_name="items",
+        db_column="category_id",
+    )
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True, default="")
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+    unit = models.CharField(max_length=50, default="unit")
+    service_type = models.CharField(max_length=50, default="REPAIR")
+    display_order = models.IntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        managed = False
+        db_table = "service_requests_acinspectionrateitem"
+        ordering = ["display_order", "id"]
+
+    def __str__(self):
+        return f"{self.name} - ₹{self.price}/{self.unit}"
+
+
+class CustomerInspection(models.Model):
+    """
+    Customer Booking Inspection Snapshot (service_requests_customerinspection).
+    Shared table created by Customer codebase, read by Technician codebase.
+    """
+    class Status(models.TextChoices):
+        BOOKED = "BOOKED", "Booked"
+        IN_PROGRESS = "IN_PROGRESS", "In Progress"
+        COMPLETED = "COMPLETED", "Completed"
+        CANCELLED = "CANCELLED", "Cancelled"
+
+    service_request = models.ForeignKey(
+        ServiceRequest,
+        on_delete=models.CASCADE,
+        related_name="customer_inspections",
+        db_column="service_request_id",
+    )
+    inspection_configuration = models.ForeignKey(
+        ACInspectionConfiguration,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        db_column="inspection_configuration_id",
+    )
+    inspection_name_snapshot = models.CharField(max_length=255, default="AC Inspection & Diagnostic Visit")
+    diagnostic_fee_snapshot = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("199.00"))
+    currency = models.CharField(max_length=10, default="INR")
+    quantity = models.IntegerField(default=1)
+    status = models.CharField(max_length=50, choices=Status.choices, default=Status.BOOKED)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        managed = False
+        db_table = "service_requests_customerinspection"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"CustomerInspection #{self.id} for SR #{self.service_request_id} ({self.status})"
+
+
+class CustomerInspectionRateSnapshot(models.Model):
+    """
+    Rate-card snapshot associated with a CustomerInspection (service_requests_customerinspectionratesnapshot).
+    """
+    customer_inspection = models.ForeignKey(
+        CustomerInspection,
+        on_delete=models.CASCADE,
+        related_name="rate_snapshots",
+        db_column="customer_inspection_id",
+    )
+    rate_item = models.ForeignKey(
+        ACInspectionRateItem,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        db_column="rate_item_id",
+    )
+    category_name_snapshot = models.CharField(max_length=200)
+    item_name_snapshot = models.CharField(max_length=200)
+    description_snapshot = models.TextField(blank=True, default="")
+    price_snapshot = models.DecimalField(max_digits=10, decimal_places=2)
+    unit_snapshot = models.CharField(max_length=50, default="unit")
+    service_type_snapshot = models.CharField(max_length=50, default="REPAIR")
+    display_order = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        managed = False
+        db_table = "service_requests_customerinspectionratesnapshot"
+        ordering = ["display_order", "id"]
+
+    def __str__(self):
+        return f"{self.item_name_snapshot} (₹{self.price_snapshot}) for CustInspection #{self.customer_inspection_id}"
+
+
 class EstimationQuotation(models.Model):
     """
     Formal, versioned commercial Quotation (service_requests_estimationquotation).
     """
     class QuoteStatus(models.TextChoices):
         DRAFT = "DRAFT", "Draft"
+        SUBMITTED_FOR_ADMIN_REVIEW = "SUBMITTED_FOR_ADMIN_REVIEW", "Submitted For Admin Review"
+        SENT_BACK_TO_TECHNICIAN = "SENT_BACK_TO_TECHNICIAN", "Sent Back To Technician"
+        ADMIN_APPROVED = "ADMIN_APPROVED", "Admin Approved"
         SENT = "SENT", "Sent to Customer"
         APPROVED = "APPROVED", "Approved"
         REJECTED = "REJECTED", "Rejected"
@@ -1028,6 +1164,15 @@ class EstimationQuotation(models.Model):
     rejection_reason = models.CharField(max_length=100, blank=True, default="")
     rejection_note = models.TextField(blank=True, default="")
     admin_notes = models.TextField(blank=True, default="")
+    admin_reviewed_at = models.DateTimeField(null=True, blank=True)
+    admin_reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="reviewed_ac_quotations",
+        db_column="admin_reviewed_by_id",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -1074,6 +1219,11 @@ class EstimationQuotationItem(models.Model):
     discount_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     line_total = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     sort_order = models.PositiveSmallIntegerField(default=0)
+    category_name_snapshot = models.CharField(max_length=200, blank=True, default="")
+    item_name_snapshot = models.CharField(max_length=200, blank=True, default="")
+    unit_price_snapshot = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    rate_item_id = models.BigIntegerField(null=True, blank=True)
+    selected_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -1094,11 +1244,17 @@ class ServiceRequestPayment(models.Model):
     razorpay_order_id = models.CharField(max_length=100, blank=True, default="")
     razorpay_payment_id = models.CharField(max_length=100, blank=True, default="")
     razorpay_signature = models.CharField(max_length=255, blank=True, default="")
+    order_reference = models.CharField(max_length=200, blank=True, default="")
+    payment_reference = models.CharField(max_length=200, blank=True, default="")
+    idempotency_key = models.CharField(max_length=200, blank=True, default="")
+    idempotency_fingerprint = models.CharField(max_length=200, blank=True, default="")
+    is_mock = models.BooleanField(default=False)
     amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     currency = models.CharField(max_length=10, default="INR")
     status = models.CharField(max_length=30, default="pending")
     method = models.CharField(max_length=50, default="ONLINE")
     gateway = models.CharField(max_length=50, default="razorpay")
+    provider = models.CharField(max_length=50, default="RAZORPAY", blank=True)
     error_code = models.CharField(max_length=100, blank=True, default="")
     error_description = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)

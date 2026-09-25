@@ -662,6 +662,164 @@ class ProviderSignupView(APIView):
         return response
 
 
+
+
+class GrocerySellerSignupView(APIView):
+    """
+    Dedicated Sevo Seller Hub registration endpoint for grocery stores / supermarkets.
+    Creates an inactive Company, inactive User, and inactive VendorStore with structured onboarding state.
+    Requires admin review & approval before operational activation (no immediate token issuance).
+    """
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "workforce_signup"
+
+    def post(self, request):
+        serializer = GrocerySellerSignupSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        with transaction.atomic():
+            region, _ = Region.objects.get_or_create(
+                code="IN",
+                defaults={"name": "India", "currency": "INR", "currency_symbol": "Ôé╣"},
+            )
+
+            store_name_candidate = (data.get("store_name") or data["business_name"]).strip()
+            base_slug = slugify(store_name_candidate)[:60] or "seller"
+            slug = base_slug
+            counter = 1
+            while Company.objects.filter(slug=slug).exists():
+                slug = f"{base_slug}-{counter}"
+                counter += 1
+
+            company = Company.objects.create(
+                company_name=data["business_name"].strip(),
+                slug=slug,
+                business_type="grocery_supplier",
+                primary_country="IN",
+                region=region,
+                default_state="Tamil Nadu",
+                address=data.get("address", "").strip(),
+                is_active=False,
+            )
+
+            username_candidate = data["email"].split("@")[0].lower()
+            username = username_candidate
+            counter = 1
+            while User.objects.filter(username=username).exists():
+                username = f"{username_candidate}_{counter}"
+                counter += 1
+
+            user = User.objects.create(
+                username=username,
+                email=data["email"].lower(),
+                mobile_number=data["mobile_number"],
+                phone=data["mobile_number"],
+                first_name=data["contact_first_name"].strip(),
+                last_name=data.get("contact_last_name", "").strip(),
+                role="manager",
+                company=company,
+                is_active=False,
+                totp_secret="",
+                bio="",
+            )
+            user.set_password(data["password"])
+            user.save()
+
+            # Format requested categories with pending status
+            raw_categories = data.get("categories", [])
+            categories_list = []
+            for cat in raw_categories:
+                if isinstance(cat, dict):
+                    cat_id = cat.get("id") or slugify(cat.get("name", "category"))
+                    cat_name = cat.get("name") or str(cat_id)
+                else:
+                    cat_name = str(cat).strip()
+                    cat_id = slugify(cat_name) or "category"
+                if cat_name:
+                    categories_list.append({
+                        "id": cat_id,
+                        "name": cat_name,
+                        "status": "pending",
+                        "rejection_reason": "",
+                    })
+
+            # Format uploaded / linked documents
+            raw_docs = data.get("documents", {})
+            documents_dict = {}
+            now_iso = timezone.now().isoformat()
+            if isinstance(raw_docs, dict):
+                for key, doc_item in raw_docs.items():
+                    if isinstance(doc_item, dict):
+                        doc_url = doc_item.get("file_url") or doc_item.get("url") or ""
+                        doc_title = doc_item.get("title") or key.replace("_", " ").title()
+                        doc_num = doc_item.get("document_number") or ""
+                        if doc_url or doc_num:
+                            documents_dict[key] = {
+                                "category": key,
+                                "title": doc_title,
+                                "document_number": doc_num,
+                                "file_url": doc_url,
+                                "status": "uploaded",
+                                "uploaded_at": now_iso,
+                                "rejection_reason": "",
+                            }
+
+            from workforce_api.models import VendorStore
+            store = VendorStore.objects.create(
+                company=company,
+                store_name=store_name_candidate,
+                store_slug=slug,
+                fssai_license_number=data.get("fssai_license_number", "").strip(),
+                gst_number=data.get("gst_number", "").strip(),
+                store_address=data.get("address", "").strip(),
+                is_accepting_orders=False,
+                onboarding={
+                    "status": "submitted",
+                    "step": 1,
+                    "draft": {
+                        "business_name": data["business_name"].strip(),
+                        "store_name": store_name_candidate,
+                        "contact_first_name": data["contact_first_name"].strip(),
+                        "contact_last_name": data.get("contact_last_name", "").strip(),
+                        "email": data["email"].lower(),
+                        "mobile_number": data["mobile_number"],
+                        "address": data.get("address", "").strip(),
+                        "city": data.get("city", "Hosur").strip(),
+                        "fssai_license_number": data.get("fssai_license_number", "").strip(),
+                        "gst_number": data.get("gst_number", "").strip(),
+                    },
+                    "categories": categories_list,
+                    "documents": documents_dict,
+                    "correction_notes": "",
+                    "rejection_reason": "",
+                    "submitted_at": now_iso,
+                    "approved_at": None,
+                    "approved_by": None,
+                },
+            )
+
+        return Response(
+            {
+                "message": "Sevo Seller Hub application submitted successfully! Your application is now in the verification pipeline.",
+                "status": "submitted",
+                "application_id": store.id,
+                "store_name": store.store_name,
+                "company_name": company.company_name,
+                "submitted_at": now_iso,
+                "user": {
+                    "id": user.id,
+                    "username": user.username,
+                    "email": user.email,
+                    "first_name": user.first_name,
+                    "last_name": user.last_name,
+                },
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
 # ─── 1c. Wallet Self-Service (payout details, own wallet status) ─────────────
 
 class WalletMeView(APIView):
@@ -2340,6 +2498,358 @@ class WorkforceAdminRejectApplicationView(APIView):
         }, status=status.HTTP_200_OK)
 
 
+
+# ÔöÇÔöÇÔöÇ 6b. Admin Grocery Seller Applications & Review Queue ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+
+class WorkforceAdminSellerApplicationsListView(APIView):
+    permission_classes = [IsWorkforceAdmin]
+
+    def get(self, request):
+        from workforce_api.models import VendorStore
+        company = resolve_actor_company(request)
+        if is_platform_superadmin(request.user):
+            stores = VendorStore.objects.select_related("company").order_by("-id")
+        elif company:
+            stores = VendorStore.objects.filter(company=company).select_related("company").order_by("-id")
+        else:
+            return Response({"error": "Tenant company context required.", "code": "TENANT_REQUIRED"}, status=status.HTTP_403_FORBIDDEN)
+
+        status_filter = request.query_params.get("status", "").strip().lower()
+
+        results = []
+        for store in stores:
+            data = GrocerySellerApplicationDetailSerializer(store).data
+            reg_status = (data.get("registration_status") or "not_started").lower()
+            if status_filter:
+                if status_filter == "pending" and reg_status in ["submitted", "under_review"]:
+                    results.append(data)
+                elif reg_status == status_filter:
+                    results.append(data)
+            else:
+                results.append(data)
+
+        return Response(results, status=status.HTTP_200_OK)
+
+
+class WorkforceAdminSellerApplicationDetailView(APIView):
+    permission_classes = [IsWorkforceAdmin]
+
+    def get(self, request, pk):
+        from workforce_api.models import VendorStore
+        store = VendorStore.objects.filter(pk=pk).select_related("company").first()
+        if not store:
+            return Response({"error": "Seller application dossier not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if not is_platform_superadmin(request.user):
+            user_company = resolve_actor_company(request)
+            if not user_company:
+                return Response({"error": "Tenant company context required.", "code": "TENANT_REQUIRED"}, status=status.HTTP_403_FORBIDDEN)
+            if store.company_id != user_company.id:
+                return Response({"error": "Unauthorized cross-company access.", "code": "CROSS_TENANT_FORBIDDEN"}, status=status.HTTP_403_FORBIDDEN)
+
+        serializer = GrocerySellerApplicationDetailSerializer(store)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class WorkforceAdminSellerDocumentVerifyView(APIView):
+    permission_classes = [IsWorkforceAdmin]
+
+    def post(self, request, pk, category):
+        from workforce_api.models import VendorStore
+        store = VendorStore.objects.filter(pk=pk).first()
+        if not store:
+            return Response({"error": "Seller application dossier not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if not is_platform_superadmin(request.user):
+            user_company = resolve_actor_company(request)
+            if not user_company:
+                return Response({"error": "Tenant company context required.", "code": "TENANT_REQUIRED"}, status=status.HTTP_403_FORBIDDEN)
+            if store.company_id != user_company.id:
+                return Response({"error": "Unauthorized cross-company action.", "code": "CROSS_TENANT_FORBIDDEN"}, status=status.HTTP_403_FORBIDDEN)
+
+        action = request.data.get("action", "").lower()
+        reason = request.data.get("reason", "")
+
+        if action not in ["approve", "reject"]:
+            return Response({"error": "Action must be 'approve' or 'reject'."}, status=status.HTTP_400_BAD_REQUEST)
+
+        onboarding = store.onboarding or {}
+        documents = onboarding.get("documents", {})
+
+        if category not in documents:
+            return Response({"error": f"Document '{category}' not found in seller dossier."}, status=status.HTTP_404_NOT_FOUND)
+
+        documents[category]["status"] = "approved" if action == "approve" else "rejected"
+        documents[category]["rejection_reason"] = reason if action == "reject" else ""
+        documents[category]["verified_at"] = timezone.now().isoformat()
+        documents[category]["verified_by"] = request.user.username
+
+        onboarding["documents"] = documents
+        store.onboarding = onboarding
+        store.save()
+
+        return Response({
+            "message": f"Document '{category}' marked as {action}d.",
+            "document": documents[category],
+        }, status=status.HTTP_200_OK)
+
+
+class WorkforceAdminSellerBulkDocumentVerifyView(APIView):
+    permission_classes = [IsWorkforceAdmin]
+
+    def post(self, request, pk):
+        from workforce_api.models import VendorStore
+        store = VendorStore.objects.filter(pk=pk).first()
+        if not store:
+            return Response({"error": "Seller application dossier not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if not is_platform_superadmin(request.user):
+            user_company = resolve_actor_company(request)
+            if not user_company:
+                return Response({"error": "Tenant company context required.", "code": "TENANT_REQUIRED"}, status=status.HTTP_403_FORBIDDEN)
+            if store.company_id != user_company.id:
+                return Response({"error": "Unauthorized cross-company action.", "code": "CROSS_TENANT_FORBIDDEN"}, status=status.HTTP_403_FORBIDDEN)
+
+        action = request.data.get("action", "").lower()
+        reason = request.data.get("reason", "")
+        categories = request.data.get("categories")
+        all_pending = request.data.get("all_pending", False)
+
+        if action not in ["approve", "reject"]:
+            return Response({"error": "Action must be 'approve' or 'reject'."}, status=status.HTTP_400_BAD_REQUEST)
+
+        onboarding = store.onboarding or {}
+        documents = onboarding.get("documents", {})
+
+        if not documents:
+            return Response({
+                "message": "No documents found in seller dossier.",
+                "updated_count": 0,
+                "documents": {},
+            }, status=status.HTTP_200_OK)
+
+        if categories:
+            cat_set = set(categories)
+            target_keys = [k for k in documents.keys() if k in cat_set]
+        elif all_pending:
+            target_keys = [k for k, doc in documents.items() if doc.get("status") not in ["approved", "rejected"]]
+        else:
+            target_keys = list(documents.keys())
+
+        if not target_keys:
+            return Response({
+                "message": "All uploaded documents are already decided.",
+                "updated_count": 0,
+                "documents": documents,
+            }, status=status.HTTP_200_OK)
+
+        now_iso = timezone.now().isoformat()
+        current_username = request.user.username
+        updated_count = 0
+
+        for key in target_keys:
+            doc = documents.get(key)
+            if not doc:
+                continue
+            doc["status"] = "approved" if action == "approve" else "rejected"
+            doc["rejection_reason"] = reason if action == "reject" else ""
+            doc["verified_at"] = now_iso
+            doc["verified_by"] = current_username
+            updated_count += 1
+
+        onboarding["documents"] = documents
+        store.onboarding = onboarding
+        store.save()
+
+        return Response({
+            "message": f"Successfully {action}d {updated_count} document(s).",
+            "updated_count": updated_count,
+            "documents": documents,
+        }, status=status.HTTP_200_OK)
+
+
+class WorkforceAdminSellerCategoryDecideView(APIView):
+    permission_classes = [IsWorkforceAdmin]
+
+    def post(self, request, pk, category_id):
+        from workforce_api.models import VendorStore
+        store = VendorStore.objects.filter(pk=pk).first()
+        if not store:
+            return Response({"error": "Seller application dossier not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if not is_platform_superadmin(request.user):
+            user_company = resolve_actor_company(request)
+            if not user_company:
+                return Response({"error": "Tenant company context required.", "code": "TENANT_REQUIRED"}, status=status.HTTP_403_FORBIDDEN)
+            if store.company_id != user_company.id:
+                return Response({"error": "Unauthorized cross-company action.", "code": "CROSS_TENANT_FORBIDDEN"}, status=status.HTTP_403_FORBIDDEN)
+
+        action = request.data.get("action", "").lower()
+        reason = request.data.get("reason", "").strip()
+
+        if action not in ["approve", "reject"]:
+            return Response({"error": "Action must be 'approve' or 'reject'."}, status=status.HTTP_400_BAD_REQUEST)
+
+        onboarding = store.onboarding or {}
+        categories = onboarding.get("categories", [])
+
+        target_cat = next((c for c in categories if str(c.get("id")) == str(category_id) or str(c.get("name")) == str(category_id)), None)
+        if not target_cat:
+            return Response({"error": f"Category '{category_id}' not found on seller application."}, status=status.HTTP_404_NOT_FOUND)
+
+        target_cat["status"] = "approved" if action == "approve" else "rejected"
+        target_cat["rejection_reason"] = reason if action == "reject" else ""
+        target_cat["decided_at"] = timezone.now().isoformat()
+        target_cat["decided_by"] = request.user.username
+
+        onboarding["categories"] = categories
+        store.onboarding = onboarding
+        store.save()
+
+        return Response({
+            "message": f"Category '{target_cat.get('name')}' marked as {action}d.",
+            "category": target_cat,
+        }, status=status.HTTP_200_OK)
+
+
+class WorkforceAdminSellerRequestCorrectionView(APIView):
+    permission_classes = [IsWorkforceAdmin]
+
+    def post(self, request, pk):
+        from workforce_api.models import VendorStore
+        store = VendorStore.objects.filter(pk=pk).first()
+        if not store:
+            return Response({"error": "Seller application dossier not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if not is_platform_superadmin(request.user):
+            user_company = resolve_actor_company(request)
+            if not user_company:
+                return Response({"error": "Tenant company context required.", "code": "TENANT_REQUIRED"}, status=status.HTTP_403_FORBIDDEN)
+            if store.company_id != user_company.id:
+                return Response({"error": "Unauthorized cross-company action.", "code": "CROSS_TENANT_FORBIDDEN"}, status=status.HTTP_403_FORBIDDEN)
+
+        notes = request.data.get("notes", "").strip()
+        if not notes:
+            return Response({"error": "Correction notes are required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        onboarding = store.onboarding or {}
+        onboarding["status"] = "correction_required"
+        onboarding["correction_notes"] = notes
+        store.onboarding = onboarding
+        store.save()
+
+        return Response({
+            "message": "Correction request sent to grocery seller.",
+            "status": "correction_required",
+            "notes": notes,
+        }, status=status.HTTP_200_OK)
+
+
+class WorkforceAdminSellerApproveApplicationView(APIView):
+    permission_classes = [IsWorkforceAdmin]
+
+    def post(self, request, pk):
+        from workforce_api.models import VendorStore
+        store = VendorStore.objects.filter(pk=pk).select_related("company").first()
+        if not store:
+            return Response({"error": "Seller application dossier not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if not is_platform_superadmin(request.user):
+            user_company = resolve_actor_company(request)
+            if not user_company:
+                return Response({"error": "Tenant company context required.", "code": "TENANT_REQUIRED"}, status=status.HTTP_403_FORBIDDEN)
+            if store.company_id != user_company.id:
+                return Response({"error": "Unauthorized cross-company action.", "code": "CROSS_TENANT_FORBIDDEN"}, status=status.HTTP_403_FORBIDDEN)
+
+        onboarding = store.onboarding or {}
+        documents = onboarding.get("documents", {})
+        categories = onboarding.get("categories", [])
+
+        # Validate that ALL uploaded documents are approved
+        unapproved_docs = [
+            cat for cat, doc in documents.items()
+            if doc.get("status") != "approved"
+        ]
+        if unapproved_docs:
+            return Response({
+                "error": f"Cannot approve seller: The following documents are not approved: {', '.join(unapproved_docs)}. All uploaded documents must be reviewed and APPROVED."
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate that at least ONE category is approved (if categories were requested)
+        if categories:
+            approved_cats = [c for c in categories if c.get("status") == "approved"]
+            if not approved_cats:
+                return Response({
+                    "error": "Cannot approve seller: At least ONE requested product category must be marked as APPROVED."
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            onboarding["status"] = "approved"
+            onboarding["approved_at"] = timezone.now().isoformat()
+            onboarding["approved_by"] = request.user.username
+
+            store.onboarding = onboarding
+            store.is_accepting_orders = True
+            store.save()
+
+            company = store.company
+            company.is_active = True
+            company.save()
+
+            # Activate manager users for this store company
+            from django.contrib.auth import get_user_model
+            User = get_user_model()
+            User.objects.filter(company=company).update(is_active=True)
+
+            # Provision head wallet for this store if not yet present
+            try:
+                from workforce_api.services import provision_provider_wallet
+                provision_provider_wallet(company)
+            except Exception:
+                logger.exception("Wallet provisioning warning for approved store company #%s", company.id)
+
+        return Response({
+            "message": f"Seller '{store.store_name}' approved successfully! Account and store are now ACTIVE.",
+            "status": "approved",
+            "is_active": True,
+            "is_accepting_orders": True,
+        }, status=status.HTTP_200_OK)
+
+
+class WorkforceAdminSellerRejectApplicationView(APIView):
+    permission_classes = [IsWorkforceAdmin]
+
+    def post(self, request, pk):
+        from workforce_api.models import VendorStore
+        store = VendorStore.objects.filter(pk=pk).select_related("company").first()
+        if not store:
+            return Response({"error": "Seller application dossier not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if not is_platform_superadmin(request.user):
+            user_company = resolve_actor_company(request)
+            if not user_company:
+                return Response({"error": "Tenant company context required.", "code": "TENANT_REQUIRED"}, status=status.HTTP_403_FORBIDDEN)
+            if store.company_id != user_company.id:
+                return Response({"error": "Unauthorized cross-company action.", "code": "CROSS_TENANT_FORBIDDEN"}, status=status.HTTP_403_FORBIDDEN)
+
+        reason = request.data.get("reason", "Business qualifications or regulatory documents did not meet verification criteria.")
+
+        onboarding = store.onboarding or {}
+        onboarding["status"] = "rejected"
+        onboarding["rejection_reason"] = reason
+        onboarding["rejected_at"] = timezone.now().isoformat()
+
+        store.onboarding = onboarding
+        store.is_accepting_orders = False
+        store.save()
+
+        return Response({
+            "message": f"Seller '{store.store_name}' application rejected.",
+            "status": "rejected",
+            "reason": reason,
+        }, status=status.HTTP_200_OK)
+
+
 # ─── 7. Decoupled Presence & Availability Toggle (Rule 3) ──────────────────────
 
 class WorkforcePresenceToggleView(APIView):
@@ -2441,7 +2951,7 @@ def sync_payment_amount_due(pmt, job):
     """
     if pmt is None or job is None:
         return False
-    if pmt.payment_status != JobPayment.PaymentStatus.PENDING:
+    if pmt.payment_status not in [JobPayment.PaymentStatus.PENDING, JobPayment.PaymentStatus.CASH_PENDING]:
         return False
     expected = job.total_amount or Decimal("0.00")
 
@@ -2531,6 +3041,13 @@ class WorkforceJobListView(APIView):
 
             jobs = list(jobs_qs.select_related("customer", "assigned_employee", "assigned_employee__user", "company").order_by("-created_at")[:100])
         elif emp:
+            # Opportunistically sweep expired offers and recover stranded dispatch states
+            try:
+                from workforce_api.services.automatic_dispatch import expire_and_reassign_offers
+                expire_and_reassign_offers()
+            except Exception:
+                pass
+
             server_now = timezone.now()
             from workforce_api.models import WorkforceJobOffer, WorkforceJobLifecycleEvent, WorkforceWorkExtension, JobPayment
             from workforce_api.services.workload import ACTIVE_QUEUE_STATUSES, WORKLOAD_OCCUPIED_STATUSES
@@ -2611,7 +3128,7 @@ class WorkforceJobListView(APIView):
             # 5. Future scheduled bookings: upcoming unassigned bookings matching employee's company and capabilities
             # Exclude jobs this technician has declined
             future_jobs_filter = Q(
-                status__in=["confirmed", "unassigned", "new_request", "draft"],
+                status__in=["confirmed", "unassigned", "new_request", "draft", "requested", "received", "searching"],
                 assigned_employee__isnull=True,
                 preferred_date__gte=today,
             )
@@ -4215,7 +4732,8 @@ class WorkforceJobAcceptOfferView(APIView):
 
             # Authoritative Safety Gate: Future-scheduled bookings cannot be accepted before their lead window opens
             from workforce_api.services.automatic_dispatch import get_scheduled_dispatch_window
-            is_future, scheduled_dt, window_open = get_scheduled_dispatch_window(job_obj)
+            win = get_scheduled_dispatch_window(job_obj)
+            is_future, scheduled_dt, window_open = win
             if is_future:
                 msg = "This job is scheduled for a future date and cannot be accepted yet."
                 if scheduled_dt and window_open:
@@ -4228,6 +4746,16 @@ class WorkforceJobAcceptOfferView(APIView):
                     "code": "SCHEDULED_JOB_NOT_YET_ACCEPTABLE",
                     "scheduled_start": scheduled_dt.isoformat() if scheduled_dt else None,
                     "window_open": window_open.isoformat() if window_open else None,
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            if getattr(win, "is_closed", False):
+                msg = "Cannot accept job: Scheduled slot has passed and offer window is closed."
+                if scheduled_dt:
+                    msg = f"Cannot accept job: Scheduled slot ({scheduled_dt.strftime('%d %b %Y at %I:%M %p')}) has passed."
+                return Response({
+                    "error": msg,
+                    "code": "SCHEDULE_WINDOW_EXPIRED",
+                    "scheduled_start": scheduled_dt.isoformat() if scheduled_dt else None,
                 }, status=status.HTTP_400_BAD_REQUEST)
 
             from service_requests.models import EmployeeJob
@@ -5074,11 +5602,25 @@ class WorkforceJobRejectOfferView(APIView):
             offer.rejection_reason = reason
             offer.save(update_fields=["status", "rejection_reason"])
 
+            # Check if other active unexpired offers remain in the current wave
+            remaining_active_offers_count = WorkforceJobOffer.objects.filter(
+                job_id=job_obj.id,
+                status=WorkforceJobOffer.Status.OFFERED,
+                expires_at__gt=now,
+            ).count()
+
             from workforce_api.models import WorkforceDispatchState
-            WorkforceDispatchState.objects.filter(job_id=job_obj.id).update(
-                dispatch_status=WorkforceDispatchState.DispatchStatus.NEVER_ATTEMPTED,
-                locked_at=None,
-            )
+            if remaining_active_offers_count == 0:
+                # All active offers in this wave have finished; reset dispatch state and trigger next wave
+                WorkforceDispatchState.objects.filter(job_id=job_obj.id).update(
+                    dispatch_status=WorkforceDispatchState.DispatchStatus.NEVER_ATTEMPTED,
+                    locked_at=None,
+                )
+            else:
+                logger.info(
+                    f"[DISPATCH_WAVE_DECLINE] Employee #{emp.id} declined Job #{job_obj.id}. "
+                    f"{remaining_active_offers_count} active offer(s) remaining in wave."
+                )
 
             if job_obj.assigned_employee == emp:
                 job_obj.assigned_employee = None
@@ -5128,15 +5670,17 @@ class WorkforceJobRejectOfferView(APIView):
             job_id_val = job_obj.id
             emp_id_val = emp.id
 
-            # Section 7: Trigger next candidate dispatch after decline transaction commits
-            transaction.on_commit(
-                lambda: run_automatic_dispatch(job_id_val, excluded_employee_ids=[emp_id_val])
-            )
+            # If all offers in the wave have been declined/expired, trigger immediate next wave dispatch
+            if remaining_active_offers_count == 0:
+                transaction.on_commit(
+                    lambda: run_automatic_dispatch(job_id_val, excluded_employee_ids=[emp_id_val], force=True)
+                )
 
             return Response({
                 "message": "Job offer declined.",
                 "job_id": job_obj.id,
                 "status": job_obj.status,
+                "remaining_wave_offers": remaining_active_offers_count,
             }, status=status.HTTP_200_OK)
 
 
@@ -7974,8 +8518,22 @@ class WorkforceRealtimeStreamView(APIView):
         def event_stream():
             last_id = initial_last_id
             heartbeat_interval_seconds = 15
-            last_heartbeat_time = time.time()
-            last_reconcile_time = time.time()
+            max_stream_duration_seconds = 55
+            stream_start_time = time.time()
+            last_heartbeat_time = stream_start_time
+            has_pending_events = True  # Initial catch-up on connect / reconnect
+
+            from workforce_api.services.redis_dispatch import get_redis_client
+            redis_client = get_redis_client()
+            pubsub = None
+            if redis_client:
+                try:
+                    pubsub = redis_client.pubsub()
+                    pubsub.subscribe("workforce:realtime:events")
+                    logger.debug("[Realtime SSE] Subscribed to Redis channel 'workforce:realtime:events' for user_id=%s.", user_id_val)
+                except Exception as ps_err:
+                    logger.debug("[Realtime SSE PUBSUB_SUB_ERR] %s", ps_err)
+                    pubsub = None
 
             logger.info("[Realtime SSE START] Stream generator running for user_id=%s, start_id=%s.", user_id_val, last_id)
             # Initial connection confirmation event
@@ -7984,70 +8542,90 @@ class WorkforceRealtimeStreamView(APIView):
             try:
                 while True:
                     loop_now = time.time()
-                    events = []
+                    if loop_now - stream_start_time >= max_stream_duration_seconds:
+                        logger.info("[Realtime SSE ROTATION] Stream reaching %ds duration limit; closing cleanly for client reconnect.", max_stream_duration_seconds)
+                        break
 
-                    # Periodic Heartbeat (keep stream open, prevent proxy / browser timeout)
+                    # Periodic Heartbeat (keep stream open, prevent proxy / browser timeout - NO DB query)
                     if loop_now - last_heartbeat_time >= heartbeat_interval_seconds:
                         last_heartbeat_time = loop_now
                         logger.debug("[Realtime SSE HEARTBEAT] Sending keepalive ping to user_id=%s.", user_id_val)
                         yield f": heartbeat\n\n"
 
-
-                    # Fetch newly emitted events using pure dictionary projection
-                    try:
-                        logger.debug("[Realtime SSE DB QUERY] Polling events > %s", last_id)
-                        events = list(
-                            WorkforceEventLog.objects.filter(id__gt=last_id)
-                            .values("id", "event_type", "payload", "created_at", "user_id")
-                            .order_by("id")[:20]
-                        )
-                    except (OperationalError, DatabaseError) as db_err:
-                        logger.error("[Realtime DB] CONNECTION_POOL_EXHAUSTED polling events: %s. Terminating stream for client backoff.", str(db_err))
-                        connection.close()
-                        # Exit the loop immediately so server does not hammer PostgreSQL every 1s
-                        break
-                    except Exception as q_err:
-                        logger.warning("[Realtime SSE EXCEPTION] Unexpected query exception: %s", str(q_err))
-                    finally:
-                        # CRITICAL: Always release the database connection immediately after the query!
-                        connection.close()
-
-                    for ev in events:
-                        ev_id = ev["id"]
-                        ev_user_id = ev["user_id"]
-                        ev_payload = ev["payload"]
-                        last_id = max(last_id, ev_id)
-
-                        if ev_user_id == user_id_val:
-                            is_authorized = True
-                        elif is_admin:
-                            is_authorized = (ev_user_id is None) or is_superuser_val
-                            if not is_authorized and isinstance(ev_payload, dict):
-                                ev_comp = ev_payload.get("company_id")
-                                is_authorized = (ev_comp is None or ev_comp == user_company_id)
-                        elif ev_user_id is None:
-                            ev_company_id = ev_payload.get("company_id") if isinstance(ev_payload, dict) else None
-                            is_authorized = (ev_company_id is None or ev_company_id == user_company_id)
+                    # Event-driven wake-up
+                    should_query_db = has_pending_events
+                    if not should_query_db:
+                        if pubsub:
+                            try:
+                                msg = pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+                                if msg and msg.get("type") == "message":
+                                    should_query_db = True
+                            except Exception as ps_read_err:
+                                logger.debug("[Realtime SSE PUBSUB_READ_ERR] %s", ps_read_err)
+                                pubsub = None
+                                time.sleep(1)
                         else:
-                            is_authorized = False
+                            time.sleep(1)
 
-                        if is_authorized:
-                            event_data = {
-                                "id": ev_id,
-                                "event_type": ev["event_type"],
-                                "payload": ev_payload,
-                                "timestamp": ev["created_at"].isoformat() if hasattr(ev["created_at"], "isoformat") else str(ev["created_at"]),
-                            }
-                            logger.info("[Realtime SSE EVENT] Delivering event #%s (%s) to user_id=%s", ev_id, ev["event_type"], user_id_val)
-                            yield f"id: {ev_id}\nevent: workforce_event\ndata: {json.dumps(event_data)}\n\n"
+                    if should_query_db:
+                        has_pending_events = False
+                        events = []
+                        try:
+                            logger.debug("[Realtime SSE DB QUERY] Fetching events > %s", last_id)
+                            events = list(
+                                WorkforceEventLog.objects.filter(id__gt=last_id)
+                                .values("id", "event_type", "payload", "created_at", "user_id")
+                                .order_by("id")[:50]
+                            )
+                        except (OperationalError, DatabaseError) as db_err:
+                            logger.error("[Realtime DB] CONNECTION_POOL_EXHAUSTED fetching events: %s. Terminating stream for client backoff.", str(db_err))
+                            connection.close()
+                            break
+                        except Exception as q_err:
+                            logger.warning("[Realtime SSE EXCEPTION] Unexpected query exception: %s", str(q_err))
+                        finally:
+                            connection.close()
 
-                    time.sleep(1)
-            except GeneratorExit:
-                logger.info("[Realtime SSE END] Client disconnected (GeneratorExit) for user_id=%s.", user_id_val)
+                        for ev in events:
+                            ev_id = ev["id"]
+                            ev_user_id = ev["user_id"]
+                            ev_payload = ev["payload"]
+                            last_id = max(last_id, ev_id)
+
+                            if ev_user_id == user_id_val:
+                                is_authorized = True
+                            elif is_admin:
+                                is_authorized = (ev_user_id is None) or is_superuser_val
+                                if not is_authorized and isinstance(ev_payload, dict):
+                                    ev_comp = ev_payload.get("company_id")
+                                    is_authorized = (ev_comp is None or ev_comp == user_company_id)
+                            elif ev_user_id is None:
+                                ev_company_id = ev_payload.get("company_id") if isinstance(ev_payload, dict) else None
+                                is_authorized = (ev_company_id is None or ev_company_id == user_company_id)
+                            else:
+                                is_authorized = False
+
+                            if is_authorized:
+                                event_data = {
+                                    "id": ev_id,
+                                    "event_type": ev["event_type"],
+                                    "payload": ev_payload,
+                                    "timestamp": ev["created_at"].isoformat() if hasattr(ev["created_at"], "isoformat") else str(ev["created_at"]),
+                                }
+                                logger.info("[Realtime SSE EVENT] Delivering event #%s (%s) to user_id=%s", ev_id, ev["event_type"], user_id_val)
+                                yield f"id: {ev_id}\nevent: workforce_event\ndata: {json.dumps(event_data)}\n\n"
+            except (GeneratorExit, ConnectionResetError, BrokenPipeError):
+                logger.info("[Realtime SSE END] Client disconnected for user_id=%s.", user_id_val)
             except Exception as stream_err:
                 logger.warning("[Realtime SSE EXCEPTION] Stream loop exception for user_id=%s: %s", user_id_val, str(stream_err))
             finally:
-                logger.info("[Realtime SSE END] Stream ended for user_id=%s. Releasing any active DB connection.", user_id_val)
+                logger.info("[Realtime SSE END] Stream ended for user_id=%s. Cleaning up resources.", user_id_val)
+                if pubsub:
+                    try:
+                        pubsub.unsubscribe()
+                        pubsub.close()
+                    except Exception:
+                        pass
                 connection.close()
 
         response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
@@ -8583,8 +9161,14 @@ class WorkforceJobArriveView(APIView):
 
         verification, _ = PreServiceVerification.objects.get_or_create(
             job=job,
-            defaults={"employee": emp}
+            defaults={
+                "employee": emp,
+                "arrival_lat": lat_val,
+                "arrival_lon": lon_val,
+            }
         )
+
+
 
         # ── Authoritative Single OTP Resolution ──────────────────────────────
         # Priority: start_otp on ServiceRequest (set during booking) > existing
@@ -10490,20 +11074,31 @@ class WorkforceDispatchRadarView(APIView):
             live_offers = getattr(j, "prefetched_live_offers", [])
             live_offer = live_offers[0] if live_offers else None
 
-            # Formulate current active offer info with unambiguous employee identity
+            # Formulate current active wave and offer info with unambiguous employee identity
             current_offer_info = None
-            if live_offer:
-                rem_seconds = max(0, int((live_offer.expires_at - now).total_seconds()))
-                raw_emp_name = live_offer.employee.user.get_full_name() or live_offer.employee.user.username if live_offer.employee and live_offer.employee.user else f"Technician #{live_offer.employee_id}"
-                emp_name_formatted = f"{raw_emp_name} · EMP #{live_offer.employee_id}"
+            current_wave_summary = None
+            if live_offers:
+                first_live = live_offers[0]
+                rem_seconds = max(0, int((first_live.expires_at - now).total_seconds()))
+                current_wave_summary = {
+                    "wave_number": first_live.wave_number,
+                    "wave_id": str(first_live.wave_id) if first_live.wave_id else None,
+                    "count": len(live_offers),
+                    "remaining_seconds": rem_seconds,
+                    "expires_at": first_live.expires_at.isoformat() if first_live.expires_at else None,
+                }
+                raw_emp_name = first_live.employee.user.get_full_name() or first_live.employee.user.username if first_live.employee and first_live.employee.user else f"Technician #{first_live.employee_id}"
+                emp_name_formatted = f"{raw_emp_name} · EMP #{first_live.employee_id}"
                 current_offer_info = {
-                    "offer_id": live_offer.id,
-                    "employee_id": live_offer.employee_id,
+                    "offer_id": first_live.id,
+                    "employee_id": first_live.employee_id,
                     "employee_name": emp_name_formatted,
                     "raw_employee_name": raw_emp_name,
-                    "score": round(float(live_offer.rank_score), 1),
-                    "offered_at": live_offer.offered_at.isoformat() if live_offer.offered_at else None,
-                    "expires_at": live_offer.expires_at.isoformat() if live_offer.expires_at else None,
+                    "score": round(float(first_live.rank_score), 1),
+                    "wave_number": first_live.wave_number,
+                    "wave_id": str(first_live.wave_id) if first_live.wave_id else None,
+                    "offered_at": first_live.offered_at.isoformat() if first_live.offered_at else None,
+                    "expires_at": first_live.expires_at.isoformat() if first_live.expires_at else None,
                     "remaining_seconds": rem_seconds,
                     "status": "OFFERED",
                 }
@@ -10533,6 +11128,7 @@ class WorkforceDispatchRadarView(APIView):
                 "unassigned_reason_message": d_state.unassigned_reason_message if d_state else "",
                 "assigned_technician_id": j.assigned_employee_id,
                 "assigned_technician_name": assigned_tech_name,
+                "current_wave": current_wave_summary,
                 "current_offer": current_offer_info,
             })
 
@@ -10851,8 +11447,22 @@ class WorkforceDispatchRadarView(APIView):
                 # Sort timeline strictly by timestamp ascending
                 timeline.sort(key=lambda x: x["timestamp"])
 
-                # Find current active offer if any
-                current_active_offer = next((o for o in offers_list if o["is_active"]), None)
+                # Find current active wave and offers
+                active_wave_offers = [o for o in offers_list if o["is_active"]]
+                current_active_offer = active_wave_offers[0] if active_wave_offers else None
+                current_wave_detail = None
+                if active_wave_offers:
+                    current_wave_detail = {
+                        "wave_number": active_wave_offers[0].get("wave_number", 1),
+                        "wave_id": active_wave_offers[0].get("wave_id"),
+                        "count": len(active_wave_offers),
+                        "remaining_seconds": active_wave_offers[0].get("remaining_seconds", 0),
+                        "expires_at": active_wave_offers[0].get("expires_at"),
+                        "offers": active_wave_offers,
+                    }
+
+                # Distinguish waiting candidates (not yet offered in any wave)
+                waiting_candidates = [c for c in candidate_snapshots if c.get("result") == "NOT OFFERED"]
 
                 sel_d_state = getattr(sel_job, "dispatch_state", None)
                 assigned_tech_name = None
@@ -10880,10 +11490,12 @@ class WorkforceDispatchRadarView(APIView):
                     "unassigned_reason_message": sel_d_state.unassigned_reason_message if sel_d_state else "",
                     "assigned_technician_id": sel_job.assigned_employee_id,
                     "assigned_technician_name": assigned_tech_name,
+                    "current_wave": current_wave_detail,
                     "current_offer": current_active_offer,
                     "offers_history": offers_list,
                     "attempts": attempts_data,
                     "candidate_evaluations": candidate_snapshots,
+                    "waiting_candidates": waiting_candidates,
                     "timeline": timeline,
                 }
 
@@ -12886,16 +13498,20 @@ class VendorStoreProfileView(APIView):
     GET   /api/workforce/store/profile/  – Fetch the vendor's store details
     PATCH /api/workforce/store/profile/  – Update store branding, location, hours, and status
     """
-    permission_classes = [permissions.IsAuthenticated, IsGrocerySupplier]
+    permission_classes = [permissions.IsAuthenticated]
 
-    def _get_company(self, user):
+    def _get_company_id(self, user):
         emp = getattr(user, "employee_profile", None)
-        return emp.company_id if (emp and emp.company_id) else getattr(user, "company_id", None)
+        if emp and getattr(emp, "company_id", None):
+            return emp.company_id
+        if getattr(user, "company_id", None):
+            return user.company_id
+        return None
 
     def get(self, request):
         from workforce_api.models import VendorStore
         from companies.models import Company
-        company_id = self._get_company(request.user)
+        company_id = self._get_company_id(request.user)
         if not company_id:
             return Response({"error": "Could not determine company."}, status=status.HTTP_403_FORBIDDEN)
 
@@ -12906,8 +13522,15 @@ class VendorStoreProfileView(APIView):
                 "store_name": getattr(company, "company_name", "My Store"),
                 "store_slug": getattr(company, "slug", f"store-{company_id}"),
                 "store_address": getattr(company, "address", "") or "",
+                "latitude": getattr(company, "latitude", None) if company else None,
+                "longitude": getattr(company, "longitude", None) if company else None,
             },
         )
+
+        effective_lat = store.latitude if store.latitude is not None else (company.latitude if company else None)
+        effective_lon = store.longitude if store.longitude is not None else (company.longitude if company else None)
+        effective_addr = store.store_address or (company.address if company else "") or ""
+
         return Response({
             "id": store.id,
             "company_id": store.company_id,
@@ -12919,9 +13542,9 @@ class VendorStoreProfileView(APIView):
             "logo_url": store.logo_url,
             "banner_url": store.banner_url,
             "fssai_license_number": store.fssai_license_number,
-            "store_address": store.store_address,
-            "latitude": str(store.latitude) if store.latitude is not None else None,
-            "longitude": str(store.longitude) if store.longitude is not None else None,
+            "store_address": effective_addr,
+            "latitude": str(effective_lat) if effective_lat is not None else None,
+            "longitude": str(effective_lon) if effective_lon is not None else None,
             "delivery_radius_km": float(store.delivery_radius_km),
             "minimum_order_amount": str(store.minimum_order_amount),
             "estimated_delivery_mins": store.estimated_delivery_mins,
@@ -12937,7 +13560,7 @@ class VendorStoreProfileView(APIView):
     def patch(self, request):
         from workforce_api.models import VendorStore
         from companies.models import Company
-        company_id = self._get_company(request.user)
+        company_id = self._get_company_id(request.user)
         if not company_id:
             return Response({"error": "Could not determine company."}, status=status.HTTP_403_FORBIDDEN)
 
@@ -12972,22 +13595,57 @@ class VendorStoreProfileView(APIView):
             except Exception:
                 pass
 
-        if "latitude" in data and data["latitude"]:
-            try:
-                store.latitude = Decimal(str(data["latitude"]))
-            except Exception:
-                pass
+        company_update_fields = []
 
-        if "longitude" in data and data["longitude"]:
-            try:
-                store.longitude = Decimal(str(data["longitude"]))
-            except Exception:
-                pass
+        if "latitude" in data:
+            if data["latitude"] is not None and str(data["latitude"]).strip() != "":
+                try:
+                    parsed_lat = Decimal(str(data["latitude"]))
+                    store.latitude = parsed_lat
+                    if company:
+                        company.latitude = parsed_lat
+                        company_update_fields.append("latitude")
+                except Exception:
+                    pass
+            else:
+                store.latitude = None
+                if company:
+                    company.latitude = None
+                    company_update_fields.append("latitude")
+
+        if "longitude" in data:
+            if data["longitude"] is not None and str(data["longitude"]).strip() != "":
+                try:
+                    parsed_lon = Decimal(str(data["longitude"]))
+                    store.longitude = parsed_lon
+                    if company:
+                        company.longitude = parsed_lon
+                        company_update_fields.append("longitude")
+                except Exception:
+                    pass
+            else:
+                store.longitude = None
+                if company:
+                    company.longitude = None
+                    company_update_fields.append("longitude")
+
+        if "store_address" in data and company:
+            company.address = data["store_address"]
+            company_update_fields.append("address")
 
         store.save()
+        if company and company_update_fields:
+            company.save(update_fields=list(set(company_update_fields)))
+
+        effective_lat = store.latitude if store.latitude is not None else (company.latitude if company else None)
+        effective_lon = store.longitude if store.longitude is not None else (company.longitude if company else None)
+
         return Response({
             "message": "Store profile updated successfully.",
             "store_name": store.store_name,
+            "latitude": str(effective_lat) if effective_lat is not None else None,
+            "longitude": str(effective_lon) if effective_lon is not None else None,
+            "store_address": store.store_address,
             "is_accepting_orders": store.is_accepting_orders,
             "delivery_radius_km": float(store.delivery_radius_km),
         }, status=status.HTTP_200_OK)

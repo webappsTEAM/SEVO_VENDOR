@@ -147,10 +147,25 @@ export function AdminQuotationApprovalsPage() {
 
     let notes = '';
     if (!approve) {
-      notes = window.prompt('Reason (shown in the audit trail):') || '';
+      const notes = window.prompt('Reason for rejection (shown in audit trail):') || '';
       if (!notes.trim()) return;
+      return submitDecision(quote, false, false, notes);
     }
 
+    const actionText = autoConvert
+      ? `Approve & Convert ${quote.quote_number} directly to an active service booking?`
+      : tab === 'presend'
+      ? `Release ${quote.quote_number} and send to customer for approval?`
+      : `Approve ${quote.quote_number} and issue invoice?`;
+
+    if (!window.confirm(actionText)) {
+      return;
+    }
+
+    return submitDecision(quote, true, autoConvert, '');
+  }
+
+  async function submitDecision(quote, approve, autoConvert, notes) {
     setBusyId(quote.id);
     try {
       const path = activeTab === 'presend'
@@ -158,7 +173,12 @@ export function AdminQuotationApprovalsPage() {
         : `/workforce/quotes/${quote.id}/admin-review/`;
       const result = await apiRequest(path, {
         method: 'POST',
-        json: { action: approve ? 'APPROVE' : 'REJECT', notes, reason: notes },
+        json: {
+          action: approve ? 'APPROVE' : 'REJECT',
+          notes,
+          reason: notes,
+          auto_convert: autoConvert,
+        },
       });
 
       if (modalQuote?.id === quote.id) {
@@ -180,7 +200,7 @@ export function AdminQuotationApprovalsPage() {
       }
       setError(null);
     } catch (err) {
-      setError(err?.message || `Could not ${verb} ${quote.quote_number}.`);
+      setError(err?.message || `Failed to process ${quote.quote_number}.`);
     } finally {
       setBusyId(null);
       loadCounts();
@@ -239,6 +259,7 @@ export function AdminQuotationApprovalsPage() {
         })}
       </div>
 
+      {/* Flash Banner */}
       {flash && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-center justify-between gap-3 shadow-xs animate-in fade-in">
           <div className="flex items-center gap-3">
@@ -251,6 +272,7 @@ export function AdminQuotationApprovalsPage() {
         </div>
       )}
 
+      {/* Error Banner */}
       {error && (
         <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex gap-3 shadow-xs">
           <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
@@ -609,7 +631,6 @@ export function AdminQuotationApprovalsPage() {
                   <span className="text-[10px] uppercase font-bold text-slate-500 block">GST Tax</span>
                   <span className="text-lg font-black text-slate-800 font-mono">₹{formatMoney(modalQuote.tax_amount)}</span>
                 </div>
-              </div>
 
               {/* Customer & Job Info */}
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
