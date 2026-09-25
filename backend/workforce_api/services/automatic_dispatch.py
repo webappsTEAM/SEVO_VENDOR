@@ -1125,10 +1125,12 @@ def get_eligible_candidates(
         )
     )
 
-    if not job_obj.company_id or job_obj.company_id == 1:
+    from accounts.platform import is_platform_company
+    if not job_obj.company_id or is_platform_company(job_obj.company_id):
         candidates_qs = candidates_qs.filter(Q(company_id=1) | Q(company__isnull=True) | Q(company_id__gt=1))
     else:
         candidates_qs = candidates_qs.filter(company_id=job_obj.company_id)
+
 
     # Exclude candidates who have already received or rejected/declined/cancelled an offer for this job, or explicitly excluded
     previous_offers = set(

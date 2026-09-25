@@ -47,8 +47,10 @@ from time_tracking.geo import evaluate
 from datetime import timedelta
 import secrets
 from django.contrib.auth.hashers import make_password, check_password
-from accounts.permissions import is_admin_role
+from accounts.permissions import is_admin_role, is_platform_admin
+from accounts.platform import is_platform_admin_user, is_platform_company, PLATFORM_COMPANY_ID
 from .permissions import IsWorkforceAdmin, IsWorkforceEmployee, IsApprovedTechnician, IsInternalWorkforceCaller
+
 from .serializers import (
     WorkforceSignupSerializer,
     ProviderSignupSerializer,
@@ -159,8 +161,9 @@ def _is_admin_authorized_for_company(request, company) -> bool:
     user = getattr(request, "user", None)
     if not user or not is_admin_role(user):
         return False
-    if getattr(user, "is_superuser", False):
+    if getattr(user, "is_superuser", False) or is_platform_admin_user(user):
         return True
+
     user_company = resolve_actor_company(request)
     company_id = getattr(company, "id", company)
     return bool(user_company and company_id and user_company.id == company_id)
@@ -3021,8 +3024,9 @@ class WorkforceJobListView(APIView):
             if user.is_superuser:
                 jobs_qs = ServiceRequest.objects.all()
             elif company:
-                if company.id == 1 or getattr(company, "slug", "") in ("calservices", "caldim-engineering-pvt-ltd", "caldim-platform", "caldim-services"):
+                if is_platform_company(company):
                     jobs_qs = ServiceRequest.objects.all()
+
                 else:
                     jobs_qs = ServiceRequest.objects.filter(
                         Q(company=company) |
@@ -3171,9 +3175,10 @@ class WorkforceJobListView(APIView):
                 ).exclude(status__in=["completed", "cancelled"]).exclude(is_declined_by_emp)
 
             if emp.company:
-                if emp.company.id == 1 or getattr(emp.company, "slug", "") in ("calservices", "caldim-engineering-pvt-ltd", "caldim-platform", "caldim-services"):
+                if is_platform_company(emp.company):
                     # Platform technicians can service jobs from any partner company
                     pass
+
                 else:
                     qs = qs.filter(Q(company=emp.company) | Q(assigned_employee=emp) | Q(id__in=offered_job_ids_qs) | Q(id__in=future_job_ids) | Q(company__isnull=True))
 
@@ -5558,11 +5563,20 @@ class WorkforceJobAdminCancelView(APIView):
         if not job:
             return Response({"error": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
 
+        if not _is_admin_authorized_for_company(request, job.company):
+            return Response(
+                {"error": "Unauthorized access to job belonging to another company.", "code": "CROSS_TENANT_FORBIDDEN"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         if job.status == "cancelled":
             return Response({"message": "Job already cancelled.", "status": job.status}, status=status.HTTP_200_OK)
 
         if job.status == "completed":
-            return Response({"error": "Completed jobs cannot be cancelled."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": "Completed jobs cannot be cancelled.", "code": "INVALID_STATE_TRANSITION"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         reason = request.data.get("reason") or request.data.get("cancellation_reason") or "Cancelled by workforce administrator"
 
@@ -5570,13 +5584,17 @@ class WorkforceJobAdminCancelView(APIView):
         from workforce_api.models import WorkforceJobLifecycleEvent, WorkforceJobOffer
         from service_requests.models import EmployeeJob
 
+        old_status = job.status
         try:
             new_status = apply_transition(job, "cancelled", actor=user)
-        except Exception:
-            job.status = "cancelled"
-            job.cancellation_reason = reason
-            job.save(update_fields=["status", "cancellation_reason", "updated_at"])
-            new_status = "cancelled"
+        except ValidationError as e:
+            err_msg = str(e.detail if hasattr(e, "detail") else e)
+            return Response({"error": err_msg, "code": "INVALID_STATE_TRANSITION"}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({"error": str(e), "code": "CANCELLATION_FAILED"}, status=status.HTTP_400_BAD_REQUEST)
+
+        job.cancellation_reason = reason
+        job.save(update_fields=["cancellation_reason", "updated_at"])
 
         WorkforceJobOffer.objects.filter(job=job, status="PENDING").update(status="CANCELLED")
         EmployeeJob.objects.filter(service_request=job).exclude(status__in=["COMPLETED", "CANCELLED"]).update(status="CANCELLED")
@@ -5588,12 +5606,19 @@ class WorkforceJobAdminCancelView(APIView):
         try:
             WorkforceJobLifecycleEvent.objects.create(
                 job=job,
-                event_type="CANCELLED_BY_ADMIN",
-                actor_id=user.id,
-                details={"reason": reason, "cancelled_by": user.email or user.username}
+                company=job.company,
+                employee=job.assigned_employee,
+                actor_user=user,
+                event_type=WorkforceJobLifecycleEvent.EventType.EMPLOYEE_JOB_CANCELLED,
+                previous_status=old_status,
+                new_status="cancelled",
+                cancelled_at=timezone.now(),
+                reason_text=reason,
+                metadata={"reason": reason, "cancelled_by": user.email or user.username},
             )
-        except Exception:
-            pass
+        except Exception as log_err:
+            logger.warning("Failed to record cancellation lifecycle event for job %s: %s", job.id, log_err)
+
 
         return Response({
             "message": f"Job #{job.id} cancelled successfully by administrator.",
@@ -7167,42 +7192,51 @@ class WorkforceLeaveListView(APIView):
         if start_date > end_date:
             return Response({"error": "start_date cannot be after end_date."}, status=status.HTTP_400_BAD_REQUEST)
 
-        bank_details = emp.bank_details or {}
-        leaves = bank_details.get("leaves", [])
+        with transaction.atomic():
+            emp = Employee.objects.select_for_update().get(pk=emp.pk)
+            bank_details = emp.bank_details or {}
+            leaves = list(bank_details.get("leaves", []))
 
-        # Check for overlapping pending/approved leave requests
-        for existing in leaves:
-            if existing.get("status") in ["submitted", "approved"]:
-                e_start = existing.get("start_date")
-                e_end = existing.get("end_date")
-                if e_start and e_end:
-                    if not (end_date < e_start or start_date > e_end):
-                        return Response({
-                            "error": f"An active or pending leave application already exists for the range {e_start} to {e_end}."
-                        }, status=status.HTTP_400_BAD_REQUEST)
+            # Check for overlapping pending/approved leave requests
+            for existing in leaves:
+                if existing.get("status") in ["submitted", "approved"]:
+                    e_start = existing.get("start_date")
+                    e_end = existing.get("end_date")
+                    if e_start and e_end:
+                        if not (end_date < e_start or start_date > e_end):
+                            return Response({
+                                "error": f"An active or pending leave application already exists for the range {e_start} to {e_end}."
+                            }, status=status.HTTP_400_BAD_REQUEST)
 
-        new_leave = {
-            "id": len(leaves) + 1,
-            "employee_id": emp.employee_id,
-            "employee_name": user.get_full_name() or user.username,
-            "leave_type": leave_type,
-            "start_date": start_date,
-            "end_date": end_date,
-            "reason": reason,
-            "status": "submitted",
-            "applied_at": timezone.now().isoformat(),
-            "reviewer": None,
-            "review_reason": "",
-        }
-        leaves.append(new_leave)
-        bank_details["leaves"] = leaves
-        emp.bank_details = bank_details
-        emp.save()
+            existing_ids = [
+                int(l["id"]) for l in leaves
+                if isinstance(l.get("id"), (int, str)) and str(l.get("id")).isdigit()
+            ]
+            new_id = (max(existing_ids) + 1) if existing_ids else 1
+
+            new_leave = {
+                "id": new_id,
+                "employee_id": emp.employee_id,
+                "employee_name": user.get_full_name() or user.username,
+                "leave_type": leave_type,
+                "start_date": start_date,
+                "end_date": end_date,
+                "reason": reason,
+                "status": "submitted",
+                "applied_at": timezone.now().isoformat(),
+                "reviewer": None,
+                "review_reason": "",
+            }
+            leaves.append(new_leave)
+            bank_details["leaves"] = leaves
+            emp.bank_details = bank_details
+            emp.save(update_fields=["bank_details"])
 
         return Response({
             "message": "Leave application submitted successfully for Admin approval.",
             "leave": new_leave,
         }, status=status.HTTP_201_CREATED)
+
 
 
 class WorkforceLeaveCancelView(APIView):
@@ -7245,7 +7279,7 @@ class WorkforceAdminLeaveDecideView(APIView):
         if not emp:
             return Response({"error": "Employee not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        if not getattr(request.user, "is_superuser", False):
+        if not getattr(request.user, "is_superuser", False) and not is_platform_admin_user(request.user):
             user_company = resolve_actor_company(request)
             if not user_company:
                 return Response({"error": "Tenant company context required.", "code": "TENANT_REQUIRED"}, status=status.HTTP_403_FORBIDDEN)
@@ -7261,30 +7295,33 @@ class WorkforceAdminLeaveDecideView(APIView):
         if action == "reject" and not reason:
             return Response({"error": "Rejection reason is required."}, status=status.HTTP_400_BAD_REQUEST)
 
-        bank_details = emp.bank_details or {}
-        leaves = bank_details.get("leaves", [])
-        found = False
+        with transaction.atomic():
+            emp = Employee.objects.select_for_update().get(pk=emp.pk)
+            bank_details = emp.bank_details or {}
+            leaves = list(bank_details.get("leaves", []))
+            found = False
 
-        for l in leaves:
-            if str(l.get("id")) == str(leave_id):
-                l["status"] = "approved" if action == "approve" else "rejected"
-                l["reviewer"] = request.user.username
-                l["review_reason"] = reason
-                l["reviewed_at"] = timezone.now().isoformat()
-                found = True
-                break
+            for l in leaves:
+                if str(l.get("id")) == str(leave_id):
+                    l["status"] = "approved" if action == "approve" else "rejected"
+                    l["reviewer"] = request.user.username
+                    l["review_reason"] = reason
+                    l["reviewed_at"] = timezone.now().isoformat()
+                    found = True
+                    break
 
-        if not found:
-            return Response({"error": "Leave application not found."}, status=status.HTTP_404_NOT_FOUND)
+            if not found:
+                return Response({"error": "Leave application not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        bank_details["leaves"] = leaves
-        emp.bank_details = bank_details
-        emp.save()
+            bank_details["leaves"] = leaves
+            emp.bank_details = bank_details
+            emp.save(update_fields=["bank_details"])
 
         return Response({
             "message": f"Leave application marked as {l['status'].upper()}.",
             "leave": l,
         }, status=status.HTTP_200_OK)
+
 
 
 # ─── 14. Real-Time Fleet Map & Live Location ──────────────────────────────────
@@ -7298,7 +7335,7 @@ class WorkforceFleetMapView(APIView):
 
     def get(self, request):
         user = request.user
-        if getattr(user, "is_superuser", False):
+        if is_platform_admin(user):
             technicians = list(Employee.objects.filter(is_active=True).select_related("user", "company"))
         else:
             company = resolve_actor_company(request)
@@ -8337,13 +8374,15 @@ class WorkforceSkillManageView(APIView):
     permission_classes = [IsWorkforceAdmin]
 
     def get(self, request):
-        if getattr(request.user, "is_superuser", False):
+        if getattr(request.user, "is_superuser", False) or is_platform_admin_user(request.user):
             skills = WorkforceSkill.objects.all()
         else:
             company = resolve_actor_company(request)
             if not company:
                 return Response({"error": "Tenant company context required.", "code": "TENANT_REQUIRED"}, status=status.HTTP_403_FORBIDDEN)
-            skills = WorkforceSkill.objects.filter(company=company)
+            skills = WorkforceSkill.objects.filter(
+                Q(company=company) | Q(company__isnull=True) | Q(company_id=PLATFORM_COMPANY_ID)
+            )
         data = [
             {
                 "id": s.id,
@@ -8358,9 +8397,17 @@ class WorkforceSkillManageView(APIView):
         return Response(data, status=status.HTTP_200_OK)
 
     def post(self, request):
-        company = resolve_actor_company(request)
-        if not company and not getattr(request.user, "is_superuser", False):
-            return Response({"error": "Tenant company context required.", "code": "TENANT_REQUIRED"}, status=status.HTTP_403_FORBIDDEN)
+        if getattr(request.user, "is_superuser", False) or is_platform_admin_user(request.user):
+            company_id = request.data.get("company_id")
+            if company_id:
+                company = Company.objects.filter(pk=company_id).first()
+            else:
+                company = resolve_actor_company(request)
+        else:
+            company = resolve_actor_company(request)
+            if not company:
+                return Response({"error": "Tenant company context required.", "code": "TENANT_REQUIRED"}, status=status.HTTP_403_FORBIDDEN)
+
         name = request.data.get("name", "").strip()
         code = request.data.get("code", "").strip()
         category = request.data.get("category", "General").strip()
@@ -8406,7 +8453,8 @@ class WorkforceEmployeeSkillAssignView(APIView):
         if not emp:
             return Response({"error": "Employee not found.", "code": "NOT_FOUND", "details": {}}, status=status.HTTP_404_NOT_FOUND)
 
-        if not getattr(request.user, "is_superuser", False):
+        user_company = None
+        if not getattr(request.user, "is_superuser", False) and not is_platform_admin_user(request.user):
             user_company = resolve_actor_company(request)
             if not user_company:
                 return Response({"error": "Tenant company context required.", "code": "TENANT_REQUIRED"}, status=status.HTTP_403_FORBIDDEN)
@@ -8420,6 +8468,14 @@ class WorkforceEmployeeSkillAssignView(APIView):
         skill = WorkforceSkill.objects.filter(pk=skill_id).first()
         if not skill:
             return Response({"error": "Skill not found.", "code": "NOT_FOUND", "details": {}}, status=status.HTTP_404_NOT_FOUND)
+
+        if user_company is not None:
+            if skill.company_id is not None and skill.company_id != user_company.id and not is_platform_company(skill.company_id):
+                return Response(
+                    {"error": "Unauthorized: Skill belongs to another company.", "code": "CROSS_TENANT_SKILL_FORBIDDEN"},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
 
         if action == "remove":
             WorkforceEmployeeSkill.objects.filter(employee=emp, skill=skill).delete()
@@ -12971,7 +13027,7 @@ class PlatformVendorsListView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        if not getattr(request.user, "is_superuser", False):
+        if not is_platform_admin(request.user):
             return Response({"error": "Platform Superadmin privileges required."}, status=status.HTTP_403_FORBIDDEN)
 
         companies = list(Company.objects.select_related("region").all().order_by("-id"))
@@ -13038,7 +13094,7 @@ class PlatformWorkforceListView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        if not getattr(request.user, "is_superuser", False):
+        if not is_platform_admin(request.user):
             return Response({"error": "Platform Superadmin privileges required."}, status=status.HTTP_403_FORBIDDEN)
 
         workforce_type = request.query_params.get("type", "ALL").upper()
@@ -13142,7 +13198,7 @@ class PlatformTieTechnicianView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, pk):
-        if not getattr(request.user, "is_superuser", False):
+        if not is_platform_admin(request.user):
             return Response({"error": "Platform Superadmin privileges required."}, status=status.HTTP_403_FORBIDDEN)
 
         vendor_id = request.data.get("vendor_id")
@@ -13184,7 +13240,7 @@ class PlatformUntieTechnicianView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, pk):
-        if not getattr(request.user, "is_superuser", False):
+        if not is_platform_admin(request.user):
             return Response({"error": "Platform Superadmin privileges required."}, status=status.HTTP_403_FORBIDDEN)
 
         try:
@@ -13307,8 +13363,10 @@ class VendorRelievingRequestsView(APIView):
 
     def get(self, request):
         company = resolve_actor_company(request)
-        if not company and getattr(request.user, "is_superuser", False):
-            company = Company.objects.first()
+        if not company and is_platform_admin(request.user):
+            target_id = request.query_params.get("vendor_id") or request.query_params.get("company_id")
+            if target_id:
+                company = Company.objects.filter(id=target_id).first()
         if not company:
             return Response({"error": "Vendor company context required."}, status=status.HTTP_403_FORBIDDEN)
 
@@ -13359,8 +13417,10 @@ class VendorApproveRelievingView(APIView):
 
     def post(self, request, pk):
         company = resolve_actor_company(request)
-        if not company and getattr(request.user, "is_superuser", False):
-            company = Company.objects.first()
+        if not company and is_platform_admin(request.user):
+            target_id = request.data.get("vendor_id") or request.data.get("company_id")
+            if target_id:
+                company = Company.objects.filter(id=target_id).first()
         if not company:
             return Response({"error": "Vendor company context required."}, status=status.HTTP_403_FORBIDDEN)
 
@@ -13392,7 +13452,7 @@ class PlatformRelievingRequestsView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        if not getattr(request.user, "is_superuser", False):
+        if not is_platform_admin(request.user):
             return Response({"error": "Platform Superadmin privileges required."}, status=status.HTTP_403_FORBIDDEN)
 
         requests_qs = (
@@ -13443,7 +13503,7 @@ class PlatformApproveRelievingView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, pk):
-        if not getattr(request.user, "is_superuser", False):
+        if not is_platform_admin(request.user):
             return Response({"error": "Platform Superadmin privileges required."}, status=status.HTTP_403_FORBIDDEN)
 
         audit_notes = request.data.get("audit_notes", "Verified all platform job commissions and billings have settled.")

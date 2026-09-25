@@ -79,13 +79,10 @@ class IsGrocerySupplier(BasePermission):
             return False
 
         # Platform company exception (has access to all modules)
-        if company.id == 1 or getattr(company, "slug", "") in (
-            "calservices",
-            "caldim-platform",
-            "caldim-engineering-pvt-ltd",
-            "caldim-services",
-        ):
+        from accounts.platform import is_platform_company
+        if is_platform_company(company):
             return True
+
 
         btype = getattr(company, "business_type", "") or ""
         if btype in ("grocery_supplier", "hybrid"):

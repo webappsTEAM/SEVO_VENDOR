@@ -3,6 +3,7 @@ workforce-app/backend/accounts/permissions.py
 Role-based permission helpers.
 """
 from rest_framework.permissions import BasePermission
+from accounts.platform import is_platform_admin_user
 
 ADMIN_ROLES = frozenset({"admin", "manager", "service_provider_admin", "service_provider", "vendor"})
 
@@ -10,10 +11,10 @@ ADMIN_ROLES = frozenset({"admin", "manager", "service_provider_admin", "service_
 def is_platform_admin(user) -> bool:
     """
     Platform Superadmin: Has cross-company operational authority.
+    Delegates to canonical is_platform_admin_user.
     """
-    if not user or not user.is_authenticated:
-        return False
-    return bool(getattr(user, "is_superuser", False))
+    return is_platform_admin_user(user)
+
 
 
 def is_vendor_admin(user) -> bool:

@@ -673,14 +673,6 @@ export async function apiGetEligibleTechnicians(jobId = '', serviceName = '') {
   return await apiRequest(`/workforce/dispatch/eligible-technicians/?${params.toString()}`);
 }
 
-export async function apiDispatchAssign(jobId, employeeId = null) {
-  // Converges into authoritative automatic dispatch engine
-  return await apiRequest(`/workforce/dispatch/auto-dispatch/${jobId}/`, {
-    method: 'POST',
-    json: employeeId ? { employee_id: employeeId } : {},
-  });
-}
-
 // ── Notifications (Phase 21) ──────────────────────────────────────────────────
 
 export async function apiGetNotifications() {
@@ -1141,40 +1133,6 @@ export async function apiGetProviderProfile() {
   return await apiRequest('/workforce/provider/profile/');
 }
 
-// ── Phase 2B: Provider Technician Management ──────────────────────────────────
-
-export async function apiGetAdminTechnicians(params = {}) {
-  const query = new URLSearchParams();
-  if (params.q) query.append('q', params.q);
-  if (params.is_active !== undefined) query.append('is_active', params.is_active);
-  if (params.company_id !== undefined) query.append('company_id', params.company_id);
-  const qs = query.toString() ? `?${query.toString()}` : '';
-  return await apiRequest(`/workforce/admin/technicians/${qs}`);
-}
-
-export async function apiCreateAdminTechnician(payload) {
-  return await apiRequest('/workforce/admin/technicians/', {
-    method: 'POST',
-    json: payload,
-  });
-}
-
-export async function apiGetAdminTechnicianDetail(id) {
-  return await apiRequest(`/workforce/admin/technicians/${id}/`);
-}
-
-export async function apiUpdateAdminTechnician(id, payload) {
-  return await apiRequest(`/workforce/admin/technicians/${id}/`, {
-    method: 'PATCH',
-    json: payload,
-  });
-}
-
-export async function apiToggleAdminTechnicianActive(id) {
-  return await apiRequest(`/workforce/admin/technicians/${id}/toggle-active/`, {
-    method: 'POST',
-  });
-}
 
 // ── Phase 2C: Public Providers & Join Requests ────────────────────────────────
 

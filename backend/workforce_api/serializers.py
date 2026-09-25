@@ -536,6 +536,8 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
     crew_size = serializers.SerializerMethodField()
     inventory_items = serializers.SerializerMethodField()
     relocation_details = serializers.SerializerMethodField()
+    assigned_employee_id = serializers.IntegerField(read_only=True)
+    technician_name = serializers.CharField(read_only=True)
 
     class Meta:
         model = ServiceRequest
@@ -543,10 +545,13 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
             "id",
             "request_id",
             "customer_name",
+            "assigned_employee_id",
+            "technician_name",
             "phone",
             "email",
             "service_category",
             "issue_title",
+
             "service_title",
             "description",
             "cart_data",

@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { AppShell } from '../../components/common/AppShell.jsx';
 import { apiGetReport } from '../../api/workforceService.js';
-import { BarChart3, Download, Filter, RefreshCw, FileText } from 'lucide-react';
+import { BarChart3, Download, Filter, RefreshCw, FileText, AlertCircle } from 'lucide-react';
 
 export function AdminReportsPage() {
   const [reportType, setReportType] = useState('employee');
   const [reportData, setReportData] = useState({ total_records: 0, rows: [] });
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [filters, setFilters] = useState({
     service: '',
     status: '',
@@ -15,9 +16,11 @@ export function AdminReportsPage() {
   const loadReport = async () => {
     try {
       setIsLoading(true);
+      setError(null);
       const res = await apiGetReport(reportType, filters);
       setReportData(res || { total_records: 0, rows: [] });
-    } catch (_) {
+    } catch (err) {
+      setError(err?.message || 'Failed to load report data.');
       setReportData({ total_records: 0, rows: [] });
     } finally {
       setIsLoading(false);
@@ -30,16 +33,23 @@ export function AdminReportsPage() {
 
   const handleExportCSV = () => {
     if (!reportData.rows || reportData.rows.length === 0) return;
-    const headers = Object.keys(reportData.rows[0]).join(',');
-    const rows = reportData.rows.map((r) => Object.values(r).map((v) => `"${v}"`).join(','));
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers, ...rows].join('\n');
-    const encodedUri = encodeURI(csvContent);
+    const escapeCell = (v) => {
+      if (v === null || v === undefined) return '""';
+      const str = String(v).replace(/"/g, '""');
+      return `"${str}"`;
+    };
+    const headers = Object.keys(reportData.rows[0]).map(escapeCell).join(',');
+    const rows = reportData.rows.map((r) => Object.values(r).map(escapeCell).join(','));
+    const csvContent = '\uFEFF' + [headers, ...rows].join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
+    link.setAttribute('href', url);
     link.setAttribute('download', `workforce_${reportType}_report.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -67,12 +77,28 @@ export function AdminReportsPage() {
           </button>
         </div>
 
+        {error && (
+          <div className="flex items-center justify-between p-3.5 bg-rose-50 border border-rose-200 rounded-lg text-rose-800 text-xs">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
+              <span>{error}</span>
+            </div>
+            <button
+              onClick={loadReport}
+              className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white font-semibold rounded text-xs transition-colors"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
         {/* Report Selector Tabs & Filter Bar */}
         <div className="bg-white border border-zinc-200/90 rounded-md p-5 shadow-card space-y-4">
           <div className="flex items-center gap-2 border-b border-zinc-200/80 pb-3 overflow-x-auto text-xs">
             {[
               { id: 'employee', label: 'Employee Roster' },
               { id: 'job', label: 'Field Jobs' },
+              { id: 'compliance', label: 'Compliance Audit' },
             ].map((t) => (
               <button
                 key={t.id}
