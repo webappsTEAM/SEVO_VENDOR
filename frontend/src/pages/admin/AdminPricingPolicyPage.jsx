@@ -73,6 +73,15 @@ export function AdminPricingPolicyPage() {
           advance_percent: d.advance_percent,
           allow_customer_supplied_materials: !!d.allow_customer_supplied_materials,
           is_active: !!d.is_active,
+          waiting_free_loading_minutes: blankToNull(d.waiting_free_loading_minutes),
+          waiting_free_unloading_minutes: blankToNull(d.waiting_free_unloading_minutes),
+          waiting_charge_per_minute:
+            d.waiting_charge_per_minute === '' || d.waiting_charge_per_minute == null
+              ? 0
+              : d.waiting_charge_per_minute,
+          waiting_charge_cap: blankToNull(d.waiting_charge_cap),
+          // Blank is sent as null; the backend resets it to the default (5).
+          technician_free_cancel_minutes: blankToNull(d.technician_free_cancel_minutes),
         },
       });
       setPolicies((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
@@ -218,6 +227,89 @@ export function AdminPricingPolicyPage() {
                   </Field>
                 </div>
 
+                {/* GT audit fix: this fieldset used to render for EVERY
+                    service category's pricing policy (HVAC, plumbing,
+                    etc.), showing "loading/unloading" waiting-charge fields
+                    that make no sense outside Goods Transport. Scoped to the
+                    distance-priced GT categories (Mini Truck, Two Wheeler --
+                    previously Mini Truck only, leaving admins unable to see
+                    or configure Two Wheeler's waiting-charge estimate at
+                    all). The copy was also confirmed misleading: these
+                    fields drive only the technician app's live estimate
+                    display (services/waiting_charges.py) -- the customer's
+                    actual GT waiting/detention charge is billed from a
+                    separate policy in the Customer app (Settings > (Django)
+                    Admin > Service Requests > GT Waiting Charge Policies),
+                    which should be kept in step with these numbers by
+                    whoever sets them. */}
+                {['goods_transport_truck', 'goods_transport_two_wheeler'].includes(String(p.service_category || '').trim().toLowerCase()) && (
+                  <fieldset className="mt-4 border-t border-slate-100 pt-4">
+                    <legend className="text-sm font-medium text-slate-900 mb-1">
+                      Goods Transport waiting time (driver app estimate)
+                    </legend>
+                    <p className="text-xs text-slate-500 mb-3">
+                      Measured from the driver's loading/unloading status updates and shown to
+                      the driver as a live estimate while the trip is in progress. Leave the
+                      free-minute fields blank or the rate at 0 to show no charge. This does
+                      <strong> not </strong> bill the customer by itself -- the customer's actual
+                      delivery invoice is billed from the separate GT Waiting Charge Policy in
+                      the Customer app's admin. Keep both configured with the same free minutes
+                      and rate so the driver's estimate matches what the customer is actually
+                      charged.
+                    </p>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <Field label="Free loading time (min)" hint="Blank disables the loading estimate.">
+                        <NumberInput
+                          step="1"
+                          value={d.waiting_free_loading_minutes ?? ''}
+                          onChange={(v) => edit(p.id, 'waiting_free_loading_minutes', v)}
+                          allowEmpty
+                        />
+                      </Field>
+                      <Field label="Free unloading time (min)" hint="Blank disables the unloading estimate.">
+                        <NumberInput
+                          step="1"
+                          value={d.waiting_free_unloading_minutes ?? ''}
+                          onChange={(v) => edit(p.id, 'waiting_free_unloading_minutes', v)}
+                          allowEmpty
+                        />
+                      </Field>
+                      <Field label="Charge per extra minute (₹)">
+                        <NumberInput
+                          value={d.waiting_charge_per_minute ?? 0}
+                          onChange={(v) => edit(p.id, 'waiting_charge_per_minute', v)}
+                        />
+                      </Field>
+                      <Field label="Maximum waiting charge (₹)" hint="Blank means no cap.">
+                        <NumberInput
+                          value={d.waiting_charge_cap ?? ''}
+                          onChange={(v) => edit(p.id, 'waiting_charge_cap', v)}
+                          allowEmpty
+                        />
+                      </Field>
+                    </div>
+                  </fieldset>
+                )}
+
+                <fieldset className="mt-4 border-t border-slate-100 pt-4">
+                  <legend className="text-sm font-medium text-slate-900 mb-1">
+                    Technician cancellation
+                  </legend>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <Field
+                      label="Free cancellation window (min)"
+                      hint="Minutes after accepting during which the technician can cancel without penalty. Blank resets to 5."
+                    >
+                      <NumberInput
+                        step="1"
+                        value={d.technician_free_cancel_minutes ?? ''}
+                        onChange={(v) => edit(p.id, 'technician_free_cancel_minutes', v)}
+                        allowEmpty
+                      />
+                    </Field>
+                  </div>
+                </fieldset>
+
                 <div className="mt-4 space-y-2 border-t border-slate-100 pt-4">
                   <Toggle
                     checked={!!d.requires_admin_approval}
@@ -255,11 +347,15 @@ function Field({ label, hint, children }) {
   );
 }
 
-function NumberInput({ value, onChange, allowEmpty }) {
+function blankToNull(v) {
+  return v === '' || v === null || v === undefined ? null : v;
+}
+
+function NumberInput({ value, onChange, allowEmpty, step = '0.01' }) {
   return (
     <input
       type="number"
-      step="0.01"
+      step={step}
       min="0"
       value={value === null || value === undefined ? '' : value}
       onChange={(e) => onChange(e.target.value === '' && allowEmpty ? '' : e.target.value)}

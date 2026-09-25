@@ -283,6 +283,47 @@ export async function apiGetLogisticsLeg(jobId) {
   return await apiRequest(`/workforce/jobs/${jobId}/logistics-leg/`);
 }
 
+// Pickup / drop checkpoint verification for logistics trips (GPS <= 250m,
+// proof photo, delivery OTP). The leg endpoint refuses to advance past a
+// checkpoint whose evidence is missing -- see backend
+// services/logistics_checkpoints.py.
+export async function apiGetLogisticsCheckpoints(jobId) {
+  return await apiRequest(`/workforce/jobs/${jobId}/logistics-checkpoint/`);
+}
+
+export async function apiVerifyCheckpointGps(jobId, checkpoint, lat, lon) {
+  return await apiRequest(`/workforce/jobs/${jobId}/logistics-checkpoint/`, {
+    method: 'POST',
+    json: { checkpoint, action: 'gps', lat, lon },
+  });
+}
+
+export async function apiUploadCheckpointPhoto(jobId, checkpoint, file) {
+  const formData = new FormData();
+  formData.append('checkpoint', checkpoint);
+  formData.append('action', 'photo');
+  formData.append('file', file);
+  return await apiRequest(`/workforce/jobs/${jobId}/logistics-checkpoint/`, {
+    method: 'POST',
+    body: formData,
+    isFormData: true,
+  });
+}
+
+export async function apiVerifyDeliveryOtp(jobId, otp) {
+  return await apiRequest(`/workforce/jobs/${jobId}/logistics-checkpoint/`, {
+    method: 'POST',
+    json: { checkpoint: 'DROP', action: 'otp', otp },
+  });
+}
+
+export async function apiResendDeliveryOtp(jobId) {
+  return await apiRequest(`/workforce/jobs/${jobId}/logistics-checkpoint/`, {
+    method: 'POST',
+    json: { checkpoint: 'DROP', action: 'resend_otp' },
+  });
+}
+
 export async function apiGetJobStops(jobId) {
   return await apiRequest(`/workforce/jobs/${jobId}/stops/`);
 }

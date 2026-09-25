@@ -40,10 +40,14 @@ class JobCancellationAuthorizationTests(SimpleTestCase):
     def test_cancellation_rejects_unassigned_caller_with_403(self):
         self.assertIn("status.HTTP_403_FORBIDDEN", self.body)
 
-    def test_cancellation_enforces_5_minute_deadline(self):
+    def test_cancellation_enforces_configured_deadline(self):
+        # Window is admin-configurable (default 5 min) via
+        # WorkforceServicePricingPolicy.technician_free_cancel_minutes;
+        # behaviour is exercised in test_technician_cancel_window.py.
         self.assertIn("cancellation_deadline", self.body)
         self.assertIn("CANCELLATION_WINDOW_EXPIRED", self.body)
-        self.assertIn("The 5-minute cancellation window for this job has expired.", self.body)
+        self.assertIn("technician_cancel_window_minutes(", self.body)
+        self.assertIn("-minute cancellation window for this job has expired.", self.body)
 
     def test_cancellation_restricted_to_accepted_and_on_the_way_states(self):
         self.assertIn('job_obj.status not in ["accepted", "on_the_way"]', self.body)

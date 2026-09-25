@@ -260,6 +260,12 @@ class DateBasedDispatchEligibilityTests(SimpleTestCase):
             job_id=2007,
             status=WorkforceJobOffer.Status.OFFERED,
             expires_at=self.now + timedelta(minutes=10),
+            # Test-fixture gap fix (this session, 2026-09-23): wave_number is
+            # a real field on WorkforceJobOffer (models.py, default=1) that
+            # expire_and_reassign_offers() logs via offer.wave_number. This
+            # SimpleNamespace mock omitted it, causing an AttributeError
+            # unrelated to the actual expiry/no-redispatch logic under test.
+            wave_number=1,
             save=MagicMock(),
         )
 
@@ -299,6 +305,8 @@ class DateBasedDispatchEligibilityTests(SimpleTestCase):
             job_id=2008,
             status=WorkforceJobOffer.Status.OFFERED,
             expires_at=self.now - timedelta(seconds=5),  # expired by time
+            # Same test-fixture gap fix as test_7_and_8 above (wave_number).
+            wave_number=1,
             save=MagicMock(),
         )
 
@@ -307,6 +315,18 @@ class DateBasedDispatchEligibilityTests(SimpleTestCase):
         mock_offer_filter.return_value = mock_chain
         mock_chain.filter.return_value = mock_chain
         mock_chain.select_related.return_value = [today_timed_out_offer]
+        # Test-fixture gap fix (this session, 2026-09-23): the same
+        # WorkforceJobOffer.objects.filter mock is reused by
+        # expire_and_reassign_offers() a second time, to check
+        # ".exists()" for any remaining active (unexpired) offers on this
+        # job before deciding whether to redispatch. Left unconfigured,
+        # `.exists()` returns a truthy MagicMock, so the function always
+        # believes another active offer remains and skips redispatch --
+        # which is why mock_redispatch was never called even after this
+        # job's own AttributeError (wave_number) was fixed above. This test
+        # is specifically about the "no other active offers -> redispatch"
+        # path, so exists() must be told there are none.
+        mock_chain.exists.return_value = False
 
         mock_sfu_chain = MagicMock()
         mock_offer_sfu.return_value = mock_sfu_chain
@@ -327,7 +347,19 @@ class DateBasedDispatchEligibilityTests(SimpleTestCase):
     @patch("workforce_api.models.WorkforceEventLog.objects.create")
     @patch("workforce_api.services.automatic_dispatch.get_eligible_candidates", return_value=[])
     @patch("service_requests.models.ServiceRequest.objects.select_for_update")
-    def test_9_todays_scheduled_job_remains_dispatchable(self, mock_sfu, mock_cands, mock_event, mock_cycles, mock_desc, mock_offer_sfu, mock_user_model, mock_atomic):
+    @patch("workforce_api.models.WorkforceJobOffer.objects.filter", return_value=[])
+    def test_9_todays_scheduled_job_remains_dispatchable(self, mock_offer_filter, mock_sfu, mock_cands, mock_event, mock_cycles, mock_desc, mock_offer_sfu, mock_user_model, mock_atomic):
+        # Test-mocking gap fix (this session, 2026-09-23): _dispatch_job_two_phase
+        # also calls WorkforceJobOffer.objects.filter(job_id=...) directly (to
+        # collect past offers for wave/decline tracking) -- a SEPARATE call from
+        # .select_for_update(), which was already mocked. This test only mocked
+        # the select_for_update() path, so the plain .filter() call fell through
+        # to a real DB query, which SimpleTestCase forbids
+        # (DatabaseOperationForbidden). Traced this against the live
+        # automatic_dispatch.py source (line ~1714) before concluding it's a
+        # test-only gap, not a dispatch logic defect -- the failure never
+        # touched date-gate logic, vehicle/capacity compatibility, or any
+        # other business rule.
         mock_user_model.return_value.objects.filter.return_value.first.return_value = None
         mock_offer_sfu.return_value.filter.return_value.first.return_value = None
 
@@ -360,7 +392,9 @@ class DateBasedDispatchEligibilityTests(SimpleTestCase):
     @patch("workforce_api.models.WorkforceEventLog.objects.create")
     @patch("workforce_api.services.automatic_dispatch.get_eligible_candidates", return_value=[])
     @patch("service_requests.models.ServiceRequest.objects.select_for_update")
-    def test_10_todays_immediate_booking_remains_dispatchable(self, mock_sfu, mock_cands, mock_event, mock_cycles, mock_desc, mock_offer_sfu, mock_user_model, mock_atomic):
+    @patch("workforce_api.models.WorkforceJobOffer.objects.filter", return_value=[])
+    def test_10_todays_immediate_booking_remains_dispatchable(self, mock_offer_filter, mock_sfu, mock_cands, mock_event, mock_cycles, mock_desc, mock_offer_sfu, mock_user_model, mock_atomic):
+        # Same test-mocking gap fix as test_9 above -- see that comment.
         mock_user_model.return_value.objects.filter.return_value.first.return_value = None
         mock_offer_sfu.return_value.filter.return_value.first.return_value = None
 

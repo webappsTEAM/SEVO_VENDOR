@@ -17,7 +17,9 @@ import { LoadingState } from '../../components/enterprise/LoadingState.jsx';
 import { ErrorState } from '../../components/enterprise/ErrorState.jsx';
 import { Modal } from '../../components/enterprise/Modal.jsx';
 import { LogisticsLegController } from '../../components/employee/logistics/LogisticsLegController.jsx';
+import { LogisticsRouteMap } from '../../components/employee/logistics/LogisticsRouteMap.jsx';
 import { LogisticsStopManager } from '../../components/employee/logistics/LogisticsStopManager.jsx';
+import { PackersMoversManifestCard } from '../../components/employee/logistics/PackersMoversManifestCard.jsx';
 import {
   Search,
   MapPin,
@@ -1517,22 +1519,36 @@ export function EmployeeJobsPage() {
                 )}
               </div>
 
-              {/* Logistics Journey & Leg Controls (if logistics job) */}
-              <LogisticsLegController
-                job={selectedJobForDetails}
-                onLegUpdated={(newLeg) => {
-                  setSelectedJobForDetails((prev) => (prev ? { ...prev, logistics_leg: newLeg } : null));
-                  loadJobs();
-                }}
-              />
+              {/* Packers & Movers Relocation Manifest & Access Card (self-gated for P&M) */}
+              <PackersMoversManifestCard job={selectedJobForDetails} />
 
-              {/* Multi-Stop Route Itinerary (if stops exist) */}
-              <LogisticsStopManager
-                job={selectedJobForDetails}
-                onStopsUpdated={() => {
-                  loadJobs();
-                }}
-              />
+              {/* Pickup / drop / live-location map (logistics jobs only; self-gated) */}
+              <LogisticsRouteMap job={selectedJobForDetails} />
+
+              {/* Logistics Journey & Leg Controls — only for assigned jobs.
+                  Both components fire authenticated API calls (logistics-leg,
+                  logistics-checkpoint, stoppage) that the backend gates on
+                  job assignment. Rendering them for offer/unassigned jobs
+                  generates a flood of 403s. */}
+              {selectedJobForDetails.is_assigned_to_current_employee && (
+                <LogisticsLegController
+                  job={selectedJobForDetails}
+                  onLegUpdated={(newLeg) => {
+                    setSelectedJobForDetails((prev) => (prev ? { ...prev, logistics_leg: newLeg } : null));
+                    loadJobs();
+                  }}
+                />
+              )}
+
+              {/* Multi-Stop Route Itinerary — same guard: only for assigned jobs */}
+              {selectedJobForDetails.is_assigned_to_current_employee && (
+                <LogisticsStopManager
+                  job={selectedJobForDetails}
+                  onStopsUpdated={() => {
+                    loadJobs();
+                  }}
+                />
+              )}
 
               {/* Modal Footer */}
               <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">

@@ -656,7 +656,7 @@ class PreServiceVerification(models.Model):
         # Work area photo and appliance photo are optional evidence.
         # Mandatory gates: arrival geofence check-in, customer OTP verification, and technician presence selfie.
         if self.job and getattr(self.job, "otp_verified", False) and not self.otp_verified:
-            self.otp_verified = True
+            setattr(self, "otp_verified", True)
             if getattr(self.job, "otp_verified_at", None) and not self.otp_verified_at:
                 self.otp_verified_at = self.job.otp_verified_at
         ready = bool(
@@ -664,7 +664,7 @@ class PreServiceVerification(models.Model):
             and (self.otp_verified or (self.job and getattr(self.job, "otp_verified", False)))
             and self.presence_photo
         )
-        self.is_complete = ready
+        setattr(self, "is_complete", ready)
         if ready and not self.completed_at:
             from django.utils import timezone
             self.completed_at = timezone.now()
@@ -673,6 +673,79 @@ class PreServiceVerification(models.Model):
 
     def __str__(self):
         return f"PreService Verification Job #{self.job_id} (Complete: {self.is_complete})"
+
+
+class LogisticsCheckpointVerification(models.Model):
+    """
+    Per-location verification record for the mid-trip checkpoints of a
+    logistics (Goods Transport / Packers & Movers) job.
+
+    PreServiceVerification is one-to-one with the job and describes the
+    job-START gate at the booking address. A trip has two further physical
+    checkpoints -- the pickup (where goods are loaded) and the drop (where
+    they are handed over) -- and reusing the start record for those would
+    overwrite the start evidence with a different location. So each
+    checkpoint gets its own row, keyed by (job, checkpoint).
+
+    Gates enforced from this record live in
+    workforce_api/services/logistics_checkpoints.py; the leg endpoint
+    (WorkforceJobLogisticsLegView) refuses to advance past a checkpoint
+    whose required evidence is missing.
+    """
+
+    class Checkpoint(models.TextChoices):
+        PICKUP = "PICKUP", "Pickup"
+        DROP = "DROP", "Drop"
+
+    job = models.ForeignKey(
+        "service_requests.ServiceRequest",
+        on_delete=models.CASCADE,
+        related_name="logistics_checkpoint_verifications",
+    )
+    checkpoint = models.CharField(max_length=10, choices=Checkpoint.choices)
+    employee = models.ForeignKey(
+        "employees.Employee",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="logistics_checkpoint_verifications",
+    )
+
+    # GPS geofence check at this checkpoint's location.
+    geofence_passed = models.BooleanField(default=False)
+    gps_lat = models.FloatField(null=True, blank=True)
+    gps_lon = models.FloatField(null=True, blank=True)
+    target_lat = models.FloatField(null=True, blank=True)
+    target_lon = models.FloatField(null=True, blank=True)
+    distance_m = models.FloatField(null=True, blank=True)
+    # "", "override" (geofence disabled / allow_all_locations) or
+    # "no_target_coordinates" (booking has no coordinates for this point).
+    geofence_note = models.CharField(max_length=40, blank=True, default="")
+    gps_verified_at = models.DateTimeField(null=True, blank=True)
+
+    # Proof photo (goods loaded at pickup / goods unloaded at drop).
+    proof_photo = models.FileField(upload_to="logistics_checkpoints/", null=True, blank=True)
+    photo_uploaded_at = models.DateTimeField(null=True, blank=True)
+
+    # Delivery OTP (drop checkpoint only).
+    otp_code = models.CharField(max_length=6, blank=True, default="")
+    otp_generated_at = models.DateTimeField(null=True, blank=True)
+    otp_expires_at = models.DateTimeField(null=True, blank=True)
+    otp_attempts = models.IntegerField(default=0)
+    otp_verified = models.BooleanField(default=False)
+    otp_verified_at = models.DateTimeField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "workforce_logistics_checkpoint_verification"
+        constraints = [
+            models.UniqueConstraint(fields=["job", "checkpoint"], name="uniq_logistics_checkpoint_per_job"),
+        ]
+
+    def __str__(self):
+        return f"{self.checkpoint} checkpoint for job #{self.job_id}"
 
 
 class WorkforceWorkExtension(models.Model):
@@ -906,7 +979,7 @@ class PostServiceProof(models.Model):
         )
         if ready and not self.is_submitted:
             from django.utils import timezone
-            self.is_submitted = True
+            setattr(self, "is_submitted", True)
             self.submitted_at = timezone.now()
         return self.is_submitted
 
@@ -1413,7 +1486,7 @@ class JobPayment(models.Model):
         Canonical derived property representing whether cash has been physically collected.
         Returns True if cash_collected_at is recorded, False otherwise.
         """
-        return bool(self.cash_collected_at is not None)
+        return self.cash_collected_at is not None
 
 
 class CashSettlement(models.Model):
@@ -2534,8 +2607,9 @@ class WorkforceQuote(models.Model):
                 if "quote_number" not in str(exc):
                     raise
                 last_error = exc
-                self.quote_number = ""
-        raise last_error
+                setattr(self, "quote_number", "")
+        if last_error is not None:
+            raise last_error
 
 
 class WorkforceQuoteItem(models.Model):
@@ -2907,8 +2981,9 @@ class WorkforceInvoice(models.Model):
                 if "invoice_number" not in str(exc):
                     raise
                 last_error = exc
-                self.invoice_number = ""
-        raise last_error
+                setattr(self, "invoice_number", "")
+        if last_error is not None:
+            raise last_error
 
 
 class WorkforceInvoiceItem(models.Model):
@@ -3150,6 +3225,38 @@ class WorkforceServicePricingPolicy(models.Model):
                   "workmanship warranty, so quote items claiming it are rejected.",
     )
 
+    # GT waiting / detention charges (admin-configured; disabled by default).
+    # Null free-minute values or a zero per-minute rate mean "no waiting
+    # charge" -- SEVO has not set a commercial rule yet, so nothing is billed
+    # until an admin configures it. Computed by services/waiting_charges.py
+    # from ServiceRequest.logistics_leg_history.
+    waiting_free_loading_minutes = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="GT: free minutes for loading at pickup. Blank disables loading waiting charges.",
+    )
+    waiting_free_unloading_minutes = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="GT: free minutes for unloading at drop. Blank disables unloading waiting charges.",
+    )
+    waiting_charge_per_minute = models.DecimalField(
+        max_digits=8, decimal_places=2, default=0.00,
+        help_text="GT: amount charged per minute beyond the free window. 0 disables.",
+    )
+    waiting_charge_cap = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text="GT: maximum waiting charge per booking. Blank means no cap.",
+    )
+
+    # Technician-side no-penalty cancellation window (minutes after
+    # acceptance). Default 5 matches the value that was previously hardcoded
+    # in WorkforceJobAcceptView / WorkforceJobCancelAssignmentView /
+    # WorkforceJobTechnicianCancelView, so behaviour is unchanged until an
+    # admin edits it. Read via services.pricing_policy.technician_cancel_window_minutes.
+    technician_free_cancel_minutes = models.PositiveIntegerField(
+        default=5,
+        help_text="Minutes after accepting a job during which the technician may cancel without penalty.",
+    )
+
     is_active = models.BooleanField(default=True, db_index=True)
     updated_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -3303,6 +3410,8 @@ class VendorStore(models.Model):
     logo_url = models.CharField(max_length=1000, blank=True, default="")
     banner_url = models.CharField(max_length=1000, blank=True, default="")
     fssai_license_number = models.CharField(max_length=100, blank=True, default="")
+    gst_number = models.CharField(max_length=50, blank=True, default="")
+    onboarding = models.JSONField(blank=True, default=dict)
     store_address = models.TextField(blank=True, default="")
     latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
@@ -3998,7 +4107,7 @@ class SellerProduct(models.Model):
 
     @rejection_reason.setter
     def rejection_reason(self, value):
-        self.admin_review_note = value or ""
+        setattr(self, "admin_review_note", str(value or ""))
 
     def __str__(self):
         return f"{self.title} ({self.sku}) - {self.company.company_name}"

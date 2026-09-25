@@ -9,6 +9,7 @@ import os
 import sys
 from datetime import timedelta
 from pathlib import Path
+from typing import Any
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -42,8 +43,11 @@ _allowed_hosts_env = os.getenv("ALLOWED_HOSTS") or os.getenv("DJANGO_ALLOWED_HOS
 if _allowed_hosts_env:
     ALLOWED_HOSTS = [h.strip() for h in _allowed_hosts_env.split(",") if h.strip()]
 else:
-    ALLOWED_HOSTS = ["*"] if DEBUG else ["localhost", "127.0.0.1", "testserver"]
-if "testserver" not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS = ["*"] if DEBUG else ["localhost", "127.0.0.1", "testserver", "vendor.sevo.co.in", "sevo.co.in"]
+for _prod_host in ("vendor.sevo.co.in", "sevo.co.in", "www.sevo.co.in"):
+    if _prod_host not in ALLOWED_HOSTS and "*" not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(_prod_host)
+if "testserver" not in ALLOWED_HOSTS and "*" not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append("testserver")
 
 # Application definition
@@ -117,7 +121,7 @@ if IS_TESTING:
         }
     }
 elif USE_POSTGRES:
-    _db_options = {
+    _db_options: dict[str, Any] = {
         "connect_timeout": int(os.getenv("DB_CONNECT_TIMEOUT", "10")),
         "keepalives": 1,
         "keepalives_idle": 30,
@@ -271,6 +275,10 @@ else:
         # Platform Admin Frontend
         "http://localhost:5174",
         "http://127.0.0.1:5174",
+        # Production Domains
+        "https://vendor.sevo.co.in",
+        "https://sevo.co.in",
+        "https://www.sevo.co.in",
     ]
 
 CORS_ALLOW_CREDENTIALS = True
@@ -303,6 +311,9 @@ else:
         "http://127.0.0.1:5176",
         "http://localhost:8001",
         "http://127.0.0.1:8001",
+        "https://vendor.sevo.co.in",
+        "https://sevo.co.in",
+        "https://www.sevo.co.in",
     ]
 
 # ── Customer-app webhook integration (fixes X-01) ─────────────────────────────
@@ -311,7 +322,7 @@ else:
 # even though the Customer app has a fully-built idempotent webhook receiver
 # (workforce_integration/views.py) waiting for exactly this. See
 # workforce_api/services/customer_webhook.py for the sender.
-CUSTOMER_APP_BASE_URL = os.getenv("CUSTOMER_APP_BASE_URL", "http://localhost:8000").rstrip("/")
+CUSTOMER_APP_BASE_URL = os.getenv("CUSTOMER_APP_BASE_URL", "http://localhost:8000" if DEBUG else "https://sevo.co.in").rstrip("/")
 # Fails closed in production, for the same reason WORKFORCE_WEBHOOK_SECRET
 # does below -- but this one is easier to miss, because getting it wrong is
 # SILENT. Webhook delivery is fire-and-forget on a background thread, so an
@@ -392,7 +403,24 @@ SEVO_INDIVIDUAL_COMMISSION_RATE = os.getenv("SEVO_INDIVIDUAL_COMMISSION_RATE", "
 SEVO_INDIVIDUAL_PROMO_RATE = os.getenv("SEVO_INDIVIDUAL_PROMO_RATE", "0.08")
 SEVO_PROMO_PERIOD_DAYS = os.getenv("SEVO_PROMO_PERIOD_DAYS", "90")
 SEVO_DISPUTE_HOLD_HOURS = os.getenv("SEVO_DISPUTE_HOLD_HOURS", "48")
-# env-reload: 2026-09-08
+# ----------------------------------------------------------------------------
+# Email / SMTP Configuration
+# ----------------------------------------------------------------------------
+_email_user = (os.getenv("EMAIL_HOST_USER") or "").strip()
+_email_pass = (os.getenv("EMAIL_HOST_PASSWORD") or "").replace(" ", "").strip()
+
+if _email_user and _email_pass:
+    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+    EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.gmail.com")
+    EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+    EMAIL_USE_TLS = True
+    EMAIL_HOST_USER = _email_user
+    EMAIL_HOST_PASSWORD = _email_pass
+    DEFAULT_FROM_EMAIL = _email_user
+else:
+    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+    DEFAULT_FROM_EMAIL = "noreply@sevo.co.in"
+# env-reload: 2026-09-23
 
 # ─── Authoritative Dispatch & GPS Freshness Configuration ───────────────────
 # Canonical GPS freshness requirement in seconds for dispatch candidate eligibility.

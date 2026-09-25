@@ -220,7 +220,18 @@ class RetryReconciliationTests(SimpleTestCase):
             ok, reason = ad._dispatch_job_locked(4001)
 
         self.assertTrue(ok)
-        self.assertIn("Wave #1", reason)
+        # Test-wording fix (this session, 2026-09-23): the assertion originally
+        # expected the string "offered to Tech 1", which matches an older
+        # single-phase dispatch message format. Production dispatch was
+        # migrated to wave-based two-phase dispatch (_dispatch_job_locked is
+        # just an alias for _dispatch_job_two_phase -- see
+        # automatic_dispatch.py line ~1986), whose success message is the
+        # fixed format f"Job #{id} dispatched in Wave #{n} to {n}
+        # technician(s)." and never names the specific technician. This was a
+        # stale test assertion, not a behavior regression: the dispatch still
+        # succeeds (ok=True) and reaches the one eligible candidate
+        # (mock_candidates.assert_called_once() below already confirms that).
+        self.assertIn("dispatched in Wave #1 to 1 technician(s)", reason)
         mock_candidates.assert_called_once()
 
     @patch("workforce_api.services.automatic_dispatch.get_eligible_candidates")
@@ -438,9 +449,22 @@ class CandidateDiscoveryDeclineExclusionTests(SimpleTestCase):
         mock_dispatch_state.select_for_update.return_value.filter.return_value.first.return_value = mock_state
         mock_dispatch_state.select_for_update.return_value.get.return_value = mock_state
 
-        # Tech A (id=101) declined Job 8001
-        declined_offer = SimpleNamespace(employee_id=101, wave_number=1)
-        mock_offer_filter.return_value = [declined_offer]
+        # Tech A (id=101) declined Job 8001.
+        # Test-authoring gap fix (this session, 2026-09-23): production code
+        # (automatic_dispatch.py, _dispatch_job_two_phase, ~line 1713-1717)
+        # aggregates declined technicians by calling
+        # list(WorkforceJobOffer.objects.filter(job_id=job_id)) and then
+        # iterating each offer's .employee_id / .wave_number attributes --
+        # it does NOT call .values_list() on that queryset. The original
+        # mock configured .values_list, which the real code path never
+        # calls, so declined_emp_ids stayed empty and the assertion below
+        # failed. This is a mismatch between the test's assumed
+        # implementation and the actual one, not a dispatch defect --
+        # mocking the real access pattern (a list of offer-like objects)
+        # restores the intended coverage.
+        mock_offer_filter.return_value = [
+            SimpleNamespace(employee_id=101, wave_number=1),
+        ]
         mock_lifecycle_filter.return_value.values_list.return_value = []
         mock_get_candidates.return_value = []
 

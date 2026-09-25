@@ -12,6 +12,31 @@ import django.db.models.deletion
 from django.db import migrations, models
 
 
+def add_company_business_type_column(apps, schema_editor):
+    """
+    companies_company is managed=False (shared Supabase table -- see
+    companies/models.py's Meta.managed = False, same posture as
+    accounts_user and employees_employee elsewhere in this migration
+    history). It always exists on Postgres but is never created by
+    `migrate` on SQLite's fresh `manage.py test` database (managed=False
+    tables are never created by migrate, on any backend), so there is
+    nothing to ALTER there -- skipping is correct, not a compromise.
+    """
+    if schema_editor.connection.vendor != "postgresql":
+        return
+    schema_editor.execute(
+        "ALTER TABLE companies_company ADD COLUMN IF NOT EXISTS business_type VARCHAR(50) DEFAULT 'service_provider';"
+    )
+
+
+def drop_company_business_type_column(apps, schema_editor):
+    if schema_editor.connection.vendor != "postgresql":
+        return
+    schema_editor.execute(
+        "ALTER TABLE companies_company DROP COLUMN IF EXISTS business_type;"
+    )
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -19,9 +44,8 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunSQL(
-            sql="ALTER TABLE companies_company ADD COLUMN IF NOT EXISTS business_type VARCHAR(50) DEFAULT 'service_provider';",
-            reverse_sql="ALTER TABLE companies_company DROP COLUMN IF EXISTS business_type;",
+        migrations.RunPython(
+            add_company_business_type_column, drop_company_business_type_column
         ),
         migrations.AddField(
             model_name="inventoryitem",

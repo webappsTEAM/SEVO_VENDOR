@@ -498,6 +498,11 @@ POLICY_EDITABLE_FIELDS = [
     "advance_percent",
     "allow_customer_supplied_materials",
     "is_active",
+    "waiting_free_loading_minutes",
+    "waiting_free_unloading_minutes",
+    "waiting_charge_per_minute",
+    "waiting_charge_cap",
+    "technician_free_cancel_minutes",
 ]
 
 
@@ -521,6 +526,13 @@ def _serialize_policy(p):
         "advance_percent": _money(p.advance_percent),
         "allow_customer_supplied_materials": p.allow_customer_supplied_materials,
         "is_active": p.is_active,
+        "waiting_free_loading_minutes": p.waiting_free_loading_minutes,
+        "waiting_free_unloading_minutes": p.waiting_free_unloading_minutes,
+        "waiting_charge_per_minute": _money(p.waiting_charge_per_minute),
+        "waiting_charge_cap": (
+            _money(p.waiting_charge_cap) if p.waiting_charge_cap is not None else None
+        ),
+        "technician_free_cancel_minutes": p.technician_free_cancel_minutes,
         "updated_by_id": p.updated_by_id,
         "updated_at": p.updated_at.isoformat() if p.updated_at else None,
     }
@@ -599,6 +611,34 @@ def _apply_policy_fields(policy, data):
         if field == "high_value_review_threshold" and value in (None, ""):
             policy.high_value_review_threshold = None
             continue
+        if field in ("waiting_free_loading_minutes", "waiting_free_unloading_minutes"):
+            if value in (None, ""):
+                setattr(policy, field, None)
+                continue
+            try:
+                minutes = int(str(value).strip())
+            except (TypeError, ValueError):
+                return f"{field} must be a whole number of minutes."
+            if minutes < 0:
+                return f"{field} cannot be negative."
+            setattr(policy, field, minutes)
+            continue
+        if field == "technician_free_cancel_minutes":
+            # Not nullable: blank means "back to the default of 5".
+            if value in (None, ""):
+                policy.technician_free_cancel_minutes = 5
+                continue
+            try:
+                minutes = int(str(value).strip())
+            except (TypeError, ValueError):
+                return f"{field} must be a whole number of minutes."
+            if not (0 <= minutes <= 1440):
+                return f"{field} must be between 0 and 1440 minutes."
+            policy.technician_free_cancel_minutes = minutes
+            continue
+        if field == "waiting_charge_cap" and value in (None, ""):
+            policy.waiting_charge_cap = None
+            continue
         if field in ("hub_latitude", "hub_longitude"):
             try:
                 setattr(policy, field, float(value))
@@ -618,6 +658,10 @@ def _apply_policy_fields(policy, data):
         return "Fee amounts cannot be negative."
     if Decimal(policy.free_radius_km) < 0:
         return "free_radius_km cannot be negative."
+    if Decimal(policy.waiting_charge_per_minute or 0) < 0:
+        return "waiting_charge_per_minute cannot be negative."
+    if policy.waiting_charge_cap is not None and Decimal(policy.waiting_charge_cap) < 0:
+        return "waiting_charge_cap cannot be negative."
     return None
 
 

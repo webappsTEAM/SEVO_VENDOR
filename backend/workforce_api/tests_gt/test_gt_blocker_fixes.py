@@ -316,14 +316,19 @@ class DateBasedDispatchSafetyTests(SimpleTestCase):
     @patch("django.db.transaction.atomic")
     @patch("workforce_api.models.WorkforceDispatchState.objects.select_for_update")
     @patch("workforce_api.services.automatic_dispatch.get_user_model")
-    @patch("workforce_api.models.WorkforceJobOffer.objects.filter")
     @patch("workforce_api.models.WorkforceJobOffer.objects.select_for_update")
     @patch("workforce_api.services.automatic_dispatch.describe_unassigned_reason", return_value=("NO_TECH", "No tech nearby"))
     @patch("workforce_api.services.automatic_dispatch._count_failed_offer_cycles", return_value=0)
     @patch("workforce_api.models.WorkforceEventLog.objects.create")
     @patch("workforce_api.services.automatic_dispatch.get_eligible_candidates", return_value=[])
     @patch("service_requests.models.ServiceRequest.objects.select_for_update")
-    def test_today_immediate_booking_passes_date_gate(self, mock_sfu, mock_cands, mock_event, mock_cycles, mock_desc, mock_offer_sfu, mock_offer_filter, mock_user_model, mock_ds_sfu, mock_atomic):
+    @patch("workforce_api.models.WorkforceJobOffer.objects.filter", return_value=[])
+    def test_today_immediate_booking_passes_date_gate(self, mock_offer_filter, mock_sfu, mock_cands, mock_event, mock_cycles, mock_desc, mock_offer_sfu, mock_user_model, mock_ds_sfu, mock_atomic):
+        # Test-mocking gap fix (this session, 2026-09-23): see the identical
+        # fix + full explanation in test_date_based_dispatch_eligibility.py's
+        # test_9/test_10 -- this is the same root cause, a separate
+        # WorkforceJobOffer.objects.filter() call not covered by the existing
+        # select_for_update() mock, not a dispatch logic defect.
         mock_user_model.return_value.objects.filter.return_value.first.return_value = None
         mock_offer_sfu.return_value.filter.return_value.first.return_value = None
         mock_offer_filter.return_value = []
@@ -353,14 +358,15 @@ class DateBasedDispatchSafetyTests(SimpleTestCase):
     @patch("django.db.transaction.atomic")
     @patch("workforce_api.models.WorkforceDispatchState.objects.select_for_update")
     @patch("workforce_api.services.automatic_dispatch.get_user_model")
-    @patch("workforce_api.models.WorkforceJobOffer.objects.filter")
     @patch("workforce_api.models.WorkforceJobOffer.objects.select_for_update")
     @patch("workforce_api.services.automatic_dispatch.describe_unassigned_reason", return_value=("NO_TECH", "No tech nearby"))
     @patch("workforce_api.services.automatic_dispatch._count_failed_offer_cycles", return_value=0)
     @patch("workforce_api.models.WorkforceEventLog.objects.create")
     @patch("workforce_api.services.automatic_dispatch.get_eligible_candidates", return_value=[])
     @patch("service_requests.models.ServiceRequest.objects.select_for_update")
-    def test_today_scheduled_booking_passes_date_gate(self, mock_sfu, mock_cands, mock_event, mock_cycles, mock_desc, mock_offer_sfu, mock_offer_filter, mock_user_model, mock_ds_sfu, mock_atomic):
+    @patch("workforce_api.models.WorkforceJobOffer.objects.filter", return_value=[])
+    def test_today_scheduled_booking_passes_date_gate(self, mock_offer_filter, mock_sfu, mock_cands, mock_event, mock_cycles, mock_desc, mock_offer_sfu, mock_user_model, mock_ds_sfu, mock_atomic):
+        # Same test-mocking gap fix as test_today_immediate_booking_passes_date_gate above.
         mock_user_model.return_value.objects.filter.return_value.first.return_value = None
         mock_offer_sfu.return_value.filter.return_value.first.return_value = None
         mock_offer_filter.return_value = []
