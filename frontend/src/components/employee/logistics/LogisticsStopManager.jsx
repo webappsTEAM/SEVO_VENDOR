@@ -19,7 +19,8 @@ export function LogisticsStopManager({ job, onStopsUpdated, className = '' }) {
   const [error, setError] = useState('');
 
   const loadStops = useCallback(async () => {
-    if (!job?.id) return;
+    // Guard: stops endpoint is gated on job assignment (403 if not assigned).
+    if (!job?.id || !job?.is_assigned_to_current_employee) return;
     try {
       setLoading(true);
       setError('');
@@ -37,7 +38,7 @@ export function LogisticsStopManager({ job, onStopsUpdated, className = '' }) {
     } finally {
       setLoading(false);
     }
-  }, [job?.id]);
+  }, [job?.id, job?.is_assigned_to_current_employee]);
 
   useEffect(() => {
     loadStops();

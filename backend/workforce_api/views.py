@@ -3161,6 +3161,31 @@ class WorkforceJobProofView(APIView):
         if job.status not in ["in_progress", "proof_submitted"]:
             return Response({"error": f"Cannot submit completion proof for job in status '{job.status}'. Expected 'in_progress'."}, status=status.HTTP_400_BAD_REQUEST)
 
+        # Logistics trips: proof of delivery also closes the trip leg
+        # (DELIVERED, below), so it must not become a way around the drop
+        # checkpoint gates the leg endpoint enforces. The proof upload itself
+        # is the unloading photo, so only the remaining gates are required.
+        # Admin-submitted proof (a dispute/back-office path) is not gated.
+        if not is_admin_role(request.user):
+            try:
+                from workforce_api.services.automatic_dispatch import LOGISTICS_SERVICE_CATEGORIES
+                from workforce_api.services import logistics_checkpoints as _lc
+                if (job.service_category or "").strip().lower() in LOGISTICS_SERVICE_CATEGORIES:
+                    _missing = [m for m in _lc.missing_for_leg(job, "DELIVERED")
+                                if m != (_lc.DROP, _lc.PHOTO)]
+                    if _missing:
+                        return Response({
+                            "error": "Complete the trip checkpoint verification before submitting proof of delivery. Still required: "
+                                     + "; ".join(_lc.REQUIREMENT_LABELS[m] for m in _missing) + ".",
+                            "code": "CHECKPOINT_VERIFICATION_REQUIRED",
+                            "missing": [{"checkpoint": c, "requirement": r, "label": _lc.REQUIREMENT_LABELS[(c, r)]}
+                                        for c, r in _missing],
+                        }, status=status.HTTP_400_BAD_REQUEST)
+            except Exception:
+                logger.exception("checkpoint gate check failed on proof for job %s", job.id)
+                return Response({"error": "Could not verify trip checkpoints. Please retry."},
+                                status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
         completion_notes = request.data.get("notes", "").strip() or request.data.get("completion_notes", "").strip()
         after_presence = request.FILES.get("after_presence_photo") or request.FILES.get("after_selfie") or request.FILES.get("presence_photo")
         after_appliance = request.FILES.get("after_appliance_photo") or request.FILES.get("after_photo")
@@ -3193,8 +3218,43 @@ class WorkforceJobProofView(APIView):
         proof.check_submission()
         proof.save()
 
+        # GT audit fix: this endpoint excludes (DROP, PHOTO) from the
+        # checkpoint gate above on the theory that "the proof upload itself
+        # is the unloading photo" -- but nothing ever actually wrote a photo
+        # into the DROP LogisticsCheckpointVerification record, and none of
+        # after_presence_photo (a selfie)/after_appliance_photo/
+        # after_work_area_photo is guaranteed to depict the unloaded goods.
+        # For logistics jobs, record the best available uploaded photo as
+        # the real DROP checkpoint proof (requires GPS at DROP to already be
+        # verified, same as the direct checkpoint-photo endpoint) instead of
+        # leaving that evidence permanently unset.
+        try:
+            from workforce_api.services.automatic_dispatch import LOGISTICS_SERVICE_CATEGORIES
+            from workforce_api.services import logistics_checkpoints as _lc
+            if (job.service_category or "").strip().lower() in LOGISTICS_SERVICE_CATEGORIES:
+                _drop_photo = after_work_area or after_appliance or after_presence
+                if _drop_photo:
+                    _lc.record_checkpoint_photo(job, emp, _lc.DROP, _drop_photo)
+        except Exception:
+            logger.exception("Could not record DROP checkpoint photo from proof-of-delivery upload for job %s", job.id)
+
         # Step 1: Transition job to proof_submitted (service completed)
         apply_transition(job, "proof_submitted", actor=request.user)
+
+        # Proof of delivery closes the trip leg. state_machine.py documented
+        # this ("DELIVERED is set when proof of delivery is submitted") but
+        # nothing did it, so a driver who submitted proof without also
+        # tapping DELIVERED left the customer's tracking on UNLOADING and the
+        # Customer app's DELIVERED-triggered fare reconciliation never ran.
+        # set_logistics_leg is forward-only and idempotent, so a retry or a
+        # leg the driver already set is a no-op; failure never blocks proof.
+        try:
+            from workforce_api.services.automatic_dispatch import LOGISTICS_SERVICE_CATEGORIES
+            from workforce_api.services.logistics_events import set_logistics_leg
+            if (job.service_category or "").strip().lower() in LOGISTICS_SERVICE_CATEGORIES:
+                set_logistics_leg(job, "DELIVERED", actor=request.user)
+        except Exception as leg_err:
+            logger.info("Could not set DELIVERED leg on proof for job %s: %s", job.id, leg_err)
 
         # Step 2: Check payment state machine. If payment is already PAID (e.g. verified ONLINE), close the job.
         pmt = JobPayment.objects.filter(job=job).first()
@@ -4178,7 +4238,10 @@ class WorkforceJobAcceptOfferView(APIView):
                 }, status=status.HTTP_400_BAD_REQUEST)
 
             now = timezone.now()
-            cancellation_deadline = now + timedelta(minutes=5)
+            from workforce_api.services.pricing_policy import technician_cancel_window_minutes
+            cancellation_deadline = now + timedelta(
+                minutes=technician_cancel_window_minutes(getattr(job_obj, "service_category", None))
+            )
 
             # Hard Single Active Job Rule: Check if employee has a conflicting active job BEFORE mutating offer
             from workforce_api.services.workload import get_employee_active_job
@@ -4482,14 +4545,16 @@ class WorkforceJobCancelAssignmentView(APIView):
             )
 
             now = timezone.now()
+            from workforce_api.services.pricing_policy import technician_cancel_window_minutes
+            cancel_window_minutes = technician_cancel_window_minutes(getattr(job_obj, "service_category", None))
             cancellation_deadline = (
                 accept_event.cancellation_deadline if accept_event and accept_event.cancellation_deadline
-                else (accepted_at + timedelta(minutes=5))
+                else (accepted_at + timedelta(minutes=cancel_window_minutes))
             )
 
             if now > cancellation_deadline:
                 return Response({
-                    "error": "The 5-minute cancellation window for this job has expired. Please contact dispatch support.",
+                    "error": f"The {cancel_window_minutes}-minute cancellation window for this job has expired. Please contact dispatch support.",
                     "code": "CANCELLATION_WINDOW_EXPIRED",
                     "cancellation_deadline": cancellation_deadline.isoformat(),
                 }, status=status.HTTP_409_CONFLICT)
@@ -4682,11 +4747,13 @@ class WorkforceJobTechnicianCancelView(APIView):
             emp_job = EmployeeJob.objects.filter(service_request=job, employee=emp).first()
             accepted_at = (emp_job.accepted_date if emp_job and emp_job.accepted_date else None) or job.updated_at
             
-            cancellation_deadline = accepted_at + timedelta(minutes=5)
+            from workforce_api.services.pricing_policy import technician_cancel_window_minutes
+            cancel_window_minutes = technician_cancel_window_minutes(getattr(job, "service_category", None))
+            cancellation_deadline = accepted_at + timedelta(minutes=cancel_window_minutes)
             now = timezone.now()
             if now > cancellation_deadline:
                 return Response({
-                    "error": "Cancellation window has closed (5 minutes elapsed since acceptance).",
+                    "error": f"Cancellation window has closed ({cancel_window_minutes} minutes elapsed since acceptance).",
                     "code": "CANCELLATION_WINDOW_EXPIRED",
                     "accepted_at": accepted_at.isoformat(),
                     "cancellation_deadline": cancellation_deadline.isoformat(),
@@ -6732,9 +6799,20 @@ class WorkforceLocationUpdateView(APIView):
         # Find active accepted / en-route jobs owned by this technician
         emp_job_sr_ids = list(EmployeeJob.objects.filter(employee=emp).values_list("service_request_id", flat=True))
         emp_company = getattr(emp, "company", None) if getattr(emp, "company_id", None) else None
+        # Pre-arrival jobs get telemetry AND automatic arrival evaluation.
+        # Logistics jobs additionally keep getting telemetry after arrival:
+        # the pickup->drop transit happens while the job is in_progress, and
+        # the job's JobTrackingSession stays ACTIVE until completion, so the
+        # tracking endpoint (which reads that session first) previously
+        # showed the frozen pickup-time position and LOCATION_LOST for the
+        # whole transit. Arrival evaluation is skipped for these.
+        from workforce_api.services.automatic_dispatch import LOGISTICS_SERVICE_CATEGORIES
+        _PRE_ARRIVAL_STATUSES = ["accepted", "on_the_way", "en_route"]
+        _IN_TRIP_STATUSES = ["arrived", "service_started", "in_progress", "on_hold", "proof_submitted", "follow_up_required"]
         active_jobs_qs = ServiceRequest.objects.filter(
             Q(assigned_employee=emp) | Q(id__in=emp_job_sr_ids),
-            status__in=["accepted", "on_the_way", "en_route"],
+            Q(status__in=_PRE_ARRIVAL_STATUSES)
+            | Q(status__in=_IN_TRIP_STATUSES, service_category__in=list(LOGISTICS_SERVICE_CATEGORIES)),
             latitude__isnull=False,
             longitude__isnull=False,
         )
@@ -6835,7 +6913,10 @@ class WorkforceLocationUpdateView(APIView):
                     and gps_age_s <= ARRIVAL_MAX_GPS_AGE_SECONDS
                 )
 
-                if is_fix_valid:
+                if job.status not in _PRE_ARRIVAL_STATUSES:
+                    # In-trip logistics telemetry only; arrival already done.
+                    pass
+                elif is_fix_valid:
                     if session.consecutive_arrival_fixes == 0 or not session.last_fix_time:
                         # Fix #1 recorded
                         session.consecutive_arrival_fixes = 1
@@ -7029,6 +7110,26 @@ class WorkforceJobLiveTrackingView(APIView):
         cust_lon = float(job.longitude) if job.longitude else None
         tech = job.assigned_employee
 
+        # Additive: explicit pickup/drop points for logistics (Goods & Transport /
+        # Packers & Movers) jobs so both the technician and the customer can show
+        # pickup, drop and live vehicle position together. For non-logistics jobs
+        # drop_location is always None (there is no pickup/drop concept).
+        from workforce_api.services.automatic_dispatch import LOGISTICS_SERVICE_CATEGORIES
+        is_logistics = (job.service_category or "").strip().lower() in LOGISTICS_SERVICE_CATEGORIES
+        route_points = {
+            "is_logistics": is_logistics,
+            "pickup_location": {
+                "latitude": cust_lat,
+                "longitude": cust_lon,
+                "address": job.address or "",
+            } if is_logistics else None,
+            "drop_location": {
+                "latitude": float(job.drop_latitude) if job.drop_latitude is not None else None,
+                "longitude": float(job.drop_longitude) if job.drop_longitude is not None else None,
+                "address": job.drop_address or "",
+            } if is_logistics else None,
+        }
+
         # Privacy Guard: If job is completed/cancelled/closed/redispatching, or has no assigned technician
         if job.status in ["completed", "cancelled", "closed", "redispatching"] or not job.assigned_employee:
             logger.info(f"[MAP_RECONCILIATION] job_id={job.id} status={job.status} technician_masked=True")
@@ -7047,6 +7148,7 @@ class WorkforceJobLiveTrackingView(APIView):
                 "freshness_state": "FINDING_NEW_PROFESSIONAL" if job.status == "redispatching" else "LOCATION_LOST",
                 "age_seconds": None,
                 "updated_at": now.isoformat(),
+                **route_points,
             }, status=status.HTTP_200_OK)
 
         tech_loc = None
@@ -7170,6 +7272,7 @@ class WorkforceJobLiveTrackingView(APIView):
             "freshness_state": freshness_state,
             "age_seconds": age_seconds,
             "updated_at": now.isoformat(),
+            **route_points,
         }, status=status.HTTP_200_OK)
 
 
@@ -10955,10 +11058,43 @@ class WorkforceJobLogisticsLegView(APIView):
         job = ServiceRequest.objects.filter(pk=pk).first()
         if not job:
             return Response({"error": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
+        # Object-level authorization: the leg history (timestamps, actor ids)
+        # of a job is only readable by the technician it is assigned to.
+        # Previously any approved technician could read any job by id (IDOR).
+        emp = getattr(request.user, "employee_profile", None)
+        if not emp or job.assigned_employee_id != getattr(emp, "id", None):
+            return Response({"error": "Unauthorized: Job is not assigned to you."}, status=status.HTTP_403_FORBIDDEN)
+
+        # Read-only, informational: admin-configured waiting/detention charge
+        # derived from the leg timestamps. Never written to the fare here.
+        from workforce_api.services.waiting_charges import waiting_charge_for_booking
+        try:
+            wc = waiting_charge_for_booking(job)
+            waiting_charge = {
+                "enabled": wc["enabled"],
+                "loading_minutes": wc["loading_minutes"],
+                "unloading_minutes": wc["unloading_minutes"],
+                "billable_minutes": wc["billable_minutes"],
+                "rate_per_minute": str(wc["rate_per_minute"]),
+                "cap": str(wc["cap"]) if wc["cap"] is not None else None,
+                "amount": str(wc["amount"]),
+            }
+        except Exception:
+            logger.exception("waiting charge computation failed for job %s", job.pk)
+            waiting_charge = None
+        # Which verifications each leg still needs (drives the driver UI).
+        try:
+            from workforce_api.services.logistics_checkpoints import gate_summary
+            checkpoint_gates = gate_summary(job)
+        except Exception:
+            logger.exception("checkpoint gate summary failed for job %s", job.pk)
+            checkpoint_gates = None
         return Response({
             "logistics_leg": job.logistics_leg,
             "logistics_leg_updated_at": job.logistics_leg_updated_at,
             "logistics_leg_history": job.logistics_leg_history,
+            "waiting_charge": waiting_charge,
+            "checkpoint_gates": checkpoint_gates,
         }, status=status.HTTP_200_OK)
 
     def post(self, request, pk):
@@ -11010,17 +11146,166 @@ class WorkforceJobLogisticsLegView(APIView):
         # moved timestamp), and emission of `logistics.leg_changed` so a
         # customer watching the map sees the change immediately instead of
         # on their next poll.
-        from workforce_api.services.logistics_events import set_logistics_leg
+        from workforce_api.services.logistics_events import final_leg_status_error, set_logistics_leg
+
+        final_err = final_leg_status_error(job.status, leg)
+        if final_err:
+            return Response({"error": final_err, "code": "FINAL_LEG_NOT_ALLOWED_YET"},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        # Checkpoint verification gates (pickup/drop GPS, proof photos,
+        # delivery OTP). Before this a driver could click from To Pickup to
+        # Delivered with no evidence of ever reaching either end of the trip.
+        # See services/logistics_checkpoints.py for the per-leg rules.
+        from workforce_api.services.logistics_checkpoints import checkpoint_gate_error, notify_leg_advanced
+
+        gate_err, gate_missing = checkpoint_gate_error(job, leg)
+        if gate_err:
+            return Response({
+                "error": gate_err,
+                "code": "CHECKPOINT_VERIFICATION_REQUIRED",
+                "missing": gate_missing,
+            }, status=status.HTTP_400_BAD_REQUEST)
 
         changed, error = set_logistics_leg(job, leg, actor=request.user)
         if error:
             return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)
+
+        if changed:
+            notify_leg_advanced(job, leg)
 
         return Response({
             "logistics_leg": job.logistics_leg,
             "logistics_leg_updated_at": job.logistics_leg_updated_at,
             "changed": changed,
         }, status=status.HTTP_200_OK)
+
+
+class WorkforceJobLogisticsCheckpointView(APIView):
+    """
+    Pickup / drop checkpoint verification for logistics trips -- the mid-trip
+    counterpart of the job-start Pre-Service Verification (arrive/, verify-otp/,
+    pre-service-photo/), stored per checkpoint in
+    LogisticsCheckpointVerification so the job-start record is never touched.
+
+    GET  -> {"checkpoints": {...}, "gates": {leg: [missing...]}}
+    POST {"checkpoint": "PICKUP"|"DROP", "action": "gps", "lat", "lon"}
+         {"checkpoint": ..., "action": "photo", file=<image>}   (multipart)
+         {"checkpoint": "DROP", "action": "otp", "otp": "123456"}
+         {"checkpoint": "DROP", "action": "resend_otp"}
+    """
+    permission_classes = [IsApprovedTechnician]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "workforce_otp"
+
+    _TERMINAL_STATUSES = {"completed", "cancelled", "unable_to_complete"}
+
+    def get_throttles(self):
+        # Only OTP guess/resend attempts are rate limited, as on verify-otp/.
+        action = str(getattr(self.request, "data", {}).get("action", "") if self.request.method == "POST" else "").lower()
+        if action in ("otp", "resend_otp"):
+            return super().get_throttles()
+        return []
+
+    def _resolve(self, request, pk):
+        from workforce_api.services.automatic_dispatch import LOGISTICS_SERVICE_CATEGORIES
+
+        job = ServiceRequest.objects.filter(pk=pk).first()
+        if not job:
+            return None, None, Response({"error": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
+        emp = getattr(request.user, "employee_profile", None)
+        if not emp or job.assigned_employee_id != getattr(emp, "id", None):
+            return None, None, Response({"error": "Unauthorized: Job is not assigned to you."}, status=status.HTTP_403_FORBIDDEN)
+        if not is_employee_authorized_for_job(emp, job):
+            return None, None, Response(
+                {"error": "Unauthorized access to job belonging to another company.", "code": "CROSS_TENANT_FORBIDDEN"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if (job.service_category or "").strip().lower() not in LOGISTICS_SERVICE_CATEGORIES:
+            return None, None, Response(
+                {"error": f"Checkpoint verification is only available for logistics jobs, not '{job.service_category}'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return job, emp, None
+
+    def _payload(self, job):
+        from workforce_api.services.logistics_checkpoints import checkpoint_state, drop_otp_required, gate_summary
+        state = checkpoint_state(job)
+        return {
+            "logistics_leg": job.logistics_leg,
+            "checkpoints": state,
+            "gates": gate_summary(job, state=state),
+            "drop_otp_required": drop_otp_required(job),
+        }
+
+    def get(self, request, pk):
+        job, _emp, err = self._resolve(request, pk)
+        if err:
+            return err
+        return Response(self._payload(job), status=status.HTTP_200_OK)
+
+    def post(self, request, pk):
+        from workforce_api.services import logistics_checkpoints as lc
+
+        job, emp, err = self._resolve(request, pk)
+        if err:
+            return err
+        if job.status in self._TERMINAL_STATUSES:
+            return Response({"error": f"Job #{job.id} is already '{job.status}'."}, status=status.HTTP_400_BAD_REQUEST)
+
+        checkpoint = str(request.data.get("checkpoint") or "").strip().upper()
+        action = str(request.data.get("action") or "").strip().lower()
+        if checkpoint not in lc.CHECKPOINTS:
+            return Response({"error": "checkpoint must be PICKUP or DROP."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if action == "gps":
+            lat = request.data.get("lat") if request.data.get("lat") is not None else request.data.get("latitude")
+            lon = request.data.get("lon") if request.data.get("lon") is not None else (request.data.get("longitude") or request.data.get("lng"))
+            try:
+                lat_val, lon_val = float(lat), float(lon)
+            except (TypeError, ValueError):
+                return Response({"error": "Real device GPS coordinates (lat and lon) are required."},
+                                status=status.HTTP_400_BAD_REQUEST)
+            if not (-90.0 <= lat_val <= 90.0 and -180.0 <= lon_val <= 180.0):
+                return Response({"error": "GPS coordinates out of valid range."}, status=status.HTTP_400_BAD_REQUEST)
+            ok, data = lc.verify_checkpoint_gps(job, emp, request.user, checkpoint, lat_val, lon_val)
+            if not ok:
+                return Response(data, status=status.HTTP_403_FORBIDDEN)
+        elif action == "photo":
+            photo_file = request.FILES.get("file") or request.FILES.get("photo")
+            if not photo_file:
+                return Response({"error": "Photo file required."}, status=status.HTTP_400_BAD_REQUEST)
+            _photo_err = _validate_photo_upload(photo_file)
+            if _photo_err:
+                return Response({"error": _photo_err}, status=status.HTTP_400_BAD_REQUEST)
+            ok, data = lc.record_checkpoint_photo(job, emp, checkpoint, photo_file)
+            if not ok:
+                return Response(data, status=status.HTTP_400_BAD_REQUEST)
+        elif action in ("otp", "resend_otp"):
+            if checkpoint != lc.DROP or not lc.drop_otp_required(job):
+                return Response({"error": "No delivery OTP is required for this checkpoint."},
+                                status=status.HTTP_400_BAD_REQUEST)
+            if action == "resend_otp":
+                state = lc.checkpoint_state(job)
+                if not state[lc.DROP][lc.GPS]:
+                    return Response({"error": "Verify GPS at the drop location first.", "code": "GPS_REQUIRED_FIRST"},
+                                    status=status.HTTP_400_BAD_REQUEST)
+                if state[lc.DROP][lc.OTP]:
+                    return Response({"error": "Delivery OTP already verified."}, status=status.HTTP_400_BAD_REQUEST)
+                lc.issue_delivery_otp(job, force=True)
+                data = {"otp_issued": True, "message": "Fresh delivery OTP sent to the customer."}
+            else:
+                ok, data = lc.verify_delivery_otp(job, emp, request.data.get("otp") or request.data.get("otp_code"))
+                if not ok:
+                    return Response(data, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            return Response({"error": "action must be one of: gps, photo, otp, resend_otp."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        body = self._payload(job)
+        body.update(data)
+        return Response(body, status=status.HTTP_200_OK)
 
 
 class WorkforceJobTripStopsView(APIView):

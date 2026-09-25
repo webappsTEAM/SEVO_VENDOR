@@ -127,21 +127,18 @@ export function PortalCockpitLayout({
   // Authoritative Primary Active Job and Incoming Offer Resolution
   const offer = incomingOffers && incomingOffers.length > 0 ? incomingOffers[0] : null;
   // Strict active assignment guard: an active job MUST NOT be an unaccepted offer, expired offer, or unassigned request
+  const assignedId = activeAssignedJob?.assigned_employee?.id || activeAssignedJob?.assigned_employee || activeAssignedJob?.assigned_employee_id;
+  const myEmpId = employee?.id;
+  const myUserId = user?.id;
+  const isExplicitMismatch = Boolean(assignedId && myEmpId && assignedId !== myEmpId && assignedId !== myUserId);
+
   const isAssignedJob = Boolean(
     activeAssignedJob &&
+    !isExplicitMismatch &&
     (
+      (myEmpId && (assignedId === myEmpId || assignedId === myUserId)) ||
       activeAssignedJob.is_assigned_to_current_employee === true ||
-      activeAssignedJob.is_accepted_by_current_employee === true ||
-      (employee?.id && (
-        activeAssignedJob.assigned_employee === employee.id ||
-        activeAssignedJob.assigned_employee?.id === employee.id ||
-        activeAssignedJob.assigned_employee_id === employee.id
-      )) ||
-      (user?.id && (
-        activeAssignedJob.assigned_employee === user.id ||
-        activeAssignedJob.assigned_employee?.id === user.id ||
-        activeAssignedJob.assigned_employee_id === user.id
-      ))
+      activeAssignedJob.is_accepted_by_current_employee === true
     ) &&
     !activeAssignedJob.is_offer &&
     (activeAssignedJob.status || '').toLowerCase() !== 'unassigned' &&

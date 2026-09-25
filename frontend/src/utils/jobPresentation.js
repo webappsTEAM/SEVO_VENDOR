@@ -12,13 +12,18 @@ export function getEmployeeJobPresentation(job, hasActiveJob = false) {
   if (!job) return null;
 
   // 1. Authoritative Backend Acceptance Verification (active in-flight jobs only)
+  // Terminal statuses never render as an active accepted job (previously
+  // 'unable_to_complete' was missing here, so it could show the ACCEPTED card
+  // with a cancel action).
+  const TERMINAL = ['completed', 'cancelled', 'unable_to_complete'];
+  const statusLc = (job.status || '').toLowerCase();
   const isAcceptedByMe = Boolean(
-    (job.is_accepted_by_current_employee && !['completed', 'cancelled'].includes((job.status || '').toLowerCase())) ||
-    (job.offer_status === 'ACCEPTED' && job.is_assigned_to_current_employee && !['completed', 'cancelled'].includes((job.status || '').toLowerCase())) ||
+    (job.is_accepted_by_current_employee && !TERMINAL.includes(statusLc)) ||
+    (job.offer_status === 'ACCEPTED' && job.is_assigned_to_current_employee && !TERMINAL.includes(statusLc)) ||
     (job.is_assigned_to_current_employee && [
-      'accepted', 'on_the_way', 'en_route', 'arrived', 'in_progress',
-      'proof_submitted'
-    ].includes((job.status || '').toLowerCase()))
+      'accepted', 'on_the_way', 'en_route', 'arrived', 'service_started', 'in_progress',
+      'on_hold', 'proof_submitted', 'follow_up_required'
+    ].includes(statusLc))
   );
 
   // 2. Authoritative Pending Offer Verification (strictly not accepted and not busy on another active job)
@@ -58,7 +63,10 @@ export function getEmployeeJobPresentation(job, hasActiveJob = false) {
   if (isAcceptedByMe) {
     const rawStatus = (job.status || 'accepted').toLowerCase();
 
-    if (rawStatus === 'on_the_way') {
+    // 'en_route' is the backend's synonym for 'on_the_way' (both are valid
+    // targets from 'accepted'); it previously fell to the default
+    // "prior to heading out" card.
+    if (rawStatus === 'on_the_way' || rawStatus === 'en_route') {
       const isCancelAvail = Boolean(job.cancellation_info?.cancellation_available);
       return {
         state: 'ON_THE_WAY',
@@ -103,12 +111,19 @@ export function getEmployeeJobPresentation(job, hasActiveJob = false) {
       };
     }
 
-    if (['in_progress', 'service_completed', 'proof_submitted', 'payment_pending'].includes(rawStatus)) {
+    // service_started / on_hold / follow_up_required are active in-job
+    // backend statuses that previously fell to the default "ACCEPTED" card.
+    if (['service_started', 'in_progress', 'on_hold', 'follow_up_required', 'service_completed', 'proof_submitted', 'payment_pending'].includes(rawStatus)) {
+      const inJobLabel = rawStatus === 'on_hold'
+        ? 'ON HOLD'
+        : rawStatus === 'follow_up_required'
+          ? 'FOLLOW-UP REQUIRED'
+          : 'IN PROGRESS';
       return {
         state: 'IN_PROGRESS',
-        displayStatus: 'IN PROGRESS',
+        displayStatus: inJobLabel,
         badgeStatus: 'in_progress',
-        badgeLabel: 'IN PROGRESS',
+        badgeLabel: inJobLabel,
         badgeColorClass: 'bg-amber-50 text-amber-800 border-amber-200',
         badgeDotClass: 'bg-amber-500',
         isOffer: false,

@@ -62,13 +62,20 @@ export function EmployeeRuntimeProvider({ children }) {
     }
   }, [isOnlineAuth]);
 
-const CACHED_ACTIVE_JOBS_KEY = 'calservice_workforce_cached_active_jobs';
-const CACHED_COMPLETED_JOBS_KEY = 'calservice_workforce_cached_completed_jobs';
+// Purge legacy unscoped cache keys to prevent cross-account job contamination
+try {
+  localStorage.removeItem('calservice_workforce_cached_active_jobs');
+  localStorage.removeItem('calservice_workforce_cached_completed_jobs');
+} catch (_) {}
+
+const getActiveJobsCacheKey = (uid) => uid ? `calservice_workforce_cached_active_jobs_${uid}` : null;
+const getCompletedJobsCacheKey = (uid) => uid ? `calservice_workforce_cached_completed_jobs_${uid}` : null;
 
   // ── 2. Jobs State & Cache (Correction 6: Stale-While-Revalidate) ─────────────
   const [activeJobs, setActiveJobs] = useState(() => {
     try {
-      const saved = localStorage.getItem(CACHED_ACTIVE_JOBS_KEY);
+      const key = getActiveJobsCacheKey(user?.id);
+      const saved = key ? localStorage.getItem(key) : null;
       return saved ? JSON.parse(saved) : [];
     } catch {
       return [];
@@ -76,7 +83,8 @@ const CACHED_COMPLETED_JOBS_KEY = 'calservice_workforce_cached_completed_jobs';
   });
   const [completedJobs, setCompletedJobs] = useState(() => {
     try {
-      const saved = localStorage.getItem(CACHED_COMPLETED_JOBS_KEY);
+      const key = getCompletedJobsCacheKey(user?.id);
+      const saved = key ? localStorage.getItem(key) : null;
       return saved ? JSON.parse(saved) : [];
     } catch {
       return [];
@@ -86,6 +94,29 @@ const CACHED_COMPLETED_JOBS_KEY = 'calservice_workforce_cached_completed_jobs';
   const [isJobsLoading, setIsJobsLoading] = useState(false);
   const [isCompletedLoading, setIsCompletedLoading] = useState(false);
   const [jobsError, setJobsError] = useState(null);
+
+  // Sync cache if user changes (e.g. account switch or logout/login)
+  const currentUserId = user?.id;
+  const prevUserIdRef = useRef(currentUserId);
+  useEffect(() => {
+    if (prevUserIdRef.current !== currentUserId) {
+      prevUserIdRef.current = currentUserId;
+      try {
+        const key = getActiveJobsCacheKey(currentUserId);
+        const saved = key ? localStorage.getItem(key) : null;
+        setActiveJobs(saved ? JSON.parse(saved) : []);
+      } catch {
+        setActiveJobs([]);
+      }
+      try {
+        const key = getCompletedJobsCacheKey(currentUserId);
+        const saved = key ? localStorage.getItem(key) : null;
+        setCompletedJobs(saved ? JSON.parse(saved) : []);
+      } catch {
+        setCompletedJobs([]);
+      }
+    }
+  }, [currentUserId]);
 
   // Sequence versioning to prevent out-of-order stale responses
   const fetchGenerationRef = useRef(0);
@@ -112,19 +143,20 @@ const CACHED_COMPLETED_JOBS_KEY = 'calservice_workforce_cached_completed_jobs';
       activeJobs.find((j) => {
         const st = (j.status || j.job_status || '').toLowerCase();
         if (j.is_offer || st === 'unassigned') return false;
+
+        const assignedId = j.assigned_employee?.id || j.assigned_employee || j.assigned_employee_id;
+        const myEmpId = employee?.id;
+        const myUserId = user?.id;
+
+        // If the job explicitly belongs to another employee, it is NOT assigned to me
+        if (assignedId && myEmpId && assignedId !== myEmpId && assignedId !== myUserId) {
+          return false;
+        }
+
         const isAssignedToMe = Boolean(
+          (myEmpId && (assignedId === myEmpId || assignedId === myUserId)) ||
           j.is_assigned_to_current_employee === true ||
-          j.is_accepted_by_current_employee === true ||
-          (employee?.id && (
-            j.assigned_employee === employee.id ||
-            j.assigned_employee?.id === employee.id ||
-            j.assigned_employee_id === employee.id
-          )) ||
-          (user?.id && (
-            j.assigned_employee === user.id ||
-            j.assigned_employee?.id === user.id ||
-            j.assigned_employee_id === user.id
-          ))
+          j.is_accepted_by_current_employee === true
         );
         const isAnOffer = Boolean(j.is_offer === true || j.active_offer?.status === 'OFFERED');
         return isAssignedToMe && !isAnOffer && ACTIVE_QUEUE_STATUSES.includes(st);
@@ -236,7 +268,8 @@ const CACHED_COMPLETED_JOBS_KEY = 'calservice_workforce_cached_completed_jobs';
           if (Array.isArray(jobsData)) {
             setActiveJobs(jobsData);
             try {
-              localStorage.setItem(CACHED_ACTIVE_JOBS_KEY, JSON.stringify(jobsData));
+              const key = getActiveJobsCacheKey(user?.id);
+              if (key) localStorage.setItem(key, JSON.stringify(jobsData));
             } catch (_) {}
 
             // Seed initial offer IDs so historical offers do not trigger browser alerts
@@ -325,7 +358,8 @@ const CACHED_COMPLETED_JOBS_KEY = 'calservice_workforce_cached_completed_jobs';
         if (Array.isArray(completedData)) {
           setCompletedJobs(completedData);
           try {
-            localStorage.setItem(CACHED_COMPLETED_JOBS_KEY, JSON.stringify(completedData));
+            const key = getCompletedJobsCacheKey(user?.id);
+            if (key) localStorage.setItem(key, JSON.stringify(completedData));
           } catch (_) {}
           return completedData;
         }
@@ -361,7 +395,8 @@ const CACHED_COMPLETED_JOBS_KEY = 'calservice_workforce_cached_completed_jobs';
     setActiveJobs((prev) => {
       const updated = prev.filter((j) => (j.id !== jobId && j.job_id !== jobId));
       try {
-        localStorage.setItem(CACHED_ACTIVE_JOBS_KEY, JSON.stringify(updated));
+        const key = getActiveJobsCacheKey(user?.id);
+        if (key) localStorage.setItem(key, JSON.stringify(updated));
       } catch (_) {}
       return updated;
     });

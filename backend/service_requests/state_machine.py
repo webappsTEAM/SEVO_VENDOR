@@ -161,10 +161,14 @@ def apply_transition(service_request, target_status: str, actor=None) -> str:
     if target == "accepted":
         try:
             from workforce_api.services.automatic_dispatch import LOGISTICS_SERVICE_CATEGORIES
-            from workforce_api.services.logistics_events import set_logistics_leg
+            from workforce_api.services.logistics_events import initial_leg_for_category, set_logistics_leg
 
             if (service_request.service_category or "").strip().lower() in LOGISTICS_SERVICE_CATEGORIES:
-                set_logistics_leg(service_request, "EN_ROUTE_PICKUP", actor=actor)
+                set_logistics_leg(
+                    service_request,
+                    initial_leg_for_category(service_request.service_category),
+                    actor=actor,
+                )
         except Exception as leg_err:
             logger.info(
                 "Could not set the initial logistics leg on job %s: %s",

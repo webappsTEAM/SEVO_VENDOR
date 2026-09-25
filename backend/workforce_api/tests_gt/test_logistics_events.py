@@ -251,3 +251,46 @@ class LogisticsLegConcurrencyTests(SimpleTestCase):
             self.assertIn("DISMANTLING", legs_in_history)
             self.assertEqual(len(legs_in_history), 2)
             self.assertEqual(legs_in_history, ["PACKING", "DISMANTLING"])
+
+
+class CategoryPinnedSequenceTests(SimpleTestCase):
+    """A GT booking must stay on the GT leg sequence; P&M on the P&M one."""
+
+    def test_gt_truck_cannot_jump_into_pm_only_legs(self):
+        for target in ("IN_TRANSIT", "COMPLETED", "PACKING", "ARRIVED_DROP"):
+            ok, reason = le.can_advance_to("EN_ROUTE_DROP", target, service_category="goods_transport_truck")
+            self.assertFalse(ok, target)
+            self.assertIn("Invalid leg", reason)
+
+    def test_gt_two_wheeler_alias_is_pinned_too(self):
+        ok, _ = le.can_advance_to("", "COMPLETED", service_category="Two Wheeler")
+        self.assertFalse(ok)
+
+    def test_gt_normal_flow_unchanged(self):
+        seq = le.LEG_SEQUENCE
+        for cur, tgt in zip([""] + seq[:-1], seq):
+            ok, reason = le.can_advance_to(cur, tgt, service_category="goods_transport_truck")
+            self.assertTrue(ok, reason)
+
+    def test_pm_full_sequence_allowed_and_gt_only_legs_rejected(self):
+        seq = le.PM_LEG_SEQUENCE
+        for cur, tgt in zip([""] + seq[:-1], seq):
+            ok, reason = le.can_advance_to(cur, tgt, service_category="packers_movers")
+            self.assertTrue(ok, reason)
+        ok, _ = le.can_advance_to("LOADING", "EN_ROUTE_DROP", service_category="packers_movers")
+        self.assertFalse(ok)
+
+    def test_unknown_category_keeps_leg_based_detection(self):
+        ok, _ = le.can_advance_to("ARRIVED_PICKUP", "PACKING", service_category="")
+        self.assertTrue(ok)
+        ok, _ = le.can_advance_to("", "EN_ROUTE_PICKUP", service_category=None)
+        self.assertTrue(ok)
+
+    def test_set_logistics_leg_refuses_pm_leg_on_gt_job(self):
+        job = _StubJob(leg="EN_ROUTE_DROP", category="goods_transport_truck")
+        with patch.object(le, "emit_leg_changed") as emit:
+            changed, err = le.set_logistics_leg(job, "COMPLETED")
+        self.assertFalse(changed)
+        self.assertIn("Invalid leg", err)
+        self.assertEqual(job.logistics_leg, "EN_ROUTE_DROP")
+        emit.assert_not_called()

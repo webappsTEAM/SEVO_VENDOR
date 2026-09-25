@@ -72,10 +72,41 @@ PM_SPECIFIC_LEGS = {
     "IN_TRANSIT", "ARRIVED_DROP", "REASSEMBLY", "UNPACKING", "COMPLETED"
 }
 
+# Category aliases, kept in step with automatic_dispatch.normalize_service_category
+# (inlined rather than imported to avoid a services import cycle).
+GT_CATEGORY_ALIASES = {
+    "goods_transport_truck", "truck", "mini_truck",
+    "goods_transport_two_wheeler", "two_wheeler", "2_wheeler",
+}
+# Only the canonical slug: the vendor frontend (LogisticsLegController
+# isPackersMoversJob) recognises P&M by this slug or by title, so pinning
+# other aliases here could reject legs the UI legitimately sends.
+PM_CATEGORY_ALIASES = {"packers_movers"}
+
+
+def _normalise_category(service_category):
+    return str(service_category or "").strip().lower().replace("-", "_").replace(" ", "_")
+
+
 def get_sequence_for_job(service_category=None, current_leg=None, target_leg=None):
-    """Determines whether to use standard goods transport sequence or relocation sequence."""
-    cat = (service_category or "").strip().lower()
-    if cat == "packers_movers" or current_leg in PM_SPECIFIC_LEGS or target_leg in PM_SPECIFIC_LEGS:
+    """
+    Determines whether to use standard goods transport sequence or relocation
+    sequence.
+
+    A booking whose category is a known goods-transport category is pinned to
+    the GT sequence and a known Packers & Movers category to the P&M
+    sequence. Previously any P&M-only leg in the request (e.g. IN_TRANSIT or
+    COMPLETED) silently switched a GT truck booking onto the P&M sequence,
+    letting a GT trip jump straight to P&M-only states the Customer app's GT
+    tracking does not know about. The leg-based guess is kept only for
+    blank/unknown categories.
+    """
+    cat = _normalise_category(service_category)
+    if cat in GT_CATEGORY_ALIASES:
+        return LEG_SEQUENCE
+    if cat in PM_CATEGORY_ALIASES:
+        return PM_LEG_SEQUENCE
+    if current_leg in PM_SPECIFIC_LEGS or target_leg in PM_SPECIFIC_LEGS:
         return PM_LEG_SEQUENCE
     return LEG_SEQUENCE
 
@@ -108,6 +139,38 @@ def can_advance_to(current_leg, target_leg, service_category=None):
         )
     return True, ""
 
+
+
+# Legs that declare the goods handed over. The forward-only rule above still
+# lets a driver skip optional middle legs (e.g. DISMANTLING), but nothing
+# stopped these final legs being set while the job was only `accepted` --
+# before the driver had even arrived or started the job. DELIVERED is what
+# the Customer app's fare reconciliation and the waiting-charge window key
+# off, so reaching it must at least require the job to have been started.
+FINAL_LEGS = {"DELIVERED", "COMPLETED"}
+FINAL_LEG_ALLOWED_STATUSES = {"in_progress", "on_hold", "proof_submitted", "follow_up_required"}
+
+
+def final_leg_status_error(job_status, leg):
+    """Return an error message when `leg` is a final leg the job's status
+    does not yet permit, else ""."""
+    leg = (leg or "").strip().upper()
+    status = str(job_status or "").lower()
+    if leg in FINAL_LEGS and status not in FINAL_LEG_ALLOWED_STATUSES:
+        return (
+            f"Cannot mark the trip '{leg}' while the job is '{status}'. "
+            "Start the job at pickup first."
+        )
+    return ""
+
+
+def initial_leg_for_category(service_category):
+    """First leg set automatically when a logistics job is accepted: the GT
+    trip starts EN_ROUTE_PICKUP; a Packers & Movers job starts ASSIGNED (its
+    sequence has no EN_ROUTE_PICKUP, so setting that was silently rejected
+    and P&M jobs previously started with a blank leg)."""
+    seq = get_sequence_for_job(service_category)
+    return seq[0] if seq is PM_LEG_SEQUENCE else "EN_ROUTE_PICKUP"
 
 
 def set_logistics_leg(job, leg, actor=None):

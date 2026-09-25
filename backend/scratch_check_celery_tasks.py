@@ -14,6 +14,6 @@ def run_cmd(cmd):
         cursor.execute("SELECT line FROM cmd_out;")
         return [r[0] for r in cursor.fetchall()]
 
-cmd = "cd /var/www/calservices/current-customer/backend && /var/www/calservices/shared/venv/customer/bin/celery -A quicktims inspect registered"
+cmd = "cd /var/www/calservices/current-customer/backend && /var/www/calservices/shared/venv/customer/bin/celery -A sevo inspect registered"
 for l in run_cmd(cmd):
     print(l)
