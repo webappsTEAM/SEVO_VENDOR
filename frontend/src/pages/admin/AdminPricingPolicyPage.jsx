@@ -227,22 +227,25 @@ export function AdminPricingPolicyPage() {
                   </Field>
                 </div>
 
-                {/* GT Mini Truck audit fix: this fieldset used to render for
-                    EVERY service category's pricing policy (HVAC, plumbing,
+                {/* GT audit fix: this fieldset used to render for EVERY
+                    service category's pricing policy (HVAC, plumbing,
                     etc.), showing "loading/unloading" waiting-charge fields
-                    that make no sense outside Goods Transport. Scoped to
-                    goods_transport_truck only. The copy was also confirmed
-                    misleading: these fields drive only the technician app's
-                    live estimate display (services/waiting_charges.py) --
-                    the customer's actual GT waiting/detention charge is
-                    billed from a separate policy in the Customer app
-                    (Settings > (Django) Admin > Service Requests >
-                    GT Waiting Charge Policies), which should be kept in
-                    step with these numbers by whoever sets them. */}
-                {String(p.service_category || '').trim().toLowerCase() === 'goods_transport_truck' && (
+                    that make no sense outside Goods Transport. Scoped to the
+                    distance-priced GT categories (Mini Truck, Two Wheeler --
+                    previously Mini Truck only, leaving admins unable to see
+                    or configure Two Wheeler's waiting-charge estimate at
+                    all). The copy was also confirmed misleading: these
+                    fields drive only the technician app's live estimate
+                    display (services/waiting_charges.py) -- the customer's
+                    actual GT waiting/detention charge is billed from a
+                    separate policy in the Customer app (Settings > (Django)
+                    Admin > Service Requests > GT Waiting Charge Policies),
+                    which should be kept in step with these numbers by
+                    whoever sets them. */}
+                {['goods_transport_truck', 'goods_transport_two_wheeler'].includes(String(p.service_category || '').trim().toLowerCase()) && (
                   <fieldset className="mt-4 border-t border-slate-100 pt-4">
                     <legend className="text-sm font-medium text-slate-900 mb-1">
-                      Mini Truck waiting time (driver app estimate)
+                      Goods Transport waiting time (driver app estimate)
                     </legend>
                     <p className="text-xs text-slate-500 mb-3">
                       Measured from the driver's loading/unloading status updates and shown to

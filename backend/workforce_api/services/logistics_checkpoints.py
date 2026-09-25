@@ -301,10 +301,30 @@ def record_checkpoint_photo(job, emp, checkpoint, photo_file):
         rec.employee_id = getattr(emp, "id", None)
     rec.save()
     what = "Loading" if checkpoint == PICKUP else "Unloading"
+    # P&M/GT damage-evidence audit fix: the DROP-side photo already reaches
+    # the customer app as a real DeliveryProof.PHOTO row (via the separate
+    # job.completion_proof_submitted webhook WorkforceJobProofView fires),
+    # giving customers an "after" proof of what arrived. The PICKUP-side
+    # ("before") photo was captured here and stored on
+    # LogisticsCheckpointVerification, but this event's webhook payload
+    # never actually included the photo itself -- only a text notice -- so
+    # it could never become a DeliveryProof row on the customer side, and a
+    # damage dispute had no "before" evidence to compare against. Including
+    # photo_url here lets the customer-side webhook handler record it the
+    # same way completion_proof_submitted already does, using the exact
+    # same DeliveryProof.ProofType.PHOTO the customer app already knows how
+    # to display -- no new field or model, just carrying data that was
+    # already being captured through to where it was always meant to land.
+    photo_url = ""
+    try:
+        photo_url = rec.proof_photo.url if rec.proof_photo else ""
+    except Exception:
+        photo_url = ""
     notify_checkpoint_event(
         job, checkpoint, "photo_submitted",
         title=f"{what} proof photo submitted",
         message=f"Driver submitted the {what.lower()} proof photo at the {checkpoint.lower()} for job #{job.id}.",
+        extra={"photo_url": photo_url} if photo_url else None,
     )
     return True, {"checkpoint": checkpoint, "photo": True}
 

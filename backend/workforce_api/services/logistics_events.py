@@ -357,19 +357,3 @@ def emit_completion_proof(job, *, notes="", photo_url="", signature_url="",
     except Exception as exc:
         logger.info("Could not emit job.completion_proof_submitted for job %s: %s", job.id, exc)
 
-
-def absolute_media_url(request, file_field):
-    """
-    Build an absolute URL for an uploaded proof file, so the Customer app
-    stores a reference it can actually resolve. Returns "" when there is no
-    file -- callers omit the key entirely in that case.
-    """
-    try:
-        if not file_field:
-            return ""
-        url = file_field.url
-        if request is not None:
-            return request.build_absolute_uri(url)
-        return url
-    except Exception:
-        return ""

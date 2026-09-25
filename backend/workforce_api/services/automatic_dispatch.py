@@ -1492,7 +1492,40 @@ def _system_setting_float(key: str, default: float) -> float:
     return value
 
 
-def get_effective_radius_km(failed_cycle_count: int) -> float:
+def _system_setting_float_optional(key: str):
+    """Like _system_setting_float, but returns None (rather than a caller
+    default) when no WorkforceSystemSetting row exists -- used to detect
+    "admin has not configured this category override yet" so callers can
+    fall back to the shared/global setting instead of a hardcoded value."""
+    from django.core.cache import cache
+
+    cache_key = f"wf_system_setting_opt_{key}"
+    _MISS = object()
+    try:
+        cached = cache.get(cache_key, _MISS)
+    except Exception:
+        cached = _MISS
+    if cached is not _MISS:
+        return cached
+
+    value = None
+    try:
+        from workforce_api.models import WorkforceSystemSetting
+        row = WorkforceSystemSetting.objects.filter(key=key).first()
+        if row is not None and str(row.value or "").strip() != "":
+            value = float(row.value)
+    except Exception:
+        logger.debug("_system_setting_float_optional(%s) lookup failed", key)
+        value = None
+
+    try:
+        cache.set(cache_key, value, timeout=60)
+    except Exception:
+        pass
+    return value
+
+
+def get_effective_radius_km(failed_cycle_count: int, service_category: str = "") -> float:
     """
     Progressive radius widening (Booking Dispatch Framework section 4):
     stays at the normal MAX_DISPATCH_RADIUS_KM until a job has failed
@@ -1507,18 +1540,52 @@ def get_effective_radius_km(failed_cycle_count: int) -> float:
     Django settings, then the hardcoded module default -- unchanged
     behavior for every platform until an admin sets a WorkforceSystemSetting
     row.
+
+    GT Two Wheeler audit fix: dispatch radius previously had no
+    vehicle-class/category awareness at all -- a two-wheeler parcel job and
+    a truck freight job widened their candidate search radius identically,
+    which is unrealistic for a scooter/bike courier job (should stay tight
+    and urban) and unnecessarily narrow for a truck (which can reasonably
+    cover a wider area). `service_category` now lets an admin optionally
+    set a "*_TWO_WHEELER"-suffixed WorkforceSystemSetting override
+    (DISPATCH_MAX_RADIUS_KM_TWO_WHEELER,
+    DISPATCH_RADIUS_WIDENING_AFTER_CYCLES_TWO_WHEELER,
+    DISPATCH_RADIUS_WIDENING_STEP_KM_TWO_WHEELER,
+    DISPATCH_MAX_WIDENED_RADIUS_KM_TWO_WHEELER) that only applies to
+    goods_transport_two_wheeler jobs. When no such override is configured
+    (the default, out-of-the-box state), behavior for every category --
+    including two_wheeler -- is byte-identical to before this fix: it falls
+    straight back to the same shared settings used today.
     """
-    settings_base = getattr(settings, "DISPATCH_MAX_RADIUS_KM", MAX_DISPATCH_RADIUS_KM)
-    base_radius = _system_setting_float("DISPATCH_MAX_RADIUS_KM", settings_base)
-    settings_after_cycles = getattr(settings, "DISPATCH_RADIUS_WIDENING_AFTER_CYCLES", RADIUS_WIDENING_AFTER_CYCLES)
-    after_cycles = int(_system_setting_float("DISPATCH_RADIUS_WIDENING_AFTER_CYCLES", settings_after_cycles))
+    cat = str(service_category or "").strip().lower()
+    # P&M audit fix: extend the same optional per-category override to
+    # packers_movers -- a relocation's realistic candidate-search area is
+    # arguably wider than an urban parcel/courier job's, and there was no
+    # way for an admin to tune it independently of the shared default. The
+    # same no-override-configured => byte-identical-to-before guarantee
+    # applies here as it does for two_wheeler.
+    _CATEGORY_RADIUS_SUFFIXES = {
+        "goods_transport_two_wheeler": "_TWO_WHEELER",
+        "packers_movers": "_PACKERS_MOVERS",
+    }
+    suffix = _CATEGORY_RADIUS_SUFFIXES.get(cat, "")
+
+    def _bound(key, settings_attr, module_default):
+        settings_val = getattr(settings, settings_attr, module_default)
+        shared = _system_setting_float(key, settings_val)
+        if suffix:
+            override = _system_setting_float_optional(f"{key}{suffix}")
+            if override is not None:
+                return override
+        return shared
+
+    base_radius = _bound("DISPATCH_MAX_RADIUS_KM", "DISPATCH_MAX_RADIUS_KM", MAX_DISPATCH_RADIUS_KM)
+    after_cycles = int(_bound("DISPATCH_RADIUS_WIDENING_AFTER_CYCLES", "DISPATCH_RADIUS_WIDENING_AFTER_CYCLES", RADIUS_WIDENING_AFTER_CYCLES))
     if failed_cycle_count < after_cycles:
         return base_radius
 
-    settings_step = getattr(settings, "DISPATCH_RADIUS_WIDENING_STEP_KM", RADIUS_WIDENING_STEP_KM)
-    step_km = _system_setting_float("DISPATCH_RADIUS_WIDENING_STEP_KM", settings_step)
-    settings_max = getattr(settings, "DISPATCH_MAX_WIDENED_RADIUS_KM", MAX_WIDENED_DISPATCH_RADIUS_KM)
-    max_radius = _system_setting_float("DISPATCH_MAX_WIDENED_RADIUS_KM", settings_max)
+    step_km = _bound("DISPATCH_RADIUS_WIDENING_STEP_KM", "DISPATCH_RADIUS_WIDENING_STEP_KM", RADIUS_WIDENING_STEP_KM)
+    max_radius = _bound("DISPATCH_MAX_WIDENED_RADIUS_KM", "DISPATCH_MAX_WIDENED_RADIUS_KM", MAX_WIDENED_DISPATCH_RADIUS_KM)
     extra_cycles = (failed_cycle_count - after_cycles) + 1
     widened = base_radius + (extra_cycles * step_km)
     return min(widened, max_radius)
@@ -1855,7 +1922,7 @@ def _dispatch_job_two_phase(job_id, max_gps_age_seconds: int = MAX_GPS_AGE_SECON
         )
 
         failed_cycle_count = _count_failed_offer_cycles(job_obj)
-        effective_radius_km = get_effective_radius_km(failed_cycle_count)
+        effective_radius_km = get_effective_radius_km(failed_cycle_count, service_category=job_obj.service_category)
 
         # Explicitly aggregate all technicians who previously received offers or declined/rejected this job
         declined_emp_ids = set()

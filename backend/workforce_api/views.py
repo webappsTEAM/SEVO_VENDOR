@@ -7243,6 +7243,69 @@ class WorkforceJobLiveTrackingView(APIView):
             tech_photo = profile_img.url if hasattr(profile_img, "url") else str(profile_img or "")
             tech_rating = getattr(tech, "rating", None)
 
+        # GT Mini Truck audit fix: the Customer app's tracking payload
+        # builder already reads top-level "vehicle_number"/"vehicle_type"
+        # from this response (service_requests/views.py's technician_data
+        # dict) -- but this view never included them, so a Mini Truck
+        # customer could never see which truck was actually coming, only
+        # the driver's name/photo. Vehicle model has real registration_number
+        # / vehicle_type fields; resolve the driver's active,
+        # document-current vehicle whose class satisfies the job's quoted
+        # vehicle_class (same matching rule automatic_dispatch.
+        # check_vehicle_class_compatibility uses for dispatch eligibility),
+        # falling back to their first active vehicle if the class can't be
+        # determined. Scoped to the distance-priced GT categories (Mini
+        # Truck, Two Wheeler); _VEHICLE_CLASS_RANK already has a
+        # "two_wheeler" entry so the same resolution logic applies
+        # unchanged. P&M tracking responses are unaffected.
+        vehicle_number = ""
+        vehicle_type = ""
+        if tech and (job.service_category or "").strip().lower() in ("goods_transport_truck", "goods_transport_two_wheeler"):
+            try:
+                from workforce_api.models import Vehicle
+                from workforce_api.services.automatic_dispatch import _VEHICLE_CLASS_RANK
+
+                fare_breakdown = getattr(job, "fare_breakdown", None) or {}
+                required_class = str(fare_breakdown.get("vehicle_class") or "").strip().lower() if isinstance(fare_breakdown, dict) else ""
+                required_rank = _VEHICLE_CLASS_RANK.get(required_class)
+
+                active_vehicles = list(Vehicle.objects.filter(employee=tech, is_active=True))
+                chosen = None
+                if required_rank is not None:
+                    for v in active_vehicles:
+                        if not v.is_document_current():
+                            continue
+                        v_rank = _VEHICLE_CLASS_RANK.get(str(v.vehicle_type or "").strip().lower())
+                        if v_rank is not None and v_rank >= required_rank:
+                            chosen = v
+                            break
+                if chosen is None and active_vehicles:
+                    chosen = active_vehicles[0]
+                if chosen is not None:
+                    vehicle_number = chosen.registration_number or ""
+                    vehicle_type = chosen.get_vehicle_type_display() if hasattr(chosen, "get_vehicle_type_display") else (chosen.vehicle_type or "")
+            except Exception:
+                logger.exception("Could not resolve vehicle info for job %s live tracking", job.id)
+
+        # P&M audit fix: fare_breakdown["crew_size"]/["items"] (the customer's
+        # selected item inventory, already captured verbatim at booking time
+        # by packers_movers_pricing.py) were computed at quote time but never
+        # surfaced anywhere in the vendor app -- the crew had no way to see
+        # how many workers the job was priced for or what inventory to expect,
+        # despite the data already sitting in fare_breakdown that this view
+        # already loads above. Read-only, additive, scoped to packers_movers
+        # so no other category's response payload changes shape.
+        pm_crew_size = None
+        pm_items = None
+        if (job.service_category or "").strip().lower() == "packers_movers":
+            try:
+                _fb = getattr(job, "fare_breakdown", None) or {}
+                if isinstance(_fb, dict):
+                    pm_crew_size = _fb.get("crew_size")
+                    pm_items = _fb.get("items")
+            except Exception:
+                logger.exception("Could not read crew_size/items from fare_breakdown for job %s", job.id)
+
         logger.info(f"[MAP_RECONCILIATION] job_id={job.id} freshness_state={freshness_state} distance_m={distance_m} age_seconds={age_seconds}")
 
         return Response({
@@ -7262,9 +7325,13 @@ class WorkforceJobLiveTrackingView(APIView):
                 "photo": tech_photo,
                 "rating": tech_rating,
                 "location": tech_loc,
+                "vehicle_number": vehicle_number,
+                "vehicle_type": vehicle_type,
             } if tech else None,
             "technician_photo": tech_photo,
             "technician_rating": tech_rating,
+            "vehicle_number": vehicle_number,
+            "vehicle_type": vehicle_type,
             "start_otp": start_otp,
             "distance_m": distance_m,
             "geofence_passed": geofence_passed,
@@ -7272,6 +7339,8 @@ class WorkforceJobLiveTrackingView(APIView):
             "freshness_state": freshness_state,
             "age_seconds": age_seconds,
             "updated_at": now.isoformat(),
+            "crew_size": pm_crew_size,
+            "inventory_items": pm_items,
             **route_points,
         }, status=status.HTTP_200_OK)
 
