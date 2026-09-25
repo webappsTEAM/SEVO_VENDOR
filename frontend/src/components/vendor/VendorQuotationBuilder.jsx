@@ -203,8 +203,16 @@ export default function VendorQuotationBuilder({
   };
 
   const handleAddSnapshotItem = (snap) => {
+    const itemName = snap.item_name || snap.item_name_snapshot || '';
+    const itemPrice = Number(snap.price ?? snap.price_snapshot ?? 0);
+    const itemUnit = snap.unit || snap.unit_snapshot || 'unit';
+    const itemCategory = snap.category || snap.category_name_snapshot || 'General';
+    const rateId = snap.rate_item_id || snap.id;
+
     // Check if item already exists in quote
-    const existingIndex = items.findIndex((it) => it.rate_item_id === snap.id || it.title === snap.item_name);
+    const existingIndex = items.findIndex(
+      (it) => (rateId && it.rate_item_id === rateId) || it.title === itemName
+    );
     if (existingIndex >= 0) {
       // Increment quantity
       const updated = [...items];
@@ -214,14 +222,14 @@ export default function VendorQuotationBuilder({
       setItems([
         ...items,
         {
-          rate_item_id: snap.id,
-          category_name_snapshot: snap.category,
-          item_name_snapshot: snap.item_name,
-          title: snap.item_name,
-          item_type: snap.service_type === 'PART' ? 'PART' : snap.item_name.toLowerCase().includes('gas') ? 'GAS' : 'LABOR',
+          rate_item_id: rateId,
+          category_name_snapshot: itemCategory,
+          item_name_snapshot: itemName,
+          title: itemName,
+          item_type: snap.service_type === 'PART' ? 'PART' : itemName.toLowerCase().includes('gas') ? 'GAS' : 'LABOR',
           quantity: 1,
-          unit: snap.unit || 'unit',
-          unit_price: Number(snap.price) || 0,
+          unit: itemUnit,
+          unit_price: itemPrice,
         },
       ]);
     }
@@ -237,12 +245,18 @@ export default function VendorQuotationBuilder({
 
   const handleItemChange = (index, field, val) => {
     const updated = [...items];
-    updated[index] = { ...updated[index], [field]: val };
+    let parsedVal = val;
+    if (field === 'quantity') {
+      parsedVal = val === '' ? '' : Math.max(0.1, parseFloat(val) || 0);
+    } else if (field === 'unit_price') {
+      parsedVal = val === '' ? '' : Math.max(0, parseFloat(val) || 0);
+    }
+    updated[index] = { ...updated[index], [field]: parsedVal };
     if (field === 'title') {
       updated[index].item_name_snapshot = val;
     }
     if (field === 'unit_price') {
-      updated[index].unit_price_snapshot = val;
+      updated[index].unit_price_snapshot = parsedVal;
     }
     setItems(updated);
   };
@@ -258,7 +272,7 @@ export default function VendorQuotationBuilder({
     try {
       const payload = {
         valid_until: validUntil,
-        tax_rate_percent: applyGst ? taxRatePercent : 0,
+        tax_rate_percent: applyGst ? Number(taxRatePercent) || 0 : 0,
         discount_amount: Number(discountAmount) || 0,
         notes: notes,
         items: items.map((it) => ({
@@ -266,10 +280,10 @@ export default function VendorQuotationBuilder({
           category_name_snapshot: it.category_name_snapshot || '',
           item_name_snapshot: it.item_name_snapshot || it.title,
           title: it.title,
-          item_type: it.item_type,
-          quantity: Number(it.quantity) || 1,
-          unit: it.unit,
-          unit_price: Number(it.unit_price) || 0,
+          item_type: it.item_type || 'LABOR',
+          quantity: Math.max(0.1, Number(it.quantity) || 1),
+          unit: it.unit || 'unit',
+          unit_price: Math.max(0, Number(it.unit_price) || 0),
         })),
       };
 

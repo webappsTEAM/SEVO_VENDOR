@@ -20,32 +20,56 @@ logger = logging.getLogger("workforce.workload")
 ACTIVE_QUEUE_STATUSES: List[str] = [
     "assigned",
     "accepted",
+    "customer_approved",
+    "repair_authorized",
     "on_the_way",
     "en_route",
     "arrived",
     "in_progress",
+    "in_service",
+    "inspection",
     "proof_submitted",
+    "quotation_created",
+    "quotation_pending_approval",
+    "quotation_sent",
+    "inspection_completed",
 ]
 
 # Authoritative definition of all statuses where an employee is actively executing work
 ACTIVE_WORKLOAD_STATUSES: List[str] = [
     "accepted",
+    "customer_approved",
+    "repair_authorized",
     "on_the_way",
     "en_route",
     "arrived",
     "in_progress",
+    "in_service",
+    "inspection",
     "proof_submitted",
+    "quotation_created",
+    "quotation_pending_approval",
+    "quotation_sent",
+    "inspection_completed",
 ]
 
 # Workload blocking statuses that prevent new exclusive offers (ONE EMPLOYEE = ONE ACTIVE JOB)
 WORKLOAD_OCCUPIED_STATUSES: List[str] = [
     "assigned",
     "accepted",
+    "customer_approved",
+    "repair_authorized",
     "on_the_way",
     "en_route",
     "arrived",
     "in_progress",
+    "in_service",
+    "inspection",
     "proof_submitted",
+    "quotation_created",
+    "quotation_pending_approval",
+    "quotation_sent",
+    "inspection_completed",
 ]
 
 # Terminal statuses where an assignment has fully ended
@@ -186,11 +210,13 @@ def supersede_other_offers_for_employee(employee, accepted_job, reason: str = "E
     ).exclude(job_id=accepted_job_id)
 
     closed_count = 0
+    jobs_to_redispatch = set()
     for offer in other_offers:
         offer.status = WorkforceJobOffer.Status.SUPERSEDED_BY_ACCEPTANCE
         offer.rejection_reason = reason
         offer.save(update_fields=["status", "rejection_reason"])
         closed_count += 1
+        jobs_to_redispatch.add(offer.job_id)
 
         logger.info(
             f"[OFFER_SUPERSEDED] employee={emp_id} offer_job={offer.job_id} "
@@ -220,5 +246,26 @@ def supersede_other_offers_for_employee(employee, accepted_job, reason: str = "E
                 related_object_id=str(offer.job_id),
                 is_read=False,
             ).update(is_read=True, read_at=timezone.now())
+
+    # Recover any jobs that now have zero active unexpired offers
+    from workforce_api.models import WorkforceDispatchState
+    from django.utils import timezone
+    now = timezone.now()
+    for j_id in jobs_to_redispatch:
+        has_active = WorkforceJobOffer.objects.filter(
+            job_id=j_id,
+            status=WorkforceJobOffer.Status.OFFERED,
+            expires_at__gt=now,
+        ).exists()
+        if not has_active:
+            WorkforceDispatchState.objects.filter(job_id=j_id).update(
+                dispatch_status=WorkforceDispatchState.DispatchStatus.NEVER_ATTEMPTED,
+                locked_at=None,
+            )
+            try:
+                from workforce_api.services.automatic_dispatch import dispatch_next_candidate
+                dispatch_next_candidate(j_id)
+            except Exception as e:
+                logger.warning(f"[SUPERSEDE_REDISPATCH_FAIL] Job #{j_id}: {e}")
 
     return closed_count

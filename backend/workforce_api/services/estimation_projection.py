@@ -41,12 +41,12 @@ logger = logging.getLogger(__name__)
 # summary from their side -- they did approve it.
 STATUS_MAP = {
     "DRAFT": "DRAFT",
-    "PENDING_REVIEW": "DRAFT",           # held for admin; not the customer's business yet
+    "PENDING_REVIEW": "SUBMITTED_FOR_ADMIN_REVIEW",
+    "CHANGES_REQUESTED": "SENT_BACK_TO_TECHNICIAN",
+    "ADMIN_APPROVED": "ADMIN_APPROVED",
     "SENT_TO_CUSTOMER": "SENT",
-    "CHANGES_REQUESTED": "SENT",         # still the live version until v2 supersedes it
     "CUSTOMER_ACCEPTED": "APPROVED",
     "PENDING_ADMIN_APPROVAL": "APPROVED",
-    "ADMIN_APPROVED": "APPROVED",
     "CONVERSION_PENDING": "APPROVED",
     "CONVERTED": "APPROVED",
     "DECLINED": "REJECTED",
@@ -59,10 +59,12 @@ STATUS_MAP = {
 # WorkforceQuote.Status -> Estimation.Status, so the customer's booking screen
 # moves through its own lifecycle as the quote does.
 ESTIMATION_STATUS_MAP = {
+    "PENDING_REVIEW": "SUBMITTED_FOR_ADMIN_REVIEW",
+    "CHANGES_REQUESTED": "SENT_BACK_TO_TECHNICIAN",
+    "ADMIN_APPROVED": "ADMIN_APPROVED",
     "SENT_TO_CUSTOMER": "QUOTATION_SENT",
     "CUSTOMER_ACCEPTED": "CUSTOMER_APPROVED",
     "PENDING_ADMIN_APPROVAL": "CUSTOMER_APPROVED",
-    "ADMIN_APPROVED": "CUSTOMER_APPROVED",
     "CONVERTED": "CONVERTED_TO_SERVICE",
     "DECLINED": "CUSTOMER_REJECTED",
     "ADMIN_REJECTED": "CUSTOMER_REJECTED",
@@ -92,6 +94,21 @@ def project_quote(quote):
         return None
 
 
+CUSTOMER_VISIBLE_STATUSES = {
+    "SENT_TO_CUSTOMER",
+    "CUSTOMER_ACCEPTED",
+    "PENDING_ADMIN_APPROVAL",
+    "ADMIN_APPROVED",
+    "CONVERSION_PENDING",
+    "CONVERTED",
+    "DECLINED",
+    "ADMIN_REJECTED",
+    "EXPIRED",
+    "SUPERSEDED",
+    "CANCELLED",
+}
+
+
 def _project(quote):
     from service_requests.models import (
         Estimation,
@@ -103,17 +120,66 @@ def _project(quote):
     if job is None:
         return None
 
+    # Hard customer privacy gate: Quotes that are in DRAFT or PENDING_REVIEW
+    # (held for CRM/SEVO review) must NOT be visible to the customer under any circumstances.
+    if quote.status not in CUSTOMER_VISIBLE_STATUSES:
+        EstimationQuotation.objects.filter(quote_ref=quote_ref_for(quote)).delete()
+        logger.debug(
+            "Quote %s is in status %s (held before CRM approval); projection omitted.",
+            quote.quote_number, quote.status,
+        )
+        return None
+
     # A quote that CAME FROM the AC path already has its customer-side row --
     # vendor_views._sync_workforce_quote created this WorkforceQuote from it,
     # copying quote_ref into quote_number. Projecting it back would create a
     # second EstimationQuotation with a doubled reference (QTE-...-V1-V1) and
     # the customer would see the same quotation twice.
-    if EstimationQuotation.objects.filter(quote_ref=quote.quote_number).exists():
-        logger.debug(
-            "Quote %s originated in the AC estimation path; its projection already exists.",
-            quote.quote_number,
+    existing_ac_quote = EstimationQuotation.objects.filter(quote_ref=quote.quote_number).first()
+    if existing_ac_quote:
+        with transaction.atomic():
+            ac_target_status = STATUS_MAP.get(quote.status)
+            if ac_target_status and existing_ac_quote.status != ac_target_status:
+                existing_ac_quote.status = ac_target_status
+                if quote.status == "SENT_TO_CUSTOMER":
+                    existing_ac_quote.valid_until = quote.valid_until.date() if quote.valid_until else existing_ac_quote.valid_until
+                existing_ac_quote.save(update_fields=["status", "updated_at"] + (["valid_until"] if quote.status == "SENT_TO_CUSTOMER" else []))
+
+            if existing_ac_quote.estimation:
+                est_target = ESTIMATION_STATUS_MAP.get(quote.status)
+                if est_target and existing_ac_quote.estimation.status != est_target:
+                    existing_ac_quote.estimation.status = est_target
+                    existing_ac_quote.estimation.save(update_fields=["status", "updated_at"])
+
+            if quote.status == "SENT_TO_CUSTOMER":
+                job.status = "quotation_sent"
+                job.quote_number = quote.quote_number
+                job.total_amount = quote.total_amount
+                job.subtotal_amount = quote.subtotal_amount
+                job.discount_amount = quote.discount_amount
+                job.final_amount = quote.total_amount
+                cart_items = []
+                for it in quote.items.all():
+                    cart_items.append({
+                        "title": it.name,
+                        "description": it.description or "",
+                        "quantity": float(it.quantity),
+                        "unit": it.unit,
+                        "unit_price": float(it.unit_price),
+                        "tax_rate": float(it.tax_rate),
+                        "line_total": float(it.total_amount),
+                        "type": str(it.section or "PART"),
+                    })
+                job.cart_data = cart_items
+                job.save(update_fields=[
+                    "status", "quote_number", "total_amount", "subtotal_amount",
+                    "discount_amount", "final_amount", "cart_data", "updated_at"
+                ])
+        logger.info(
+            "Synchronized existing AC quote %s to status %s on job #%s",
+            quote.quote_number, ac_target_status, job.id
         )
-        return None
+        return existing_ac_quote
 
     with transaction.atomic():
         estimation = _estimation_for(job, quote, Estimation)
@@ -140,7 +206,11 @@ def _project(quote):
                 "customer_rejected_at": (
                     quote.customer_decided_at if quote.customer_decision == "DECLINED" else None
                 ),
+                "admin_reviewed_at": quote.admin_approved_at or quote.admin_cleared_at,
+                "admin_reviewed_by": quote.admin_approved_by or quote.admin_cleared_by,
+                "admin_notes": quote.admin_approval_notes or quote.admin_clearance_notes or "",
                 "rejection_note": quote.customer_decline_reason or "",
+                "admin_notes": quote.admin_approval_notes or quote.admin_clearance_notes or "",
             },
         )
 
@@ -169,6 +239,31 @@ def _project(quote):
         if target and estimation.status != target:
             estimation.status = target
             estimation.save(update_fields=["status", "updated_at"])
+
+        if quote.status == "SENT_TO_CUSTOMER":
+            job.status = "quotation_sent"
+            job.quote_number = quote.quote_number
+            job.total_amount = quote.total_amount
+            job.subtotal_amount = quote.subtotal_amount
+            job.discount_amount = quote.discount_amount
+            job.final_amount = quote.total_amount
+            cart_items = []
+            for it in quote.items.all().order_by("sort_order", "id"):
+                cart_items.append({
+                    "title": it.name,
+                    "description": it.description or "",
+                    "quantity": float(it.quantity),
+                    "unit": it.unit,
+                    "unit_price": float(it.unit_price),
+                    "tax_rate": float(it.tax_rate or 18),
+                    "line_total": float(it.total_amount),
+                    "type": str(it.section or "PART"),
+                })
+            job.cart_data = cart_items
+            job.save(update_fields=[
+                "status", "quote_number", "total_amount", "subtotal_amount",
+                "discount_amount", "final_amount", "cart_data", "updated_at"
+            ])
 
     logger.info(
         "Projected quote %s v%s -> EstimationQuotation %s (%s)",
