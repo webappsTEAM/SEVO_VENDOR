@@ -45,7 +45,11 @@ ALLOWED_TRANSITIONS = {
     "arrived": ["service_started", "in_progress", "inspection_in_progress", "cancelled", "unable_to_complete"],
     "inspection_in_progress": ["in_progress", "on_hold", "proof_submitted", "completed", "cancelled", "unable_to_complete"],
     "service_started": ["in_progress", "cancelled", "unable_to_complete"],
-    "in_progress": ["on_hold", "proof_submitted", "cancelled", "unable_to_complete", "follow_up_required"],
+    "in_progress": ["on_hold", "proof_submitted", "cancelled", "unable_to_complete", "follow_up_required", "quotation_created", "quotation_sent", "inspection_completed"],
+    "quotation_created": ["quotation_sent", "quotation_pending_approval", "in_progress", "cancelled"],
+    "quotation_pending_approval": ["quotation_sent", "in_progress", "cancelled"],
+    "quotation_sent": ["in_progress", "assigned", "accepted", "cancelled", "customer_rejected", "inspection_completed", "proof_submitted"],
+    "inspection_completed": ["quotation_sent", "in_progress", "assigned", "accepted", "proof_submitted", "completed", "cancelled"],
     # A hold is a pause inside an active job, so it can only return to
     # in_progress or end the job -- it can never skip straight to proof.
     "on_hold": ["in_progress", "cancelled", "unable_to_complete"],

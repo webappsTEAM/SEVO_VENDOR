@@ -195,10 +195,11 @@ export function PortalCockpitLayout({
 
   const status = (isActiveAssignment ? (activeJob?.status || activeJob?.job_status || '') : (isOffer ? 'OFFERED' : 'STANDBY')).toUpperCase();
 
-  const isAssigned = status === 'ASSIGNED' || status === 'ACCEPTED';
+  const isCustomerApproved = status === 'CUSTOMER_APPROVED' || status === 'REPAIR_AUTHORIZED';
+  const isAssigned = status === 'ASSIGNED' || status === 'ACCEPTED' || isCustomerApproved;
   const isEnRoute = status === 'EN_ROUTE' || status === 'ON_THE_WAY';
   const isArrived = status === 'ARRIVED';
-  const isInProgress = status === 'IN_PROGRESS' || status === 'IN_SERVICE' || status === 'INSPECTION';
+  const isInProgress = status === 'IN_PROGRESS' || status === 'IN_SERVICE' || status === 'INSPECTION' || status === 'QUOTATION_SENT' || status === 'QUOTATION_PENDING_APPROVAL' || status === 'QUOTATION_CREATED' || status === 'INSPECTION_COMPLETED';
   const isProofSubmitted = status === 'PROOF_SUBMITTED' || status === 'PENDING_APPROVAL' || status === 'WAITING_FOR_PAYMENT';
   const isCompleted = status === 'COMPLETED' || status === 'WORK_COMPLETED';
 
@@ -1112,6 +1113,56 @@ export function PortalCockpitLayout({
                   <CheckCircle2 className="w-4 h-4" />
                   <span>Complete {isEstimationJob ? 'Consultation' : 'Service'} &amp; Submit Proof</span>
                 </button>
+              ) : (isEstimationJob || isCustomerApproved || activeQuoteStatus === 'CUSTOMER_ACCEPTED' || activeQuoteStatus === 'CONVERTED') ? (
+                (activeQuoteStatus === 'CUSTOMER_ACCEPTED' || activeQuoteStatus === 'CONVERTED' || isCustomerApproved) ? (
+                  // Quote accepted: show "Start Execution" so the job moves to IN_PROGRESS,
+                  // after which the standard "Complete Service & Submit Proof" button (isInProgress branch above)
+                  // will be shown automatically. Previously this was a static badge with no action,
+                  // leaving the technician with no path to completion.
+                  <button
+                    type="button"
+                    onClick={() => handleJobAction(activeJob.id, 'IN_PROGRESS')}
+                    disabled={actionLoading || !isAllPrerequisitesDone}
+                    className={`w-full py-3.5 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 ${
+                      isAllPrerequisitesDone
+                        ? 'bg-[#2d6a4f] hover:bg-[#1b4332] active:bg-[#153427] text-white shadow-md cursor-pointer'
+                        : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                    }`}
+                  >
+                    <Play className="w-3.5 h-3.5 fill-current" />
+                    <span>Start Service Execution (Quote Accepted)</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => onOpenQuotationModal && onOpenQuotationModal(activeJob)}
+                    disabled={actionLoading || (!isAllPrerequisitesDone && !activeJob.can_create_quote && !activeQuoteNumber)}
+                    className={`w-full py-3.5 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 ${
+                      isAllPrerequisitesDone || activeJob.can_create_quote || activeQuoteNumber
+                        ? activeQuoteStatus === 'CHANGES_REQUESTED'
+                          ? 'bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white shadow-md cursor-pointer'
+                          : 'bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white shadow-md cursor-pointer'
+                        : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                    }`}
+                  >
+                    <Calculator className="w-3.5 h-3.5 fill-current" />
+                    <span>
+                      {activeQuoteStatus === 'CHANGES_REQUESTED'
+                        ? `Draft Revised Quote (v${activeQuoteVersion})`
+                        : activeQuoteStatus === 'SENT_TO_CUSTOMER'
+                        ? `View Sent Quotation (v${activeQuoteVersion})`
+                        : activeQuoteNumber
+                        ? `Open Quotation Builder (v${activeQuoteVersion})`
+                        : isAllPrerequisitesDone
+                        ? 'Draft Quotation'
+                        : !isOtpVerified
+                        ? 'Draft Quotation (Verify Customer OTP)'
+                        : !isPresencePhotoDone
+                        ? 'Draft Quotation (Capture Tech Selfie Above)'
+                        : 'Draft Quotation (Complete Prerequisites)'}
+                    </span>
+                  </button>
+                )
               ) : (
                 <button
                   type="button"

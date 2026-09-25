@@ -3477,10 +3477,31 @@ export function EmployeeDashboardPage() {
                                           {selectedJob.active_quote_number}
                                         </span>
                                       )}
+                                      {selectedJob.active_quote_status && (
+                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
+                                          ['APPROVED', 'CUSTOMER_ACCEPTED'].includes(selectedJob.active_quote_status)
+                                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                                            : selectedJob.active_quote_status === 'PENDING_REVIEW'
+                                            ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                                            : selectedJob.active_quote_status === 'CHANGES_REQUESTED'
+                                            ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                                            : 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300'
+                                        }`}>
+                                          {selectedJob.active_quote_status.replace(/_/g, ' ')}
+                                        </span>
+                                      )}
                                     </div>
                                     <p className="text-[11px] text-indigo-700 dark:text-indigo-300 mt-0.5">
-                                      {preServiceState.is_complete || selectedJob.can_create_quote
-                                        ? 'Site inspection unlocked. Record dimensions, select rate-card items, and deliver formal quote to customer.'
+                                      {['APPROVED', 'CUSTOMER_ACCEPTED'].includes(selectedJob.active_quote_status)
+                                        ? 'Customer has accepted the quotation. Repair is authorized to begin.'
+                                        : selectedJob.active_quote_status === 'PENDING_REVIEW'
+                                        ? 'Quotation submitted for Vendor Admin review. Waiting for admin approval before customer release.'
+                                        : selectedJob.active_quote_status === 'CHANGES_REQUESTED'
+                                        ? 'Vendor Admin requested changes. Please open Quotation Builder to revise and resubmit.'
+                                        : selectedJob.active_quote_status === 'SENT_TO_CUSTOMER'
+                                        ? 'Quotation released to customer. Awaiting customer review and authorization.'
+                                        : (preServiceState.is_complete || selectedJob.can_create_quote)
+                                        ? 'Site inspection unlocked. Record dimensions, select rate-card items, and submit quote for Vendor Admin approval.'
                                         : 'Complete Step 1 Arrival and Step 2 OTP/Selfie verification above to unlock Quotation Builder.'}
                                     </p>
                                   </div>
