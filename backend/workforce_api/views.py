@@ -2951,7 +2951,7 @@ def sync_payment_amount_due(pmt, job):
     """
     if pmt is None or job is None:
         return False
-    if pmt.payment_status not in [JobPayment.PaymentStatus.PENDING, JobPayment.PaymentStatus.CASH_PENDING]:
+    if pmt.payment_status != JobPayment.PaymentStatus.PENDING:
         return False
     expected = job.total_amount or Decimal("0.00")
 
@@ -3041,13 +3041,6 @@ class WorkforceJobListView(APIView):
 
             jobs = list(jobs_qs.select_related("customer", "assigned_employee", "assigned_employee__user", "company").order_by("-created_at")[:100])
         elif emp:
-            # Opportunistically sweep expired offers and recover stranded dispatch states
-            try:
-                from workforce_api.services.automatic_dispatch import expire_and_reassign_offers
-                expire_and_reassign_offers()
-            except Exception:
-                pass
-
             server_now = timezone.now()
             from workforce_api.models import WorkforceJobOffer, WorkforceJobLifecycleEvent, WorkforceWorkExtension, JobPayment
             from workforce_api.services.workload import ACTIVE_QUEUE_STATUSES, WORKLOAD_OCCUPIED_STATUSES

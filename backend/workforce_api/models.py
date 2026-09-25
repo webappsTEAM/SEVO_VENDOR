@@ -3408,6 +3408,8 @@ class VendorStore(models.Model):
     logo_url = models.CharField(max_length=1000, blank=True, default="")
     banner_url = models.CharField(max_length=1000, blank=True, default="")
     fssai_license_number = models.CharField(max_length=100, blank=True, default="")
+    gst_number = models.CharField(max_length=50, blank=True, default="")
+    onboarding = models.JSONField(blank=True, default=dict)
     store_address = models.TextField(blank=True, default="")
     latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)

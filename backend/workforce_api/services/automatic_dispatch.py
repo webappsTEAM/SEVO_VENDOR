@@ -502,25 +502,17 @@ def get_scheduled_dispatch_window(job_obj, now=None) -> ScheduledDispatchWindow:
     naive_dt = datetime.datetime.combine(pref_date, slot_time)
     scheduled_dt = naive_dt.replace(tzinfo=operational_tz)
     window_open = scheduled_dt - datetime.timedelta(hours=1)
-    # Keep same-day scheduled dispatch window open generously (until end of day or 8h past slot)
-    # so active customer bookings waiting for technicians are not aborted prematurely.
-    if pref_date == today:
-        window_close = max(
-            scheduled_dt + datetime.timedelta(hours=8),
-            datetime.datetime.combine(today, datetime.time(23, 59, 59)).replace(tzinfo=operational_tz)
-        )
-    else:
-        window_close = scheduled_dt + datetime.timedelta(hours=4)
+    window_close = scheduled_dt
 
     if now < window_open:
         # Before window opens (1 hour before scheduled time): not dispatchable yet (held as future/upcoming)
         return ScheduledDispatchWindow(True, scheduled_dt, window_open, window_close, is_closed=False, is_eligible=False)
 
-    if now.replace(second=0, microsecond=0) > window_close:
-        # After scheduled window close: offer window closed; no new offers
+    if now.replace(second=0, microsecond=0) > scheduled_dt:
+        # After scheduled time has passed: offer window closed; no new offers
         return ScheduledDispatchWindow(False, scheduled_dt, window_open, window_close, is_closed=True, is_eligible=False)
 
-    # Within dispatch window (from 1 hour before scheduled time up to window_close): dispatchable / eligible for job offer
+    # Within dispatch window (from 1 hour before scheduled time up to scheduled time): dispatchable / eligible for job offer
     return ScheduledDispatchWindow(False, scheduled_dt, window_open, window_close, is_closed=False, is_eligible=True)
 
 
@@ -1952,11 +1944,14 @@ def _dispatch_job_two_phase(job_id, max_gps_age_seconds: int = MAX_GPS_AGE_SECON
             past_offers = list(WorkforceJobOffer.objects.filter(job_id=job_id))
             for o in past_offers:
                 emp_id = getattr(o, "employee_id", o if isinstance(o, (int, str)) else None)
-                # Only exclude if technician explicitly declined/rejected, or currently holds an active unexpired offer
                 if emp_id:
-                    if o.status in [WorkforceJobOffer.Status.REJECTED, WorkforceJobOffer.Status.DECLINED]:
-                        declined_emp_ids.add(emp_id)
-                    elif o.status == WorkforceJobOffer.Status.OFFERED and o.expires_at and o.expires_at > timezone.now():
+                    st = getattr(o, "status", None)
+                    if st is None or st in [
+                        WorkforceJobOffer.Status.REJECTED,
+                        WorkforceJobOffer.Status.DECLINED,
+                        WorkforceJobOffer.Status.EXPIRED,
+                        WorkforceJobOffer.Status.OFFERED,
+                    ]:
                         declined_emp_ids.add(emp_id)
                 w_num = getattr(o, "wave_number", None)
                 if w_num and w_num > max_prev_wave:

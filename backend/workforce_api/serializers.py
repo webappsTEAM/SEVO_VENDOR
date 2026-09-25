@@ -615,15 +615,20 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
         ]
 
     def get_clock_in_time(self, obj):
-        emp = self._get_context_emp() or obj.assigned_employee
+        emp = self._get_context_emp() or getattr(obj, "assigned_employee", None)
         if emp:
-            from time_tracking.models import TimeLog
-            open_log = TimeLog.objects.filter(employee=emp, clock_out__isnull=True).order_by("-id").first()
-            if open_log and open_log.clock_in:
-                return open_log.clock_in.isoformat()
+            try:
+                emp_id = getattr(emp, "id", None) or getattr(emp, "pk", None)
+                if isinstance(emp_id, int):
+                    from time_tracking.models import TimeLog
+                    open_log = TimeLog.objects.filter(employee_id=emp_id, clock_out__isnull=True).order_by("-id").first()
+                    if open_log and open_log.clock_in:
+                        return open_log.clock_in.isoformat()
+            except Exception:
+                pass
         if getattr(obj, "started_at", None):
             return obj.started_at.isoformat()
-        if obj.otp_verified_at:
+        if getattr(obj, "otp_verified_at", None):
             return obj.otp_verified_at.isoformat()
         return None
 
