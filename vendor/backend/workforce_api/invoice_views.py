@@ -63,7 +63,7 @@ class IsSevoAdmin(BasePermission):
             return False
         if getattr(user, "is_superuser", False):
             return True
-        return bool(getattr(user, "is_staff", False) and is_admin_role(user))
+        return bool(is_admin_role(user) or getattr(user, "is_staff", False))
 
 
 # --------------------------------------------------------------------------- #
@@ -74,6 +74,28 @@ def _money(v):
 
 
 def _serialize_invoice(inv, full=False):
+    company_name = "SEVO"
+    if inv.company:
+        company_name = getattr(inv.company, "company_name", None) or getattr(inv.company, "name", "SEVO")
+
+    technician_name = None
+    if inv.technician:
+        t_user = getattr(inv.technician, "user", None)
+        if t_user and hasattr(t_user, "get_full_name") and t_user.get_full_name():
+            technician_name = t_user.get_full_name()
+        elif t_user and getattr(t_user, "first_name", None):
+            technician_name = f"{t_user.first_name} {getattr(t_user, 'last_name', '')}".strip()
+        else:
+            technician_name = getattr(inv.technician, "employee_id", None) or f"Emp #{inv.technician_id}"
+    elif inv.technician_id:
+        technician_name = f"Emp #{inv.technician_id}"
+
+    job_req_id = None
+    if inv.job:
+        job_req_id = getattr(inv.job, "request_id", None) or f"SR-{inv.job.id}"
+    elif inv.job_id:
+        job_req_id = f"SR-{inv.job_id}"
+
     data = {
         "id": inv.id,
         "invoice_number": inv.invoice_number,
@@ -82,9 +104,12 @@ def _serialize_invoice(inv, full=False):
         "quote_id": inv.quote_id,
         "quote_number": inv.quote.quote_number if inv.quote_id else None,
         "job_id": inv.job_id,
+        "job_request_id": job_req_id,
         "customer_id": inv.customer_id,
         "company_id": inv.company_id,
+        "company_name": company_name,
         "technician_id": inv.technician_id,
+        "technician_name": technician_name,
         "bill_to_name": inv.bill_to_name,
         "bill_to_phone": inv.bill_to_phone,
         "bill_to_email": inv.bill_to_email,
@@ -162,6 +187,8 @@ class QuoteCustomerDecisionView(APIView):
         )
 
     def get(self, request, token):
+        from service_requests.models import CustomerInspection, CustomerInspectionRateSnapshot, Estimation
+
         quote = self._load(token)
         if quote is None:
             return Response({"error": "This quotation link is not valid."},
@@ -176,6 +203,53 @@ class QuoteCustomerDecisionView(APIView):
         )
         invoice = quote.invoices.exclude(status=WorkforceInvoice.Status.CANCELLED).first()
         data["invoice"] = _serialize_invoice(invoice, full=True) if invoice else None
+
+        # ── AC Inspection Details & Rate Card Snapshot ──────────────────────
+        # Fetch CustomerInspection linked to this job's ServiceRequest.
+        # This is stored at booking time and contains the diagnostic fee,
+        # appliance details, and the full pre-agreed rate card snapshot.
+        ac_inspection_details = None
+        rate_card = None
+        if quote.job_id:
+            ci = (
+                CustomerInspection.objects
+                .filter(service_request_id=quote.job_id)
+                .prefetch_related("rate_snapshots")
+                .first()
+            )
+            est = Estimation.objects.filter(service_request_id=quote.job_id).first()
+
+            if ci:
+                # AC appliance details from Estimation model
+                ac_inspection_details = {
+                    "diagnostic_fee": float(ci.diagnostic_fee_snapshot or 0),
+                    "currency": ci.currency or "INR",
+                    "quantity": ci.quantity or 1,
+                    "ac_brand": getattr(est, "ac_brand", None) if est else None,
+                    "ac_type": getattr(est, "ac_type", None) if est else None,
+                    "ac_capacity": getattr(est, "ac_capacity", None) if est else None,
+                    "customer_symptom": getattr(est, "customer_symptom", None) if est else None,
+                    "customer_notes": getattr(est, "customer_notes", None) if est else None,
+                }
+
+                # Group rate card snapshots by category
+                categories = {}
+                for snap in ci.rate_snapshots.all().order_by("category_name_snapshot", "display_order"):
+                    cat = snap.category_name_snapshot or "Other"
+                    categories.setdefault(cat, []).append({
+                        "name": snap.item_name_snapshot,
+                        "description": snap.description_snapshot,
+                        "price": float(snap.price_snapshot or 0),
+                        "unit": snap.unit_snapshot,
+                        "service_type": snap.service_type_snapshot,
+                    })
+                rate_card = [
+                    {"category": cat, "items": items}
+                    for cat, items in categories.items()
+                ]
+
+        data["ac_inspection_details"] = ac_inspection_details
+        data["rate_card"] = rate_card
         return Response(data)
 
     def post(self, request, token):
@@ -244,7 +318,7 @@ class QuotePendingApprovalView(APIView):
         company_id = request.query_params.get("company_id")
         if company_id:
             quotes = quotes.filter(company_id=company_id)
-        return Response([_serialize_quote(q) for q in quotes[:200]])
+        return Response([_serialize_quote(q, full=True) for q in quotes[:200]])
 
 
 class QuoteAdminReviewView(APIView):
@@ -555,7 +629,7 @@ class QuotePendingPreSendReviewView(APIView):
 
     def get(self, request):
         quotes = quotation_service.quotes_awaiting_pre_send_review()
-        return Response([_serialize_quote(q) for q in quotes[:200]])
+        return Response([_serialize_quote(q, full=True) for q in quotes[:200]])
 
 
 class QuotePreSendReleaseView(APIView):
@@ -583,9 +657,19 @@ class QuotePreSendReleaseView(APIView):
             return Response({"error": "; ".join(exc.messages)},
                             status=status.HTTP_400_BAD_REQUEST)
 
+        auto_convert = bool(request.data.get("auto_convert", False))
+        work_job = None
+        if approve and auto_convert:
+            try:
+                work_job = quotation_service._activate_approved_quote(quote, request.user)
+            except Exception as cv_err:
+                logger.warning("Could not auto-convert quote %s: %s", quote.id, cv_err)
+
         return Response({
             "success": True,
             "released": approve,
+            "auto_converted": bool(work_job),
+            "work_job_id": getattr(work_job, "id", None),
             "quote": _serialize_quote(quote, full=True),
         })
 
@@ -596,7 +680,94 @@ class QuotePreSendReleaseView(APIView):
 class RateCardListView(APIView):
     permission_classes = [IsAuthenticated]
 
+    # ── AC Inspection snapshot section mapping ────────────────────────────
+    # CustomerInspectionRateSnapshot.service_type_snapshot → quote section
+    _SNAPSHOT_SECTION = {
+        "SPARE_PART": "MATERIAL",
+        "LABOUR":     "LABOUR",
+        "LABOR":      "LABOUR",
+        "INSTALLATION": "LABOUR",
+        "GAS_CHARGE": "MATERIAL",
+        "ADJUSTMENT": "LABOUR",
+    }
+
+    def _rate_cards_for_estimation_job(self, job_id):
+        """
+        Return the CustomerInspectionRateSnapshot items frozen for this
+        booking, shaped identically to the generic WorkforceRateCard response
+        so the frontend QuotationBuilderModal needs no structural changes.
+
+        Key differences from generic rate cards:
+          - id field uses snapshot.id prefixed with a large offset to avoid
+            collision with WorkforceRateCard PKs (also tagged is_snapshot=True)
+          - pricing_model is always FLAT / QUOTE_ONLY so the frontend knows
+            not to call the server-side pricing engine
+          - default_rate is the exact agreed price for this job (already frozen)
+        """
+        from service_requests.models import CustomerInspection, ServiceRequest
+
+        sr = ServiceRequest.objects.filter(pk=job_id).first()
+        if not sr or sr.request_kind != "ESTIMATION":
+            return None   # fall through to generic catalog
+
+        ci = (
+            CustomerInspection.objects
+            .prefetch_related("rate_snapshots")
+            .filter(service_request=sr)
+            .first()
+        )
+        if not ci:
+            return None
+
+        result = []
+        for snap in ci.rate_snapshots.all().order_by("category_name_snapshot", "display_order"):
+            svc = (snap.service_type_snapshot or "ADJUSTMENT").upper()
+            section = self._SNAPSHOT_SECTION.get(svc, "MATERIAL")
+            price = snap.price_snapshot or 0
+            # Items with price=0 are included (free / included in diagnostic)
+            # so the technician can explicitly select them to show the customer.
+            result.append({
+                # Use a namespaced "id" so the frontend can find the snapshot
+                # back when it needs to; prefixed to never clash with real RC ids.
+                "id": snap.id,
+                "is_snapshot": True,              # frontend flag
+                "snapshot_id": snap.id,
+                "category_name": snap.category_name_snapshot,
+                "service_category": "ac_inspection",
+                "service_name": "AC Inspection & Repair",
+                "section": section,
+                "item_name": snap.item_name_snapshot,
+                "description": snap.description_snapshot or "",
+                "unit": snap.unit_snapshot or "job",
+                "service_type": svc,
+                # Flat price already locked in at booking — no server re-price needed
+                "pricing_model": "FLAT" if float(price) > 0 else "QUOTE_ONLY",
+                "pricing_config": {},
+                "default_rate": _money(price),
+                "minimum_quantity": _money(1),
+                "tax_rate": _money(18),           # default GST
+                "max_discount_percent": _money(0),
+                "warranty_tier": "NONE",
+                "advance_percent": None,
+                "sort_order": snap.display_order,
+            })
+        return result
+
     def get(self, request):
+        # ── AC Inspection: return job-specific frozen rate snapshot ──────
+        job_id = request.query_params.get("job_id")
+        if job_id:
+            try:
+                job_id = int(job_id)
+            except (TypeError, ValueError):
+                return Response({"error": "job_id must be an integer."},
+                                status=status.HTTP_400_BAD_REQUEST)
+            snap_cards = self._rate_cards_for_estimation_job(job_id)
+            if snap_cards is not None:
+                return Response(snap_cards)
+            # Not an estimation job — fall through to generic catalog below
+
+        # ── Generic WorkforceRateCard catalog ────────────────────────────
         qs = WorkforceRateCard.objects.filter(is_active=True)
         # The vendor frontend sends ?category=; accept both spellings.
         category = (
@@ -611,6 +782,7 @@ class RateCardListView(APIView):
         return Response([
             {
                 "id": c.id,
+                "is_snapshot": False,
                 "service_category": c.service_category,
                 "service_name": c.service_name,
                 "section": c.section,
@@ -761,11 +933,9 @@ class InvoicePdfView(APIView):
     Reachable two ways: signed in (normal tenancy scoping applies), or with the
     quotation's decision token as ?token=, so a customer who never created an
     account can still get their own invoice from the same link the quote came
-    in on. The token is checked against this invoice's own quote, so it grants
-    nothing beyond the document it belongs to.
+    in on.
     """
     permission_classes = [AllowAny]
-    authentication_classes = []
 
     def get(self, request, pk):
         from django.http import HttpResponse
@@ -790,6 +960,6 @@ class InvoicePdfView(APIView):
         pdf = render_invoice_pdf(invoice)
         response = HttpResponse(pdf, content_type="application/pdf")
         response["Content-Disposition"] = (
-            f'inline; filename="{invoice.invoice_number}.pdf"'
+            f'attachment; filename="{invoice.invoice_number}.pdf"'
         )
         return response

@@ -13,6 +13,8 @@ import math
 import logging
 from typing import Optional, Tuple, Dict, Any, List
 
+from django.conf import settings
+
 logger = logging.getLogger("workforce.geo_spatial")
 
 # Earth Radii
@@ -22,8 +24,8 @@ LATITUDE_KM_APPROX: float = 111.32
 
 # Production Constants
 ADMIN_DISPATCH_RADIUS_KM: float = 50.0
-MAX_DISPATCH_RADIUS_KM: float = 20.0
-MAX_GPS_AGE_SECONDS: int = 120
+MAX_DISPATCH_RADIUS_KM: float = 50.0
+MAX_GPS_AGE_SECONDS: int = int(getattr(settings, "DISPATCH_MAX_GPS_AGE_SECONDS", 300))
 DISTANCE_TOLERANCE_KM: float = 0.005  # 5 meters numerical precision buffer for boundary testing
 
 # Arrival, Geofence, and Tracking Telemetry Constants
@@ -152,13 +154,13 @@ def get_spatial_bounding_box(
     return min_lat, max_lat, min_lon, max_lon
 
 
-_RADIUS_CACHE = {"value": 20.0, "updated_at": 0.0}
+_RADIUS_CACHE = {"value": 50.0, "updated_at": 0.0}
 
 def get_global_dispatch_radius_km() -> float:
     """
     Returns the persistent global automatic dispatch radius in km.
     Source of truth: PostgreSQL WorkforceSystemSetting (key='DISPATCH_RADIUS_KM').
-    Fallback: 20.0 km default.
+    Fallback: 50.0 km default (matching 50->75->100km progressive widening policy).
     Uses 5-second in-memory caching to avoid database query overhead on hot candidate discovery.
     """
     import time
@@ -179,7 +181,7 @@ def get_global_dispatch_radius_km() -> float:
         logger.debug(f"[SYSTEM_SETTING_READ_ERR] {err}")
 
     _RADIUS_CACHE["updated_at"] = now_ts
-    return _RADIUS_CACHE.get("value", 20.0)
+    return _RADIUS_CACHE.get("value", 50.0)
 
 
 def set_global_dispatch_radius_km(radius_km: float) -> Tuple[bool, str, float]:

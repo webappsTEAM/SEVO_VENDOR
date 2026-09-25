@@ -3,7 +3,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthProvider.jsx';
 
 export function AdminRoute({ children }) {
-  const { isReady, isAuthenticated, isAdmin } = useAuth();
+  const { isReady, isAuthenticated, isAdmin, isSeller, isPlatformAdmin } = useAuth();
   const location = useLocation();
 
   if (!isReady) {
@@ -21,6 +21,10 @@ export function AdminRoute({ children }) {
     return <Navigate to="/workforce/login" state={{ from: location }} replace />;
   }
 
+  if (isSeller && !isPlatformAdmin) {
+    // If a seller user attempts to open vendor operational admin routes, redirect to seller hub
+    return <Navigate to="/workforce/seller/dashboard" replace />;
+  }
   if (!isAdmin) {
     // If an employee user attempts to open /admin/*, redirect to employee dashboard
     return <Navigate to="/workforce/employee/dashboard" replace />;

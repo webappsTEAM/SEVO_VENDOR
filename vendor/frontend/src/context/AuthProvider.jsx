@@ -46,6 +46,7 @@ export function AuthProvider({ children }) {
 
   const [user, setUser] = useState(cachedUser);
   const [employee, setEmployee] = useState(cachedEmp);
+  const [token, setToken] = useState(() => getAccessToken());
   const [isReady, setIsReady] = useState(() => Boolean(cachedUser && getAccessToken()));
   const inFlightRefreshRef = React.useRef(null);
 
@@ -56,8 +57,9 @@ export function AuthProvider({ children }) {
 
     inFlightRefreshRef.current = (async () => {
       try {
-        const token = getAccessToken();
-        if (!token) {
+        const activeToken = getAccessToken();
+        setToken(activeToken);
+        if (!activeToken) {
           localStorage.removeItem(CACHED_USER_KEY);
           localStorage.removeItem(CACHED_EMP_KEY);
           setUser(null);
@@ -78,8 +80,19 @@ export function AuthProvider({ children }) {
 
           const isEmployee = Boolean(empData) || (!isAdmin && (me.role || '').toLowerCase() === 'employee');
           const isTiedWorker = isEmployee && Boolean(me.is_tied_worker || empData?.is_tied || empData?.workforce_type === 'TIED');
+          const isSeller = Boolean(
+            me.is_seller ||
+            me.business_type === 'grocery_supplier' ||
+            me.company_business_type === 'grocery_supplier' ||
+            (me.role || '').toLowerCase() === 'seller'
+          );
+          const isGrocerySupplier = isSeller || Boolean(
+            me.is_grocery_supplier ||
+            me.business_type === 'grocery_supplier' ||
+            me.business_type === 'hybrid'
+          );
           const isSoloWorker = isEmployee && (!isTiedWorker || Boolean(me.is_solo_worker) || empData?.workforce_type === 'SOLO' || !me.company);
-          const computedRole = isPlatformAdmin ? 'platform_admin' : (isVendorAdmin ? 'vendor_admin' : 'employee');
+          const computedRole = me.role || (isPlatformAdmin ? 'platform_admin' : (isSeller ? 'seller' : (isVendorAdmin ? 'vendor_admin' : (isAdmin ? 'admin' : 'employee'))));
 
           const u = {
             id: me.id,
@@ -90,9 +103,12 @@ export function AuthProvider({ children }) {
             role: computedRole,
             companyId: me.company,
             companyName: me.company_name || '',
+            businessType: me.business_type || '',
             isAdmin: isAdmin,
             isPlatformAdmin: isPlatformAdmin,
             isVendorAdmin: isVendorAdmin,
+            isSeller: isSeller,
+            isGrocerySupplier: isGrocerySupplier,
             isEmployee: isEmployee,
             isTiedWorker: isTiedWorker,
             isSoloWorker: isSoloWorker,
@@ -149,10 +165,22 @@ export function AuthProvider({ children }) {
     const refresh = res.refresh_token;
     if (token) {
       setAuthTokens(token, refresh);
+      setToken(token);
     }
 
     if (res.user) {
-      const isAdmin = ['admin', 'manager'].includes((res.user.role || '').toLowerCase()) || Boolean(res.user.is_superuser);
+      const isSuper = Boolean(res.user.is_superuser || res.user.is_platform_admin);
+      const isSeller = Boolean(
+        res.user.is_seller ||
+        res.user.business_type === 'grocery_supplier' ||
+        (res.user.role || '').toLowerCase() === 'seller'
+      );
+      const isGrocerySupplier = isSeller || Boolean(
+        res.user.is_grocery_supplier ||
+        res.user.business_type === 'grocery_supplier' ||
+        res.user.business_type === 'hybrid'
+      );
+      const isAdmin = ['admin', 'manager'].includes((res.user.role || '').toLowerCase()) || isSuper || isSeller;
       const isTied = Boolean(res.user.is_tied_worker);
       const isSolo = Boolean(res.user.is_solo_worker) || (!isTied && !isAdmin);
       const regStatus = res.user.registration_status || (isAdmin ? 'approved' : 'not_started');
@@ -162,10 +190,15 @@ export function AuthProvider({ children }) {
         email: res.user.email || '',
         firstName: res.user.first_name || '',
         lastName: res.user.last_name || '',
-        role: res.user.role || 'employee',
+        role: res.user.role || (isSuper ? 'platform_admin' : (isSeller ? 'seller' : (isAdmin ? 'vendor_admin' : 'employee'))),
         companyId: res.user.company,
         companyName: res.user.company_name || '',
+        businessType: res.user.business_type || '',
         isAdmin: isAdmin,
+        isPlatformAdmin: isSuper,
+        isVendorAdmin: isAdmin && !isSuper,
+        isSeller: isSeller,
+        isGrocerySupplier: isGrocerySupplier,
         isEmployee: !isAdmin,
         isTiedWorker: isTied,
         isSoloWorker: isSolo,
@@ -189,6 +222,7 @@ export function AuthProvider({ children }) {
       const token = res.access_token || res.token;
       const refresh = res.refresh_token;
       setAuthTokens(token, refresh);
+      setToken(token);
     }
     await refreshProfile(true);
     return res;
@@ -203,6 +237,7 @@ export function AuthProvider({ children }) {
       const token = res.access_token || res.token;
       const refresh = res.refresh_token;
       setAuthTokens(token, refresh);
+      setToken(token);
     }
     await refreshProfile(true);
     return res;
@@ -210,6 +245,7 @@ export function AuthProvider({ children }) {
 
   const logout = useCallback(async () => {
     clearAuthTokens();
+    setToken(null);
     if (typeof BroadcastChannel !== 'undefined') {
       try {
         const channel = new BroadcastChannel('wf_tab_channel');
@@ -262,6 +298,7 @@ export function AuthProvider({ children }) {
 
       if (data.type === 'LOGOUT_SYNC') {
         clearAuthTokens();
+        setToken(null);
         setUser(null);
         setEmployee(null);
       }
@@ -275,6 +312,7 @@ export function AuthProvider({ children }) {
   // Handle unauthenticated event triggered from client.js on 401
   useEffect(() => {
     const handleUnauthorized = () => {
+      setToken(null);
       setUser(null);
       setEmployee(null);
     };
@@ -313,6 +351,7 @@ export function AuthProvider({ children }) {
     isReady,
     user,
     employee,
+    token: token || getAccessToken(),
     login,
     signup,
     providerSignup,
@@ -323,11 +362,13 @@ export function AuthProvider({ children }) {
     isAdmin: user?.isAdmin || false,
     isPlatformAdmin: user?.isPlatformAdmin || false,
     isVendorAdmin: user?.isVendorAdmin || false,
+    isSeller: user?.isSeller || false,
+    isGrocerySupplier: user?.isGrocerySupplier || false,
     isEmployee: user?.isEmployee || false,
     isTiedWorker: user?.isTiedWorker || false,
     isSoloWorker: user?.isSoloWorker || false,
     registrationStatus: user?.registrationStatus || 'not_started',
-  }), [isReady, user, employee, login, signup, providerSignup, logout, refreshProfile, togglePresence]);
+  }), [isReady, user, employee, token, login, signup, providerSignup, logout, refreshProfile, togglePresence]);
 
   return (
     <AuthContext.Provider value={value}>

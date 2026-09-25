@@ -158,3 +158,45 @@ export function useReverseGeocode() {
 
   return { resolveAddress, address, loading, error, clearAddress };
 }
+
+/**
+ * Forward geocoder: converts an address text string (e.g. "KCC Nagar, Hosur, Tamil Nadu 635001")
+ * into latitude and longitude coordinates.
+ */
+export async function forwardGeocode(addressString) {
+  if (!addressString || !addressString.trim()) return null;
+  const cleanAddr = addressString.trim();
+
+  const googleKey = import.meta.env.VITE_GOOGLE_MAPS_KEY;
+  if (googleKey) {
+    try {
+      const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(cleanAddr)}&key=${googleKey}`;
+      const resp = await fetch(url);
+      const data = await resp.json();
+      if (data.status === 'OK' && data.results?.length) {
+        const loc = data.results[0].geometry.location;
+        return {
+          latitude: Math.round(loc.lat * 1000000) / 1000000,
+          longitude: Math.round(loc.lng * 1000000) / 1000000,
+          formatted_address: data.results[0].formatted_address,
+        };
+      }
+    } catch {}
+  }
+
+  // Fallback: Nominatim OpenStreetMap
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(cleanAddr)}&format=json&limit=1`;
+    const resp = await fetch(url, { headers: { 'Accept': 'application/json' } });
+    const data = await resp.json();
+    if (data && data.length > 0) {
+      return {
+        latitude: Math.round(parseFloat(data[0].lat) * 1000000) / 1000000,
+        longitude: Math.round(parseFloat(data[0].lon) * 1000000) / 1000000,
+        formatted_address: data[0].display_name,
+      };
+    }
+  } catch {}
+
+  return null;
+}

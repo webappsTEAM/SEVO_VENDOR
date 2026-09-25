@@ -51,6 +51,8 @@ class Company(models.Model):
     timezone = models.CharField(max_length=50, default="UTC")
     data_region = models.CharField(max_length=50, default="us-east")
     address = models.TextField(blank=True, null=True)
+    latitude = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
     compliance_mode = models.CharField(max_length=20, default="strict")
     reschedule_rejection_strategy = models.CharField(max_length=30, default="auto_reassign")
     allowed_countries = models.JSONField(default=list, blank=True)

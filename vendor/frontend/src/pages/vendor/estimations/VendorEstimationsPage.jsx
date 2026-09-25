@@ -21,6 +21,10 @@ import {
   Loader2,
   Send,
   Eye,
+  Tag,
+  Database,
+  ShieldCheck,
+  X,
 } from 'lucide-react';
 import { AppShell } from '../../../components/common/AppShell.jsx';
 import {
@@ -651,6 +655,37 @@ export default function VendorEstimationsPage() {
                     )}
                   </div>
                 </div>
+
+                {/* Pre-Approved Rate Card Snapshot Card */}
+                {selectedLead.rate_card_snapshot && selectedLead.rate_card_snapshot.length > 0 && (
+                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Tag className="w-4 h-4 text-emerald-600" />
+                        <span className="text-[11px] font-bold text-slate-900 uppercase tracking-wider">
+                          Authorized Rate Card Snapshot ({selectedLead.rate_card_snapshot.length} Pre-approved Items)
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-bold text-slate-500 bg-white px-2 py-0.5 rounded-full border border-slate-200">
+                        PostgreSQL Snapshot
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 max-h-40 overflow-y-auto">
+                      {selectedLead.rate_card_snapshot.map((item, idx) => (
+                        <div key={idx} className="p-2 bg-white rounded-lg border border-slate-200 text-xs flex justify-between items-center">
+                          <div className="min-w-0 pr-2">
+                            <span className="font-bold text-slate-900 block truncate text-[11px]">{item.item_name}</span>
+                            <span className="text-[10px] text-slate-500 block truncate">{item.category} • {item.unit || 'unit'}</span>
+                          </div>
+                          <span className="font-mono font-bold text-xs text-emerald-700 shrink-0">
+                            ₹{Number(item.price).toLocaleString('en-IN')}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Customer Decision & Visit Fee Component */}
                 <CustomerDecisionPanel

@@ -198,6 +198,55 @@ export async function apiCustomerDecide(id, data) {
 }
 
 /**
+ * Submit quotation for Customer Admin Review.
+ * @param {number|string} id
+ * @param {number|string} quoteId
+ */
+export async function apiSubmitQuotationForReview(id, quoteId) {
+  return apiRequest(`/api/vendor/estimations/${id}/quotation/${quoteId}/submit/`, {
+    method: 'POST',
+  });
+}
+
+/**
+ * Customer Admin review decision (APPROVE | SEND_BACK).
+ * @param {number|string} id
+ * @param {number|string} quoteId
+ * @param {Object} data - { action: "APPROVE" | "SEND_BACK", admin_notes: "..." }
+ */
+export async function apiAdminReviewQuotation(id, quoteId, data = {}) {
+  return apiRequest(`/api/vendor/estimations/${id}/quotation/${quoteId}/admin-review/`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+/**
+ * Save full AC inspection checklist details (AC specs, indoor/outdoor/electrical/gas checks, diagnosis, findings).
+ * @param {number|string} id
+ * @param {Object} data - { ac_details, diagnosis, notes, findings }
+ */
+export async function apiSaveInspectionDetails(id, data) {
+  return apiRequest(`/api/vendor/estimations/${id}/inspection/save/`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+/**
+ * Advance repair lifecycle stage.
+ * @param {number|string} id
+ * @param {string} stage - "START_REPAIR" | "COMPLETE_REPAIR" | "TEST_AC" | "CUSTOMER_CONFIRM"
+ * @param {Object} [data] - { notes }
+ */
+export async function apiProgressRepair(id, stage, data = {}) {
+  return apiRequest(`/api/vendor/estimations/${id}/repair/progress/`, {
+    method: 'POST',
+    body: JSON.stringify({ stage, ...data }),
+  });
+}
+
+/**
  * Fetch available technicians / staff for the vendor.
  */
 export async function apiGetVendorTechnicians() {
@@ -211,4 +260,5 @@ export async function apiGetVendorTechnicians() {
 export async function apiGetEstimationInvoice(id) {
   return apiRequest(`/api/vendor/estimations/${id}/invoice/`, { method: 'GET' });
 }
+
 
