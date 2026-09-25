@@ -126,17 +126,12 @@ export function AuthProvider({ children }) {
           } catch (_) {}
           return u;
         } else {
-          clearAuthTokens();
-          try {
-            localStorage.removeItem(CACHED_USER_KEY);
-            localStorage.removeItem(CACHED_EMP_KEY);
-          } catch (_) {}
-          setUser(null);
-          setEmployee(null);
+          console.warn('[AuthProvider] /auth/me/ returned empty or unexpected payload.');
           return null;
         }
       } catch (e) {
         // Only wipe auth tokens if server explicitly rejected with 401
+        // (i.e. authentication confirmed invalid, not a transient 5xx or network error)
         if (e && e.status === 401) {
           clearAuthTokens();
           try {

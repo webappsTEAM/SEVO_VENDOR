@@ -10,7 +10,7 @@
  */
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { getAccessToken, clearAuthTokens, isTokenExpired } from '../utils/authTokens.js';
+import { getAccessToken, isTokenExpired } from '../utils/authTokens.js';
 import { apiRefreshToken } from '../api/client.js';
 
 export const SSE_STATE = {
@@ -63,7 +63,6 @@ export function useRealtimeStream({
   const stableTimerRef = useRef(null);
   const failureCountRef = useRef(0);
   const processedEventsRef = useRef(new Set());
-  const isRefreshingAuthRef = useRef(false);
   const wasReconnectingRef = useRef(false);
   const isMountedRef = useRef(true);
   const isConnectingRef = useRef(false);
@@ -165,51 +164,45 @@ export function useRealtimeStream({
 
       if (isTokenExpired(token)) {
         console.info('[Realtime TOKEN EXPIRED] Stored access token expired. Refreshing before connect...');
-        if (!isRefreshingAuthRef.current) {
-          isRefreshingAuthRef.current = true;
-          try {
-            const newToken = await apiRefreshToken();
-            isRefreshingAuthRef.current = false;
-            if (newToken) {
-              console.info('[Realtime REFRESH SUCCESS] Token refreshed successfully.');
-              token = newToken;
-            } else {
-              if (getAccessToken()) {
-                // Refresh returned 503 (database busy) -> back off via circuit breaker
-                failureCountRef.current += 1;
-                const gen = connectionGenerationRef.current;
-                const delay = getBackoffDelay(failureCountRef.current);
-                console.warn(`[Realtime SSE] Token refresh hit 503 DB shortage (failure #${failureCountRef.current}). Retrying in ${delay}ms...`);
-                reconnectTimerRef.current = setTimeout(() => {
-                  if (isMountedRef.current && enabled) connect();
-                }, delay);
-                isConnectingRef.current = false;
-                return;
-              }
-
-              console.warn('[Realtime SESSION EXPIRED] Refresh token rejected (401). Stopping realtime.');
-              setConnectionState(SSE_STATE.DISCONNECTED);
-              isConnectingRef.current = false;
-              if (onAuthFailureRef.current) onAuthFailureRef.current();
-              return;
-            }
-          } catch (refErr) {
-            isRefreshingAuthRef.current = false;
+        try {
+          const newToken = await apiRefreshToken();
+          if (newToken) {
+            console.info('[Realtime REFRESH SUCCESS] Token refreshed successfully.');
+            token = newToken;
+          } else {
             if (getAccessToken()) {
+              // Refresh returned 503 (database busy) or network error -> back off via circuit breaker
               failureCountRef.current += 1;
               const delay = getBackoffDelay(failureCountRef.current);
+              console.warn(`[Realtime SSE] Token refresh hit 503 DB shortage (failure #${failureCountRef.current}). Retrying in ${delay}ms...`);
               reconnectTimerRef.current = setTimeout(() => {
                 if (isMountedRef.current && enabled) connect();
               }, delay);
               isConnectingRef.current = false;
               return;
             }
-            console.warn('[Realtime SESSION EXPIRED] Error refreshing token:', refErr);
+
+            console.warn('[Realtime SESSION EXPIRED] Refresh token rejected (401). Stopping realtime.');
             setConnectionState(SSE_STATE.DISCONNECTED);
             isConnectingRef.current = false;
             if (onAuthFailureRef.current) onAuthFailureRef.current();
             return;
           }
+        } catch (refErr) {
+          if (getAccessToken()) {
+            failureCountRef.current += 1;
+            const delay = getBackoffDelay(failureCountRef.current);
+            reconnectTimerRef.current = setTimeout(() => {
+              if (isMountedRef.current && enabled) connect();
+            }, delay);
+            isConnectingRef.current = false;
+            return;
+          }
+          console.warn('[Realtime SESSION EXPIRED] Error refreshing token:', refErr);
+          setConnectionState(SSE_STATE.DISCONNECTED);
+          isConnectingRef.current = false;
+          if (onAuthFailureRef.current) onAuthFailureRef.current();
+          return;
         }
       }
 
@@ -299,52 +292,47 @@ export function useRealtimeStream({
 
         // Token is genuinely expired -> Single refresh attempt
         console.warn('[Realtime AUTH FAILURE] Stream token expired or missing. Refreshing...');
-        if (!isRefreshingAuthRef.current) {
-          isRefreshingAuthRef.current = true;
-          try {
-            const newToken = await apiRefreshToken();
-            isRefreshingAuthRef.current = false;
-            if (newToken) {
-              console.info('[Realtime REFRESH SUCCESS] Token refreshed. Reconnecting with new token.');
-              failureCountRef.current = 0;
-              if (isMountedRef.current && enabled) {
-                connect();
-              }
-              return;
-            } else {
-              // If tokens are still in storage, refresh failed due to 503/server error -> back off
-              if (getAccessToken()) {
-                failureCountRef.current += 1;
-                const delay = getBackoffDelay(failureCountRef.current);
-                console.warn(`[Realtime SSE] Token refresh hit 503 DB shortage. Retrying in ${delay}ms...`);
-                reconnectTimerRef.current = setTimeout(() => {
-                  if (isMountedRef.current && enabled) {
-                    connect();
-                  }
-                }, delay);
-                return;
-              }
-
-              console.warn('[Realtime SESSION EXPIRED] Refresh token expired or rejected (401). Stopping retries.');
-              setConnectionState(SSE_STATE.DISCONNECTED);
-              if (onAuthFailureRef.current) onAuthFailureRef.current();
-              return;
+        try {
+          const newToken = await apiRefreshToken();
+          if (newToken) {
+            console.info('[Realtime REFRESH SUCCESS] Token refreshed. Reconnecting with new token.');
+            failureCountRef.current = 0;
+            if (isMountedRef.current && enabled) {
+              connect();
             }
-          } catch (_) {
-            isRefreshingAuthRef.current = false;
+            return;
+          } else {
+            // If tokens are still in storage, refresh failed due to 503/server error -> back off
             if (getAccessToken()) {
               failureCountRef.current += 1;
               const delay = getBackoffDelay(failureCountRef.current);
+              console.warn(`[Realtime SSE] Token refresh hit 503 DB shortage. Retrying in ${delay}ms...`);
               reconnectTimerRef.current = setTimeout(() => {
-                if (isMountedRef.current && enabled) connect();
+                if (isMountedRef.current && enabled) {
+                  connect();
+                }
               }, delay);
               return;
             }
-            console.warn('[Realtime SESSION EXPIRED] Exception during token refresh.');
+
+            console.warn('[Realtime SESSION EXPIRED] Refresh token expired or rejected (401). Stopping retries.');
             setConnectionState(SSE_STATE.DISCONNECTED);
             if (onAuthFailureRef.current) onAuthFailureRef.current();
             return;
           }
+        } catch (_) {
+          if (getAccessToken()) {
+            failureCountRef.current += 1;
+            const delay = getBackoffDelay(failureCountRef.current);
+            reconnectTimerRef.current = setTimeout(() => {
+              if (isMountedRef.current && enabled) connect();
+            }, delay);
+            return;
+          }
+          console.warn('[Realtime SESSION EXPIRED] Exception during token refresh.');
+          setConnectionState(SSE_STATE.DISCONNECTED);
+          if (onAuthFailureRef.current) onAuthFailureRef.current();
+          return;
         }
       };
     } catch (err) {

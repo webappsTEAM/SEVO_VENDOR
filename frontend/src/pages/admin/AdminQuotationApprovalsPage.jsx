@@ -631,6 +631,7 @@ export function AdminQuotationApprovalsPage() {
                   <span className="text-[10px] uppercase font-bold text-slate-500 block">GST Tax</span>
                   <span className="text-lg font-black text-slate-800 font-mono">₹{formatMoney(modalQuote.tax_amount)}</span>
                 </div>
+              </div>
 
               {/* Customer & Job Info */}
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
