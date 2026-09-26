@@ -3293,6 +3293,8 @@ class VendorStore(models.Model):
     logo_url = models.CharField(max_length=1000, blank=True, default="")
     banner_url = models.CharField(max_length=1000, blank=True, default="")
     fssai_license_number = models.CharField(max_length=100, blank=True, default="")
+    gst_number = models.CharField(max_length=50, blank=True, default="")
+    onboarding = models.JSONField(default=dict, blank=True)
     store_address = models.TextField(blank=True, default="")
     latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
@@ -3908,6 +3910,10 @@ class SellerProduct(models.Model):
         REJECTED = "REJECTED", "Rejected"
         PAUSED = "PAUSED", "Paused"
 
+    class FulfillmentMethod(models.TextChoices):
+        SELF_SHIP = "SELF_SHIP", "Self-Ship"
+        FULFILLED_BY_SEVO = "FULFILLED_BY_SEVO", "Fulfilled by Sevo"
+
     company = models.ForeignKey(
         "companies.Company",
         on_delete=models.CASCADE,
@@ -3932,6 +3938,13 @@ class SellerProduct(models.Model):
     brand = models.CharField(max_length=150, blank=True, default="", db_index=True)
     sku = models.CharField(max_length=100, db_index=True)
     barcode = models.CharField(max_length=100, blank=True, default="", db_index=True)
+    fulfillment_method = models.CharField(
+        max_length=30,
+        choices=FulfillmentMethod.choices,
+        default=FulfillmentMethod.SELF_SHIP,
+        db_index=True,
+        help_text="Fulfillment mode: SELF_SHIP (seller dispatches directly) or FULFILLED_BY_SEVO (FBS - stock held at Sevo warehouse)",
+    )
     unit = models.CharField(max_length=50, default="piece")
     pack_size = models.CharField(max_length=50, default="1")
     mrp = models.DecimalField(max_digits=10, decimal_places=2)
@@ -5214,6 +5227,353 @@ def get_seller_assigned_warehouse(company_or_id):
         return assignment.warehouse if assignment else None
     except Exception:
         return None
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE V: WAREHOUSE PORTAL & STAFF AUTHENTICATION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class WarehouseStaff(models.Model):
+    """
+    Operator / staff credentials linked to a specific Warehouse facility.
+    Grants portal login access to view and manage that warehouse's orders, inventory, and profile.
+    """
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="warehouse_profile",
+        db_index=True,
+    )
+    warehouse = models.ForeignKey(
+        Warehouse,
+        on_delete=models.CASCADE,
+        related_name="staff_members",
+        db_index=True,
+    )
+    role = models.CharField(max_length=50, default="operator", help_text="Role at the warehouse: operator, manager, supervisor")
+    is_primary = models.BooleanField(default=True, help_text="Primary contact/account for this warehouse facility")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "workforce_warehouse_staff"
+        indexes = [
+            models.Index(fields=["user", "warehouse"], name="wf_wh_staff_user_wh_idx"),
+            models.Index(fields=["warehouse", "is_primary"], name="wf_wh_staff_wh_prim_idx"),
+        ]
+
+    def __str__(self):
+        return f"User #{self.user_id} ({self.user.username}) -> Warehouse #{self.warehouse_id} ({self.warehouse.name})"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE X: SELLER-TO-WAREHOUSE STOCK REQUEST (FULFILLED BY SEVO / INBOUND INTAKE)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class WarehouseInboundRequest(models.Model):
+    """
+    Phase X: Merchant inbound stock replenishment request for Fulfilled by Sevo (FBS) items.
+    Links a seller product to the merchant's designated warehouse.
+    Warehouse staff review and Accept (awaiting physical receipt / Phase Y) or Reject with notes.
+    Phase Z: Handles Shortfall reporting & Seller accept/reject return resolution.
+    """
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "Pending Review"
+        ACCEPTED = "ACCEPTED", "Accepted - Awaiting Receipt"
+        SHORT_RECEIVED = "SHORT_RECEIVED", "Shortfall Reported - Pending Seller Decision"
+        COMPLETED = "COMPLETED", "Completed / Verified"
+        REJECTED_RETURN = "REJECTED_RETURN", "Shortfall Rejected - Return to Seller"
+        REJECTED = "REJECTED", "Rejected"
+        CANCELLED = "CANCELLED", "Cancelled"
+
+    class SellerShortfallDecision(models.TextChoices):
+        ACCEPT_PARTIAL = "ACCEPT_PARTIAL", "Accept Partial Batch"
+        REJECT_RETURN = "REJECT_RETURN", "Reject & Return Entire Batch"
+
+    product = models.ForeignKey(
+        SellerProduct,
+        on_delete=models.CASCADE,
+        related_name="inbound_requests",
+        db_index=True,
+    )
+    company = models.ForeignKey(
+        "companies.Company",
+        on_delete=models.CASCADE,
+        related_name="warehouse_inbound_requests",
+        db_index=True,
+    )
+    warehouse = models.ForeignKey(
+        Warehouse,
+        on_delete=models.PROTECT,
+        related_name="inbound_requests",
+        db_index=True,
+    )
+    requested_quantity = models.PositiveIntegerField(
+        help_text="Units of inventory requested for warehouse storage/intake"
+    )
+    confirmed_quantity = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Units physically scanned and confirmed at warehouse intake (Phase Z)"
+    )
+    status = models.CharField(
+        max_length=30,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+    )
+    seller_note = models.TextField(blank=True, default="", help_text="Note or special handling instructions from seller")
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="requested_inbound_stock",
+    )
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="reviewed_inbound_stock",
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    reviewer_note = models.TextField(blank=True, default="", help_text="Note or rejection reason provided by warehouse staff")
+
+    # Phase Z: Warehouse Shortfall Report fields
+    shortfall_note = models.TextField(blank=True, default="", help_text="Warehouse staff explanation of missing/short units")
+    shortfall_reported_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="reported_shortfalls",
+    )
+    shortfall_reported_at = models.DateTimeField(null=True, blank=True)
+
+    # Phase Z: Seller Shortfall Decision fields
+    seller_shortfall_decision = models.CharField(
+        max_length=30,
+        blank=True,
+        default="",
+        choices=SellerShortfallDecision.choices,
+        help_text="Seller decision on shortfall notice: ACCEPT_PARTIAL or REJECT_RETURN"
+    )
+    seller_shortfall_decided_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="decided_shortfalls",
+    )
+    seller_shortfall_decided_at = models.DateTimeField(null=True, blank=True)
+    seller_shortfall_note = models.TextField(blank=True, default="", help_text="Seller note upon deciding shortfall")
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "workforce_warehouse_inbound_request"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["company", "status"], name="wf_wh_inb_comp_stat_idx"),
+            models.Index(fields=["warehouse", "status"], name="wf_wh_inb_wh_stat_idx"),
+            models.Index(fields=["product", "status"], name="wf_wh_inb_prod_stat_idx"),
+        ]
+
+    def __str__(self):
+        return f"Inbound #{self.id} | {self.product.title} x {self.requested_quantity} -> {self.warehouse.name} ({self.status})"
+
+
+class WarehouseInboundRequestAuditLog(models.Model):
+    """
+    Phase X: Immutable audit trail for inbound stock request lifecycle transitions.
+    """
+    inbound_request = models.ForeignKey(
+        WarehouseInboundRequest,
+        on_delete=models.CASCADE,
+        related_name="audit_logs",
+        db_index=True,
+    )
+    action = models.CharField(max_length=50)  # CREATED, ACCEPTED, REJECTED, CANCELLED, RECEIVE_COMPLETE, SHORTFALL_REPORTED, SHORTFALL_ACCEPTED_PARTIAL, SHORTFALL_REJECTED_RETURN
+    from_status = models.CharField(max_length=30, blank=True, default="")
+    to_status = models.CharField(max_length=30)
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="warehouse_inbound_audit_logs",
+    )
+    notes = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "workforce_warehouse_inbound_request_audit_log"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Inbound #{self.inbound_request_id} Log: {self.action} ({self.from_status} -> {self.to_status})"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE Y: UNIQUE PER-UNIT BARCODE TRACKING & PHYSICAL SCAN-IN VERIFICATION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class WarehouseInboundUnit(models.Model):
+    """
+    Phase Y: Unique per-unit physical stock tracking for WarehouseInboundRequest.
+    Each requested unit is generated at ACCEPT time with an immutable unique barcode.
+    Status transitions:
+    - PENDING_SCAN: awaiting physical scan at intake
+    - RECEIVED: physically scanned & verified
+    - NOT_RECEIVED: shorted / missing upon intake completion or shortfall reconciliation (Phase Z)
+    - RETURN_PENDING: returning to merchant following shortfall rejection (Phase Z)
+    """
+    class Status(models.TextChoices):
+        PENDING_SCAN = "PENDING_SCAN", "Pending Scan"
+        RECEIVED = "RECEIVED", "Received / Verified"
+        NOT_RECEIVED = "NOT_RECEIVED", "Not Received / Missing"
+        RETURN_PENDING = "RETURN_PENDING", "Return Pending to Seller"
+
+    inbound_request = models.ForeignKey(
+        WarehouseInboundRequest,
+        on_delete=models.CASCADE,
+        related_name="units",
+        db_index=True,
+    )
+    unit_number = models.PositiveIntegerField(
+        help_text="1-indexed sequence number within the inbound request batch (1 to N)"
+    )
+    barcode = models.CharField(
+        max_length=64,
+        unique=True,
+        db_index=True,
+        help_text="Unique per-unit Code128 serial barcode for physical intake verification",
+    )
+    status = models.CharField(
+        max_length=30,
+        choices=Status.choices,
+        default=Status.PENDING_SCAN,
+        db_index=True,
+    )
+    scanned_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="scanned_inbound_units",
+    )
+    scanned_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "workforce_warehouse_inbound_unit"
+        ordering = ["unit_number", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["inbound_request", "unit_number"],
+                name="unique_inbound_request_unit_number",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["inbound_request", "status"], name="wf_wh_inb_unit_req_stat_idx"),
+            models.Index(fields=["barcode"], name="wf_wh_inb_unit_barcode_idx"),
+        ]
+
+    def __str__(self):
+        return f"Unit #{self.unit_number} of Inbound #{self.inbound_request_id} ({self.barcode}) - {self.status}"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE Z: WAREHOUSE RETURNS (REJECTED INBOUND BATCHES & SHORTFALL REVERSE LOGISTICS)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class WarehouseReturn(models.Model):
+    """
+    Phase Z: Warehouse Return record for rejected inbound batches or shortfall batches returning to the merchant.
+    Maintains relational link to the inbound request, warehouse, seller company, and records the seller's physical address.
+    """
+    class Status(models.TextChoices):
+        PENDING_DISPATCH = "PENDING_DISPATCH", "Pending Return to Seller"
+        DISPATCHED = "DISPATCHED", "Dispatched to Seller"
+        RETURNED = "RETURNED", "Returned / Handed Over to Seller"
+        CANCELLED = "CANCELLED", "Cancelled"
+
+    return_number = models.CharField(
+        max_length=50,
+        unique=True,
+        db_index=True,
+        help_text="Unique return batch identifier (e.g. RET-INB-0042)"
+    )
+    inbound_request = models.ForeignKey(
+        WarehouseInboundRequest,
+        on_delete=models.CASCADE,
+        related_name="warehouse_returns",
+        db_index=True,
+    )
+    warehouse = models.ForeignKey(
+        Warehouse,
+        on_delete=models.PROTECT,
+        related_name="warehouse_portal_returns",
+        db_index=True,
+    )
+    company = models.ForeignKey(
+        "companies.Company",
+        on_delete=models.CASCADE,
+        related_name="warehouse_portal_returns",
+        db_index=True,
+    )
+    product = models.ForeignKey(
+        SellerProduct,
+        on_delete=models.PROTECT,
+        related_name="warehouse_portal_returns",
+    )
+    returned_quantity = models.PositiveIntegerField(
+        help_text="Count of physical units to be returned back to the seller"
+    )
+    seller_address = models.TextField(
+        help_text="Seller company destination address for returning physical goods"
+    )
+    seller_city = models.CharField(max_length=100, blank=True, default="")
+    seller_phone = models.CharField(max_length=50, blank=True, default="")
+    reason = models.CharField(
+        max_length=100,
+        default="INBOUND_SHORTFALL_REJECTED",
+        help_text="Reason code for warehouse return"
+    )
+    notes = models.TextField(blank=True, default="")
+    status = models.CharField(
+        max_length=30,
+        choices=Status.choices,
+        default=Status.PENDING_DISPATCH,
+        db_index=True,
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_warehouse_portal_returns",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "workforce_warehouse_return"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["warehouse", "status"], name="wf_wh_ret_wh_stat_idx"),
+            models.Index(fields=["company", "status"], name="wf_wh_ret_comp_stat_idx"),
+            models.Index(fields=["return_number"], name="wf_wh_ret_num_idx"),
+        ]
+
+    def __str__(self):
+        return f"Return {self.return_number} | {self.product.title} x {self.returned_quantity} -> {self.company.company_name}"
+
+
+
 
 
 

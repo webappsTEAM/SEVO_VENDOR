@@ -2105,3 +2105,84 @@ def reconsider_jobs_for_employee(employee_or_id) -> int:
 def reconcile_booking_for_dispatch(job_id_or_obj, use_redis_geo=False):
     """Authoritative entry point for post-commit / worker dispatch triggers."""
     return dispatch_job(job_id_or_obj, use_redis_geo=use_redis_geo)
+
+
+def get_available_riders_summary(order) -> Dict[str, Any]:
+    """
+    Returns a structured diagnostic summary of available and active riders
+    evaluated against the order's designated pickup location (Warehouse if assigned, else store).
+    """
+    from workforce_api.models import get_seller_assigned_warehouse
+    from employees.models import Employee
+
+    warehouse = get_seller_assigned_warehouse(getattr(order, "company_id", None)) if getattr(order, "company_id", None) else None
+    if not warehouse or warehouse.latitude is None or warehouse.longitude is None:
+        return {
+            "error": "Store has no assigned fulfillment warehouse.",
+            "code": "WAREHOUSE_ASSIGNMENT_REQUIRED",
+            "warehouse_missing": True,
+            "pickup_location": {
+                "source": "none",
+                "name": "Unassigned Warehouse",
+                "latitude": None,
+                "longitude": None,
+            },
+            "total_active_riders": 0,
+            "online_riders_count": 0,
+            "riders_in_radius": 0,
+            "riders": [],
+        }
+
+    pickup_lat = float(warehouse.latitude)
+    pickup_lon = float(warehouse.longitude)
+    pickup_source = "warehouse"
+    pickup_name = warehouse.name
+
+    active_riders_qs = Employee.objects.filter(
+        is_active=True,
+    ).select_related("user")
+
+    total_active = active_riders_qs.count()
+    online_count = 0
+    in_radius_count = 0
+    riders_list = []
+
+    for emp in active_riders_qs[:50]:
+        dist_km = None
+        last_loc = getattr(emp.user, "last_known_location", None) or {} if emp.user else {}
+        emp_lat = last_loc.get("latitude") if last_loc.get("latitude") is not None else last_loc.get("lat")
+        emp_lon = last_loc.get("longitude") if last_loc.get("longitude") is not None else (last_loc.get("lng") or last_loc.get("lon"))
+
+        if pickup_lat is not None and pickup_lon is not None and emp_lat is not None and emp_lon is not None:
+            try:
+                dist_m = haversine_distance(pickup_lat, pickup_lon, float(emp_lat), float(emp_lon))
+                dist_km = round(dist_m / 1000.0, 2)
+                if dist_km <= MAX_DISPATCH_RADIUS_KM:
+                    in_radius_count += 1
+            except (ValueError, TypeError):
+                dist_km = None
+
+        is_online = getattr(emp, "is_online", False) or getattr(emp, "clocked_in", False)
+        if is_online:
+            online_count += 1
+
+        riders_list.append({
+            "employee_id": emp.id,
+            "name": (emp.user.get_full_name() or emp.user.username) if emp.user else f"Employee #{emp.id}",
+            "distance_km": dist_km,
+            "is_online": is_online,
+        })
+
+    return {
+        "pickup_location": {
+            "source": pickup_source,
+            "name": pickup_name,
+            "latitude": pickup_lat,
+            "longitude": pickup_lon,
+        },
+        "total_active_riders": total_active,
+        "online_riders_count": online_count,
+        "riders_in_radius": in_radius_count,
+        "riders": riders_list[:10],
+    }
+

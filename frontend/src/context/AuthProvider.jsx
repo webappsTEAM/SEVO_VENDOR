@@ -78,9 +78,18 @@ export function AuthProvider({ children }) {
           const isAdmin = isPlatformAdmin || isVendorAdmin;
           const empData = isAdmin ? null : await apiGetOnboardingProfile().catch(() => null);
 
-          const isEmployee = Boolean(empData) || (!isAdmin && (me.role || '').toLowerCase() === 'employee');
+          const isWarehouseStaff = Boolean(
+            me.is_warehouse_staff ||
+            me.warehouse_id ||
+            (me.role || '').toLowerCase() === 'warehouse'
+          );
+          const warehouseId = me.warehouse_id || null;
+          const warehouseName = me.warehouse_name || '';
+          const warehouseCode = me.warehouse_code || '';
+
+          const isEmployee = !isWarehouseStaff && (Boolean(empData) || (!isAdmin && (me.role || '').toLowerCase() === 'employee'));
           const isTiedWorker = isEmployee && Boolean(me.is_tied_worker || empData?.is_tied || empData?.workforce_type === 'TIED');
-          const isSeller = Boolean(
+          const isSeller = !isWarehouseStaff && Boolean(
             me.is_seller ||
             me.business_type === 'grocery_supplier' ||
             me.company_business_type === 'grocery_supplier' ||
@@ -91,8 +100,8 @@ export function AuthProvider({ children }) {
             me.business_type === 'grocery_supplier' ||
             me.business_type === 'hybrid'
           );
-          const isSoloWorker = isEmployee && (!isTiedWorker || Boolean(me.is_solo_worker) || empData?.workforce_type === 'SOLO' || !me.company);
-          const computedRole = me.role || (isPlatformAdmin ? 'platform_admin' : (isSeller ? 'seller' : (isVendorAdmin ? 'vendor_admin' : (isAdmin ? 'admin' : 'employee'))));
+          const isSoloWorker = !isWarehouseStaff && (isEmployee && (!isTiedWorker || Boolean(me.is_solo_worker) || empData?.workforce_type === 'SOLO' || !me.company));
+          const computedRole = me.role || (isPlatformAdmin ? 'platform_admin' : (isWarehouseStaff ? 'warehouse' : (isSeller ? 'seller' : (isVendorAdmin ? 'vendor_admin' : (isAdmin ? 'admin' : 'employee')))));
 
           const u = {
             id: me.id,
@@ -109,10 +118,15 @@ export function AuthProvider({ children }) {
             isVendorAdmin: isVendorAdmin,
             isSeller: isSeller,
             isGrocerySupplier: isGrocerySupplier,
+            isWarehouseStaff: isWarehouseStaff,
+            warehouseId: warehouseId,
+            warehouseName: warehouseName,
+            warehouseCode: warehouseCode,
+            warehouse: warehouseId ? { id: warehouseId, name: warehouseName, code: warehouseCode } : null,
             isEmployee: isEmployee,
             isTiedWorker: isTiedWorker,
             isSoloWorker: isSoloWorker,
-            registrationStatus: empData?.registration_status || me.registration_status || (isAdmin ? 'approved' : 'not_started'),
+            registrationStatus: empData?.registration_status || me.registration_status || (isAdmin || isWarehouseStaff ? 'approved' : 'not_started'),
             onboarding_data: empData?.onboarding_data || null,
             isOnline: empData ? Boolean(empData.is_online) : false,
             availability: empData ? (empData.live_availability || 'offline') : 'offline',
@@ -169,8 +183,23 @@ export function AuthProvider({ children }) {
     }
 
     if (res.user) {
-      const isSuper = Boolean(res.user.is_superuser || res.user.is_platform_admin);
-      const isSeller = Boolean(
+      const isSuper = Boolean(
+        res.user.is_superuser ||
+        res.user.is_platform_admin ||
+        res.user.is_super_admin ||
+        res.user.isSuperAdmin ||
+        ['platform_admin', 'super_admin', 'superadmin'].includes((res.user.role || '').toLowerCase())
+      );
+      const isWarehouseStaff = Boolean(
+        res.user.is_warehouse_staff ||
+        res.user.warehouse_id ||
+        (res.user.role || '').toLowerCase() === 'warehouse'
+      );
+      const warehouseId = res.user.warehouse_id || null;
+      const warehouseName = res.user.warehouse_name || '';
+      const warehouseCode = res.user.warehouse_code || '';
+
+      const isSeller = !isWarehouseStaff && Boolean(
         res.user.is_seller ||
         res.user.business_type === 'grocery_supplier' ||
         (res.user.role || '').toLowerCase() === 'seller'
@@ -181,16 +210,16 @@ export function AuthProvider({ children }) {
         res.user.business_type === 'hybrid'
       );
       const isAdmin = ['admin', 'manager'].includes((res.user.role || '').toLowerCase()) || isSuper || isSeller;
-      const isTied = Boolean(res.user.is_tied_worker);
-      const isSolo = Boolean(res.user.is_solo_worker) || (!isTied && !isAdmin);
-      const regStatus = res.user.registration_status || (isAdmin ? 'approved' : 'not_started');
+      const isTied = !isWarehouseStaff && Boolean(res.user.is_tied_worker);
+      const isSolo = !isWarehouseStaff && (Boolean(res.user.is_solo_worker) || (!isTied && !isAdmin));
+      const regStatus = res.user.registration_status || (isAdmin || isWarehouseStaff ? 'approved' : 'not_started');
       const initialUser = {
         id: res.user.id,
         username: res.user.username,
         email: res.user.email || '',
         firstName: res.user.first_name || '',
         lastName: res.user.last_name || '',
-        role: res.user.role || (isSuper ? 'platform_admin' : (isSeller ? 'seller' : (isAdmin ? 'vendor_admin' : 'employee'))),
+        role: res.user.role || (isSuper ? 'platform_admin' : (isWarehouseStaff ? 'warehouse' : (isSeller ? 'seller' : (isAdmin ? 'vendor_admin' : 'employee')))),
         companyId: res.user.company,
         companyName: res.user.company_name || '',
         businessType: res.user.business_type || '',
@@ -199,7 +228,12 @@ export function AuthProvider({ children }) {
         isVendorAdmin: isAdmin && !isSuper,
         isSeller: isSeller,
         isGrocerySupplier: isGrocerySupplier,
-        isEmployee: !isAdmin,
+        isWarehouseStaff: isWarehouseStaff,
+        warehouseId: warehouseId,
+        warehouseName: warehouseName,
+        warehouseCode: warehouseCode,
+        warehouse: warehouseId ? { id: warehouseId, name: warehouseName, code: warehouseCode } : null,
+        isEmployee: !isAdmin && !isWarehouseStaff,
         isTiedWorker: isTied,
         isSoloWorker: isSolo,
         registrationStatus: regStatus,
@@ -364,6 +398,11 @@ export function AuthProvider({ children }) {
     isVendorAdmin: user?.isVendorAdmin || false,
     isSeller: user?.isSeller || false,
     isGrocerySupplier: user?.isGrocerySupplier || false,
+    isWarehouseStaff: user?.isWarehouseStaff || false,
+    warehouseId: user?.warehouseId || null,
+    warehouseName: user?.warehouseName || '',
+    warehouseCode: user?.warehouseCode || '',
+    warehouse: user?.warehouse || null,
     isEmployee: user?.isEmployee || false,
     isTiedWorker: user?.isTiedWorker || false,
     isSoloWorker: user?.isSoloWorker || false,

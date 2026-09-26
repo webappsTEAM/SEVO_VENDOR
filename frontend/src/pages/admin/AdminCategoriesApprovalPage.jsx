@@ -32,6 +32,7 @@ import {
   Barcode as BarcodeIcon,
   Warehouse as WarehouseIcon,
   MapPin,
+  Truck,
 } from 'lucide-react';
 import { BarcodeScannerModal } from '../../components/common/BarcodeScannerModal.jsx';
 import { BarcodeRenderer } from '../../components/common/BarcodeRenderer.jsx';
@@ -711,11 +712,22 @@ export function AdminCategoriesApprovalPage() {
                                 >
                                   {prod.title}
                                 </span>
-                                <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5">
+                                <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5 flex-wrap">
                                   <span className="font-mono bg-slate-100 px-1.5 py-0.2 rounded text-[10px]">
                                     {prod.sku}
                                   </span>
                                   {prod.brand && <span>Brand: {prod.brand}</span>}
+                                  {prod.fulfillment_method === 'FULFILLED_BY_SEVO' ? (
+                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                      <WarehouseIcon className="w-3 h-3 text-indigo-500" />
+                                      <span>FBS</span>
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                                      <Truck className="w-3 h-3 text-slate-400" />
+                                      <span>Self-Ship</span>
+                                    </span>
+                                  )}
                                 </div>
                               </div>
                             </div>
@@ -918,6 +930,22 @@ export function AdminCategoriesApprovalPage() {
                             <span className="text-slate-400 block text-[10px]">Unit & Pack Size</span>
                             <span className="font-semibold text-slate-800">
                               {detailProduct.pack_size} {detailProduct.unit}
+                            </span>
+                          </div>
+                          <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100">
+                            <span className="text-slate-400 block text-[10px]">Fulfillment Method</span>
+                            <span className="font-semibold text-slate-800 flex items-center gap-1 mt-0.5">
+                              {detailProduct.fulfillment_method === 'FULFILLED_BY_SEVO' ? (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                  <WarehouseIcon className="w-3 h-3 text-indigo-500" />
+                                  <span>Fulfilled by Sevo (FBS)</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                                  <Truck className="w-3 h-3 text-slate-400" />
+                                  <span>Self-Ship (Merchant Direct)</span>
+                                </span>
+                              )}
                             </span>
                           </div>
                           <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100 col-span-2 flex items-center justify-between">

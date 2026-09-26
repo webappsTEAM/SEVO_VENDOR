@@ -1678,6 +1678,212 @@ export async function apiSellerOrderAdminOverride(orderId, action, reason) {
     json: { action, reason },
   });
 }
+export async function apiGetAvailableRiders(orderId) {
+  return await apiRequest(`/workforce/seller-hub/orders/${orderId}/available-riders/`);
+}
+
+export async function apiRetryOrderDispatch(orderId) {
+  return await apiRequest(`/workforce/seller-hub/orders/${orderId}/retry-dispatch/`, {
+    method: 'POST',
+    json: {},
+  });
+}
+
+// ── Phase T: Admin Warehouses & Seller Warehouse Assignment ───────────────────
+export async function apiAdminGetWarehouses(params = {}) {
+  const qs = new URLSearchParams();
+  if (params.search) qs.set('search', params.search);
+  if (params.city) qs.set('city', params.city);
+  if (params.is_active != null) qs.set('is_active', String(params.is_active));
+  const queryStr = qs.toString();
+  return await apiRequest(`/workforce/admin/warehouses/${queryStr ? `?${queryStr}` : ''}`);
+}
+
+export async function apiAdminGetWarehouseDetail(id) {
+  return await apiRequest(`/workforce/admin/warehouses/${id}/`);
+}
+
+export async function apiAdminCreateWarehouse(payload) {
+  return await apiRequest('/workforce/admin/warehouses/', {
+    method: 'POST',
+    json: payload,
+  });
+}
+
+export async function apiAdminUpdateWarehouse(id, payload) {
+  return await apiRequest(`/workforce/admin/warehouses/${id}/`, {
+    method: 'PATCH',
+    json: payload,
+  });
+}
+
+export async function apiAdminDeleteWarehouse(id) {
+  return await apiRequest(`/workforce/admin/warehouses/${id}/`, {
+    method: 'DELETE',
+  });
+}
+
+export async function apiAdminGetSellerWarehouse(sellerId) {
+  return await apiRequest(`/workforce/admin/sellers/${sellerId}/warehouse/`);
+}
+
+export async function apiAdminAssignSellerWarehouse(sellerId, warehouseId, notes = '') {
+  return await apiRequest(`/workforce/admin/sellers/${sellerId}/warehouse/`, {
+    method: 'POST',
+    json: { warehouse_id: warehouseId, notes },
+  });
+}
+
+export async function apiAdminUnassignSellerWarehouse(sellerId) {
+  return await apiRequest(`/workforce/admin/sellers/${sellerId}/warehouse/`, {
+    method: 'DELETE',
+  });
+}
+
+export async function apiAdminAssignMerchantToWarehouse(warehouseId, companyId, notes = '') {
+  return await apiRequest(`/workforce/admin/warehouses/${warehouseId}/assign-merchant/`, {
+    method: 'POST',
+    json: { company_id: companyId, notes },
+  });
+}
+
+export async function apiAdminUnassignMerchantFromWarehouse(warehouseId, companyId) {
+  return await apiRequest(`/workforce/admin/warehouses/${warehouseId}/assign-merchant/${companyId}/`, {
+    method: 'DELETE',
+  });
+}
+
+export async function apiAdminGetCompanies(params = {}) {
+  const qs = new URLSearchParams();
+  if (params.search) qs.append('search', params.search);
+  const queryStr = qs.toString();
+  return await apiRequest(`/workforce/admin/companies/${queryStr ? `?${queryStr}` : ''}`);
+}
+
+export async function apiWarehouseGetProfile() {
+  return await apiRequest('/workforce/warehouse/profile/');
+}
+
+export async function apiWarehouseUpdateProfile(payload) {
+  return await apiRequest('/workforce/warehouse/profile/', {
+    method: 'PATCH',
+    json: payload,
+  });
+}
+
+export async function apiWarehouseGetStats() {
+  return await apiRequest('/workforce/warehouse/stats/');
+}
+
+export async function apiWarehouseGetOrders(params = {}) {
+  const qs = new URLSearchParams();
+  if (params.status) qs.append('status', params.status);
+  if (params.search) qs.append('search', params.search);
+  if (params.date) qs.append('date', params.date);
+  if (params.page) qs.append('page', params.page);
+  if (params.page_size) qs.append('page_size', params.page_size);
+  const queryStr = qs.toString();
+  return await apiRequest(`/workforce/warehouse/orders/${queryStr ? `?${queryStr}` : ''}`);
+}
+
+export async function apiWarehouseGetOrderDetail(id) {
+  return await apiRequest(`/workforce/warehouse/orders/${id}/`);
+}
+
+// ── Phase X: Inbound Stock Requests & Storage ─────────────────────────────────
+
+export async function apiSellerGetAssignedWarehouse() {
+  return await apiRequest('/workforce/seller-hub/assigned-warehouse/');
+}
+
+export async function apiSellerGetInboundRequests(params = {}) {
+  const qs = new URLSearchParams();
+  if (params.product_id) qs.append('product_id', params.product_id);
+  if (params.status) qs.append('status', params.status);
+  const queryStr = qs.toString();
+  return await apiRequest(`/workforce/seller-hub/inbound-requests/${queryStr ? `?${queryStr}` : ''}`);
+}
+
+export async function apiSellerCreateInboundRequest(payload) {
+  return await apiRequest('/workforce/seller-hub/inbound-requests/', {
+    method: 'POST',
+    json: payload,
+  });
+}
+
+export async function apiSellerGetEligibleWarehouses() {
+  return await apiRequest('/workforce/seller-hub/eligible-warehouses/');
+}
+
+export async function apiSellerGetInventoryBalance(productId, warehouseId) {
+  const qs = new URLSearchParams();
+  if (productId) qs.append('product_id', productId);
+  if (warehouseId) qs.append('warehouse_id', warehouseId);
+  const queryStr = qs.toString();
+  return await apiRequest(`/workforce/seller-hub/inventory-balance/${queryStr ? `?${queryStr}` : ''}`);
+}
+
+export function apiSellerGetInboundLabelsPdfUrl(id, format = 'a4') {
+  return `/api/workforce/seller-hub/inbound-requests/${id}/labels-pdf/?format=${encodeURIComponent(format)}`;
+}
+
+export function apiWarehouseGetInboundLabelsPdfUrl(id, format = 'a4') {
+  return `/api/workforce/warehouse/inbound-requests/${id}/labels-pdf/?format=${encodeURIComponent(format)}`;
+}
+
+
+export async function apiWarehouseGetInboundRequests(params = {}) {
+  const qs = new URLSearchParams();
+  if (params.status) qs.append('status', params.status);
+  if (params.search) qs.append('search', params.search);
+  if (params.page) qs.append('page', params.page);
+  if (params.page_size) qs.append('page_size', params.page_size);
+  const queryStr = qs.toString();
+  return await apiRequest(`/workforce/warehouse/inbound-requests/${queryStr ? `?${queryStr}` : ''}`);
+}
+
+export async function apiWarehouseDecideInboundRequest(id, action, reviewerNote = '') {
+  return await apiRequest(`/workforce/warehouse/inbound-requests/${id}/decision/`, {
+    method: 'POST',
+    json: {
+      action,
+      reviewer_note: reviewerNote,
+    },
+  });
+}
+
+export async function apiWarehouseScanInboundUnit(id, barcode) {
+  return await apiRequest(`/workforce/warehouse/inbound-requests/${id}/scan-unit/`, {
+    method: 'POST',
+    json: { barcode },
+  });
+}
+
+export async function apiWarehouseGetInboundUnits(id) {
+  return await apiRequest(`/workforce/warehouse/inbound-requests/${id}/units/`);
+}
+
+export async function apiWarehouseReportShortfall(id, shortfallNote = '') {
+  return await apiRequest(`/workforce/warehouse/inbound-requests/${id}/report-shortfall/`, {
+    method: 'POST',
+    json: { shortfall_note: shortfallNote },
+  });
+}
+
+export async function apiWarehouseGetReturns() {
+  return await apiRequest('/workforce/warehouse/returns/');
+}
+
+export async function apiSellerDecideShortfall(id, action, sellerNote = '') {
+  return await apiRequest(`/workforce/seller-hub/inbound-requests/${id}/shortfall-decision/`, {
+    method: 'POST',
+    json: {
+      action,
+      seller_note: sellerNote,
+    },
+  });
+}
+
 // Named object export for convenient namespace usage
 export const workforceService = {
   getGroceryOrders: apiGetGroceryOrders,
@@ -1714,6 +1920,26 @@ export const workforceService = {
   getSellerWarehouse: apiAdminGetSellerWarehouse,
   assignSellerWarehouse: apiAdminAssignSellerWarehouse,
   unassignSellerWarehouse: apiAdminUnassignSellerWarehouse,
+  assignMerchantToWarehouse: apiAdminAssignMerchantToWarehouse,
+  unassignMerchantFromWarehouse: apiAdminUnassignMerchantFromWarehouse,
+  getCompanies: apiAdminGetCompanies,
+  warehouseGetProfile: apiWarehouseGetProfile,
+  warehouseUpdateProfile: apiWarehouseUpdateProfile,
+  warehouseGetStats: apiWarehouseGetStats,
+  warehouseGetOrders: apiWarehouseGetOrders,
+  warehouseGetOrderDetail: apiWarehouseGetOrderDetail,
+  sellerGetAssignedWarehouse: apiSellerGetAssignedWarehouse,
+  sellerGetInboundRequests: apiSellerGetInboundRequests,
+  sellerCreateInboundRequest: apiSellerCreateInboundRequest,
+  sellerGetEligibleWarehouses: apiSellerGetEligibleWarehouses,
+  sellerGetInventoryBalance: apiSellerGetInventoryBalance,
+  sellerGetInboundLabelsPdfUrl: apiSellerGetInboundLabelsPdfUrl,
+  warehouseGetInboundRequests: apiWarehouseGetInboundRequests,
+  warehouseDecideInboundRequest: apiWarehouseDecideInboundRequest,
+  warehouseScanInboundUnit: apiWarehouseScanInboundUnit,
+  warehouseGetInboundUnits: apiWarehouseGetInboundUnits,
+  warehouseGetInboundLabelsPdfUrl: apiWarehouseGetInboundLabelsPdfUrl,
 };
+
 
 

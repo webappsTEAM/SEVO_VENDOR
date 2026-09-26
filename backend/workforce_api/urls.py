@@ -261,7 +261,15 @@ from workforce_api.views_seller_hub import (
     SellerReportsExportCSVView,
     AdminWarehouseListCreateView,
     AdminWarehouseDetailView,
+    AdminWarehouseAssignMerchantView,
+    AdminCompaniesLookupView,
     AdminSellerWarehouseAssignView,
+    SellerAssignedWarehouseView,
+    SellerInboundRequestListCreateView,
+    SellerInboundRequestShortfallDecisionView,
+    SellerInboundRequestLabelsPdfView,
+    SellerEligibleWarehousesView,
+    SellerInventoryBalanceView,
 )
 from workforce_api.views_marketplace_integration import (
     MarketplaceCategoryFeedView,
@@ -272,6 +280,19 @@ from workforce_api.views_marketplace_integration import (
     MarketplaceOrderIntakeView,
     MarketplaceOrderCancelReleaseView,
     MarketplaceOrderStatusView,
+)
+from workforce_api.views_warehouse_portal import (
+    WarehousePortalProfileView,
+    WarehousePortalStatsView,
+    WarehousePortalOrdersListView,
+    WarehousePortalOrderDetailView,
+    WarehousePortalInboundRequestListView,
+    WarehousePortalInboundRequestDecisionView,
+    WarehousePortalInboundRequestScanUnitView,
+    WarehousePortalInboundRequestLabelsPdfView,
+    WarehousePortalInboundRequestUnitsListView,
+    WarehousePortalInboundRequestReportShortfallView,
+    WarehousePortalReturnsListView,
 )
 
 
@@ -634,8 +655,32 @@ urlpatterns = [
     # Phase T: Admin Warehouse Facilities & Seller Warehouse Assignments
     path("admin/warehouses/", AdminWarehouseListCreateView.as_view(), name="admin-warehouses-list-create"),
     path("admin/warehouses/<int:pk>/", AdminWarehouseDetailView.as_view(), name="admin-warehouse-detail"),
+    path("admin/warehouses/<int:pk>/assign-merchant/", AdminWarehouseAssignMerchantView.as_view(), name="admin-warehouse-assign-merchant"),
+    path("admin/warehouses/<int:pk>/assign-merchant/<int:company_id>/", AdminWarehouseAssignMerchantView.as_view(), name="admin-warehouse-unassign-merchant"),
+    path("admin/companies/", AdminCompaniesLookupView.as_view(), name="admin-companies-lookup"),
     path("admin/sellers/<int:seller_id>/warehouse/", AdminSellerWarehouseAssignView.as_view(), name="admin-seller-warehouse-assign"),
     path("seller-hub/metrics/", SellerHubMetricsView.as_view(), name="seller-hub-metrics"),
+
+    # Phase V, X & Y: Warehouse Operations Portal (Scoped to logged-in warehouse staff)
+    path("warehouse/profile/", WarehousePortalProfileView.as_view(), name="warehouse-portal-profile"),
+    path("warehouse/stats/", WarehousePortalStatsView.as_view(), name="warehouse-portal-stats"),
+    path("warehouse/orders/", WarehousePortalOrdersListView.as_view(), name="warehouse-portal-orders"),
+    path("warehouse/orders/<int:order_id>/", WarehousePortalOrderDetailView.as_view(), name="warehouse-portal-order-detail"),
+    path("warehouse/inbound-requests/", WarehousePortalInboundRequestListView.as_view(), name="warehouse-portal-inbound-requests"),
+    path("warehouse/inbound-requests/<int:pk>/decision/", WarehousePortalInboundRequestDecisionView.as_view(), name="warehouse-portal-inbound-request-decision"),
+    path("warehouse/inbound-requests/<int:pk>/scan-unit/", WarehousePortalInboundRequestScanUnitView.as_view(), name="warehouse-portal-inbound-request-scan-unit"),
+    path("warehouse/inbound-requests/<int:pk>/labels-pdf/", WarehousePortalInboundRequestLabelsPdfView.as_view(), name="warehouse-portal-inbound-request-labels-pdf"),
+    path("warehouse/inbound-requests/<int:pk>/units/", WarehousePortalInboundRequestUnitsListView.as_view(), name="warehouse-portal-inbound-request-units"),
+    path("warehouse/inbound-requests/<int:pk>/report-shortfall/", WarehousePortalInboundRequestReportShortfallView.as_view(), name="warehouse-portal-inbound-request-report-shortfall"),
+    path("warehouse/returns/", WarehousePortalReturnsListView.as_view(), name="warehouse-portal-returns-list"),
+
+    # Phase X & Z: Seller Hub Inbound Storage Requests & Shortfall Decisions
+    path("seller-hub/assigned-warehouse/", SellerAssignedWarehouseView.as_view(), name="seller-hub-assigned-warehouse"),
+    path("seller-hub/eligible-warehouses/", SellerEligibleWarehousesView.as_view(), name="seller-hub-eligible-warehouses"),
+    path("seller-hub/inventory-balance/", SellerInventoryBalanceView.as_view(), name="seller-hub-inventory-balance"),
+    path("seller-hub/inbound-requests/", SellerInboundRequestListCreateView.as_view(), name="seller-hub-inbound-requests"),
+    path("seller-hub/inbound-requests/<int:pk>/shortfall-decision/", SellerInboundRequestShortfallDecisionView.as_view(), name="seller-hub-inbound-request-shortfall-decision"),
+    path("seller-hub/inbound-requests/<int:pk>/labels-pdf/", SellerInboundRequestLabelsPdfView.as_view(), name="seller-hub-inbound-request-labels-pdf"),
 
     # Phase 3: Seller Hub Inventory Management
     path("seller-hub/inventory/", SellerInventoryListView.as_view(), name="seller-hub-inventory-list"),

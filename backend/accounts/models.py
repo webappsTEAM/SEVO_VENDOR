@@ -53,6 +53,7 @@ class User(AbstractBaseUser):
         EMPLOYEE = "employee", "Employee"
         KIOSK = "kiosk", "Kiosk"
         CUSTOMER = "customer", "Customer"
+        WAREHOUSE = "warehouse", "Warehouse"
 
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.EMPLOYEE)
     bio = models.TextField(blank=True, default="")

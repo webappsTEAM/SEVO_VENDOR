@@ -2335,6 +2335,7 @@ class SellerProductListSerializer(serializers.ModelSerializer):
             "brand",
             "sku",
             "barcode",
+            "fulfillment_method",
             "unit",
             "pack_size",
             "mrp",
@@ -2420,6 +2421,7 @@ class SellerProductDetailSerializer(serializers.ModelSerializer):
             "brand",
             "sku",
             "barcode",
+            "fulfillment_method",
             "unit",
             "pack_size",
             "mrp",
@@ -2538,6 +2540,7 @@ class SellerProductCreateUpdateSerializer(serializers.ModelSerializer):
             "brand",
             "sku",
             "barcode",
+            "fulfillment_method",
             "unit",
             "pack_size",
             "mrp",
@@ -3469,6 +3472,7 @@ class WarehouseSerializer(serializers.ModelSerializer):
     latitude = serializers.FloatField(required=True)
     longitude = serializers.FloatField(required=True)
     assigned_sellers_count = serializers.SerializerMethodField()
+    staff_login = serializers.SerializerMethodField()
 
     class Meta:
         from .models import Warehouse
@@ -3485,10 +3489,11 @@ class WarehouseSerializer(serializers.ModelSerializer):
             "contact_phone",
             "is_active",
             "assigned_sellers_count",
+            "staff_login",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "created_at", "updated_at", "assigned_sellers_count"]
+        read_only_fields = ["id", "created_at", "updated_at", "assigned_sellers_count", "staff_login"]
 
     def validate_latitude(self, value):
         try:
@@ -3513,12 +3518,36 @@ class WarehouseSerializer(serializers.ModelSerializer):
             return obj.assigned_sellers_count_annotated
         return obj.seller_assignments.count()
 
+    def get_staff_login(self, obj):
+        try:
+            staff = obj.staff_members.select_related("user").filter(is_primary=True).first()
+            if not staff:
+                staff = obj.staff_members.select_related("user").first()
+            if staff and staff.user:
+                return {
+                    "user_id": staff.user_id,
+                    "username": staff.user.username,
+                    "email": staff.user.email or "",
+                    "has_login": True,
+                    "role": staff.role,
+                }
+        except Exception:
+            pass
+        return {
+            "user_id": None,
+            "username": "",
+            "email": "",
+            "has_login": False,
+            "role": "",
+        }
+
 
 class WarehouseDetailSerializer(WarehouseSerializer):
     sellers = serializers.SerializerMethodField()
+    staff = serializers.SerializerMethodField()
 
     class Meta(WarehouseSerializer.Meta):
-        fields = WarehouseSerializer.Meta.fields + ["sellers"]
+        fields = WarehouseSerializer.Meta.fields + ["sellers", "staff"]
 
     def get_sellers(self, obj):
         assignments = obj.seller_assignments.select_related("company").all()
@@ -3534,6 +3563,26 @@ class WarehouseDetailSerializer(WarehouseSerializer):
             }
             for a in assignments
         ]
+
+    def get_staff(self, obj):
+        try:
+            staff_list = obj.staff_members.select_related("user").all()
+            return [
+                {
+                    "id": s.id,
+                    "user_id": s.user_id,
+                    "username": s.user.username,
+                    "email": s.user.email or "",
+                    "first_name": s.user.first_name or "",
+                    "role": s.role,
+                    "is_primary": s.is_primary,
+                    "is_active": s.user.is_active,
+                    "created_at": s.created_at.isoformat() if s.created_at else None,
+                }
+                for s in staff_list if s.user
+            ]
+        except Exception:
+            return []
 
 
 class SellerWarehouseAssignmentSerializer(serializers.ModelSerializer):
@@ -3561,6 +3610,289 @@ class SellerWarehouseAssignmentSerializer(serializers.ModelSerializer):
         if obj.assigned_by:
             return obj.assigned_by.get_full_name() or obj.assigned_by.username
         return None
+
+
+class WarehouseInboundRequestAuditLogSerializer(serializers.ModelSerializer):
+    actor_name = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models import WarehouseInboundRequestAuditLog
+        model = WarehouseInboundRequestAuditLog
+        fields = [
+            "id",
+            "inbound_request",
+            "action",
+            "from_status",
+            "to_status",
+            "actor",
+            "actor_name",
+            "notes",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+    def get_actor_name(self, obj):
+        if obj.actor:
+            return obj.actor.get_full_name() or obj.actor.username
+        return "System"
+
+
+class WarehouseInboundUnitSerializer(serializers.ModelSerializer):
+    scanned_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models import WarehouseInboundUnit
+        model = WarehouseInboundUnit
+        fields = [
+            "id",
+            "inbound_request",
+            "unit_number",
+            "barcode",
+            "status",
+            "scanned_by",
+            "scanned_by_name",
+            "scanned_at",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
+
+    def get_scanned_by_name(self, obj):
+        if obj.scanned_by:
+            return obj.scanned_by.get_full_name() or obj.scanned_by.username
+        return None
+
+
+class WarehouseInboundRequestSerializer(serializers.ModelSerializer):
+    product_title = serializers.CharField(source="product.title", read_only=True)
+    product_brand = serializers.CharField(source="product.brand", read_only=True)
+    product_sku = serializers.CharField(source="product.sku", read_only=True)
+    product_barcode = serializers.CharField(source="product.barcode", read_only=True)
+    product_fulfillment_method = serializers.CharField(source="product.fulfillment_method", read_only=True)
+    product_selling_price = serializers.DecimalField(source="product.selling_price", max_digits=10, decimal_places=2, read_only=True)
+    product_image_url = serializers.SerializerMethodField()
+    company_name = serializers.CharField(source="company.company_name", read_only=True)
+    company_code = serializers.CharField(source="company.company_code", read_only=True, default="")
+    warehouse_name = serializers.CharField(source="warehouse.name", read_only=True)
+    warehouse_code = serializers.CharField(source="warehouse.code", read_only=True, default="")
+    warehouse_city = serializers.CharField(source="warehouse.city", read_only=True, default="")
+    requested_by_name = serializers.SerializerMethodField()
+    reviewed_by_name = serializers.SerializerMethodField()
+    shortfall_reported_by_name = serializers.SerializerMethodField()
+    seller_shortfall_decided_by_name = serializers.SerializerMethodField()
+    total_units_count = serializers.SerializerMethodField()
+    received_units_count = serializers.SerializerMethodField()
+    pending_units_count = serializers.SerializerMethodField()
+    not_received_units_count = serializers.SerializerMethodField()
+    shortfall_quantity = serializers.SerializerMethodField()
+    is_fully_received = serializers.SerializerMethodField()
+    units = WarehouseInboundUnitSerializer(many=True, read_only=True)
+    audit_logs = WarehouseInboundRequestAuditLogSerializer(many=True, read_only=True)
+
+    class Meta:
+        from .models import WarehouseInboundRequest
+        model = WarehouseInboundRequest
+        fields = [
+            "id",
+            "product",
+            "product_title",
+            "product_brand",
+            "product_sku",
+            "product_barcode",
+            "product_fulfillment_method",
+            "product_selling_price",
+            "product_image_url",
+            "company",
+            "company_name",
+            "company_code",
+            "warehouse",
+            "warehouse_name",
+            "warehouse_code",
+            "warehouse_city",
+            "requested_quantity",
+            "confirmed_quantity",
+            "shortfall_quantity",
+            "status",
+            "total_units_count",
+            "received_units_count",
+            "pending_units_count",
+            "not_received_units_count",
+            "is_fully_received",
+            "units",
+            "seller_note",
+            "requested_by",
+            "requested_by_name",
+            "reviewed_by",
+            "reviewed_by_name",
+            "reviewed_at",
+            "reviewer_note",
+            "shortfall_note",
+            "shortfall_reported_by",
+            "shortfall_reported_by_name",
+            "shortfall_reported_at",
+            "seller_shortfall_decision",
+            "seller_shortfall_decided_by",
+            "seller_shortfall_decided_by_name",
+            "seller_shortfall_decided_at",
+            "seller_shortfall_note",
+            "created_at",
+            "updated_at",
+            "audit_logs",
+        ]
+        read_only_fields = [
+            "id",
+            "product_title",
+            "product_brand",
+            "product_sku",
+            "product_barcode",
+            "product_fulfillment_method",
+            "product_selling_price",
+            "product_image_url",
+            "company_name",
+            "company_code",
+            "warehouse_name",
+            "warehouse_code",
+            "warehouse_city",
+            "total_units_count",
+            "received_units_count",
+            "pending_units_count",
+            "not_received_units_count",
+            "is_fully_received",
+            "units",
+            "requested_by_name",
+            "reviewed_by_name",
+            "reviewed_at",
+            "shortfall_reported_by_name",
+            "shortfall_reported_at",
+            "seller_shortfall_decided_by_name",
+            "seller_shortfall_decided_at",
+            "created_at",
+            "updated_at",
+            "audit_logs",
+        ]
+
+    def get_product_image_url(self, obj):
+        try:
+            primary_img = obj.product.images.filter(is_primary=True).first() or obj.product.images.first()
+            if primary_img and primary_img.image:
+                return primary_img.image.url
+        except Exception:
+            pass
+        return None
+
+    def get_requested_by_name(self, obj):
+        if obj.requested_by:
+            return obj.requested_by.get_full_name() or obj.requested_by.username
+        return None
+
+    def get_reviewed_by_name(self, obj):
+        if obj.reviewed_by:
+            return obj.reviewed_by.get_full_name() or obj.reviewed_by.username
+        return None
+
+    def get_shortfall_reported_by_name(self, obj):
+        if obj.shortfall_reported_by:
+            return obj.shortfall_reported_by.get_full_name() or obj.shortfall_reported_by.username
+        return None
+
+    def get_seller_shortfall_decided_by_name(self, obj):
+        if obj.seller_shortfall_decided_by:
+            return obj.seller_shortfall_decided_by.get_full_name() or obj.seller_shortfall_decided_by.username
+        return None
+
+    def get_total_units_count(self, obj):
+        count = getattr(obj, "_total_units_cache", None)
+        if count is None:
+            count = obj.units.count()
+        return count if count > 0 else obj.requested_quantity
+
+    def get_received_units_count(self, obj):
+        from .models import WarehouseInboundUnit
+        return obj.units.filter(status=WarehouseInboundUnit.Status.RECEIVED).count()
+
+    def get_pending_units_count(self, obj):
+        from .models import WarehouseInboundUnit
+        return obj.units.filter(status=WarehouseInboundUnit.Status.PENDING_SCAN).count()
+
+    def get_not_received_units_count(self, obj):
+        from .models import WarehouseInboundUnit
+        return obj.units.filter(status=WarehouseInboundUnit.Status.NOT_RECEIVED).count()
+
+    def get_shortfall_quantity(self, obj):
+        if obj.confirmed_quantity is not None and obj.requested_quantity is not None:
+            return max(0, obj.requested_quantity - obj.confirmed_quantity)
+        received = self.get_received_units_count(obj)
+        return max(0, (obj.requested_quantity or 0) - received)
+
+    def get_is_fully_received(self, obj):
+        total = self.get_total_units_count(obj)
+        received = self.get_received_units_count(obj)
+        return total > 0 and received >= total
+
+
+class WarehouseReturnSerializer(serializers.ModelSerializer):
+    """
+    Phase Z: Serializer for warehouse return records created upon shortfall rejection.
+    """
+    company_name = serializers.CharField(source="company.company_name", read_only=True)
+    warehouse_name = serializers.CharField(source="warehouse.name", read_only=True)
+    product_title = serializers.CharField(source="product.title", read_only=True)
+    product_sku = serializers.CharField(source="product.sku", read_only=True)
+    inbound_request_status = serializers.CharField(source="inbound_request.status", read_only=True)
+    created_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models import WarehouseReturn
+        model = WarehouseReturn
+        fields = [
+            "id",
+            "return_number",
+            "inbound_request",
+            "inbound_request_status",
+            "warehouse",
+            "warehouse_name",
+            "company",
+            "company_name",
+            "product",
+            "product_title",
+            "product_sku",
+            "returned_quantity",
+            "seller_address",
+            "seller_city",
+            "seller_phone",
+            "reason",
+            "notes",
+            "status",
+            "created_by",
+            "created_by_name",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "return_number",
+            "inbound_request_status",
+            "warehouse_name",
+            "company_name",
+            "product_title",
+            "product_sku",
+            "created_by_name",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_created_by_name(self, obj):
+        if obj.created_by:
+            return obj.created_by.get_full_name() or obj.created_by.username
+        return None
+
+
+class WarehouseInboundRequestCreateSerializer(serializers.Serializer):
+    product_id = serializers.IntegerField(required=True)
+    requested_quantity = serializers.IntegerField(required=True, min_value=1)
+    warehouse_id = serializers.IntegerField(required=False, allow_null=True)
+    seller_note = serializers.CharField(required=False, allow_blank=True, default="", max_length=1000)
+
 
 
 
