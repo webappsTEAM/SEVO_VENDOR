@@ -127,10 +127,17 @@ class IsInternalWorkforceCaller(BasePermission):
             provided = ""
 
         expected_secret = getattr(settings, "WORKFORCE_WEBHOOK_SECRET", "") or ""
-        expected_api_key = getattr(settings, "WORKFORCE_API_KEY", "") or os.getenv("WORKFORCE_API_KEY", "wf_integration_key_default")
+        # Fail closed: no built-in fallback key. The well-known development
+        # default ("wf_integration_key_default") used to be accepted here when
+        # WORKFORCE_API_KEY was unset, letting anyone who knew it release or
+        # cancel jobs. Only an explicitly configured key is honoured now.
+        expected_api_key = getattr(settings, "WORKFORCE_API_KEY", "") or os.getenv("WORKFORCE_API_KEY", "")
 
-        valid_secret = bool(provided and expected_secret and hmac.compare_digest(provided, expected_secret))
-        valid_api_key = bool(provided and expected_api_key and hmac.compare_digest(provided, expected_api_key))
+        def _same(a, b):
+            return hmac.compare_digest(a.encode("utf-8"), b.encode("utf-8"))
+
+        valid_secret = bool(provided and expected_secret and _same(provided, expected_secret))
+        valid_api_key = bool(provided and expected_api_key and _same(provided, expected_api_key))
         source_header = request.META.get("HTTP_X_CALSERVICES_SOURCE", "")
         valid_source = bool(getattr(settings, "DEBUG", False) and source_header == "calservices-platform")
 

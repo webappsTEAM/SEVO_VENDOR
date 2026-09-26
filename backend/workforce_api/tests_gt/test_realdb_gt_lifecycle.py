@@ -236,6 +236,10 @@ class HappyPathTests(RealDbBase):
         self.ok(t.checkpoint("DROP", "photo"))
         wrong = t.checkpoint("DROP", "otp", otp="000000")
         self.assertEqual((wrong.status_code, wrong.data["code"]), (400, "INVALID_OTP"))
+        # Non-ASCII input (e.g. Arabic-Indic digits from a phone keyboard) must be a
+        # normal wrong-code answer, not an unhandled comparison error.
+        odd = t.checkpoint("DROP", "otp", otp="\u0661\u0662\u0663\u0664\u0665\u0666")
+        self.assertEqual((odd.status_code, odd.data["code"]), (400, "INVALID_OTP"))
         self.ok(t.checkpoint("DROP", "otp", otp=t.delivery_otp()))
         self.ok(t.leg("DELIVERED"))
 
