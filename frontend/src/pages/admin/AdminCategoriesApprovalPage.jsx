@@ -697,12 +697,17 @@ export function AdminCategoriesApprovalPage() {
                                   src={prod.primary_image}
                                   alt={prod.title}
                                   className="w-10 h-10 rounded-lg object-cover border border-slate-200 bg-white shrink-0"
+                                  onError={(e) => {
+                                    e.currentTarget.onerror = null;
+                                    e.currentTarget.style.display = 'none';
+                                    const fallback = e.currentTarget.parentElement?.querySelector('.img-fallback');
+                                    if (fallback) fallback.classList.remove('hidden');
+                                  }}
                                 />
-                              ) : (
-                                <div className="w-10 h-10 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0">
-                                  <Package className="w-5 h-5" />
-                                </div>
-                              )}
+                              ) : null}
+                              <div className={`w-10 h-10 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0 ${prod.primary_image ? 'hidden img-fallback' : ''}`}>
+                                <Package className="w-5 h-5" />
+                              </div>
                               <div className="min-w-0">
                                 <span
                                   onClick={() => openProductDetail(prod.id)}
@@ -871,7 +876,15 @@ export function AdminCategoriesApprovalPage() {
                                 key={img.id || idx}
                                 className="relative rounded-lg overflow-hidden border border-slate-200 bg-slate-50 aspect-square"
                               >
-                                <img src={img.image_url} alt="Product" className="w-full h-full object-cover" />
+                                <img
+                                  src={img.image_url}
+                                  alt="Product"
+                                  className="w-full h-full object-cover"
+                                  onError={(e) => {
+                                    e.currentTarget.onerror = null;
+                                    e.currentTarget.style.display = 'none';
+                                  }}
+                                />
                                 {img.is_primary && (
                                   <span className="absolute top-1 left-1 bg-emerald-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow-xs">
                                     Primary

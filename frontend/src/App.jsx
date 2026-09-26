@@ -287,6 +287,14 @@ export function App() {
               element={<Navigate to="/workforce/admin/provider-profile" replace />}
             />
             <Route
+              path="/workforce/admin"
+              element={
+                <AdminRoute>
+                  <AdminDashboardPage />
+                </AdminRoute>
+              }
+            />
+            <Route
               path="/workforce/admin/applications"
               element={
                 <AdminRoute>
@@ -399,39 +407,6 @@ export function App() {
               }
             />
 
-          {/* Workforce Admin Operations Workspace */}
-          <Route
-            path="/workforce/admin"
-            element={
-              <AdminRoute>
-                <AdminDashboardPage />
-              </AdminRoute>
-            }
-          />
-          <Route
-            path="/workforce/admin/applications"
-            element={
-              <AdminRoute>
-                <AdminApplicationsPage />
-              </AdminRoute>
-            }
-          />
-          <Route
-            path="/workforce/admin/applications/:id"
-            element={
-              <AdminRoute>
-                <AdminApplicationDetailPage />
-              </AdminRoute>
-            }
-          />
-          <Route
-            path="/workforce/admin/employees"
-            element={
-              <AdminRoute>
-                <AdminEmployeesPage />
-              </AdminRoute>
-            }
-          />
           {/* SEVO Platform Admin Routes */}
           <Route
             path="/workforce/platform/vendors"
@@ -464,46 +439,6 @@ export function App() {
             element={
               <AdminRoute>
                 <VendorInvitationsPage />
-              </AdminRoute>
-            }
-          />
-          <Route
-            path="/workforce/admin/jobs"
-            element={
-              <AdminRoute>
-                <AdminJobsPage />
-              </AdminRoute>
-            }
-          />
-          <Route
-            path="/workforce/admin/dispatch"
-            element={
-              <AdminRoute>
-                <AdminOperationsPage />
-              </AdminRoute>
-            }
-          />
-          <Route
-            path="/workforce/admin/operations"
-            element={
-              <AdminRoute>
-                <AdminOperationsPage />
-              </AdminRoute>
-            }
-          />
-          <Route
-            path="/workforce/admin/services"
-            element={
-              <AdminRoute>
-                <AdminApplicationsPage />
-              </AdminRoute>
-            }
-          />
-          <Route
-            path="/workforce/admin/skills"
-            element={
-              <AdminRoute>
-                <AdminSkillsPage />
               </AdminRoute>
             }
           />
@@ -876,14 +811,6 @@ export function App() {
             element={
               <AdminRoute>
                 <AdminGrocerySettlementsPage />
-              </AdminRoute>
-            }
-          />
-          <Route
-            path="/workforce/admin/settings"
-            element={
-              <AdminRoute>
-                <AdminDashboardPage />
               </AdminRoute>
             }
           />

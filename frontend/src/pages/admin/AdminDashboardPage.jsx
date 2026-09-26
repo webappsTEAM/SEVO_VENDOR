@@ -12,6 +12,7 @@ import { ActionCenter } from '../../components/enterprise/ActionCenter.jsx';
 import { DataTable } from '../../components/enterprise/DataTable.jsx';
 import { StatusBadge } from '../../components/enterprise/StatusBadge.jsx';
 import { LoadingState } from '../../components/enterprise/LoadingState.jsx';
+import { ErrorState } from '../../components/enterprise/ErrorState.jsx';
 import {
   Users,
   CheckCircle2,
@@ -30,19 +31,24 @@ export function AdminDashboardPage() {
   const [jobs, setJobs] = useState([]);
   const [fleet, setFleet] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   const fetchedRef = React.useRef(false);
 
   const loadData = async () => {
     try {
       setIsLoading(true);
-      const [appsData, jobsData] = await Promise.all([
-        apiGetAdminApplications().catch(() => []),
-        apiGetWorkforceJobs().catch(() => []),
+      setError(null);
+      const [appsData, jobsData, fleetData] = await Promise.all([
+        apiGetAdminApplications(),
+        apiGetWorkforceJobs(),
+        apiGetFleetMap(),
       ]);
       setApplications(appsData || []);
       setJobs(jobsData || []);
-    } catch (_) {
+      setFleet(fleetData || []);
+    } catch (err) {
+      setError(err?.message || 'Failed to load workforce operations data.');
     } finally {
       setIsLoading(false);
     }
@@ -64,9 +70,16 @@ export function AdminDashboardPage() {
   const correctionApps = applications.filter(
     (a) => (a.registration_status || '').toLowerCase() === 'correction_required'
   );
-  const unassignedJobs = jobs.filter((j) => (j.status || '').toLowerCase() === 'assigned' && !j.employee_id);
-  const onlineFleet = fleet.filter((f) => f.is_online);
-  const busyFleet = fleet.filter((f) => f.is_online && f.active_job);
+  // Canonical unassigned jobs: not completed/cancelled, no technician assigned
+  const unassignedJobs = jobs.filter((j) => {
+    const st = (j.status || '').toLowerCase();
+    const hasTech = Boolean(j.assigned_employee_id || j.assigned_employee);
+    const isFinished = ['completed', 'cancelled'].includes(st);
+    const isAssigned = ['assigned', 'accepted', 'on_the_way', 'en_route', 'arrived', 'in_progress'].includes(st);
+    return !isFinished && !hasTech && !isAssigned;
+  });
+  const onlineFleet = fleet.filter((f) => f.is_online && (!f.active_job || f.current_availability === 'available'));
+  const busyFleet = fleet.filter((f) => f.active_job || (f.is_online && f.current_availability === 'busy'));
 
   // Documents requiring verification count across all applications
   let docsToVerifyCount = 0;
@@ -80,14 +93,14 @@ export function AdminDashboardPage() {
   const actionItems = [
     {
       title: 'Pending Applications',
-      count: applications.filter(a => a.status === 'SUBMITTED' || a.status === 'UNDER_REVIEW').length,
+      count: pendingApps.length,
       description: 'Technician registrations requiring document review',
       to: '/workforce/admin/applications',
       badgeClass: 'bg-amber-50 text-amber-900 border border-amber-200',
     },
     {
       title: 'Active Technicians',
-      count: applications.filter(e => e.is_active).length,
+      count: approvedTechs.length,
       description: 'Approved workforce field technicians',
       to: '/workforce/admin/employees',
       badgeClass: 'bg-zinc-100 text-zinc-900 border border-zinc-200',
@@ -189,6 +202,21 @@ export function AdminDashboardPage() {
             </div>
           }
         />
+
+        {error && (
+          <div className="flex items-center justify-between p-3.5 bg-rose-50 border border-rose-200 rounded-lg text-rose-800 text-xs">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
+              <span>{error}</span>
+            </div>
+            <button
+              onClick={loadData}
+              className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white font-semibold rounded text-xs transition-colors"
+            >
+              Retry
+            </button>
+          </div>
+        )}
 
         {/* Action Center */}
         <ActionCenter items={actionItems} />

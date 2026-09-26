@@ -16,7 +16,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { apiGetDispatchRadar } from '../../api/workforceService.js';
+import { apiGetDispatchRadar, apiTriggerAutoDispatch } from '../../api/workforceService.js';
 import {
   Radio,
   Clock,
@@ -37,6 +37,7 @@ import {
   ArrowRight,
   Check,
   X,
+  Send,
 } from 'lucide-react';
 
 export function AdminDispatchRadar() {
@@ -50,6 +51,8 @@ export function AdminDispatchRadar() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [nowTs, setNowTs] = useState(Date.now());
+  const [isDispatching, setIsDispatching] = useState(false);
+  const [dispatchResult, setDispatchResult] = useState(null);
 
   // Live second clock for countdown timer calculations
   useEffect(() => {
@@ -93,6 +96,34 @@ export function AdminDispatchRadar() {
     setSelectedAttemptIndex(0);
     setIsCandidatesExpanded(false);
     fetchRadar(id, true);
+  };
+
+  const handleTriggerDispatch = async () => {
+    const job = data?.selected_job;
+    if (!job) return;
+    const confirmed = window.confirm(
+      `Trigger automatic dispatch for Job #${job.request_id || job.id}? The authoritative dispatch engine will rank and offer the job to the best eligible technician.`
+    );
+    if (!confirmed) return;
+
+    try {
+      setIsDispatching(true);
+      setDispatchResult(null);
+      const res = await apiTriggerAutoDispatch(job.id);
+      setDispatchResult({
+        type: res?.success ? 'success' : 'info',
+        text: res?.message || 'Automatic dispatch triggered successfully.',
+      });
+      await fetchRadar(job.id, false);
+      setTimeout(() => setDispatchResult(null), 5000);
+    } catch (err) {
+      setDispatchResult({
+        type: 'error',
+        text: err?.message || 'Failed to trigger auto-dispatch.',
+      });
+    } finally {
+      setIsDispatching(false);
+    }
   };
 
   // Realtime SSE Event Listener (debounced/coalesced)
@@ -474,6 +505,33 @@ export function AdminDispatchRadar() {
                   </div>
                 </div>
 
+                {/* Dispatch Trigger Feedback Alert */}
+                {dispatchResult && (
+                  <div className={`p-2 rounded-md text-xs flex items-center justify-between gap-2 border ${
+                    dispatchResult.type === 'error'
+                      ? 'bg-rose-50 border-rose-200 text-rose-800'
+                      : dispatchResult.type === 'success'
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                      : 'bg-blue-50 border-blue-200 text-blue-800'
+                  }`}>
+                    <div className="flex items-center gap-1.5">
+                      {dispatchResult.type === 'error' ? (
+                        <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                      ) : (
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      )}
+                      <span>{dispatchResult.text}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setDispatchResult(null)}
+                      className="text-slate-400 hover:text-slate-600"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
+
                 {/* Inline Live Offer / Assignment / Holding Info Banner */}
                 <div className="bg-slate-50 border border-slate-200 rounded-md p-2 flex flex-wrap items-center justify-between gap-2 text-xs">
                   {selectedJob.current_offer ? (
@@ -500,11 +558,24 @@ export function AdminDispatchRadar() {
                       <span>Assigned: {selectedJob.assigned_technician_name}</span>
                     </div>
                   ) : (
-                    <div className="text-slate-600 flex items-center gap-1.5 text-[11px]">
-                      <Info className="w-3.5 h-3.5 text-slate-400" />
-                      <span>
-                        {selectedJob.unassigned_reason_message || 'Awaiting candidate ranking or retry schedule.'}
-                      </span>
+                    <div className="flex flex-wrap items-center justify-between w-full gap-2">
+                      <div className="text-slate-600 flex items-center gap-1.5 text-[11px]">
+                        <Info className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <span>
+                          {selectedJob.unassigned_reason_message || 'Awaiting candidate ranking or retry schedule.'}
+                        </span>
+                      </div>
+                      {!['completed', 'cancelled'].includes((selectedJob.status || '').toLowerCase()) && (
+                        <button
+                          type="button"
+                          onClick={handleTriggerDispatch}
+                          disabled={isDispatching}
+                          className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-bold shadow-xs inline-flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                        >
+                          <Send className={`w-3 h-3 ${isDispatching ? 'animate-spin' : ''}`} />
+                          <span>{isDispatching ? 'Dispatching...' : 'Trigger Auto-Dispatch'}</span>
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
