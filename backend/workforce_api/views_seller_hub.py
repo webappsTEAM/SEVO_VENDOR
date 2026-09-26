@@ -1251,7 +1251,7 @@ class SellerProductListView(APIView):
         else:
             queryset = queryset.order_by("-updated_at")
 
-        serializer = SellerProductListSerializer(queryset, many=True)
+        serializer = SellerProductListSerializer(queryset, many=True, context={"request": request})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def post(self, request):
@@ -1322,7 +1322,7 @@ class SellerProductListView(APIView):
         return Response(
             {
                 "message": f"Product '{product.title}' created successfully.",
-                "product": SellerProductDetailSerializer(product).data,
+                "product": SellerProductDetailSerializer(product, context={"request": request}).data,
             },
             status=status.HTTP_201_CREATED
         )
@@ -1351,7 +1351,7 @@ class SellerProductDetailView(APIView):
         product = self._get_product(request.user, pk)
         if not product:
             return Response({"error": "Product not found or access denied."}, status=status.HTTP_404_NOT_FOUND)
-        serializer = SellerProductDetailSerializer(product)
+        serializer = SellerProductDetailSerializer(product, context={"request": request})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def patch(self, request, pk):
@@ -1480,7 +1480,7 @@ class SellerProductDetailView(APIView):
         return Response(
             {
                 "message": f"Product '{updated_product.title}' updated successfully.",
-                "product": SellerProductDetailSerializer(updated_product).data,
+                "product": SellerProductDetailSerializer(updated_product, context={"request": request}).data,
             },
             status=status.HTTP_200_OK
         )
@@ -1575,7 +1575,7 @@ class SellerProductSubmitView(APIView):
         return Response(
             {
                 "message": f"Product '{product.title}' has been submitted for catalog approval.",
-                "product": SellerProductDetailSerializer(product).data,
+                "product": SellerProductDetailSerializer(product, context={"request": request}).data,
             },
             status=status.HTTP_200_OK
         )
@@ -1623,7 +1623,7 @@ class SellerProductReviewDecisionView(APIView):
         if action == "approve":
             if product.status == SellerProduct.Status.APPROVED:
                 return Response(
-                    {"message": f"Product '{product.title}' is already approved.", "status": "APPROVED", "product": SellerProductDetailSerializer(product).data},
+                    {"message": f"Product '{product.title}' is already approved.", "status": "APPROVED", "product": SellerProductDetailSerializer(product, context={"request": request}).data},
                     status=status.HTTP_200_OK
                 )
             is_valid, err_msg, err_code = validate_product_category_is_leaf(product.category)
@@ -1672,7 +1672,7 @@ class SellerProductReviewDecisionView(APIView):
         return Response(
             {
                 "message": f"Product '{product.title}' has been {target_status.lower()}.",
-                "product": SellerProductDetailSerializer(product).data,
+                "product": SellerProductDetailSerializer(product, context={"request": request}).data,
             },
             status=status.HTTP_200_OK
         )
@@ -1876,7 +1876,7 @@ class AdminSellerProductApprovalListView(APIView):
         offset = (page - 1) * page_size
         paged_queryset = queryset[offset:offset + page_size]
 
-        serializer = SellerProductListSerializer(paged_queryset, many=True)
+        serializer = SellerProductListSerializer(paged_queryset, many=True, context={"request": request})
 
         return Response(
             {
@@ -1930,7 +1930,7 @@ class AdminProductApprovalDetailView(APIView):
         if not product:
             return Response({"error": "Product not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        return Response(SellerProductDetailSerializer(product).data, status=status.HTTP_200_OK)
+        return Response(SellerProductDetailSerializer(product, context={"request": request}).data, status=status.HTTP_200_OK)
 
 
 class AdminProductApproveView(APIView):
@@ -2000,7 +2000,7 @@ class AdminProductApproveView(APIView):
             {
                 "message": f"Product '{product.title}' has been approved.",
                 "status": "APPROVED",
-                "product": SellerProductDetailSerializer(product).data,
+                "product": SellerProductDetailSerializer(product, context={"request": request}).data,
             },
             status=status.HTTP_200_OK
         )
@@ -2064,7 +2064,7 @@ class AdminProductRejectView(APIView):
                 "message": f"Product '{product.title}' has been rejected.",
                 "status": "REJECTED",
                 "rejection_reason": reason,
-                "product": SellerProductDetailSerializer(product).data,
+                "product": SellerProductDetailSerializer(product, context={"request": request}).data,
             },
             status=status.HTTP_200_OK
         )
@@ -2166,6 +2166,7 @@ class SellerProductTemplateDownloadView(APIView):
             "Pack_Size",
             "MRP",
             "Selling_Price",
+            "Procurement_Price",
             "Tax_Rate",
             "HSN_Code",
             "Image_URL",
@@ -2191,6 +2192,7 @@ class SellerProductTemplateDownloadView(APIView):
             "1L",
             "180.00",
             "165.00",
+            "140.00",
             "5.00",
             "1512",
             "https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?w=500",
@@ -2208,6 +2210,7 @@ class SellerProductTemplateDownloadView(APIView):
             "1 kg",
             "195.00",
             "175.00",
+            "150.00",
             "0.00",
             "0713",
             "https://images.unsplash.com/photo-1585994192704-561f9d6a2f76?w=500",
@@ -2359,6 +2362,19 @@ class SellerProductBulkUploadView(APIView):
             except (InvalidOperation, ValueError):
                 row_errors.append("Invalid Selling Price format. Must be a valid positive number.")
 
+            # Procurement Price (optional cost price)
+            procurement_price_val = None
+            raw_cost = normalized_row.get("procurement_price") or normalized_row.get("cost_price", "")
+            if raw_cost:
+                try:
+                    cost_str = raw_cost.replace("₹", "").replace(",", "").strip()
+                    if cost_str:
+                        procurement_price_val = Decimal(cost_str)
+                        if procurement_price_val < 0:
+                            row_errors.append("Procurement price cannot be negative.")
+                except (InvalidOperation, ValueError):
+                    row_errors.append("Invalid Procurement Price format. Must be a valid non-negative number.")
+
             tax_val = Decimal("0.00")
             tax_str = normalized_row.get("tax_rate", "").replace("%", "").strip()
             if tax_str:
@@ -2391,6 +2407,7 @@ class SellerProductBulkUploadView(APIView):
                 "pack_size": pack_size,
                 "mrp": str(mrp_val) if mrp_val is not None else "",
                 "selling_price": str(price_val) if price_val is not None else "",
+                "procurement_price": str(procurement_price_val) if procurement_price_val is not None else None,
                 "tax_rate": str(tax_val),
                 "hsn_code": hsn_code,
                 "storage_info": storage_info,
@@ -2464,6 +2481,7 @@ class SellerProductBulkUploadView(APIView):
                     pack_size=item["pack_size"],
                     mrp=Decimal(item["mrp"]),
                     selling_price=Decimal(item["selling_price"]),
+                    procurement_price=Decimal(item["procurement_price"]) if item.get("procurement_price") is not None else None,
                     tax_rate=Decimal(item["tax_rate"]),
                     hsn_code=item["hsn_code"],
                     storage_info=item["storage_info"],
@@ -6179,6 +6197,9 @@ class SellerReportsSummaryView(APIView):
                 SellerClaim.Status.CLOSED,
             ]
         ).count()
+        claims_requiring_response = claim_qs_period.filter(
+            status=SellerClaim.Status.SELLER_RESPONSE_REQUIRED
+        ).count()
         dispute_rate = (
             round((total_claims / total_orders) * 100, 1) if total_orders > 0 else 0.0
         )
@@ -6188,9 +6209,30 @@ class SellerReportsSummaryView(APIView):
             status__in=[SellerProduct.Status.SUBMITTED, SellerProduct.Status.UNDER_REVIEW]
         ).count()
         total_on_hand_qty = inv_qs.aggregate(total=models.Sum("on_hand_qty"))["total"] or Decimal("0.000")
-        claims_requiring_response = claim_qs_period.filter(
-            status=SellerClaim.Status.SELLER_RESPONSE_REQUIRED
-        ).count()
+        # Profit & Margin tracking across fulfilled items in period
+        delivered_order_ids = order_qs_period.filter(
+            status__in=[SellerOrder.Status.DELIVERED, SellerOrder.Status.HANDED_OVER]
+        ).values_list("id", flat=True)
+
+        delivered_items = SellerOrderItem.objects.filter(order_id__in=delivered_order_ids).select_related("product")
+        total_gross_profit = Decimal("0.00")
+        total_cost_revenue_base = Decimal("0.00")
+        has_cost_data = False
+
+        for it in delivered_items:
+            cost = it.procurement_price_snapshot
+            if cost is None and it.product and it.product.procurement_price is not None:
+                cost = it.product.procurement_price
+            if cost is not None:
+                has_cost_data = True
+                qty = it.fulfilled_quantity if it.fulfilled_quantity and it.fulfilled_quantity > 0 else it.ordered_quantity
+                profit_per_unit = it.unit_price - cost
+                total_gross_profit += profit_per_unit * qty
+                total_cost_revenue_base += it.unit_price * qty
+
+        profit_margin_percent = None
+        if has_cost_data and total_cost_revenue_base > Decimal("0.00"):
+            profit_margin_percent = round(float((total_gross_profit / total_cost_revenue_base) * 100), 1)
 
         return Response(
             {
@@ -6204,6 +6246,10 @@ class SellerReportsSummaryView(APIView):
                 "fulfilled_order_gross_value": str(round(fulfilled_value_agg, 2)),
                 "fulfilment_success_rate": fulfilment_success_rate,
                 "cancellation_rate": cancellation_rate,
+                # Profit & Margin KPIs
+                "total_gross_profit": str(round(total_gross_profit, 2)) if has_cost_data else None,
+                "profit_margin_percent": profit_margin_percent,
+                "has_cost_data": has_cost_data,
                 # Catalog Quality
                 "total_products_count": total_products,
                 "approved_products_count": approved_products,
@@ -6429,12 +6475,77 @@ class SellerReportsPerformanceView(APIView):
                 "total_amount": str(round(val, 2)),
             })
 
+        # 5. Product Profitability & Unit Economics
+        prod_qs = SellerProduct.objects.all()
+        if not is_super:
+            if company_id:
+                prod_qs = prod_qs.filter(company_id=company_id)
+            else:
+                prod_qs = prod_qs.none()
+        elif filter_company := request.query_params.get("company_id"):
+            prod_qs = prod_qs.filter(company_id=filter_company)
+
+        # Aggregate sold items in period for each product from delivered orders
+        sold_items_qs = SellerOrderItem.objects.filter(
+            order__in=order_qs.filter(status__in=[SellerOrder.Status.DELIVERED, SellerOrder.Status.HANDED_OVER])
+        ).values("product_id").annotate(
+            total_sold_qty=models.Sum(
+                models.Case(
+                    models.When(fulfilled_quantity__gt=0, then=models.F("fulfilled_quantity")),
+                    default=models.F("ordered_quantity"),
+                    output_field=models.DecimalField()
+                )
+            ),
+            total_revenue=models.Sum("line_total")
+        )
+        sales_by_product = {item["product_id"]: item for item in sold_items_qs}
+
+        product_profitability = []
+        for p in prod_qs.select_related("category").order_by("title"):
+            p_cost = p.procurement_price
+            p_sp = p.selling_price
+            p_mrp = p.mrp
+            
+            unit_profit = None
+            margin_percent = None
+            if p_cost is not None and p_sp is not None:
+                unit_profit = p_sp - p_cost
+                if p_sp > 0:
+                    margin_percent = round(float((unit_profit / p_sp) * 100), 1)
+
+            sales_info = sales_by_product.get(p.id, {})
+            sold_qty = sales_info.get("total_sold_qty") or Decimal("0.000")
+            revenue = sales_info.get("total_revenue") or Decimal("0.00")
+            
+            total_product_profit = None
+            if unit_profit is not None and sold_qty > Decimal("0.000"):
+                total_product_profit = str(round(unit_profit * sold_qty, 2))
+            elif unit_profit is not None:
+                total_product_profit = "0.00"
+
+            product_profitability.append({
+                "product_id": p.id,
+                "title": p.title,
+                "sku": p.sku,
+                "category_name": p.category.name if p.category else "",
+                "brand": p.brand,
+                "mrp": str(p_mrp) if p_mrp is not None else "",
+                "selling_price": str(p_sp) if p_sp is not None else "",
+                "procurement_price": str(p_cost) if p_cost is not None else None,
+                "unit_profit": str(round(unit_profit, 2)) if unit_profit is not None else None,
+                "margin_percent": margin_percent,
+                "units_sold": str(round(sold_qty, 2)),
+                "total_revenue": str(round(revenue, 2)),
+                "total_profit": total_product_profit,
+            })
+
         return Response(
             {
                 "order_trends": order_trends,
                 "inventory_movements": movement_breakdown,
                 "returns_by_reason": returns_by_reason,
                 "claims_by_type": claims_by_type,
+                "product_profitability": product_profitability,
             },
             status=status.HTTP_200_OK
         )
@@ -6785,6 +6896,56 @@ class SellerReportsExportCSVView(APIView):
                     item.get("entity_ref", ""),
                     item.get("description", ""),
                     item.get("action_recommended", ""),
+                ])
+
+        elif report_type in ("profitability", "margins", "economics"):
+            qs = SellerProduct.objects.all()
+            if not is_super:
+                if company_id:
+                    qs = qs.filter(company_id=company_id)
+                else:
+                    qs = qs.none()
+            elif is_super and (c_id := request.query_params.get("company_id")):
+                qs = qs.filter(company_id=c_id)
+
+            writer.writerow([
+                "SKU",
+                "Product Title",
+                "Company",
+                "Category",
+                "Brand",
+                "MRP (INR)",
+                "Selling Price (INR)",
+                "Procurement Price (INR)",
+                "Unit Profit (INR)",
+                "Margin (%)",
+                "Status",
+            ])
+            for p in qs.select_related("category", "company").order_by("title"):
+                p_cost = p.procurement_price
+                p_sp = p.selling_price
+                p_mrp = p.mrp
+                if p_cost is not None and p_sp is not None:
+                    unit_profit_str = str(round(p_sp - p_cost, 2))
+                    margin_str = f"{round(float(((p_sp - p_cost) / p_sp) * 100), 1)}%" if p_sp > 0 else "0.0%"
+                    cost_str = str(p_cost)
+                else:
+                    unit_profit_str = "N/A"
+                    margin_str = "N/A"
+                    cost_str = "N/A"
+
+                writer.writerow([
+                    p.sku,
+                    p.title,
+                    getattr(p.company, "company_name", ""),
+                    p.category.name if p.category else "",
+                    p.brand or "",
+                    str(p_mrp) if p_mrp is not None else "",
+                    str(p_sp) if p_sp is not None else "",
+                    cost_str,
+                    unit_profit_str,
+                    margin_str,
+                    p.status,
                 ])
 
         else:

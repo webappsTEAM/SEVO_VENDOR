@@ -142,6 +142,7 @@ export function SellerCatalogUploadsPage() {
     pack_size: '1',
     mrp: '',
     selling_price: '',
+    procurement_price: '',
     tax_rate: '0.00',
     hsn_code: '',
     storage_info: '',
@@ -617,6 +618,7 @@ export function SellerCatalogUploadsPage() {
         pack_size: prod.pack_size || '1',
         mrp: prod.mrp || '',
         selling_price: prod.selling_price || '',
+        procurement_price: prod.procurement_price || '',
         tax_rate: prod.tax_rate || '0.00',
         hsn_code: prod.hsn_code || '',
         storage_info: prod.storage_info || '',
@@ -659,6 +661,7 @@ export function SellerCatalogUploadsPage() {
         pack_size: '1',
         mrp: '',
         selling_price: '',
+        procurement_price: '',
         tax_rate: '0.00',
         hsn_code: '',
         storage_info: '',
@@ -741,6 +744,7 @@ export function SellerCatalogUploadsPage() {
     try {
       const payload = {
         ...productForm,
+        procurement_price: productForm.procurement_price !== '' && productForm.procurement_price !== null ? productForm.procurement_price : null,
         status: submitNow ? 'SUBMITTED' : (editingProduct ? productForm.status : 'DRAFT'),
       };
 
@@ -2654,7 +2658,7 @@ export function SellerCatalogUploadsPage() {
                         2. Pricing, Margin & Taxes
                       </h4>
 
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                         <div>
                           <label className="block text-xs font-bold text-slate-700 mb-1">
                             MRP (₹) <span className="text-rose-500">*</span>
@@ -2689,6 +2693,21 @@ export function SellerCatalogUploadsPage() {
                           {formErrors.selling_price && (
                             <p className="text-[10px] text-rose-600 mt-0.5">{formErrors.selling_price}</p>
                           )}
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">
+                            Procurement Price (₹) <span className="text-[10px] text-slate-400 font-normal">(Optional)</span>
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            placeholder="140.00"
+                            value={productForm.procurement_price}
+                            onChange={(e) => setProductForm({ ...productForm, procurement_price: e.target.value })}
+                            className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 font-mono"
+                          />
+                          <p className="text-[9px] text-slate-400 mt-0.5 leading-tight">Your cost price — not shown to customers.</p>
                         </div>
 
                         <div>
@@ -3021,6 +3040,11 @@ export function SellerCatalogUploadsPage() {
                     <p className="text-xs text-slate-500 font-mono">
                       SKU: <span className="font-bold text-slate-700">{detailedProduct.sku}</span> • Selling Price:{' '}
                       <span className="font-bold text-emerald-700">₹{detailedProduct.selling_price}</span> (MRP: ₹{detailedProduct.mrp})
+                      {detailedProduct.procurement_price && (
+                        <span className="text-slate-500 ml-2 font-normal">
+                          • Cost Price: <span className="font-bold text-slate-700">₹{detailedProduct.procurement_price}</span>
+                        </span>
+                      )}
                     </p>
                     <p className="text-[11px] text-slate-600">
                       Category: <span className="font-semibold">{detailedProduct.category_path}</span>
