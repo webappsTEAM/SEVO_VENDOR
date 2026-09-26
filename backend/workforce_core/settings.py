@@ -253,6 +253,9 @@ SIMPLE_JWT = {
 AUTH_COOKIE = "qt_access"
 AUTH_COOKIE_REFRESH = "qt_refresh"
 AUTH_COOKIE_SECURE = not DEBUG
+# Session and CSRF cookies are HTTPS-only in production, like the auth cookie above.
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
 AUTH_COOKIE_SAMESITE = os.getenv("AUTH_COOKIE_SAMESITE", "Lax" if DEBUG else "Strict")
 AUTH_COOKIE_DOMAIN = os.getenv("AUTH_COOKIE_DOMAIN", None)
 
@@ -361,6 +364,12 @@ if not _raw_webhook_secret:
         raise ValueError("CRITICAL SECURITY ERROR: WORKFORCE_WEBHOOK_SECRET environment variable is mandatory in production (DEBUG=False) -- it authenticates cross-app webhook calls with the Customer app.")
 else:
     WORKFORCE_WEBHOOK_SECRET = _raw_webhook_secret
+    # A publicly-known placeholder (repo default / .env.example) is not a secret.
+    if not DEBUG and _raw_webhook_secret.strip() in (
+        "caldim_secure_webhook_token_2026",
+        "dev-insecure-workforce-webhook-secret-local-testing-only",
+    ):
+        raise ValueError("CRITICAL SECURITY ERROR: WORKFORCE_WEBHOOK_SECRET is a publicly-known placeholder value; set a real shared secret (DEBUG=False).")
 
 # ----------------------------------------------------------------------------
 # SEVO business plan (Section 1): RazorpayX Payouts for wallet withdrawals.
