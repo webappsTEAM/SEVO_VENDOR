@@ -136,7 +136,15 @@ class WorkforceRequiredDocument(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     # GT-A-02: which job service categories this requirement applies to (e.g.
-    # ["mini_truck", "two_wheeler_delivery", "packers_movers"]). Empty list
+    # ["goods_transport_truck", "goods_transport_two_wheeler", "packers_movers"]
+    # -- the actual ServiceRequest.service_category slugs Gate 3 compares
+    # against in automatic_dispatch.check_candidate_eligibility(); the
+    # previous example here ("mini_truck", "two_wheeler_delivery") used
+    # values that don't match any real service_category or Vehicle.
+    # VehicleType member anywhere in this codebase, so an admin who copied
+    # it verbatim into applies_to_categories would configure a requirement
+    # that silently never applies to any GT job. Comment-only fix -- the
+    # field and its matching logic were already correct). Empty list
     # (the default) preserves the original behaviour -- applies to every job,
     # exactly as every existing row already does. Only non-empty lists scope
     # a requirement (e.g. Driving Licence / RC / Insurance / Permit) to

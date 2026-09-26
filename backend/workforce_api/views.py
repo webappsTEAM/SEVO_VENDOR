@@ -3806,6 +3806,15 @@ class WorkforceJobProofView(APIView):
         except Exception as leg_err:
             logger.info("Could not set DELIVERED leg on proof for job %s: %s", job.id, leg_err)
 
+        # Ship the proof of delivery to the Customer app (it is what creates
+        # the DeliveryProof rows the customer sees). No-op for non-logistics
+        # jobs; never blocks or undoes the submission.
+        try:
+            from workforce_api.services.logistics_events import emit_delivery_proof_for_job
+            emit_delivery_proof_for_job(job, emp or job.assigned_employee, proof=proof, notes=completion_notes)
+        except Exception:
+            logger.exception("Could not emit delivery proof for job %s", job.id)
+
         # Step 2: Check payment state machine. If payment is already PAID (e.g. verified ONLINE), close the job.
         pmt = JobPayment.objects.filter(job=job).first()
         is_paid = pmt and pmt.payment_status == JobPayment.PaymentStatus.PAID
@@ -4550,13 +4559,27 @@ class WorkforceCustomerPaymentConfirmView(APIView):
 
 # ─── 10. Dynamic Job Dispatch & Eligibility Matching (Phase 14) ───────────────
 
-def check_technician_eligibility(emp, service_name=None, prefetched_data=None):
+def check_technician_eligibility(emp, service_name=None, prefetched_data=None, job=None):
     """
     Standardized 9-Gate Employee Eligibility Check.
     Delegates to the authoritative check_candidate_eligibility engine in automatic_dispatch.py.
+
+    Bug found: this wrapper dropped the `job` argument entirely, so its one
+    call site (WorkforceJobAcceptOfferView.post(), direct-accept path with
+    no pre-existing offer) never passed a job into
+    check_candidate_eligibility(). That function's Gate 3 vehicle-class
+    (check_vehicle_class_compatibility) and Packers & Movers capacity
+    (check_vehicle_capacity_compatibility) checks are both gated behind
+    `if job is not None`, so neither ever ran on this path -- a technician
+    could directly accept a GT job whose purchased vehicle_class/payload_kg
+    their vehicle doesn't satisfy, even though the exact same job offered
+    through normal dispatch (can_accept_offer(), which does pass job) would
+    have been blocked. Forwarding `job` through closes that gap; behavior
+    for every non-GT call is unchanged since those checks fail open when
+    the job has no vehicle_class/payload_kg to enforce.
     """
     from .services.automatic_dispatch import check_candidate_eligibility
-    return check_candidate_eligibility(emp, service_name)
+    return check_candidate_eligibility(emp, service_name, job=job)
 
 
 class WorkforceDispatchEligibleListView(APIView):
@@ -4919,9 +4942,9 @@ class WorkforceJobAcceptOfferView(APIView):
 
             # Verify technician eligibility if accepting without an existing vetted offer
             if not offer:
-                is_eligible, reason, _ = check_technician_eligibility(emp_obj, job_obj.service_category)
+                is_eligible, reason, _ = check_technician_eligibility(emp_obj, job_obj.service_category, job=job_obj)
                 if not is_eligible and job_obj.issue_title:
-                    is_eligible, reason, _ = check_technician_eligibility(emp_obj, job_obj.issue_title)
+                    is_eligible, reason, _ = check_technician_eligibility(emp_obj, job_obj.issue_title, job=job_obj)
                 if not is_eligible:
                     return Response({"error": f"Cannot accept offer: {reason}", "code": "INELIGIBLE_TECHNICIAN"}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -5264,6 +5287,12 @@ class WorkforceJobCancelAssignmentView(APIView):
             reconcile_employee_availability(emp_obj)
             logger.info(f"[EMPLOYEE_RELEASED] employee={emp_obj.id} cancelled_job={job_obj.id} state={emp_obj.current_availability.upper()}")
 
+            try:
+                from workforce_api.services.logistics_events import emit_technician_withdrew
+                emit_technician_withdrew(job_obj, emp_obj, reason=f"[{reason_code}] {reason_text}".strip())
+            except Exception:
+                logger.exception("Could not notify customer of technician withdrawal on job %s", job_obj.id)
+
             window_seconds = max(0, int((now - accepted_at).total_seconds())) if accepted_at else None
 
             # Create immutable audit log
@@ -5458,6 +5487,19 @@ class WorkforceJobTechnicianCancelView(APIView):
             job.assigned_employee = None
             job.status = "confirmed"
             job.save(update_fields=["assigned_employee", "status"])
+
+            # Logistics jobs: release the technician (their availability stayed
+            # "busy" after a cancellation, which is the state the sibling
+            # cancel-assignment view already reconciles) and tell the Customer
+            # app the booking is being re-dispatched.
+            try:
+                from workforce_api.services.logistics_events import emit_technician_withdrew, _is_logistics_job
+                if _is_logistics_job(job):
+                    from workforce_api.services.workload import reconcile_employee_availability
+                    reconcile_employee_availability(emp)
+                    emit_technician_withdrew(job, emp, reason=full_reason_str)
+            except Exception:
+                logger.exception("Could not release technician / notify customer after cancel of job %s", job.id)
 
             # 5. Log audit event
             WorkforceEventLog.objects.create(
@@ -7951,13 +7993,21 @@ class WorkforceJobLiveTrackingView(APIView):
         # vehicle_class (same matching rule automatic_dispatch.
         # check_vehicle_class_compatibility uses for dispatch eligibility),
         # falling back to their first active vehicle if the class can't be
-        # determined. Scoped to the distance-priced GT categories (Mini
-        # Truck, Two Wheeler); _VEHICLE_CLASS_RANK already has a
-        # "two_wheeler" entry so the same resolution logic applies
-        # unchanged. P&M tracking responses are unaffected.
+        # determined. _VEHICLE_CLASS_RANK already has a "two_wheeler" entry
+        # so the same resolution logic applies unchanged.
+        # Bug found: this category tuple excluded "packers_movers", even
+        # though the is_logistics/route_points block above and the
+        # pm_crew_size/pm_items block below both treat P&M as a full
+        # logistics category. Result: a P&M job's vehicle_number/vehicle_type
+        # were always blank here, even when the assigned technician has an
+        # active, document-current Vehicle -- the one GT sub-category where
+        # "which truck is coming" wasn't shown. The fallback to the
+        # technician's first active vehicle when no vehicle_class match is
+        # found (a few lines below) already handles P&M jobs safely even
+        # when fare_breakdown carries no vehicle_class.
         vehicle_number = ""
         vehicle_type = ""
-        if tech and (job.service_category or "").strip().lower() in ("goods_transport_truck", "goods_transport_two_wheeler"):
+        if tech and (job.service_category or "").strip().lower() in ("goods_transport_truck", "goods_transport_two_wheeler", "packers_movers", "goods_transport"):
             try:
                 from workforce_api.models import Vehicle
                 from workforce_api.services.automatic_dispatch import _VEHICLE_CLASS_RANK
@@ -9446,6 +9496,14 @@ class WorkforceJobArriveView(APIView):
             job.start_otp = active_otp
             save_fields.append("start_otp")
         job.save(update_fields=save_fields)
+
+        # Tell the Customer app (logistics jobs; this view bypasses
+        # apply_transition, which is what normally fires the arrival event).
+        try:
+            from workforce_api.services.logistics_events import emit_technician_arrived
+            emit_technician_arrived(job, emp, lat=lat_val, lon=lon_val)
+        except Exception:
+            logger.exception("Could not emit arrival for job %s", job.id)
 
         try:
             from service_requests.models import EmployeeJob

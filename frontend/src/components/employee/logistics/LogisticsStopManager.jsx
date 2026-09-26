@@ -14,18 +14,27 @@ import { apiGetJobStops, apiUpdateJobStop } from '../../../api/workforceService.
 import { isLogisticsJob } from './LogisticsLegController.jsx';
 
 export function LogisticsStopManager({ job, onStopsUpdated, className = '' }) {
-  if (!job || !isLogisticsJob(job)) {
-    return null;
-  }
-
+  // Bug found: this component used to `return null` here, BEFORE any of the
+  // hooks below were declared -- a React Rules-of-Hooks violation. Whenever
+  // `job` changed between a falsy/non-logistics value and a real logistics
+  // job across renders (a job-list refetch, switching the selected job,
+  // etc.), this component would call a different number of hooks on
+  // consecutive renders, which React explicitly forbids: it throws
+  // ("Rendering more hooks than during the previous render") or silently
+  // mismatches hook state to the wrong slot. All hooks now run
+  // unconditionally on every render; the early-return guards moved below
+  // them, after the last hook call, so this remains a no-op render for a
+  // non-logistics job with identical externally-visible behavior.
   const [stops, setStops] = useState([]);
   const [loading, setLoading] = useState(false);
   const [actionLoadingId, setActionLoadingId] = useState(null);
   const [error, setError] = useState('');
 
+  const isLogistics = !!job && isLogisticsJob(job);
+
   const loadStops = useCallback(async () => {
     // Guard: stops endpoint requires a logistics job assigned to current employee (403 if unassigned).
-    if (!job?.id || !isLogisticsJob(job) || !job?.is_assigned_to_current_employee) return;
+    if (!job?.id || !isLogistics || !job?.is_assigned_to_current_employee) return;
     try {
       setLoading(true);
       setError('');
@@ -43,11 +52,15 @@ export function LogisticsStopManager({ job, onStopsUpdated, className = '' }) {
     } finally {
       setLoading(false);
     }
-  }, [job?.id, job?.is_assigned_to_current_employee]);
+  }, [job?.id, isLogistics, job?.is_assigned_to_current_employee]);
 
   useEffect(() => {
     loadStops();
   }, [loadStops]);
+
+  if (!job || !isLogistics) {
+    return null;
+  }
 
   // If no stops exist and trip_stop_count is 0, don't show the multi-stop card
   if (!loading && stops.length === 0 && (!job?.trip_stop_count || job.trip_stop_count === 0)) {
