@@ -29,11 +29,14 @@ import {
   Sparkles,
   Search,
   Filter,
+  BadgePercent,
+  DollarSign,
+  Coins,
 } from 'lucide-react';
 
 export function SellerReportsPage() {
   const { token, user, isPlatformAdmin, isAdmin } = useAuth();
-  const [activeTab, setActiveTab] = useState('overview'); // 'overview', 'audit', 'fulfilment', 'inventory', 'returns_claims', 'exports'
+  const [activeTab, setActiveTab] = useState('overview'); // 'overview', 'profitability', 'audit', 'fulfilment', 'inventory', 'returns_claims', 'exports'
   const [dateRange, setDateRange] = useState('30'); // '7', '30', '90', 'all'
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -43,6 +46,7 @@ export function SellerReportsPage() {
   const [performanceData, setPerformanceData] = useState(null);
   const [auditData, setAuditData] = useState(null);
   const [exportingType, setExportingType] = useState(null);
+  const [profitSearch, setProfitSearch] = useState('');
 
   const authHeader = token ? { Authorization: `Bearer ${token}` } : {};
 
@@ -240,6 +244,7 @@ export function SellerReportsPage() {
         <div className="bg-white border-b border-slate-200 px-8 py-2 flex items-center gap-2 overflow-x-auto select-none">
           {[
             { id: 'overview', label: 'Executive Scorecard', icon: TrendingUp },
+            { id: 'profitability', label: 'Unit Economics & Margins', icon: BadgePercent },
             { id: 'audit', label: 'Quality Audit Checklist', icon: ShieldCheck, badge: auditData?.total_issues_count },
             { id: 'fulfilment', label: 'Fulfilment & Revenue', icon: ShoppingBag },
             { id: 'inventory', label: 'Inventory Health', icon: Package, badge: summaryData?.expiring_batches_count > 0 ? summaryData?.expiring_batches_count : null, badgeColor: 'bg-amber-100 text-amber-800' },
@@ -292,8 +297,71 @@ export function SellerReportsPage() {
           )}
 
           {/* ── TOP KPI SCORECARD BANNERS ── */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* 1. Catalog Quality Score */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+            {/* 1. Gross Profit & Margins */}
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-500">Gross Profit</span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    Net Cost
+                  </span>
+                </div>
+                <div className="flex items-baseline gap-2 mt-2">
+                  <span className="text-3xl font-extrabold text-slate-900 font-mono">
+                    {loading ? '...' : (summaryData?.total_gross_profit !== null && summaryData?.total_gross_profit !== undefined ? formatCurrency(summaryData.total_gross_profit) : '—')}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-2 flex items-center gap-1.5">
+                  <span className="font-semibold text-emerald-600">
+                    {summaryData?.profit_margin_percent !== null && summaryData?.profit_margin_percent !== undefined ? `${summaryData.profit_margin_percent}%` : '—'}
+                  </span>{' '}
+                  margin rate
+                </p>
+              </div>
+              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+                <span>Cost snapshot tracking</span>
+                <button
+                  onClick={() => setActiveTab('profitability')}
+                  className="font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-0.5"
+                >
+                  Margins <ChevronRight className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+
+            {/* 2. Fulfilment Success & Gross Fulfilled Value */}
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-500">Fulfilled Order Value</span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                    Gross
+                  </span>
+                </div>
+                <div className="flex items-baseline gap-2 mt-2">
+                  <span className="text-3xl font-extrabold text-slate-900 font-mono">
+                    {loading ? '...' : formatCurrency(summaryData?.fulfilled_order_gross_value || 0)}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-2 flex items-center gap-1.5">
+                  <span className="font-semibold text-emerald-600">{summaryData?.delivered_orders_count || 0}</span> delivered
+                  <span className="text-slate-300">•</span>
+                  <span className="font-semibold text-slate-700">{summaryData?.total_orders_count || 0}</span> total
+                </p>
+              </div>
+              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+                <span>Success: <b className="text-emerald-700">{formatPercent(summaryData?.fulfilment_success_rate || 0)}</b></span>
+                <Link
+                  to="/workforce/seller-hub/orders"
+                  className="font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-0.5"
+                >
+                  Orders <ChevronRight className="w-3 h-3" />
+                </Link>
+              </div>
+            </div>
+
+            {/* 3. Catalog Quality Score */}
             <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
               <div>
                 <div className="flex items-center justify-between">
@@ -333,38 +401,7 @@ export function SellerReportsPage() {
               </div>
             </div>
 
-            {/* 2. Fulfilment Success & Gross Fulfilled Value */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-slate-500">Fulfilled Order Value</span>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-                    Gross
-                  </span>
-                </div>
-                <div className="flex items-baseline gap-2 mt-2">
-                  <span className="text-3xl font-extrabold text-slate-900 font-mono">
-                    {loading ? '...' : formatCurrency(summaryData?.fulfilled_order_gross_value || 0)}
-                  </span>
-                </div>
-                <p className="text-[11px] text-slate-500 mt-2 flex items-center gap-1.5">
-                  <span className="font-semibold text-emerald-600">{summaryData?.delivered_orders_count || 0}</span> delivered
-                  <span className="text-slate-300">•</span>
-                  <span className="font-semibold text-slate-700">{summaryData?.total_orders_count || 0}</span> total orders
-                </p>
-              </div>
-              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-                <span>Success Rate: <b className="text-emerald-700">{formatPercent(summaryData?.fulfilment_success_rate || 0)}</b></span>
-                <Link
-                  to="/workforce/seller-hub/orders"
-                  className="font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-0.5"
-                >
-                  Orders <ChevronRight className="w-3 h-3" />
-                </Link>
-              </div>
-            </div>
-
-            {/* 3. Inventory Health Index */}
+            {/* 4. Inventory Health Index */}
             <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
               <div>
                 <div className="flex items-center justify-between">
@@ -376,19 +413,19 @@ export function SellerReportsPage() {
                         : 'bg-amber-50 text-amber-700 border border-amber-200'
                     }`}
                   >
-                    {(summaryData?.out_of_stock_count || 0) === 0 ? 'Fully Stocked' : `${summaryData?.out_of_stock_count || 0} Out of Stock`}
+                    {(summaryData?.out_of_stock_count || 0) === 0 ? 'Fully Stocked' : `${summaryData?.out_of_stock_count || 0} OOS`}
                   </span>
                 </div>
                 <div className="flex items-baseline gap-2 mt-2">
                   <span className="text-3xl font-extrabold text-slate-900 font-mono">
                     {loading ? '...' : formatPercent(summaryData?.inventory_health_index || 0)}
                   </span>
-                  <span className="text-xs text-slate-400">in-stock rate</span>
+                  <span className="text-xs text-slate-400">in-stock</span>
                 </div>
                 <p className="text-[11px] text-slate-500 mt-2 flex items-center gap-1.5">
-                  <span className="font-semibold text-slate-700">{summaryData?.total_inventory_items_count || 0}</span> SKUs tracked
+                  <span className="font-semibold text-slate-700">{summaryData?.total_inventory_items_count || 0}</span> SKUs
                   <span className="text-slate-300">•</span>
-                  <span className="font-semibold text-amber-600">{summaryData?.low_stock_count || 0}</span> low stock
+                  <span className="font-semibold text-amber-600">{summaryData?.low_stock_count || 0}</span> low
                 </p>
               </div>
               <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
@@ -402,20 +439,20 @@ export function SellerReportsPage() {
               </div>
             </div>
 
-            {/* 4. Return & Claim Ratio */}
+            {/* 5. Return & Claim Ratio */}
             <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
               <div>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-slate-500">Return & Claim Rates</span>
+                  <span className="text-xs font-semibold text-slate-500">Dispute Rates</span>
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                    Disputes
+                    Returns
                   </span>
                 </div>
                 <div className="flex items-baseline gap-2 mt-2">
                   <span className="text-3xl font-extrabold text-slate-900 font-mono">
                     {loading ? '...' : formatPercent(summaryData?.return_rate || 0)}
                   </span>
-                  <span className="text-xs text-slate-400">return rate</span>
+                  <span className="text-xs text-slate-400">returns</span>
                 </div>
                 <p className="text-[11px] text-slate-500 mt-2 flex items-center gap-1.5">
                   <span className="font-semibold text-slate-700">{summaryData?.total_returns_count || 0}</span> returns
@@ -424,7 +461,7 @@ export function SellerReportsPage() {
                 </p>
               </div>
               <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-                <span>Action Needed: <b className="text-amber-700">{summaryData?.claims_requiring_response_count || 0} claims</b></span>
+                <span>Needs Action: <b className="text-amber-700">{summaryData?.claims_requiring_response_count || 0}</b></span>
                 <Link
                   to="/workforce/seller-hub/claims"
                   className="font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-0.5"
@@ -621,6 +658,215 @@ export function SellerReportsPage() {
                     </Link>
                   </div>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB: PRODUCT PROFITABILITY & UNIT ECONOMICS */}
+          {activeTab === 'profitability' && (
+            <div className="space-y-6">
+              {/* Scorecards */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-slate-500">Period Gross Profit</span>
+                    <span className="p-2 bg-emerald-50 text-emerald-600 rounded-xl">
+                      <DollarSign className="w-4 h-4" />
+                    </span>
+                  </div>
+                  <div className="mt-2 text-2xl font-extrabold text-slate-900 font-mono">
+                    {summaryData?.total_gross_profit !== null && summaryData?.total_gross_profit !== undefined
+                      ? formatCurrency(summaryData.total_gross_profit)
+                      : '—'}
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Sum of (Selling Price − Cost) on delivered order units
+                  </p>
+                </div>
+
+                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-slate-500">Blended Profit Margin</span>
+                    <span className="p-2 bg-blue-50 text-blue-600 rounded-xl">
+                      <BadgePercent className="w-4 h-4" />
+                    </span>
+                  </div>
+                  <div className="mt-2 text-2xl font-extrabold text-slate-900 font-mono">
+                    {summaryData?.profit_margin_percent !== null && summaryData?.profit_margin_percent !== undefined
+                      ? `${summaryData.profit_margin_percent}%`
+                      : '—'}
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Profit as % of gross revenue on items with cost data
+                  </p>
+                </div>
+
+                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-slate-500">Catalog Coverage</span>
+                    <span className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
+                      <Package className="w-4 h-4" />
+                    </span>
+                  </div>
+                  <div className="mt-2 text-2xl font-extrabold text-slate-900 font-mono">
+                    {performanceData?.product_profitability
+                      ? `${performanceData.product_profitability.filter((p) => p.procurement_price !== null && p.procurement_price !== undefined).length} / ${performanceData.product_profitability.length}`
+                      : '0 / 0'}
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Products with procurement cost configured
+                  </p>
+                </div>
+              </div>
+
+              {/* Product Profitability Table */}
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+                <div className="p-6 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                      <Coins className="w-4 h-4 text-emerald-600" />
+                      Product Unit Economics & Margins
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Per-item cost price, unit margins, sales volume, and realized gross profit.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <div className="relative">
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        placeholder="Search product or SKU..."
+                        value={profitSearch}
+                        onChange={(e) => setProfitSearch(e.target.value)}
+                        className="pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:bg-white transition-all w-52"
+                      />
+                    </div>
+                    <button
+                      onClick={() => handleExportCSV('profitability')}
+                      disabled={exportingType === 'profitability'}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 text-xs font-bold shadow-xs transition-all disabled:opacity-50"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>{exportingType === 'profitability' ? 'Exporting...' : 'Export CSV'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {(!performanceData?.product_profitability || performanceData.product_profitability.length === 0) ? (
+                  <div className="py-12 text-center text-slate-400">
+                    <Package className="w-10 h-10 mx-auto opacity-30 mb-2" />
+                    <p className="text-xs font-medium">No products found in store catalog.</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-200 text-slate-500 bg-slate-50/50">
+                          <th className="py-3 px-4 font-semibold">Product & SKU</th>
+                          <th className="py-3 px-4 font-semibold">Category</th>
+                          <th className="py-3 px-4 font-semibold text-right">MRP</th>
+                          <th className="py-3 px-4 font-semibold text-right">Selling Price</th>
+                          <th className="py-3 px-4 font-semibold text-right">Procurement Cost</th>
+                          <th className="py-3 px-4 font-semibold text-right">Unit Profit</th>
+                          <th className="py-3 px-4 font-semibold text-right">Margin %</th>
+                          <th className="py-3 px-4 font-semibold text-right">Units Sold</th>
+                          <th className="py-3 px-4 font-semibold text-right">Total Profit</th>
+                          <th className="py-3 px-4 font-semibold text-center">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 font-medium">
+                        {performanceData.product_profitability
+                          .filter((p) =>
+                            !profitSearch ||
+                            p.title?.toLowerCase().includes(profitSearch.toLowerCase()) ||
+                            p.sku?.toLowerCase().includes(profitSearch.toLowerCase())
+                          )
+                          .map((item, idx) => {
+                            const hasCost = item.procurement_price !== null && item.procurement_price !== undefined;
+                            const unitProfitNum = hasCost ? Number(item.unit_profit) : null;
+                            return (
+                              <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                                <td className="py-3 px-4">
+                                  <div className="font-bold text-slate-900 max-w-[220px] truncate" title={item.title}>
+                                    {item.title}
+                                  </div>
+                                  <span className="text-[11px] font-mono text-slate-400">{item.sku}</span>
+                                </td>
+                                <td className="py-3 px-4 text-slate-600 max-w-[140px] truncate" title={item.category_name}>
+                                  {item.category_name || '—'}
+                                </td>
+                                <td className="py-3 px-4 text-right font-mono text-slate-400">
+                                  ₹{item.mrp || '—'}
+                                </td>
+                                <td className="py-3 px-4 text-right font-mono font-bold text-slate-900">
+                                  ₹{item.selling_price || '—'}
+                                </td>
+                                <td className="py-3 px-4 text-right font-mono">
+                                  {hasCost ? (
+                                    <span className="font-semibold text-slate-700">₹{item.procurement_price}</span>
+                                  ) : (
+                                    <span className="text-slate-400 italic">Not set</span>
+                                  )}
+                                </td>
+                                <td className="py-3 px-4 text-right font-mono font-bold">
+                                  {hasCost && unitProfitNum !== null ? (
+                                    unitProfitNum >= 0 ? (
+                                      <span className="text-emerald-600">+₹{item.unit_profit}</span>
+                                    ) : (
+                                      <span className="text-rose-600">-₹{Math.abs(unitProfitNum).toFixed(2)}</span>
+                                    )
+                                  ) : (
+                                    <span className="text-slate-400 font-normal">—</span>
+                                  )}
+                                </td>
+                                <td className="py-3 px-4 text-right">
+                                  {hasCost && item.margin_percent !== null && item.margin_percent !== undefined ? (
+                                    <span
+                                      className={`px-2 py-0.5 rounded-full text-[11px] font-bold font-mono border ${
+                                        item.margin_percent >= 25
+                                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                          : item.margin_percent >= 10
+                                          ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                          : item.margin_percent >= 0
+                                          ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                          : 'bg-rose-50 text-rose-700 border-rose-200'
+                                      }`}
+                                    >
+                                      {item.margin_percent}%
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-400 font-mono">—</span>
+                                  )}
+                                </td>
+                                <td className="py-3 px-4 text-right font-mono text-slate-700">
+                                  {item.units_sold || '0.00'}
+                                </td>
+                                <td className="py-3 px-4 text-right font-mono font-bold">
+                                  {item.total_profit !== null && item.total_profit !== undefined ? (
+                                    <span className={Number(item.total_profit) >= 0 ? 'text-emerald-700' : 'text-rose-600'}>
+                                      {formatCurrency(item.total_profit)}
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-400 font-normal">—</span>
+                                  )}
+                                </td>
+                                <td className="py-3 px-4 text-center">
+                                  <Link
+                                    to="/workforce/seller-hub/catalog-uploads"
+                                    className="text-[11px] font-bold text-blue-600 hover:text-blue-800 hover:underline"
+                                  >
+                                    Edit
+                                  </Link>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -1029,6 +1275,27 @@ export function SellerReportsPage() {
                     >
                       <Download className="w-4 h-4" />
                       <span>{exportingType === 'quality' ? 'Exporting...' : 'Export Quality Audit CSV'}</span>
+                    </button>
+                  </div>
+
+                  {/* Export 6: Product Economics & Margins */}
+                  <div className="p-5 rounded-2xl border border-slate-200 bg-slate-50/60 flex flex-col justify-between">
+                    <div>
+                      <div className="p-2.5 bg-teal-100 text-teal-800 rounded-xl w-fit mb-3">
+                        <BadgePercent className="w-5 h-5" />
+                      </div>
+                      <h4 className="text-sm font-bold text-slate-900">Unit Economics & Margins</h4>
+                      <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                        Product-by-product breakdown: MRP, Selling Price, Procurement Cost, Unit Profit (₹), Margin (%), and Total Gross Profit.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handleExportCSV('profitability')}
+                      disabled={exportingType === 'profitability'}
+                      className="mt-5 w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-teal-600 text-white hover:bg-teal-700 text-xs font-bold transition-all shadow-xs disabled:opacity-50"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>{exportingType === 'profitability' ? 'Exporting...' : 'Export Economics CSV'}</span>
                     </button>
                   </div>
                 </div>

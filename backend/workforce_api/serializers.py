@@ -10,9 +10,23 @@ from django.contrib.auth import get_user_model
 from rest_framework import serializers
 from employees.models import Employee
 from service_requests.models import ServiceRequest
+from accounts.platform import is_platform_admin_user
 from .models import WalletAccount
 
 User = get_user_model()
+
+
+def _resolve_user_company_id(user):
+    if not user:
+        return None
+    emp = getattr(user, "employee_profile", None)
+    if emp and getattr(emp, "company_id", None):
+        return emp.company_id
+    if getattr(user, "company_id", None):
+        return user.company_id
+    if hasattr(user, "company") and user.company:
+        return getattr(user.company, "id", None)
+    return None
 
 
 class WorkforceSignupSerializer(serializers.Serializer):
@@ -2340,6 +2354,7 @@ class SellerProductListSerializer(serializers.ModelSerializer):
             "pack_size",
             "mrp",
             "selling_price",
+            "procurement_price",
             "tax_rate",
             "hsn_code",
             "storage_info",
@@ -2356,6 +2371,24 @@ class SellerProductListSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["id", "company", "created_at", "updated_at"]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get("request")
+        user = getattr(request, "user", None) if request else None
+        if not user:
+            user = self.context.get("user")
+        has_access = False
+        if user and getattr(user, "is_authenticated", False):
+            if is_platform_admin_user(user) or getattr(user, "is_superuser", False):
+                has_access = True
+            else:
+                cid = _resolve_user_company_id(user)
+                if cid is not None and getattr(instance, "company_id", None) == cid:
+                    has_access = True
+        if not has_access:
+            data.pop("procurement_price", None)
+        return data
 
     def get_category_path(self, obj):
         if not obj.category:
@@ -2426,6 +2459,7 @@ class SellerProductDetailSerializer(serializers.ModelSerializer):
             "pack_size",
             "mrp",
             "selling_price",
+            "procurement_price",
             "tax_rate",
             "hsn_code",
             "storage_info",
@@ -2443,6 +2477,24 @@ class SellerProductDetailSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["id", "company", "created_at", "updated_at"]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get("request")
+        user = getattr(request, "user", None) if request else None
+        if not user:
+            user = self.context.get("user")
+        has_access = False
+        if user and getattr(user, "is_authenticated", False):
+            if is_platform_admin_user(user) or getattr(user, "is_superuser", False):
+                has_access = True
+            else:
+                cid = _resolve_user_company_id(user)
+                if cid is not None and getattr(instance, "company_id", None) == cid:
+                    has_access = True
+        if not has_access:
+            data.pop("procurement_price", None)
+        return data
 
     def get_category_path(self, obj):
         if not obj.category:
@@ -2545,6 +2597,7 @@ class SellerProductCreateUpdateSerializer(serializers.ModelSerializer):
             "pack_size",
             "mrp",
             "selling_price",
+            "procurement_price",
             "tax_rate",
             "hsn_code",
             "storage_info",
@@ -2578,8 +2631,12 @@ class SellerProductCreateUpdateSerializer(serializers.ModelSerializer):
 
         if mrp is not None and selling_price is not None and selling_price > mrp:
             raise serializers.ValidationError(
-                {"selling_price": f"Selling price (Ôé╣{selling_price}) cannot exceed MRP (Ôé╣{mrp})."}
+                {"selling_price": f"Selling price (₹{selling_price}) cannot exceed MRP (₹{mrp})."}
             )
+
+        procurement_price = data.get("procurement_price")
+        if procurement_price is not None and procurement_price < 0:
+            raise serializers.ValidationError({"procurement_price": "Procurement price cannot be negative."})
 
         tax_rate = data.get("tax_rate")
         if tax_rate is not None and tax_rate < 0:
@@ -2849,6 +2906,7 @@ class SellerOrderItemSerializer(serializers.ModelSerializer):
             "fulfilled_quantity",
             "unit_price",
             "line_total",
+            "procurement_price_snapshot",
             "batch",
             "is_picked",
             "is_packed",
@@ -2856,6 +2914,23 @@ class SellerOrderItemSerializer(serializers.ModelSerializer):
             "product_image",
             "available_stock",
         ]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get("request")
+        user = getattr(request, "user", None) if request else None
+        has_access = False
+        if user and user.is_authenticated:
+            if is_platform_admin_user(user) or user.is_superuser or user.is_staff or getattr(user, "role", None) in ["ADMIN", "SUPERADMIN"]:
+                has_access = True
+            else:
+                cid = _resolve_user_company_id(user)
+                order_cid = getattr(instance.order, "company_id", None) if getattr(instance, "order", None) else None
+                if cid is not None and order_cid == cid:
+                    has_access = True
+        if not has_access:
+            data.pop("procurement_price_snapshot", None)
+        return data
 
     def get_product_image(self, obj):
         if not obj.product:
