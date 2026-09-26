@@ -37,9 +37,24 @@ import {
   RotateCcw,
   Scan,
   Barcode as BarcodeIcon,
+  Warehouse as WarehouseIcon,
+  Truck,
+  PackageCheck,
+  Boxes,
+  Package,
+  Printer,
 } from 'lucide-react';
 import { BarcodeScannerModal } from '../../components/common/BarcodeScannerModal.jsx';
 import { BarcodeRenderer } from '../../components/common/BarcodeRenderer.jsx';
+import {
+  apiSellerGetAssignedWarehouse,
+  apiSellerGetInboundRequests,
+  apiSellerCreateInboundRequest,
+  apiSellerDecideShortfall,
+  apiSellerGetEligibleWarehouses,
+  apiSellerGetInventoryBalance,
+  apiSellerGetInboundLabelsPdfUrl,
+} from '../../api/workforceService.js';
 
 
 const STATUS_CONFIG = {
@@ -57,7 +72,7 @@ export function SellerCatalogUploadsPage() {
   const { user, token, isPlatformAdmin, isAdmin } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  // Active view: 'catalog' | 'bulk_upload' | 'batches'
+  // Active view: 'catalog' | 'bulk_upload' | 'batches' | 'inbound_requests'
   const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'catalog');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [categoryFilter, setCategoryFilter] = useState('');
@@ -67,6 +82,8 @@ export function SellerCatalogUploadsPage() {
   const [products, setProducts] = useState([]);
   const [leafCategories, setLeafCategories] = useState([]);
   const [batches, setBatches] = useState([]);
+  const [allInboundRequests, setAllInboundRequests] = useState([]);
+  const [inboundTabStatusFilter, setInboundTabStatusFilter] = useState('ALL');
   const [metrics, setMetrics] = useState({
     catalogs_awaiting_approval: 0,
     approved_products: 0,
@@ -82,6 +99,34 @@ export function SellerCatalogUploadsPage() {
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
 
+  // Phase X: Inbound Stock Request Modal States
+  const [showInboundModal, setShowInboundModal] = useState(false);
+  const [inboundModalProduct, setInboundModalProduct] = useState(null);
+  const [assignedWarehouseInfo, setAssignedWarehouseInfo] = useState(null);
+  const [inboundProductRequests, setInboundProductRequests] = useState([]);
+  const [inboundForm, setInboundForm] = useState({ requested_quantity: '', seller_note: '' });
+  const [inboundLoading, setInboundLoading] = useState(false);
+  const [inboundSubmitting, setInboundSubmitting] = useState(false);
+  const [inboundError, setInboundError] = useState(null);
+  // Phase AA: Warehouse picker + balance display
+  const [eligibleWarehouses, setEligibleWarehouses] = useState([]);
+  const [selectedWarehouseId, setSelectedWarehouseId] = useState('');
+  const [inventoryBalance, setInventoryBalance] = useState(null); // { on_hand_qty, unit, warehouse_name }
+  const [balanceLoading, setBalanceLoading] = useState(false);
+
+  // Phase Z: Shortfall Decision Modal States
+  const [showShortfallDecisionModal, setShowShortfallDecisionModal] = useState(false);
+  const [shortfallDecisionRequest, setShortfallDecisionRequest] = useState(null);
+  const [shortfallDecisionAction, setShortfallDecisionAction] = useState('ACCEPT'); // 'ACCEPT' | 'REJECT'
+  const [sellerShortfallNote, setSellerShortfallNote] = useState('');
+  const [shortfallDecisionSubmitting, setShortfallDecisionSubmitting] = useState(false);
+  const [shortfallDecisionError, setShortfallDecisionError] = useState(null);
+
+  // Phase (Seller Labels): Print Inbound Unit Labels Modal States
+  const [showLabelsModal, setShowLabelsModal] = useState(false);
+  const [labelsModalRequest, setLabelsModalRequest] = useState(null);
+  const [labelsPaperSize, setLabelsPaperSize] = useState('a4');
+
   // Modals state
   const [showProductModal, setShowProductModal] = useState(false);
   const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
@@ -91,6 +136,7 @@ export function SellerCatalogUploadsPage() {
     brand: '',
     sku: '',
     barcode: '',
+    fulfillment_method: 'SELF_SHIP',
     category: '',
     unit: 'piece',
     pack_size: '1',
@@ -189,6 +235,189 @@ export function SellerCatalogUploadsPage() {
       return true;
     });
   }, [products, statusFilter, categoryFilter, searchQuery]);
+
+  // Phase X: Inbound Requests Handlers
+  const fetchAllInboundRequests = useCallback(async () => {
+    try {
+      const res = await apiSellerGetInboundRequests();
+      setAllInboundRequests(Array.isArray(res) ? res : res.results || []);
+    } catch (err) {
+      console.error('Failed to load all inbound requests:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'inbound_requests') {
+      fetchAllInboundRequests();
+    }
+  }, [activeTab, fetchAllInboundRequests]);
+
+  const handleOpenInboundModal = async (product) => {
+    setInboundModalProduct(product);
+    setInboundForm({ requested_quantity: '', seller_note: '' });
+    setInboundError(null);
+    setSelectedWarehouseId('');
+    setInventoryBalance(null);
+    setShowInboundModal(true);
+    setInboundLoading(true);
+
+    try {
+      const [whRes, reqsRes, eligibleRes] = await Promise.all([
+        apiSellerGetAssignedWarehouse().catch(() => ({ assigned: false, warehouse: null })),
+        apiSellerGetInboundRequests({ product_id: product.id }).catch(() => []),
+        apiSellerGetEligibleWarehouses().catch(() => ({ warehouses: [], count: 0 })),
+      ]);
+      setAssignedWarehouseInfo(whRes);
+      setInboundProductRequests(Array.isArray(reqsRes) ? reqsRes : reqsRes.results || []);
+
+      const whList = eligibleRes?.warehouses || (Array.isArray(eligibleRes) ? eligibleRes : []);
+      setEligibleWarehouses(whList);
+
+      // Preselect assigned warehouse if present in eligible list, or first eligible warehouse
+      if (whRes?.assigned && whRes?.warehouse?.id) {
+        const assignedId = String(whRes.warehouse.id);
+        const match = whList.find((w) => String(w.id) === assignedId);
+        if (match) {
+          setSelectedWarehouseId(assignedId);
+        } else if (whList.length > 0) {
+          setSelectedWarehouseId(String(whList[0].id));
+        }
+      } else if (whList.length > 0) {
+        setSelectedWarehouseId(String(whList[0].id));
+      }
+    } catch (err) {
+      console.error('Failed to load inbound modal data:', err);
+      setInboundError(err.message || 'Failed to load warehouse data');
+    } finally {
+      setInboundLoading(false);
+    }
+  };
+
+  // Phase AA: Fetch inventory balance whenever product or warehouse selection changes
+  useEffect(() => {
+    if (!showInboundModal || !inboundModalProduct || !selectedWarehouseId) {
+      setInventoryBalance(null);
+      return;
+    }
+    let cancelled = false;
+    const fetchBalance = async () => {
+      setBalanceLoading(true);
+      try {
+        const res = await apiSellerGetInventoryBalance(inboundModalProduct.id, selectedWarehouseId);
+        if (!cancelled) setInventoryBalance(res);
+      } catch {
+        if (!cancelled) setInventoryBalance(null);
+      } finally {
+        if (!cancelled) setBalanceLoading(false);
+      }
+    };
+    fetchBalance();
+    return () => { cancelled = true; };
+  }, [showInboundModal, inboundModalProduct?.id, selectedWarehouseId]);
+
+  const handleSubmitInboundRequest = async (e) => {
+    e.preventDefault();
+    if (!inboundModalProduct) return;
+
+    if (!selectedWarehouseId) {
+      setInboundError('Please select a target warehouse facility.');
+      return;
+    }
+
+    const qty = parseInt(inboundForm.requested_quantity, 10);
+    if (!qty || qty <= 0) {
+      setInboundError('Please enter a valid requested quantity greater than 0.');
+      return;
+    }
+
+    setInboundSubmitting(true);
+    setInboundError(null);
+
+    try {
+      const targetWarehouseId = parseInt(selectedWarehouseId, 10);
+      await apiSellerCreateInboundRequest({
+        product_id: inboundModalProduct.id,
+        warehouse_id: targetWarehouseId,
+        requested_quantity: qty,
+        seller_note: inboundForm.seller_note.trim(),
+      });
+
+      const chosenWh = eligibleWarehouses.find((w) => String(w.id) === String(selectedWarehouseId));
+      const chosenName = chosenWh ? chosenWh.name : (assignedWarehouseInfo?.warehouse?.name || 'warehouse');
+
+      setSuccessMessage(`Inbound storage request for ${qty} units submitted to ${chosenName} successfully!`);
+      setTimeout(() => setSuccessMessage(null), 4500);
+
+      // Refresh product requests list in modal and global list
+      const reqsRes = await apiSellerGetInboundRequests({ product_id: inboundModalProduct.id });
+      setInboundProductRequests(Array.isArray(reqsRes) ? reqsRes : reqsRes.results || []);
+      setInboundForm({ requested_quantity: '', seller_note: '' });
+      fetchAllInboundRequests();
+    } catch (err) {
+      console.error('Failed to submit inbound request:', err);
+      setInboundError(err.message || 'Failed to submit inbound request.');
+    } finally {
+      setInboundSubmitting(false);
+    }
+  };
+
+  // Phase Z: Shortfall Decision Handlers
+  const handleOpenShortfallDecisionModal = (req, action) => {
+    setShortfallDecisionRequest(req);
+    setShortfallDecisionAction(action);
+    setSellerShortfallNote(
+      action === 'ACCEPT'
+        ? 'Partial delivery accepted. Proceeding live with verified stock.'
+        : 'Batch rejected due to delivery shortfall. Please stage for return.'
+    );
+    setShortfallDecisionError(null);
+    setShowShortfallDecisionModal(true);
+  };
+
+  const handleConfirmShortfallDecision = async (e) => {
+    e.preventDefault();
+    if (!shortfallDecisionRequest) return;
+
+    setShortfallDecisionSubmitting(true);
+    setShortfallDecisionError(null);
+
+    try {
+      await apiSellerDecideShortfall(
+        shortfallDecisionRequest.id,
+        shortfallDecisionAction,
+        sellerShortfallNote.trim()
+      );
+
+      const msg =
+        shortfallDecisionAction === 'ACCEPT'
+          ? `Partial intake of ${shortfallDecisionRequest.confirmed_quantity || shortfallDecisionRequest.received_units_count} units accepted and is now LIVE in store inventory!`
+          : `Shortfall batch for Inbound Req #${shortfallDecisionRequest.id} rejected. Return record staged for warehouse.`;
+
+      setSuccessMessage(msg);
+      setTimeout(() => setSuccessMessage(null), 5000);
+      setShowShortfallDecisionModal(false);
+      setShortfallDecisionRequest(null);
+      fetchAllInboundRequests();
+      fetchData();
+    } catch (err) {
+      console.error('Failed to record shortfall decision:', err);
+      setShortfallDecisionError(err.message || 'Failed to record shortfall decision.');
+    } finally {
+      setShortfallDecisionSubmitting(false);
+    }
+  };
+
+  const handleOpenLabelsModal = (req) => {
+    setLabelsModalRequest(req);
+    setLabelsPaperSize('a4');
+    setShowLabelsModal(true);
+  };
+
+  const handlePrintLabelsPdf = (format = labelsPaperSize) => {
+    if (!labelsModalRequest) return;
+    const url = apiSellerGetInboundLabelsPdfUrl(labelsModalRequest.id, format);
+    window.open(url, '_blank');
+  };
 
   // Meesho Category Picker states (Step 1)
   const [productModalStep, setProductModalStep] = useState(1); // 1: Select Category, 2: Add Product Details
@@ -382,6 +611,7 @@ export function SellerCatalogUploadsPage() {
         brand: prod.brand || '',
         sku: prod.sku || '',
         barcode: prod.barcode || '',
+        fulfillment_method: prod.fulfillment_method || 'SELF_SHIP',
         category: prod.category || '',
         unit: prod.unit || 'piece',
         pack_size: prod.pack_size || '1',
@@ -423,6 +653,7 @@ export function SellerCatalogUploadsPage() {
         brand: '',
         sku: '',
         barcode: '',
+        fulfillment_method: 'SELF_SHIP',
         category: '',
         unit: 'piece',
         pack_size: '1',
@@ -904,6 +1135,20 @@ export function SellerCatalogUploadsPage() {
               >
                 Upload Batches ({batches.length})
               </button>
+              <button
+                onClick={() => {
+                  setActiveTab('inbound_requests');
+                  fetchAllInboundRequests();
+                }}
+                className={`px-4 py-2 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 ${
+                  activeTab === 'inbound_requests'
+                    ? 'bg-indigo-900 text-white shadow-xs'
+                    : 'text-indigo-700 hover:text-indigo-900 hover:bg-indigo-50'
+                }`}
+              >
+                <Boxes className="w-3.5 h-3.5" />
+                <span>Warehouse Storage Requests ({allInboundRequests.length})</span>
+              </button>
             </div>
 
             {/* Category Directory Link */}
@@ -1072,12 +1317,25 @@ export function SellerCatalogUploadsPage() {
                                       </span>
                                       {p.brand && <span>• {p.brand}</span>}
                                     </div>
-                                    {p.barcode && (
-                                      <div className="flex items-center gap-1 mt-1 text-[10px] font-mono text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-1.5 py-0.5 rounded max-w-fit" title={`Barcode: ${p.barcode}`}>
-                                        <BarcodeIcon className="w-3 h-3 text-emerald-600 shrink-0" />
-                                        <span>{p.barcode}</span>
-                                      </div>
-                                    )}
+                                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                      {p.fulfillment_method === 'FULFILLED_BY_SEVO' ? (
+                                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200" title="Fulfilled by Sevo (FBS) - Stock held at Sevo warehouse">
+                                          <WarehouseIcon className="w-3 h-3 text-indigo-500" />
+                                          <span>FBS</span>
+                                        </span>
+                                      ) : (
+                                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200" title="Self-Ship - Seller direct fulfillment">
+                                          <Truck className="w-3 h-3 text-slate-400" />
+                                          <span>Self-Ship</span>
+                                        </span>
+                                      )}
+                                      {p.barcode && (
+                                        <div className="flex items-center gap-1 text-[10px] font-mono text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-1.5 py-0.5 rounded" title={`Barcode: ${p.barcode}`}>
+                                          <BarcodeIcon className="w-3 h-3 text-emerald-600 shrink-0" />
+                                          <span>{p.barcode}</span>
+                                        </div>
+                                      )}
+                                    </div>
                                   </div>
                                 </div>
                               </td>
@@ -1150,6 +1408,18 @@ export function SellerCatalogUploadsPage() {
                               {/* Actions */}
                               <td className="px-4 py-3.5 text-right">
                                 <div className="flex items-center justify-end gap-1.5">
+                                  {/* Request Storage Action (Phase X - For Approved FBS Products) */}
+                                  {p.fulfillment_method === 'FULFILLED_BY_SEVO' && p.status === 'APPROVED' && (
+                                    <button
+                                      onClick={() => handleOpenInboundModal(p)}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-colors shadow-xs"
+                                      title="Request Warehouse Storage / Intake for this FBS product"
+                                    >
+                                      <WarehouseIcon className="w-3.5 h-3.5 text-indigo-600" />
+                                      <span>Request Storage</span>
+                                    </button>
+                                  )}
+
                                   {/* View Detail & Audit Log */}
                                   <button
                                     onClick={() => handleOpenDetailModal(p.id)}
@@ -1453,6 +1723,267 @@ export function SellerCatalogUploadsPage() {
                     ))}
                   </tbody>
                 </table>
+              )}
+            </div>
+          )}
+
+          {/* ════════════════════════════════════════════════════════════════════ */}
+          {/* TAB 4: WAREHOUSE STORAGE REQUESTS (PHASE X)                         */}
+          {/* ════════════════════════════════════════════════════════════════════ */}
+          {activeTab === 'inbound_requests' && (
+            <div className="space-y-4">
+              <div className="p-4 bg-indigo-50/70 border border-indigo-100 rounded-xl flex items-start gap-3">
+                <Boxes className="w-5 h-5 text-indigo-700 shrink-0 mt-0.5" />
+                <div className="text-xs text-indigo-900 space-y-0.5">
+                  <span className="font-bold">Fulfilled by Sevo (FBS) Stock Inbound Requests</span>
+                  <p className="text-indigo-700">
+                    Track the status of replenishment storage requests sent to your assigned fulfillment warehouse.
+                    Once approved by warehouse staff, units are marked awaiting physical delivery receipt.
+                  </p>
+                </div>
+              </div>
+
+              {/* Status Filter Chips */}
+              <div className="flex items-center gap-2">
+                {['ALL', 'PENDING', 'ACCEPTED', 'SHORT_RECEIVED', 'COMPLETED', 'REJECTED'].map((st) => (
+                  <button
+                    key={st}
+                    onClick={() => setInboundTabStatusFilter(st)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${
+                      inboundTabStatusFilter === st
+                        ? 'bg-indigo-900 text-white border-indigo-900 shadow-xs'
+                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    {st === 'ALL'
+                      ? 'All Requests'
+                      : st === 'PENDING'
+                      ? 'Pending Review'
+                      : st === 'ACCEPTED'
+                      ? 'In Verification / Receiving'
+                      : st === 'SHORT_RECEIVED'
+                      ? 'Shortfall Reported'
+                      : st === 'COMPLETED'
+                      ? 'Completed / Live'
+                      : 'Rejected'}
+                    {' '}
+                    ({st === 'ALL'
+                      ? allInboundRequests.length
+                      : st === 'REJECTED'
+                      ? allInboundRequests.filter((r) => r.status === 'REJECTED' || r.status === 'REJECTED_RETURN').length
+                      : allInboundRequests.filter((r) => r.status === st).length})
+                  </button>
+                ))}
+              </div>
+
+              {allInboundRequests.length === 0 ? (
+                <div className="p-12 text-center bg-white rounded-2xl border border-slate-200 space-y-2">
+                  <Boxes className="w-8 h-8 text-slate-400 mx-auto" />
+                  <p className="text-sm font-bold text-slate-800">No Warehouse Storage Requests</p>
+                  <p className="text-xs text-slate-500 max-w-md mx-auto">
+                    To request storage at Sevo's warehouse, make sure your product has fulfillment method set to "Fulfilled by Sevo (FBS)" and click "Request Storage" on the Product Catalog tab.
+                  </p>
+                </div>
+              ) : (
+                <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold text-[10px] uppercase">
+                        <tr>
+                          <th className="px-4 py-3">Req ID / Date</th>
+                          <th className="px-4 py-3">Product</th>
+                          <th className="px-4 py-3">Assigned Warehouse</th>
+                          <th className="px-4 py-3 text-center">Requested Units</th>
+                          <th className="px-4 py-3">Intake & Scan Progress</th>
+                          <th className="px-4 py-3">Notes & Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 font-medium">
+                        {allInboundRequests
+                          .filter((r) => {
+                            if (inboundTabStatusFilter === 'ALL') return true;
+                            if (inboundTabStatusFilter === 'REJECTED') return r.status === 'REJECTED' || r.status === 'REJECTED_RETURN';
+                            return r.status === inboundTabStatusFilter;
+                          })
+                          .map((req) => {
+                            const total = req.total_units_count || req.requested_quantity;
+                            const received = req.received_units_count || 0;
+                            const confirmed = req.confirmed_quantity != null ? req.confirmed_quantity : received;
+                            const percent = total > 0 ? Math.round((received / total) * 100) : 0;
+                            const isShortfall = req.status === 'SHORT_RECEIVED';
+
+                            return (
+                              <tr key={req.id} className={`hover:bg-slate-50/60 transition ${isShortfall ? 'bg-amber-50/30' : ''}`}>
+                                <td className="px-4 py-3 text-slate-500 font-mono text-[11px]">
+                                  <div className="font-bold text-slate-900">#{req.id}</div>
+                                  <div className="text-[10px] text-slate-400 mt-0.5">
+                                    {new Date(req.created_at).toLocaleDateString()} {new Date(req.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  </div>
+                                </td>
+                                <td className="px-4 py-3">
+                                  <div className="font-bold text-slate-900">{req.product_title}</div>
+                                  <div className="text-[10px] font-mono text-slate-500">SKU: {req.product_sku}</div>
+                                </td>
+                                <td className="px-4 py-3 text-slate-700">
+                                  <div className="font-semibold">{req.warehouse_name}</div>
+                                  <div className="text-[10px] text-slate-400">{req.warehouse_city}</div>
+                                </td>
+                                <td className="px-4 py-3 text-center">
+                                  <span className="inline-block px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-800 font-black font-mono text-xs">
+                                    {req.requested_quantity}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3">
+                                  {req.status === 'PENDING' && (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold border bg-amber-50 text-amber-700 border-amber-200">
+                                      <Clock className="w-3 h-3" />
+                                      <span>Pending Review</span>
+                                    </span>
+                                  )}
+                                  {req.status === 'ACCEPTED' && (
+                                    <div className="space-y-1.5">
+                                      <div className="flex items-center justify-between gap-2">
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border bg-blue-50 text-blue-700 border-blue-200">
+                                          <RefreshCw className="w-2.5 h-2.5 animate-spin" />
+                                          <span>Receiving Units</span>
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleOpenLabelsModal(req)}
+                                          title="Print unit barcode labels"
+                                          className="inline-flex items-center gap-1 px-2 py-0.5 bg-white hover:bg-indigo-50 text-slate-700 hover:text-indigo-600 border border-slate-200 hover:border-indigo-300 rounded-md text-[10px] font-bold transition"
+                                        >
+                                          <Printer className="w-3 h-3 text-indigo-600" />
+                                          <span>Labels</span>
+                                        </button>
+                                      </div>
+                                      <div className="flex items-center justify-between gap-2">
+                                        <div className="w-32 bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                                          <div
+                                            className="bg-blue-600 h-1.5 rounded-full transition-all duration-300"
+                                            style={{ width: `${percent}%` }}
+                                          />
+                                        </div>
+                                        <span className="text-[10px] font-mono font-bold text-slate-700">
+                                          {received} of {total} ({percent}%)
+                                        </span>
+                                      </div>
+                                    </div>
+                                  )}
+                                  {req.status === 'SHORT_RECEIVED' && (
+                                    <div className="space-y-1.5">
+                                      <div className="flex items-center justify-between gap-2">
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border bg-amber-50 text-amber-800 border-amber-300">
+                                          <AlertTriangle className="w-3 h-3 text-amber-600" />
+                                          <span>Shortfall ({confirmed}/{total})</span>
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleOpenLabelsModal(req)}
+                                          title="Print unit barcode labels"
+                                          className="inline-flex items-center gap-1 px-2 py-0.5 bg-white hover:bg-indigo-50 text-slate-700 hover:text-indigo-600 border border-slate-200 hover:border-indigo-300 rounded-md text-[10px] font-bold transition"
+                                        >
+                                          <Printer className="w-3 h-3 text-indigo-600" />
+                                          <span>Labels</span>
+                                        </button>
+                                      </div>
+                                      <div className="text-[10px] font-semibold text-rose-600 pl-1">
+                                        {total - confirmed} units missing from shipment
+                                      </div>
+                                    </div>
+                                  )}
+                                  {req.status === 'COMPLETED' && (
+                                    <div className="space-y-1">
+                                      <div className="flex items-center justify-between gap-2">
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border bg-emerald-50 text-emerald-700 border-emerald-200">
+                                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                          <span>Live in Stock</span>
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleOpenLabelsModal(req)}
+                                          title="Print unit barcode labels"
+                                          className="inline-flex items-center gap-1 px-2 py-0.5 bg-white hover:bg-indigo-50 text-slate-700 hover:text-indigo-600 border border-slate-200 hover:border-indigo-300 rounded-md text-[10px] font-bold transition"
+                                        >
+                                          <Printer className="w-3 h-3 text-indigo-600" />
+                                          <span>Labels</span>
+                                        </button>
+                                      </div>
+                                      <div className="text-[10px] text-emerald-700 font-bold pl-1 font-mono">
+                                        {req.confirmed_quantity != null && req.confirmed_quantity < req.requested_quantity
+                                          ? `${req.confirmed_quantity} of ${req.requested_quantity} units verified (Partial)`
+                                          : `${total} / ${total} units verified`}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {req.status === 'REJECTED_RETURN' && (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold border bg-rose-50 text-rose-700 border-rose-200">
+                                      <XCircle className="w-3 h-3" />
+                                      <span>Shortfall Rejected (Return Staged)</span>
+                                    </span>
+                                  )}
+                                  {req.status === 'REJECTED' && (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold border bg-rose-50 text-rose-700 border-rose-200">
+                                      <XCircle className="w-3 h-3" />
+                                      <span>Rejected</span>
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3 text-xs max-w-xs space-y-2">
+                                  {req.seller_note && (
+                                    <div className="text-[11px] text-slate-600">
+                                      <span className="font-semibold text-slate-400">Your Note:</span> "{req.seller_note}"
+                                    </div>
+                                  )}
+                                  {req.shortfall_note && (
+                                    <div className="text-[11px] p-2 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 space-y-1">
+                                      <span className="font-bold block text-[10px] text-amber-800 uppercase tracking-wider flex items-center gap-1">
+                                        <AlertTriangle className="w-3 h-3 text-amber-600" />
+                                        Warehouse Shortfall Notice:
+                                      </span>
+                                      <p className="text-[11px]">"{req.shortfall_note}"</p>
+                                    </div>
+                                  )}
+                                  {req.reviewer_note && !req.shortfall_note && (
+                                    <div className={`text-[11px] p-1.5 rounded border ${
+                                      req.status === 'COMPLETED' || req.status === 'ACCEPTED'
+                                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                        : 'bg-rose-50 text-rose-800 border-rose-200'
+                                    }`}>
+                                      <span className="font-bold block text-[10px] uppercase tracking-wider">
+                                        {req.status === 'REJECTED' ? 'Rejection Reason:' : 'Warehouse Note:'}
+                                      </span>
+                                      "{req.reviewer_note}"
+                                    </div>
+                                  )}
+
+                                  {/* Shortfall Decision Action Buttons */}
+                                  {req.status === 'SHORT_RECEIVED' && (
+                                    <div className="flex items-center gap-2 pt-1">
+                                      <button
+                                        onClick={() => handleOpenShortfallDecisionModal(req, 'ACCEPT')}
+                                        className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-xs"
+                                      >
+                                        <Check className="w-3.5 h-3.5" />
+                                        <span>Accept Partial ({confirmed} Units)</span>
+                                      </button>
+                                      <button
+                                        onClick={() => handleOpenShortfallDecisionModal(req, 'REJECT')}
+                                        className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-bold transition flex items-center gap-1"
+                                      >
+                                        <X className="w-3.5 h-3.5" />
+                                        <span>Reject Batch</span>
+                                      </button>
+                                    </div>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               )}
             </div>
           )}
@@ -2041,6 +2572,80 @@ export function SellerCatalogUploadsPage() {
                           )}
                         </div>
                       </div>
+
+                      {/* ── Fulfillment Method Selection ── */}
+                      <div className="space-y-2 pt-1 pb-1">
+                        <label className="block text-xs font-bold text-slate-700">
+                          Fulfillment Method <span className="text-rose-500">*</span>
+                        </label>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {/* Option 1: Self-Ship */}
+                          <div
+                            onClick={() => setProductForm({ ...productForm, fulfillment_method: 'SELF_SHIP' })}
+                            className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all flex items-start gap-3 ${
+                              productForm.fulfillment_method === 'SELF_SHIP'
+                                ? 'border-indigo-600 bg-indigo-50/40 shadow-xs'
+                                : 'border-slate-200 bg-white hover:border-slate-300'
+                            }`}
+                          >
+                            <div className={`p-2 rounded-lg shrink-0 ${
+                              productForm.fulfillment_method === 'SELF_SHIP'
+                                ? 'bg-indigo-600 text-white'
+                                : 'bg-slate-100 text-slate-500'
+                            }`}>
+                              <Truck className="w-4 h-4" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center justify-between">
+                                <span className="font-bold text-xs text-slate-900">Self-Ship</span>
+                                <span className="text-[10px] font-semibold text-slate-500">Merchant Direct</span>
+                              </div>
+                              <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
+                                You store inventory and dispatch orders directly from your store or facility.
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Option 2: Fulfilled by Sevo (FBS) */}
+                          <div
+                            onClick={() => setProductForm({ ...productForm, fulfillment_method: 'FULFILLED_BY_SEVO' })}
+                            className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all flex items-start gap-3 ${
+                              productForm.fulfillment_method === 'FULFILLED_BY_SEVO'
+                                ? 'border-indigo-600 bg-indigo-50/40 shadow-xs'
+                                : 'border-slate-200 bg-white hover:border-slate-300'
+                            }`}
+                          >
+                            <div className={`p-2 rounded-lg shrink-0 ${
+                              productForm.fulfillment_method === 'FULFILLED_BY_SEVO'
+                                ? 'bg-indigo-600 text-white'
+                                : 'bg-slate-100 text-slate-500'
+                            }`}>
+                              <WarehouseIcon className="w-4 h-4" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center justify-between">
+                                <span className="font-bold text-xs text-slate-900">Fulfilled by Sevo</span>
+                                <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-700">FBS</span>
+                              </div>
+                              <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
+                                Sevo central warehouse physically holds, barcode verifies, and fulfills your stock.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {productForm.fulfillment_method === 'FULFILLED_BY_SEVO' && (
+                          <div className="p-2.5 bg-indigo-50 border border-indigo-200 rounded-xl text-[11px] text-indigo-900 flex items-start gap-2">
+                            <Info className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+                            <div>
+                              <span className="font-bold">Fulfilled by Sevo (FBS) Catalog Registration:</span>
+                              <p className="text-indigo-700 mt-0.5">
+                                Marking as FBS saves your warehouse fulfillment preference. Inbound stock request and barcode intake scanning workflows will be activated in upcoming operational updates.
+                              </p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     {/* Pricing & Taxes */}
@@ -2420,6 +3025,20 @@ export function SellerCatalogUploadsPage() {
                     <p className="text-[11px] text-slate-600">
                       Category: <span className="font-semibold">{detailedProduct.category_path}</span>
                     </p>
+                    <div className="flex items-center gap-2 pt-0.5">
+                      <span className="text-[11px] text-slate-500">Fulfillment Method:</span>
+                      {detailedProduct.fulfillment_method === 'FULFILLED_BY_SEVO' ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                          <WarehouseIcon className="w-3 h-3 text-indigo-500" />
+                          <span>Fulfilled by Sevo (FBS)</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                          <Truck className="w-3 h-3 text-slate-400" />
+                          <span>Self-Ship (Merchant Direct)</span>
+                        </span>
+                      )}
+                    </div>
                     {detailedProduct.barcode && (
                       <div className="pt-2 flex items-center justify-between bg-white p-2.5 rounded-xl border border-slate-200">
                         <div className="flex items-center gap-2">
@@ -2473,6 +3092,541 @@ export function SellerCatalogUploadsPage() {
                 >
                   Close
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ════════════════════════════════════════════════════════════════════ */}
+        {/* MODAL 4: REQUEST WAREHOUSE STORAGE (PHASE X)                         */}
+        {/* ════════════════════════════════════════════════════════════════════ */}
+        {showInboundModal && inboundModalProduct && (
+          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-xl w-full my-8 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+              {/* Header */}
+              <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/50">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold">
+                    <WarehouseIcon className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-900 text-sm">Request Warehouse Storage (FBS)</h3>
+                    <p className="text-[11px] text-slate-500">
+                      Submit a stock replenishment intake request to your designated warehouse
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowInboundModal(false)}
+                  className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="p-6 space-y-4">
+                {inboundError && (
+                  <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                    <span>{inboundError}</span>
+                  </div>
+                )}
+
+                {/* Product Summary */}
+                <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-white border border-slate-200 flex items-center justify-center shrink-0">
+                    <Package className="w-5 h-5 text-slate-500" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="font-bold text-slate-900 text-xs truncate">{inboundModalProduct.title}</div>
+                    <div className="text-[11px] text-slate-500 font-mono mt-0.5">
+                      SKU: <span className="font-bold text-slate-700">{inboundModalProduct.sku}</span> • Selling Price:{' '}
+                      <span className="text-emerald-700 font-bold">₹{inboundModalProduct.selling_price}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Phase AA: Warehouse Picker */}
+                {inboundLoading ? (
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-center">
+                    <RefreshCw className="w-4 h-4 text-indigo-600 animate-spin mx-auto mb-1" />
+                    <span className="text-xs text-slate-500">Loading available warehouses...</span>
+                  </div>
+                ) : eligibleWarehouses.length === 0 ? (
+                  <div className="p-4 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-900 space-y-1">
+                    <div className="font-bold flex items-center gap-1.5 text-amber-800">
+                      <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                      <span>No Active Warehouses Available</span>
+                    </div>
+                    <p className="text-[11px] text-amber-700">
+                      There are currently no active warehouse facilities. Please contact Platform Administration.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <label className="block text-xs font-bold text-slate-700">
+                      Target Warehouse <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <WarehouseIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-indigo-500 pointer-events-none" />
+                      <select
+                        value={selectedWarehouseId}
+                        onChange={(e) => setSelectedWarehouseId(e.target.value)}
+                        className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-medium focus:outline-none focus:border-indigo-600 focus:bg-white appearance-none"
+                      >
+                        <option value=""> -  Select a warehouse  - </option>
+                        {eligibleWarehouses.map((wh) => (
+                          <option key={wh.id} value={String(wh.id)}>
+                            {wh.name}{wh.city ? ` - ${wh.city}` : ''} {wh.id === assignedWarehouseInfo?.warehouse?.id ? '(Your Assigned)' : ''}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                    </div>
+
+                    {/* Phase AA: Current balance at selected warehouse */}
+                    {selectedWarehouseId && (
+                      <div className="flex items-center gap-2 px-3 py-2 bg-indigo-50 border border-indigo-100 rounded-lg min-h-[30px]">
+                        {balanceLoading ? (
+                          <RefreshCw className="w-3 h-3 text-indigo-500 animate-spin shrink-0" />
+                        ) : (
+                          <Boxes className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                        )}
+                        {balanceLoading ? (
+                          <span className="text-[11px] text-indigo-600">Fetching current stock...</span>
+                        ) : inventoryBalance ? (
+                          <span className="text-[11px] text-indigo-800 font-medium">
+                            Currently at{' '}
+                            <span className="font-bold">{inventoryBalance.warehouse_name}</span>:{' '}
+                            <span className="font-bold text-emerald-700">{inventoryBalance.on_hand_qty} {inventoryBalance.unit}</span>
+                            {inventoryBalance.on_hand_qty === 0 && (
+                              <span className="text-slate-500">  -  no stock yet at this warehouse</span>
+                            )}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-slate-500">No stock data available</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Form */}
+                <form onSubmit={handleSubmitInboundRequest} className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Requested Intake Quantity (Units) <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      required
+                      placeholder="e.g. 50"
+                      value={inboundForm.requested_quantity}
+                      onChange={(e) => setInboundForm({ ...inboundForm, requested_quantity: e.target.value })}
+                      disabled={!selectedWarehouseId}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-900 focus:outline-none focus:border-indigo-600 focus:bg-white disabled:opacity-50 disabled:cursor-not-allowed"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Seller Notes / Special Handling Instructions (Optional)
+                    </label>
+                    <textarea
+                      rows={2}
+                      placeholder="e.g., Temperature sensitive spice, scheduled delivery next Tuesday..."
+                      value={inboundForm.seller_note}
+                      onChange={(e) => setInboundForm({ ...inboundForm, seller_note: e.target.value })}
+                      disabled={!selectedWarehouseId}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-600 focus:bg-white disabled:opacity-50 disabled:cursor-not-allowed"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowInboundModal(false)}
+                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={inboundSubmitting || !selectedWarehouseId}
+                      className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {inboundSubmitting ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          <span>Submitting Request...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-3.5 h-3.5" />
+                          <span>Submit Storage Request</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </form>
+
+                {/* Past Requests History for this product */}
+                {inboundProductRequests.length > 0 && (
+                  <div className="pt-3 border-t border-slate-200 space-y-2">
+                    <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider block">
+                      Past Storage Requests for this Item ({inboundProductRequests.length})
+                    </span>
+                    <div className="max-h-48 overflow-y-auto space-y-2">
+                      {inboundProductRequests.map((req) => (
+                        <div key={req.id} className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-slate-800">Req #{req.id} • {req.requested_quantity} units</span>
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                req.status === 'PENDING'
+                                  ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                  : req.status === 'ACCEPTED'
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                  : 'bg-rose-50 text-rose-700 border-rose-200'
+                              }`}
+                            >
+                              {req.status === 'PENDING' ? 'Pending Review' : req.status === 'ACCEPTED' ? 'Accepted' : 'Rejected'}
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-slate-400">
+                            {new Date(req.created_at).toLocaleDateString()} {new Date(req.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </div>
+                          {req.reviewer_note && (
+                            <div className={`text-[11px] p-1.5 rounded border mt-1 ${
+                              req.status === 'ACCEPTED'
+                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                : 'bg-rose-50 text-rose-800 border-rose-200'
+                            }`}>
+                              <span className="font-bold block text-[10px]">
+                                {req.status === 'ACCEPTED' ? 'Warehouse Staff Note:' : 'Rejection Reason:'}
+                              </span>
+                              "{req.reviewer_note}"
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Phase Z: Shortfall Reconciliation Decision Modal */}
+        {showShortfallDecisionModal && shortfallDecisionRequest && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+            <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 max-w-lg w-full overflow-hidden flex flex-col max-h-[90vh]">
+              {/* Modal Header */}
+              <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-amber-500/10">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-amber-500 text-white shadow-md shadow-amber-500/20">
+                    <AlertTriangle className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900">Inbound Shortfall Notice</h3>
+                    <p className="text-xs text-slate-500">Warehouse reported partial physical delivery</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowShortfallDecisionModal(false)}
+                  className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-white/60 transition"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="p-5 space-y-4 overflow-y-auto">
+                {shortfallDecisionError && (
+                  <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                    <span>{shortfallDecisionError}</span>
+                  </div>
+                )}
+
+                {/* Inbound Request & Product Summary */}
+                <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-800">
+                      Req #{shortfallDecisionRequest.id} • {shortfallDecisionRequest.product_title}
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-amber-100 text-amber-800 border border-amber-300">
+                      Short-Received
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-slate-500 flex items-center gap-3">
+                    <span>SKU: <strong className="text-slate-700">{shortfallDecisionRequest.product_sku || 'N/A'}</strong></span>
+                    <span>•</span>
+                    <span>Facility: <strong className="text-slate-700">{shortfallDecisionRequest.warehouse_name}</strong></span>
+                  </div>
+                </div>
+
+                {/* Scanned vs Expected Breakdown */}
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Requested</span>
+                    <span className="text-lg font-black text-slate-800">{shortfallDecisionRequest.requested_quantity}</span>
+                    <span className="text-[10px] text-slate-400 block">units</span>
+                  </div>
+                  <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200">
+                    <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider block">Confirmed Scan</span>
+                    <span className="text-lg font-black text-emerald-700">{shortfallDecisionRequest.confirmed_quantity || shortfallDecisionRequest.received_units_count || 0}</span>
+                    <span className="text-[10px] text-emerald-600 block">verified</span>
+                  </div>
+                  <div className="p-3 bg-rose-50 rounded-xl border border-rose-200">
+                    <span className="text-[10px] font-bold text-rose-600 uppercase tracking-wider block">Missing</span>
+                    <span className="text-lg font-black text-rose-700">
+                      {Math.max(0, (shortfallDecisionRequest.requested_quantity || 0) - (shortfallDecisionRequest.confirmed_quantity || shortfallDecisionRequest.received_units_count || 0))}
+                    </span>
+                    <span className="text-[10px] text-rose-600 block">units short</span>
+                  </div>
+                </div>
+
+                {/* Warehouse Staff Note */}
+                <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl space-y-1">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-amber-900">
+                    <Building2 className="w-3.5 h-3.5" />
+                    <span>Warehouse Shortfall Report Note</span>
+                  </div>
+                  <p className="text-xs text-amber-800 italic bg-white/70 p-2.5 rounded-lg border border-amber-200">
+                    "{shortfallDecisionRequest.shortfall_note || 'No additional note provided by warehouse staff.'}"
+                  </p>
+                </div>
+
+                <form onSubmit={handleConfirmShortfallDecision} className="space-y-4 pt-1">
+                  {/* Decision Selection Cards */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-2">
+                      Choose Resolution Action:
+                    </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => setShortfallDecisionAction('ACCEPT')}
+                        className={`p-3 rounded-xl border text-left transition relative ${
+                          shortfallDecisionAction === 'ACCEPT'
+                            ? 'bg-emerald-50 border-emerald-500 ring-2 ring-emerald-500/20 shadow-sm'
+                            : 'bg-white border-slate-200 hover:border-slate-300'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          <CheckCircle2 className={`w-4 h-4 ${shortfallDecisionAction === 'ACCEPT' ? 'text-emerald-600' : 'text-slate-400'}`} />
+                          <span className={`text-xs font-bold ${shortfallDecisionAction === 'ACCEPT' ? 'text-emerald-900' : 'text-slate-700'}`}>
+                            Accept Partial Count
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500">
+                          Credited <strong>{shortfallDecisionRequest.confirmed_quantity || shortfallDecisionRequest.received_units_count} units</strong> to live inventory. Unscanned units marked not-received.
+                        </p>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setShortfallDecisionAction('REJECT')}
+                        className={`p-3 rounded-xl border text-left transition relative ${
+                          shortfallDecisionAction === 'REJECT'
+                            ? 'bg-rose-50 border-rose-500 ring-2 ring-rose-500/20 shadow-sm'
+                            : 'bg-white border-slate-200 hover:border-slate-300'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          <XCircle className={`w-4 h-4 ${shortfallDecisionAction === 'REJECT' ? 'text-rose-600' : 'text-slate-400'}`} />
+                          <span className={`text-xs font-bold ${shortfallDecisionAction === 'REJECT' ? 'text-rose-900' : 'text-slate-700'}`}>
+                            Reject & Return Batch
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500">
+                          Nothing goes live. Stages a return order to ship all physically scanned units back to your store address.
+                        </p>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Seller Note / Instructions */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Your Response Note (Optional)
+                    </label>
+                    <textarea
+                      rows={2}
+                      placeholder={shortfallDecisionAction === 'ACCEPT' ? "e.g., Confirmed 3 units received, supplier short-shipped." : "e.g., Batch incomplete, please return all units to merchant address."}
+                      value={sellerShortfallNote}
+                      onChange={(e) => setSellerShortfallNote(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-600 focus:bg-white"
+                    />
+                  </div>
+
+                  {/* Modal Action Buttons */}
+                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => setShowShortfallDecisionModal(false)}
+                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={shortfallDecisionSubmitting}
+                      className={`px-5 py-2 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed ${
+                        shortfallDecisionAction === 'ACCEPT'
+                          ? 'bg-emerald-600 hover:bg-emerald-700'
+                          : 'bg-rose-600 hover:bg-rose-700'
+                      }`}
+                    >
+                      {shortfallDecisionSubmitting ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          <span>Submitting Decision...</span>
+                        </>
+                      ) : shortfallDecisionAction === 'ACCEPT' ? (
+                        <>
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Confirm & Go Live ({shortfallDecisionRequest.confirmed_quantity || shortfallDecisionRequest.received_units_count} Units)</span>
+                        </>
+                      ) : (
+                        <>
+                          <XCircle className="w-3.5 h-3.5" />
+                          <span>Confirm & Request Return</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL 5: PRINT INBOUND UNIT LABELS (MULTI-FORMAT) */}
+        {showLabelsModal && labelsModalRequest && (
+          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+              {/* Header */}
+              <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/50">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold">
+                    <Printer className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-900 text-sm">Print Unit Barcode Labels</h3>
+                    <p className="text-[11px] text-slate-500">
+                      Request #{labelsModalRequest.id} &bull; {labelsModalRequest.requested_quantity} Unit Labels
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowLabelsModal(false)}
+                  className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="p-6 space-y-4">
+                {/* Product & Warehouse Info */}
+                <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-bold text-slate-900 text-xs">{labelsModalRequest.product_title}</div>
+                      <div className="text-[11px] font-mono text-slate-500 mt-0.5">
+                        SKU: <span className="font-bold text-slate-700">{labelsModalRequest.product_sku}</span>
+                      </div>
+                    </div>
+                    <span className="px-2.5 py-1 rounded-md bg-indigo-100 text-indigo-800 font-bold text-xs font-mono shrink-0">
+                      {labelsModalRequest.requested_quantity} Units
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-slate-600 border-t border-slate-200/80 pt-2 flex items-center gap-1.5">
+                    <WarehouseIcon className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                    <span>Target Warehouse: <b className="text-slate-800">{labelsModalRequest.warehouse_name}</b></span>
+                  </div>
+                </div>
+
+                {/* Paper Size / Format Selector */}
+                <div className="space-y-2.5">
+                  <label className="block text-xs font-bold text-slate-700">
+                    Select Printer Type & Paper Format
+                  </label>
+                  <div className="grid grid-cols-1 gap-2">
+                    {[
+                      {
+                        id: 'a4',
+                        name: 'A4 Sheet (Multi-Label Grid)',
+                        desc: '2-column grid layout with multiple unit labels per page. For laser/inkjet printers.',
+                        badge: 'Standard A4',
+                      },
+                      {
+                        id: 'thermal_4x6',
+                        name: 'Thermal 4×6 in (Roll Label)',
+                        desc: '1 unit label per page (101.6 × 152.4 mm). Standard shipping & warehouse label roll.',
+                        badge: 'Thermal 4x6"',
+                      },
+                      {
+                        id: 'thermal_2x1',
+                        name: 'Thermal 2×1 in (Barcode Sticker)',
+                        desc: '1 compact barcode label per page (50.8 × 25.4 mm). For retail & item barcode stickers.',
+                        badge: 'Thermal 2x1"',
+                      },
+                    ].map((opt) => (
+                      <label
+                        key={opt.id}
+                        className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition ${
+                          labelsPaperSize === opt.id
+                            ? 'bg-indigo-50/70 border-indigo-600 ring-1 ring-indigo-600'
+                            : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50/50'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="labelPaperFormat"
+                          value={opt.id}
+                          checked={labelsPaperSize === opt.id}
+                          onChange={(e) => setLabelsPaperSize(e.target.value)}
+                          className="mt-0.5 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-slate-900">{opt.name}</span>
+                            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-100 text-slate-600 font-semibold">
+                              {opt.badge}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-500 mt-0.5">{opt.desc}</p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Footer Buttons */}
+                <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setShowLabelsModal(false)}
+                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition"
+                  >
+                    Close
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handlePrintLabelsPdf(labelsPaperSize)}
+                    className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm"
+                  >
+                    <Printer className="w-3.5 h-3.5" />
+                    <span>Generate & Print PDF</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>

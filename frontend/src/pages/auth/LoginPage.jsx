@@ -40,13 +40,23 @@ export function LoginPage() {
         throw new Error('Authentication failed. Please check credentials.');
       }
 
-      const isSeller = Boolean(
-        user.isSeller ||
-        (user.businessType === 'grocery_supplier' && !user.isPlatformAdmin) ||
-        user.role === 'seller'
+      const isWarehouse = Boolean(
+        user.isWarehouseStaff ||
+        user.role === 'warehouse' ||
+        user.warehouseId
       );
 
-      if (isSeller) {
+      const isSeller = Boolean(
+        !isWarehouse && (
+          user.isSeller ||
+          (user.businessType === 'grocery_supplier' && !user.isPlatformAdmin) ||
+          user.role === 'seller'
+        )
+      );
+
+      if (isWarehouse) {
+        navigate('/workforce/warehouse/home');
+      } else if (isSeller) {
         navigate('/workforce/seller/dashboard');
       } else if (user.isAdmin) {
 

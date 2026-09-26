@@ -6800,7 +6800,7 @@ class SellerReportsExportCSVView(APIView):
 class AdminWarehouseListCreateView(APIView):
     """
     GET  /api/workforce/admin/warehouses/ – List warehouses with assigned sellers count & filter support
-    POST /api/workforce/admin/warehouses/ – Create a new warehouse facility (Platform Admin only)
+    POST /api/workforce/admin/warehouses/ – Create a new warehouse facility with staff login credentials (Platform Admin only)
     """
     permission_classes = [permissions.IsAuthenticated]
 
@@ -6815,7 +6815,9 @@ class AdminWarehouseListCreateView(APIView):
         from workforce_api.models import Warehouse
         from workforce_api.serializers import WarehouseSerializer
 
-        queryset = Warehouse.objects.annotate(
+        queryset = Warehouse.objects.prefetch_related(
+            "staff_members", "staff_members__user", "seller_assignments"
+        ).annotate(
             assigned_sellers_count_annotated=models.Count("seller_assignments", distinct=True)
         )
 
@@ -6850,19 +6852,70 @@ class AdminWarehouseListCreateView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        from workforce_api.serializers import WarehouseSerializer
-        serializer = WarehouseSerializer(data=request.data)
+        from django.db import transaction
+        from django.contrib.auth import get_user_model
+        from workforce_api.models import Warehouse, WarehouseStaff
+        from workforce_api.serializers import WarehouseSerializer, WarehouseDetailSerializer
+
+        User = get_user_model()
+        data = request.data.copy() if hasattr(request.data, "copy") else dict(request.data)
+        username = str(data.get("username") or data.get("login_username") or "").strip()
+        password = str(data.get("password") or data.get("login_password") or "")
+        email = str(data.get("email") or data.get("contact_email") or "").strip()
+
+        # Validate login credentials if provided
+        if username or password:
+            if not username:
+                return Response({"error": "Login username is required when creating warehouse credentials.", "code": "USERNAME_REQUIRED"}, status=status.HTTP_400_BAD_REQUEST)
+            if not password:
+                return Response({"error": "Login password is required when creating warehouse credentials.", "code": "PASSWORD_REQUIRED"}, status=status.HTTP_400_BAD_REQUEST)
+            if len(password) < 6:
+                return Response({"error": "Password must be at least 6 characters long.", "code": "WEAK_PASSWORD"}, status=status.HTTP_400_BAD_REQUEST)
+            if User.objects.filter(username__iexact=username).exists():
+                return Response({"error": f"Username '{username}' is already in use.", "code": "DUPLICATE_USERNAME"}, status=status.HTTP_400_BAD_REQUEST)
+            if email and User.objects.filter(email__iexact=email).exists():
+                return Response({"error": f"Email '{email}' is already registered.", "code": "DUPLICATE_EMAIL"}, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = WarehouseSerializer(data=data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        warehouse = serializer.save()
-        return Response(WarehouseSerializer(warehouse).data, status=status.HTTP_201_CREATED)
+        try:
+            with transaction.atomic():
+                warehouse = serializer.save()
+
+                if username and password:
+                    staff_user = User.objects.create_user(
+                        username=username,
+                        email=email or f"wh_{warehouse.id}_{username}@sevo.local",
+                        password=password,
+                        role="warehouse",
+                        first_name=warehouse.name,
+                        is_active=True,
+                        is_staff=False,
+                        is_superuser=False,
+                    )
+                    WarehouseStaff.objects.create(
+                        user=staff_user,
+                        warehouse=warehouse,
+                        role="operator",
+                        is_primary=True,
+                    )
+
+            # Reload warehouse with staff members for serialization
+            warehouse_detail = Warehouse.objects.prefetch_related(
+                "staff_members", "staff_members__user", "seller_assignments"
+            ).filter(id=warehouse.id).first()
+            return Response(WarehouseDetailSerializer(warehouse_detail or warehouse).data, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            logger.error("Failed to create warehouse facility transactionally: %s", str(e), exc_info=True)
+            return Response({"error": f"Failed to create warehouse facility: {str(e)}", "code": "WAREHOUSE_CREATE_FAILED"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class AdminWarehouseDetailView(APIView):
     """
-    GET    /api/workforce/admin/warehouses/<int:pk>/ – Get warehouse details including assigned sellers
-    PATCH  /api/workforce/admin/warehouses/<int:pk>/ – Update warehouse attributes / coordinates
+    GET    /api/workforce/admin/warehouses/<int:pk>/ – Get warehouse details including assigned sellers & staff
+    PATCH  /api/workforce/admin/warehouses/<int:pk>/ – Update warehouse attributes, coordinates, or login credentials
     DELETE /api/workforce/admin/warehouses/<int:pk>/ – Deactivate warehouse facility
     """
     permission_classes = [permissions.IsAuthenticated]
@@ -6878,7 +6931,9 @@ class AdminWarehouseDetailView(APIView):
         from workforce_api.models import Warehouse
         from workforce_api.serializers import WarehouseDetailSerializer
 
-        warehouse = Warehouse.objects.filter(pk=pk).annotate(
+        warehouse = Warehouse.objects.prefetch_related(
+            "staff_members", "staff_members__user", "seller_assignments", "seller_assignments__company"
+        ).filter(pk=pk).annotate(
             assigned_sellers_count_annotated=models.Count("seller_assignments", distinct=True)
         ).first()
         if not warehouse:
@@ -6895,19 +6950,78 @@ class AdminWarehouseDetailView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        from workforce_api.models import Warehouse
-        from workforce_api.serializers import WarehouseSerializer
+        from django.db import transaction
+        from django.contrib.auth import get_user_model
+        from workforce_api.models import Warehouse, WarehouseStaff
+        from workforce_api.serializers import WarehouseSerializer, WarehouseDetailSerializer
 
+        User = get_user_model()
         warehouse = Warehouse.objects.filter(pk=pk).first()
         if not warehouse:
             return Response({"error": "Warehouse facility not found.", "code": "NOT_FOUND"}, status=status.HTTP_404_NOT_FOUND)
 
-        serializer = WarehouseSerializer(warehouse, data=request.data, partial=True)
+        data = request.data.copy() if hasattr(request.data, "copy") else dict(request.data)
+        username = str(data.get("username") or data.get("login_username") or "").strip()
+        password = str(data.get("password") or data.get("login_password") or "")
+        email = str(data.get("email") or data.get("contact_email") or "").strip()
+
+        serializer = WarehouseSerializer(warehouse, data=data, partial=True)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        warehouse = serializer.save()
-        return Response(WarehouseSerializer(warehouse).data, status=status.HTTP_200_OK)
+        try:
+            with transaction.atomic():
+                warehouse = serializer.save()
+
+                if username or password or email:
+                    staff = warehouse.staff_members.select_related("user").filter(is_primary=True).first()
+                    if not staff:
+                        staff = warehouse.staff_members.select_related("user").first()
+
+                    if staff and staff.user:
+                        staff_user = staff.user
+                        if username and username.lower() != staff_user.username.lower():
+                            if User.objects.filter(username__iexact=username).exclude(id=staff_user.id).exists():
+                                return Response({"error": f"Username '{username}' is already in use.", "code": "DUPLICATE_USERNAME"}, status=status.HTTP_400_BAD_REQUEST)
+                            staff_user.username = username
+                        if email:
+                            if User.objects.filter(email__iexact=email).exclude(id=staff_user.id).exists():
+                                return Response({"error": f"Email '{email}' is already registered.", "code": "DUPLICATE_EMAIL"}, status=status.HTTP_400_BAD_REQUEST)
+                            staff_user.email = email
+                        if password:
+                            if len(password) < 6:
+                                return Response({"error": "Password must be at least 6 characters long.", "code": "WEAK_PASSWORD"}, status=status.HTTP_400_BAD_REQUEST)
+                            staff_user.set_password(password)
+                        staff_user.save()
+                    elif username and password:
+                        if len(password) < 6:
+                            return Response({"error": "Password must be at least 6 characters long.", "code": "WEAK_PASSWORD"}, status=status.HTTP_400_BAD_REQUEST)
+                        if User.objects.filter(username__iexact=username).exists():
+                            return Response({"error": f"Username '{username}' is already in use.", "code": "DUPLICATE_USERNAME"}, status=status.HTTP_400_BAD_REQUEST)
+                        staff_user = User.objects.create_user(
+                            username=username,
+                            email=email or f"wh_{warehouse.id}_{username}@sevo.local",
+                            password=password,
+                            role="warehouse",
+                            first_name=warehouse.name,
+                            is_active=True,
+                            is_staff=False,
+                            is_superuser=False,
+                        )
+                        WarehouseStaff.objects.create(
+                            user=staff_user,
+                            warehouse=warehouse,
+                            role="operator",
+                            is_primary=True,
+                        )
+
+            warehouse_detail = Warehouse.objects.prefetch_related(
+                "staff_members", "staff_members__user", "seller_assignments"
+            ).filter(id=warehouse.id).first()
+            return Response(WarehouseDetailSerializer(warehouse_detail or warehouse).data, status=status.HTTP_200_OK)
+        except Exception as e:
+            logger.error("Failed to update warehouse facility transactionally: %s", str(e), exc_info=True)
+            return Response({"error": f"Failed to update warehouse facility: {str(e)}", "code": "WAREHOUSE_UPDATE_FAILED"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def delete(self, request, pk):
         user = request.user
@@ -7025,6 +7139,767 @@ class AdminSellerWarehouseAssignView(APIView):
             assignment.delete()
             return Response({"message": "Warehouse assignment removed successfully.", "unassigned": True}, status=status.HTTP_200_OK)
         return Response({"message": "Seller was not assigned to any warehouse.", "unassigned": True}, status=status.HTTP_200_OK)
+
+
+class AdminWarehouseAssignMerchantView(APIView):
+    """
+    POST   /api/workforce/admin/warehouses/<int:pk>/assign-merchant/ – Assign a merchant (Company) to this warehouse
+    DELETE /api/workforce/admin/warehouses/<int:pk>/assign-merchant/<int:company_id>/ – Unassign a merchant from this warehouse
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        user = request.user
+        if not _is_admin_or_superadmin(user):
+            return Response(
+                {"error": "Only platform administrators can assign merchants to warehouses.", "code": "FORBIDDEN"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        from workforce_api.models import Warehouse, SellerWarehouseAssignment
+        from workforce_api.serializers import SellerWarehouseAssignmentSerializer
+        from companies.models import Company
+
+        warehouse = Warehouse.objects.filter(pk=pk).first()
+        if not warehouse:
+            return Response(
+                {"error": "Warehouse facility not found.", "code": "WAREHOUSE_NOT_FOUND"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not warehouse.is_active:
+            return Response(
+                {"error": f"Warehouse '{warehouse.name}' is inactive. Cannot assign merchants to inactive facilities.", "code": "WAREHOUSE_INACTIVE"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        company_id = request.data.get("company_id")
+        notes = str(request.data.get("notes", "")).strip()
+
+        if not company_id:
+            return Response(
+                {"error": "company_id is required.", "code": "COMPANY_ID_REQUIRED"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        company = Company.objects.filter(pk=company_id).first()
+        if not company:
+            return Response(
+                {"error": "Merchant company not found.", "code": "COMPANY_NOT_FOUND"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Check if already assigned to THIS warehouse
+        existing_assignment = SellerWarehouseAssignment.objects.filter(company=company, warehouse=warehouse).first()
+        if existing_assignment:
+            return Response(
+                {
+                    "error": f"Merchant '{company.company_name}' is already assigned to this warehouse.",
+                    "code": "ALREADY_ASSIGNED",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            assignment, created = SellerWarehouseAssignment.objects.update_or_create(
+                company=company,
+                defaults={
+                    "warehouse": warehouse,
+                    "assigned_by": user,
+                    "notes": notes,
+                },
+            )
+
+        serializer = SellerWarehouseAssignmentSerializer(assignment)
+        return Response(
+            {
+                "message": f"Merchant '{company.company_name}' assigned to warehouse '{warehouse.name}'.",
+                "assignment": serializer.data,
+                "created": created,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    def delete(self, request, pk, company_id=None):
+        user = request.user
+        if not _is_admin_or_superadmin(user):
+            return Response(
+                {"error": "Only platform administrators can unassign merchants from warehouses.", "code": "FORBIDDEN"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        from workforce_api.models import Warehouse, SellerWarehouseAssignment
+
+        warehouse = Warehouse.objects.filter(pk=pk).first()
+        if not warehouse:
+            return Response(
+                {"error": "Warehouse facility not found.", "code": "WAREHOUSE_NOT_FOUND"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        target_company_id = company_id or request.query_params.get("company_id") or request.data.get("company_id")
+        if not target_company_id:
+            return Response(
+                {"error": "company_id is required to unassign merchant.", "code": "COMPANY_ID_REQUIRED"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        assignment = SellerWarehouseAssignment.objects.filter(warehouse_id=pk, company_id=target_company_id).first()
+        if assignment:
+            assignment.delete()
+            return Response(
+                {"message": "Merchant unassigned from warehouse successfully.", "unassigned": True},
+                status=status.HTTP_200_OK,
+            )
+
+        return Response(
+            {"message": "Merchant is not assigned to this warehouse.", "unassigned": True},
+            status=status.HTTP_200_OK,
+        )
+
+
+class AdminCompaniesLookupView(APIView):
+    """
+    GET /api/workforce/admin/companies/ – Lookup eligible companies/merchants with warehouse assignment status
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        if not _is_admin_or_superadmin(user):
+            return Response(
+                {"error": "Only platform administrators can search merchants.", "code": "FORBIDDEN"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        from companies.models import Company
+
+        queryset = Company.objects.select_related("warehouse_assignment__warehouse").all()
+
+        search = request.query_params.get("search", "").strip()
+        if search:
+            queryset = queryset.filter(
+                models.Q(company_name__icontains=search) |
+                models.Q(slug__icontains=search)
+            )
+
+        queryset = queryset.order_by("company_name")[:100]
+
+        data = []
+        for c in queryset:
+            swa = getattr(c, "warehouse_assignment", None)
+            data.append({
+                "id": c.id,
+                "company_name": getattr(c, "company_name", f"Company #{c.id}"),
+                "slug": getattr(c, "slug", ""),
+                "business_type": getattr(c, "business_type", ""),
+                "is_assigned": swa is not None,
+                "assigned_warehouse_id": swa.warehouse_id if swa else None,
+                "assigned_warehouse_name": swa.warehouse.name if swa else None,
+            })
+
+        return Response(data, status=status.HTTP_200_OK)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# PHASE AA: SELLER WAREHOUSE PICKER + BALANCE DISPLAY
+# --------------------------------------------------------------------------------------
+
+class SellerEligibleWarehousesView(APIView):
+    """
+    GET /api/workforce/seller-hub/warehouses/
+    Phase AA: Returns all active warehouses the seller is eligible to request storage at.
+    Eligibility = any active Warehouse record (platform manages which warehouses exist).
+    Used to populate the warehouse picker in the inbound request modal.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from workforce_api.models import Warehouse
+        from workforce_api.serializers import WarehouseSerializer
+
+        user = request.user
+        company_id = _resolve_user_company_id(user)
+        if not company_id:
+            return Response(
+                {"error": "No company associated with this user account.", "code": "NO_COMPANY"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        warehouses = Warehouse.objects.filter(is_active=True).order_by("name")
+        data = [
+            {
+                "id": wh.id,
+                "name": wh.name,
+                "code": wh.code or f"WH-{wh.id}",
+                "city": wh.city or "",
+                "address": wh.address or "",
+                "is_active": wh.is_active,
+            }
+            for wh in warehouses
+        ]
+        return Response({"warehouses": data, "count": len(data)}, status=status.HTTP_200_OK)
+
+
+class SellerInventoryBalanceView(APIView):
+    """
+    GET /api/workforce/seller-hub/inventory-balance/?product_id=<id>&warehouse_id=<id>
+    Phase AA: Returns the seller's current confirmed on-hand quantity for a specific
+    product at a specific warehouse. Used to show current stock level in the inbound
+    request modal so the seller can gauge how much top-up to request.
+
+    Returns on_hand_qty=0 gracefully if no inventory record exists for this
+    product+warehouse+seller combination.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from workforce_api.models import SellerProduct, SellerInventory, Warehouse
+
+        user = request.user
+        company_id = _resolve_user_company_id(user)
+        if not company_id:
+            return Response(
+                {"error": "No company associated with this user account.", "code": "NO_COMPANY"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        product_id = request.query_params.get("product_id", "").strip()
+        warehouse_id = request.query_params.get("warehouse_id", "").strip()
+
+        if not product_id or not warehouse_id:
+            return Response(
+                {"error": "Both product_id and warehouse_id are required.", "code": "MISSING_PARAMS"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Validate product belongs to seller
+        product = SellerProduct.objects.filter(id=product_id, company_id=company_id).first()
+        if not product:
+            return Response(
+                {"error": "Product not found or does not belong to your store.", "code": "PRODUCT_NOT_FOUND"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Validate warehouse exists and is active
+        warehouse = Warehouse.objects.filter(id=warehouse_id, is_active=True).first()
+        if not warehouse:
+            return Response(
+                {"error": "Warehouse not found or is not active.", "code": "WAREHOUSE_NOT_FOUND"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Fetch inventory balance scoped to this seller+product.
+        # NOTE: SellerInventory is currently company+product (not warehouse-scoped) because
+        # dispatch assumes a single warehouse per seller (Phase T). In Phase AA the picker
+        # lets sellers choose the target warehouse for a given request; until a future phase
+        # adds per-warehouse inventory partitioning the on_hand_qty represents total stock
+        # across all warehouses the seller has sent to, scoped by company+product.
+        inv = SellerInventory.objects.filter(
+            company_id=company_id,
+            product_id=product_id,
+        ).first()
+
+        on_hand_qty = float(inv.on_hand_qty) if inv else 0.0
+        unit = product.unit or "units"
+
+        return Response(
+            {
+                "product_id": product.id,
+                "warehouse_id": warehouse.id,
+                "warehouse_name": warehouse.name,
+                "on_hand_qty": on_hand_qty,
+                "unit": unit,
+                "has_stock": on_hand_qty > 0,
+            },
+            status=status.HTTP_200_OK,
+        )
+# PHASE X: SELLER-SIDE INBOUND STORAGE REQUESTS (FULFILLED BY SEVO)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class SellerAssignedWarehouseView(APIView):
+    """
+    GET /api/workforce/seller-hub/assigned-warehouse/
+    Returns the designated Phase T Warehouse assigned to the authenticated seller's store.
+    Read-only for the seller.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        company_id = _resolve_user_company_id(user)
+        if not company_id:
+            return Response(
+                {"error": "No company associated with this user account.", "code": "NO_COMPANY"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        from workforce_api.models import get_seller_assigned_warehouse
+        warehouse = get_seller_assigned_warehouse(company_id)
+        if not warehouse:
+            return Response(
+                {
+                    "assigned": False,
+                    "warehouse": None,
+                    "message": "No active warehouse facility assigned to your merchant store.",
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        return Response(
+            {
+                "assigned": True,
+                "warehouse": {
+                    "id": warehouse.id,
+                    "name": warehouse.name,
+                    "code": warehouse.code or f"WH-{warehouse.id}",
+                    "city": warehouse.city or "",
+                    "address": warehouse.address or "",
+                    "is_active": warehouse.is_active,
+                },
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class SellerInboundRequestListCreateView(APIView):
+    """
+    GET  /api/workforce/seller-hub/inbound-requests/ – List seller's inbound stock requests.
+    POST /api/workforce/seller-hub/inbound-requests/ – Submit a new warehouse storage request.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        company_id = _resolve_user_company_id(user)
+        if not company_id:
+            return Response(
+                {"error": "No company associated with this user account.", "code": "NO_COMPANY"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        from workforce_api.models import WarehouseInboundRequest
+        from workforce_api.serializers import WarehouseInboundRequestSerializer
+
+        queryset = WarehouseInboundRequest.objects.filter(
+            company_id=company_id
+        ).select_related(
+            "product", "company", "warehouse", "requested_by", "reviewed_by"
+        ).prefetch_related(
+            "audit_logs", "product__images"
+        ).order_by("-created_at")
+
+        product_id = request.query_params.get("product_id")
+        if product_id:
+            queryset = queryset.filter(product_id=product_id)
+
+        status_param = request.query_params.get("status", "").strip().upper()
+        if status_param and status_param != "ALL":
+            if status_param in WarehouseInboundRequest.Status.values:
+                queryset = queryset.filter(status=status_param)
+
+        serializer = WarehouseInboundRequestSerializer(queryset, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        from django.db import transaction
+        from workforce_api.models import (
+            SellerProduct,
+            Warehouse,
+            WarehouseInboundRequest,
+            WarehouseInboundRequestAuditLog,
+        )
+        from workforce_api.serializers import (
+            WarehouseInboundRequestSerializer,
+            WarehouseInboundRequestCreateSerializer,
+        )
+
+        user = request.user
+        company_id = _resolve_user_company_id(user)
+        if not company_id:
+            return Response(
+                {"error": "No company associated with this user account.", "code": "NO_COMPANY"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # 1. Validate input serializer (now includes optional warehouse_id for Phase AA picker)
+        serializer = WarehouseInboundRequestCreateSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                {"error": "Invalid request payload.", "details": serializer.errors, "code": "VALIDATION_ERROR"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        product_id = serializer.validated_data["product_id"]
+        requested_quantity = serializer.validated_data["requested_quantity"]
+        seller_note = serializer.validated_data.get("seller_note", "").strip()
+        warehouse_id = serializer.validated_data.get("warehouse_id")
+
+        # 2. Phase AA: Resolve warehouse from seller-chosen picker or fall back to Phase T assignment.
+        #    warehouse_id in payload = seller explicitly chose; absent = fall back to assigned warehouse.
+        if warehouse_id:
+            warehouse = Warehouse.objects.filter(id=warehouse_id, is_active=True).first()
+            if not warehouse:
+                return Response(
+                    {
+                        "error": "Selected warehouse is not active or does not exist. Please choose a different warehouse.",
+                        "code": "WAREHOUSE_NOT_FOUND",
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        else:
+            from workforce_api.models import get_seller_assigned_warehouse
+            warehouse = get_seller_assigned_warehouse(company_id)
+            if not warehouse:
+                return Response(
+                    {
+                        "error": "No active warehouse assigned to your merchant store and no warehouse selected. Please choose a warehouse or contact Platform Administration.",
+                        "code": "NO_ASSIGNED_WAREHOUSE",
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        # 3. Validate product belongs to seller's company
+        product = SellerProduct.objects.filter(id=product_id, company_id=company_id).first()
+        if not product:
+            return Response(
+                {"error": "Product not found or does not belong to your store.", "code": "PRODUCT_NOT_FOUND"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # 4. Validate fulfillment method is FULFILLED_BY_SEVO
+        if product.fulfillment_method != SellerProduct.FulfillmentMethod.FULFILLED_BY_SEVO:
+            return Response(
+                {
+                    "error": "Warehouse storage requests can only be submitted for 'Fulfilled by Sevo' (FBS) products. Please update fulfillment method first.",
+                    "code": "INVALID_FULFILLMENT_METHOD",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # 4b. Validate product is ADMIN APPROVED (Independent Gate 1)
+        if product.status != SellerProduct.Status.APPROVED:
+            return Response(
+                {
+                    "error": f"Warehouse storage requests can only be submitted for admin-approved products. Current status is '{product.get_status_display()}'. Please complete platform catalog approval before requesting warehouse intake.",
+                    "code": "PRODUCT_NOT_APPROVED",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # 5. Create inbound request record and audit log atomically
+        with transaction.atomic():
+            inbound_req = WarehouseInboundRequest.objects.create(
+                product=product,
+                company_id=company_id,
+                warehouse=warehouse,
+                requested_quantity=requested_quantity,
+                status=WarehouseInboundRequest.Status.PENDING,
+                seller_note=seller_note,
+                requested_by=user,
+            )
+
+            WarehouseInboundRequestAuditLog.objects.create(
+                inbound_request=inbound_req,
+                action="CREATED",
+                from_status="",
+                to_status=WarehouseInboundRequest.Status.PENDING,
+                actor=user,
+                notes=seller_note or f"Requested {requested_quantity} units storage at {warehouse.name}.",
+            )
+
+        # Refresh with full relations for response
+        inbound_req = WarehouseInboundRequest.objects.select_related(
+            "product", "company", "warehouse", "requested_by"
+        ).prefetch_related(
+            "audit_logs", "product__images"
+        ).get(id=inbound_req.id)
+
+        out_serializer = WarehouseInboundRequestSerializer(inbound_req)
+        return Response(out_serializer.data, status=status.HTTP_201_CREATED)
+
+
+class SellerInboundRequestShortfallDecisionView(APIView):
+    """
+    POST /api/workforce/seller/inbound-requests/<int:pk>/shortfall-decision/
+    Phase Z: Seller decision on warehouse-reported shortfall.
+    - ACCEPT: Proceed live with confirmed_quantity units (on_hand_qty credited with confirmed_quantity, unscanned units marked NOT_RECEIVED, status COMPLETED).
+    - REJECT: Reject the partial batch and request return to merchant (no inventory credited, unscanned units marked NOT_RECEIVED, scanned units marked RETURN_PENDING, WarehouseReturn record created with seller's company address, status REJECTED_RETURN).
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        from decimal import Decimal
+        from django.db import transaction
+        from django.utils import timezone
+        from workforce_api.models import (
+            SellerProduct,
+            SellerInventory,
+            SellerInventoryMovement,
+            WarehouseInboundRequest,
+            WarehouseInboundRequestAuditLog,
+            WarehouseInboundUnit,
+            WarehouseReturn,
+        )
+        from workforce_api.serializers import WarehouseInboundRequestSerializer
+
+        user = request.user
+        company_id = _resolve_user_company_id(user)
+        if not company_id:
+            return Response(
+                {"error": "No company associated with this user account.", "code": "NO_COMPANY"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        inbound_req = WarehouseInboundRequest.objects.filter(
+            id=pk,
+            company_id=company_id,
+        ).select_related("product", "warehouse", "company").first()
+
+        if not inbound_req:
+            return Response(
+                {"error": "Inbound request not found or does not belong to your store.", "code": "NOT_FOUND"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if inbound_req.status != WarehouseInboundRequest.Status.SHORT_RECEIVED:
+            return Response(
+                {
+                    "error": f"Shortfall decision can only be made on requests with status 'SHORT_RECEIVED'. Current status: '{inbound_req.status}'.",
+                    "code": "INVALID_STATE",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        action = str(request.data.get("action", "") or request.data.get("decision", "")).strip().upper()
+        seller_note = str(request.data.get("seller_note", "") or request.data.get("note", "")).strip()
+
+        if action not in ["ACCEPT", "REJECT"]:
+            return Response(
+                {"error": "Invalid action. Expected 'ACCEPT' or 'REJECT'.", "code": "INVALID_ACTION"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        product = inbound_req.product
+
+        if action == "ACCEPT":
+            # Independent Gate 1: Ensure product is admin-approved
+            if product.status != SellerProduct.Status.APPROVED:
+                return Response(
+                    {
+                        "error": f"Cannot accept partial batch: Product '{product.title}' (SKU: {product.sku}) is not admin-approved.",
+                        "code": "PRODUCT_NOT_APPROVED",
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            confirmed_qty = inbound_req.confirmed_quantity if inbound_req.confirmed_quantity is not None else inbound_req.units.filter(status=WarehouseInboundUnit.Status.RECEIVED).count()
+
+            with transaction.atomic():
+                from_status = inbound_req.status
+                inbound_req.status = WarehouseInboundRequest.Status.COMPLETED
+                inbound_req.confirmed_quantity = confirmed_qty
+                inbound_req.seller_shortfall_decision = WarehouseInboundRequest.SellerShortfallDecision.ACCEPT_PARTIAL
+                inbound_req.seller_shortfall_decided_by = user
+                inbound_req.seller_shortfall_decided_at = timezone.now()
+                inbound_req.seller_shortfall_note = seller_note
+                inbound_req.save(update_fields=[
+                    "status",
+                    "confirmed_quantity",
+                    "seller_shortfall_decision",
+                    "seller_shortfall_decided_by",
+                    "seller_shortfall_decided_at",
+                    "seller_shortfall_note",
+                    "updated_at",
+                ])
+
+                # Mark all remaining unscanned units as NOT_RECEIVED
+                inbound_req.units.filter(status=WarehouseInboundUnit.Status.PENDING_SCAN).update(
+                    status=WarehouseInboundUnit.Status.NOT_RECEIVED
+                )
+
+                # Credit physical stock in SellerInventory only if confirmed_qty > 0
+                if confirmed_qty > 0:
+                    inventory, _ = SellerInventory.objects.select_for_update().get_or_create(
+                        company=inbound_req.company,
+                        product=product,
+                        defaults={"on_hand_qty": Decimal("0.000")}
+                    )
+                    balance_before = inventory.on_hand_qty
+                    inventory.on_hand_qty = balance_before + Decimal(str(confirmed_qty))
+                    inventory.save(update_fields=["on_hand_qty", "updated_at"])
+
+                    SellerInventoryMovement.objects.create(
+                        inventory=inventory,
+                        movement_type=SellerInventoryMovement.MovementType.STOCK_IN,
+                        quantity_change=Decimal(str(confirmed_qty)),
+                        balance_before=balance_before,
+                        balance_after=inventory.on_hand_qty,
+                        reason=f"Warehouse inbound shortfall accepted by seller: Request #{inbound_req.id} ({confirmed_qty} of {inbound_req.requested_quantity} units received at {inbound_req.warehouse.name})",
+                        actor=user,
+                    )
+
+                WarehouseInboundRequestAuditLog.objects.create(
+                    inbound_request=inbound_req,
+                    action="SHORTFALL_ACCEPTED_PARTIAL",
+                    from_status=from_status,
+                    to_status=WarehouseInboundRequest.Status.COMPLETED,
+                    actor=user,
+                    notes=f"Seller accepted partial batch of {confirmed_qty}/{inbound_req.requested_quantity} units. Note: {seller_note or 'Accepted partial delivery.'}",
+                )
+
+        elif action == "REJECT":
+            confirmed_qty = inbound_req.confirmed_quantity if inbound_req.confirmed_quantity is not None else inbound_req.units.filter(status=WarehouseInboundUnit.Status.RECEIVED).count()
+
+            with transaction.atomic():
+                from_status = inbound_req.status
+                inbound_req.status = WarehouseInboundRequest.Status.REJECTED_RETURN
+                inbound_req.confirmed_quantity = confirmed_qty
+                inbound_req.seller_shortfall_decision = WarehouseInboundRequest.SellerShortfallDecision.REJECT_RETURN
+                inbound_req.seller_shortfall_decided_by = user
+                inbound_req.seller_shortfall_decided_at = timezone.now()
+                inbound_req.seller_shortfall_note = seller_note
+                inbound_req.save(update_fields=[
+                    "status",
+                    "confirmed_quantity",
+                    "seller_shortfall_decision",
+                    "seller_shortfall_decided_by",
+                    "seller_shortfall_decided_at",
+                    "seller_shortfall_note",
+                    "updated_at",
+                ])
+
+                # Mark unscanned units as NOT_RECEIVED and scanned units as RETURN_PENDING
+                inbound_req.units.filter(status=WarehouseInboundUnit.Status.PENDING_SCAN).update(
+                    status=WarehouseInboundUnit.Status.NOT_RECEIVED
+                )
+                inbound_req.units.filter(status=WarehouseInboundUnit.Status.RECEIVED).update(
+                    status=WarehouseInboundUnit.Status.RETURN_PENDING
+                )
+
+                # Resolve seller company destination address
+                company = inbound_req.company
+                seller_address = ""
+                try:
+                    if hasattr(company, "vendor_store") and company.vendor_store and company.vendor_store.store_address:
+                        seller_address = company.vendor_store.store_address
+                except Exception:
+                    pass
+                if not seller_address:
+                    seller_address = getattr(company, "address", "") or f"{company.company_name} Registered Merchant Office"
+
+                # Generate return reference
+                return_number = f"RET-INB-{inbound_req.id:04d}"
+                if WarehouseReturn.objects.filter(return_number=return_number).exists():
+                    return_number = f"RET-INB-{inbound_req.id:04d}-{timezone.now().strftime('%M%S')}"
+
+                return_record = WarehouseReturn.objects.create(
+                    return_number=return_number,
+                    inbound_request=inbound_req,
+                    warehouse=inbound_req.warehouse,
+                    company=company,
+                    product=product,
+                    returned_quantity=confirmed_qty,
+                    seller_address=seller_address,
+                    reason="INBOUND_SHORTFALL_REJECTED",
+                    notes=f"Seller rejected shortfall batch ({confirmed_qty}/{inbound_req.requested_quantity} confirmed). Seller note: {seller_note or 'Batch rejected, please return goods.'}",
+                    status=WarehouseReturn.Status.PENDING_DISPATCH,
+                    created_by=user,
+                )
+
+                WarehouseInboundRequestAuditLog.objects.create(
+                    inbound_request=inbound_req,
+                    action="SHORTFALL_REJECTED_RETURN",
+                    from_status=from_status,
+                    to_status=WarehouseInboundRequest.Status.REJECTED_RETURN,
+                    actor=user,
+                    notes=f"Seller rejected shortfall batch. Created Return #{return_record.return_number} for {confirmed_qty} units to {seller_address}. Note: {seller_note}",
+                )
+
+        # Refresh with relations
+        inbound_req = WarehouseInboundRequest.objects.select_related(
+            "product", "company", "warehouse", "requested_by"
+        ).prefetch_related(
+            "audit_logs", "product__images", "units"
+        ).get(id=inbound_req.id)
+
+        out_serializer = WarehouseInboundRequestSerializer(inbound_req)
+        return Response(
+            {
+                "message": f"Shortfall decision '{action}' recorded successfully.",
+                "inbound_request": out_serializer.data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class SellerInboundRequestLabelsPdfView(APIView):
+    """
+    GET /api/workforce/seller-hub/inbound-requests/<int:pk>/labels-pdf/?format=<a4|thermal_4x6|thermal_2x1>
+    Phase (Seller Labels): Downloads printable PDF barcode label sheet for an accepted Inbound Request.
+    Scoped strictly to the authenticated seller's company (403/404 if attempting another company's request).
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def perform_content_negotiation(self, request, force=False):
+        # Override to prevent DRF default format suffix negotiation from treating ?format=a4 (paper format) as media format
+        renderers = self.get_renderers()
+        return (renderers[0], renderers[0].media_type)
+
+    def get(self, request, pk):
+        from django.http import HttpResponse
+        from workforce_api.models import WarehouseInboundRequest
+        from .services.inbound_labels_pdf import render_inbound_unit_labels_pdf
+
+        user = request.user
+        company_id = _resolve_user_company_id(user)
+        if not company_id:
+            return Response(
+                {"error": "No company associated with this user account.", "code": "NO_COMPANY"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Check if request exists
+        req_exists = WarehouseInboundRequest.objects.filter(id=pk).first()
+        if not req_exists:
+            return Response(
+                {"error": "Inbound request not found.", "code": "NOT_FOUND"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Strict company scoping
+        if req_exists.company_id != company_id and not getattr(user, "is_superuser", False):
+            return Response(
+                {"error": "You do not have permission to view labels for this storage request.", "code": "FORBIDDEN"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        inbound_req = (
+            WarehouseInboundRequest.objects.filter(id=pk)
+            .select_related("product", "company", "warehouse")
+            .prefetch_related("units")
+            .first()
+        )
+
+        if not inbound_req.units.exists():
+            return Response(
+                {
+                    "error": "No unit barcodes generated for this request yet. The request must be accepted by the warehouse first.",
+                    "code": "NO_UNITS",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        paper_size = request.query_params.get("format") or request.query_params.get("paper_size") or "a4"
+        pdf_bytes = render_inbound_unit_labels_pdf(inbound_req, paper_size=paper_size)
+        response = HttpResponse(pdf_bytes, content_type="application/pdf")
+        filename = f"inbound_labels_req{inbound_req.id}_{inbound_req.product.sku}_{paper_size}.pdf"
+        response["Content-Disposition"] = f'inline; filename="{filename}"'
+        return response
+
+
+
 
 
 
