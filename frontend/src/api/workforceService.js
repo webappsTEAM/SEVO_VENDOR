@@ -217,17 +217,18 @@ export async function apiTransitionJob(jobId, targetStatus) {
 // Hold and resume are not plain status transitions: they also open and close
 // the Break that keeps held time out of the technician's worked hours, so they
 // have dedicated endpoints rather than going through /transition/.
-export async function apiHoldJob(jobId, reason) {
+export async function apiHoldJob(jobId, payload) {
+  const body = typeof payload === 'string' ? { reason: payload, reason_text: payload } : payload;
   return await apiRequest(`/workforce/jobs/${jobId}/hold/`, {
     method: 'POST',
-    json: { reason },
+    json: body,
   });
 }
 
-export async function apiResumeJob(jobId) {
+export async function apiResumeJob(jobId, payload = {}) {
   return await apiRequest(`/workforce/jobs/${jobId}/resume/`, {
     method: 'POST',
-    json: {},
+    json: payload,
   });
 }
 
@@ -280,6 +281,47 @@ export async function apiSetLogisticsLeg(jobId, leg) {
 
 export async function apiGetLogisticsLeg(jobId) {
   return await apiRequest(`/workforce/jobs/${jobId}/logistics-leg/`);
+}
+
+// Pickup / drop checkpoint verification for logistics trips (GPS <= 250m,
+// proof photo, delivery OTP). The leg endpoint refuses to advance past a
+// checkpoint whose evidence is missing -- see backend
+// services/logistics_checkpoints.py.
+export async function apiGetLogisticsCheckpoints(jobId) {
+  return await apiRequest(`/workforce/jobs/${jobId}/logistics-checkpoint/`);
+}
+
+export async function apiVerifyCheckpointGps(jobId, checkpoint, lat, lon) {
+  return await apiRequest(`/workforce/jobs/${jobId}/logistics-checkpoint/`, {
+    method: 'POST',
+    json: { checkpoint, action: 'gps', lat, lon },
+  });
+}
+
+export async function apiUploadCheckpointPhoto(jobId, checkpoint, file) {
+  const formData = new FormData();
+  formData.append('checkpoint', checkpoint);
+  formData.append('action', 'photo');
+  formData.append('file', file);
+  return await apiRequest(`/workforce/jobs/${jobId}/logistics-checkpoint/`, {
+    method: 'POST',
+    body: formData,
+    isFormData: true,
+  });
+}
+
+export async function apiVerifyDeliveryOtp(jobId, otp) {
+  return await apiRequest(`/workforce/jobs/${jobId}/logistics-checkpoint/`, {
+    method: 'POST',
+    json: { checkpoint: 'DROP', action: 'otp', otp },
+  });
+}
+
+export async function apiResendDeliveryOtp(jobId) {
+  return await apiRequest(`/workforce/jobs/${jobId}/logistics-checkpoint/`, {
+    method: 'POST',
+    json: { checkpoint: 'DROP', action: 'resend_otp' },
+  });
 }
 
 export async function apiGetJobStops(jobId) {
@@ -351,7 +393,7 @@ export async function apiCollectJobCash(jobId, amountReceived) {
     amountReceived !== null &&
     amountReceived !== undefined &&
     !isNaN(amountReceived) &&
-    parseFloat(amountReceived) > 0
+    parseFloat(amountReceived) >= 0
       ? { amount_received: parseFloat(amountReceived) }
       : {};
   return await apiRequest(`/workforce/jobs/${jobId}/payment/collect/`, {
@@ -629,14 +671,6 @@ export async function apiGetEligibleTechnicians(jobId = '', serviceName = '') {
   if (jobId) params.set('job_id', jobId);
   if (serviceName) params.set('service', serviceName);
   return await apiRequest(`/workforce/dispatch/eligible-technicians/?${params.toString()}`);
-}
-
-export async function apiDispatchAssign(jobId, employeeId = null) {
-  // Converges into authoritative automatic dispatch engine
-  return await apiRequest(`/workforce/dispatch/auto-dispatch/${jobId}/`, {
-    method: 'POST',
-    json: employeeId ? { employee_id: employeeId } : {},
-  });
 }
 
 // ── Notifications (Phase 21) ──────────────────────────────────────────────────
@@ -1099,40 +1133,6 @@ export async function apiGetProviderProfile() {
   return await apiRequest('/workforce/provider/profile/');
 }
 
-// ── Phase 2B: Provider Technician Management ──────────────────────────────────
-
-export async function apiGetAdminTechnicians(params = {}) {
-  const query = new URLSearchParams();
-  if (params.q) query.append('q', params.q);
-  if (params.is_active !== undefined) query.append('is_active', params.is_active);
-  if (params.company_id !== undefined) query.append('company_id', params.company_id);
-  const qs = query.toString() ? `?${query.toString()}` : '';
-  return await apiRequest(`/workforce/admin/technicians/${qs}`);
-}
-
-export async function apiCreateAdminTechnician(payload) {
-  return await apiRequest('/workforce/admin/technicians/', {
-    method: 'POST',
-    json: payload,
-  });
-}
-
-export async function apiGetAdminTechnicianDetail(id) {
-  return await apiRequest(`/workforce/admin/technicians/${id}/`);
-}
-
-export async function apiUpdateAdminTechnician(id, payload) {
-  return await apiRequest(`/workforce/admin/technicians/${id}/`, {
-    method: 'PATCH',
-    json: payload,
-  });
-}
-
-export async function apiToggleAdminTechnicianActive(id) {
-  return await apiRequest(`/workforce/admin/technicians/${id}/toggle-active/`, {
-    method: 'POST',
-  });
-}
 
 // ── Phase 2C: Public Providers & Join Requests ────────────────────────────────
 
@@ -1173,10 +1173,11 @@ export async function apiGetEstimationGate(jobId) {
   return await apiRequest(`/workforce/jobs/${jobId}/estimation-gate/`);
 }
 
-export async function apiGetRateCards(category = '', service = '') {
+export async function apiGetRateCards(category = '', service = '', jobId = null) {
   const params = new URLSearchParams();
   if (category) params.append('category', category);
   if (service) params.append('service', service);
+  if (jobId) params.append('job_id', String(jobId));
   const qStr = params.toString() ? `?${params.toString()}` : '';
   return await apiRequest(`/workforce/rate-cards/${qStr}`);
 }
@@ -1688,6 +1689,7 @@ export async function apiSellerOrderAdminOverride(orderId, action, reason) {
     json: { action, reason },
   });
 }
+
 export async function apiGetAvailableRiders(orderId) {
   return await apiRequest(`/workforce/seller-hub/orders/${orderId}/available-riders/`);
 }
@@ -1720,9 +1722,29 @@ export async function apiAdminCreateWarehouse(payload) {
   });
 }
 
+// -- Multi-Day Contracting, Base Location & Scope Reduction --
+
+export async function apiGetVendorBaseLocation() {
+  return await apiRequest('/workforce/vendor/base-location/');
+}
+
+export async function apiSaveVendorBaseLocation(payload) {
+  return await apiRequest('/workforce/vendor/base-location/', {
+    method: 'POST',
+    json: payload,
+  });
+}
+
 export async function apiAdminUpdateWarehouse(id, payload) {
   return await apiRequest(`/workforce/admin/warehouses/${id}/`, {
     method: 'PATCH',
+    json: payload,
+  });
+}
+
+export async function apiCheckServiceability(payload) {
+  return await apiRequest('/workforce/serviceability/check/', {
+    method: 'POST',
     json: payload,
   });
 }
@@ -1821,6 +1843,34 @@ export async function apiSellerCreateInboundRequest(payload) {
   });
 }
 
+export async function apiSubmitScopeReduction(jobId, payload) {
+  return await apiRequest(`/workforce/jobs/${jobId}/scope-reduction/`, {
+    method: 'POST',
+    json: payload,
+  });
+}
+
+export async function apiReviewScopeReduction(reductionId, payload) {
+  return await apiRequest(`/workforce/scope-reduction/${reductionId}/review/`, {
+    method: 'POST',
+    json: payload,
+  });
+}
+
+export async function apiSubmitQuoteToCRM(quoteId, payload = {}) {
+  return await apiRequest(`/workforce/quotes/${quoteId}/submit-crm/`, {
+    method: 'POST',
+    json: payload,
+  });
+}
+
+export async function apiApproveQuoteCRM(quoteId, payload = {}) {
+  return await apiRequest(`/workforce/quotes/${quoteId}/crm-approve/`, {
+    method: 'POST',
+    json: payload,
+  });
+}
+
 export async function apiSellerGetEligibleWarehouses() {
   return await apiRequest('/workforce/seller-hub/eligible-warehouses/');
 }
@@ -1840,7 +1890,6 @@ export function apiSellerGetInboundLabelsPdfUrl(id, format = 'a4') {
 export function apiWarehouseGetInboundLabelsPdfUrl(id, format = 'a4') {
   return `/api/workforce/warehouse/inbound-requests/${id}/labels-pdf/?format=${encodeURIComponent(format)}`;
 }
-
 
 export async function apiWarehouseGetInboundRequests(params = {}) {
   const qs = new URLSearchParams();
@@ -1910,6 +1959,9 @@ export const workforceService = {
   submitPublicOrderReview: apiSubmitPublicOrderReview,
   getPublicStores: apiGetPublicStores,
   getPublicStoreDetail: apiGetPublicStoreDetail,
+  getVendorBaseLocation: apiGetVendorBaseLocation,
+  saveVendorBaseLocation: apiSaveVendorBaseLocation,
+  checkServiceability: apiCheckServiceability,
   getSellerHubCategories: apiGetSellerHubCategories,
   createSellerHubCategory: apiCreateSellerHubCategory,
   updateSellerHubCategory: apiUpdateSellerHubCategory,
@@ -1949,6 +2001,10 @@ export const workforceService = {
   warehouseScanInboundUnit: apiWarehouseScanInboundUnit,
   warehouseGetInboundUnits: apiWarehouseGetInboundUnits,
   warehouseGetInboundLabelsPdfUrl: apiWarehouseGetInboundLabelsPdfUrl,
+  submitScopeReduction: apiSubmitScopeReduction,
+  reviewScopeReduction: apiReviewScopeReduction,
+  submitQuoteToCRM: apiSubmitQuoteToCRM,
+  approveQuoteCRM: apiApproveQuoteCRM,
 };
 
 

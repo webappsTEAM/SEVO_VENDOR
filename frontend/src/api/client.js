@@ -10,8 +10,10 @@ import {
   clearAuthTokens,
 } from '../utils/authTokens.js';
 import { classifyApiError } from '../utils/apiErrors.js';
+import { captureUnexpectedApiError } from '../utils/sentry.js';
 
 let inFlightRefreshPromise = null;
+let lastRefreshFailure = null;
 
 function getCookie(name) {
   if (typeof document === 'undefined' || !document.cookie) return null;
@@ -36,6 +38,11 @@ export async function apiRefreshToken() {
 
   const refreshToken = getRefreshToken();
   if (!refreshToken) {
+    lastRefreshFailure = {
+      type: 'AUTH_INVALID',
+      status: 401,
+      message: 'No refresh token available.',
+    };
     clearAuthTokens();
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('workforce:auth-unauthorized'));
@@ -57,20 +64,37 @@ export async function apiRefreshToken() {
         const newRefreshToken = data.refresh_token || data.refresh || refreshToken;
         if (newToken) {
           setAuthTokens(newToken, newRefreshToken);
+          lastRefreshFailure = null;
           return newToken;
         }
       }
 
       if (res.status === 401 || res.status === 400) {
         // Refresh rejected by server (invalid/expired refresh token)
+        lastRefreshFailure = {
+          type: 'AUTH_INVALID',
+          status: res.status,
+          message: 'Session expired. Please log in again.',
+        };
         clearAuthTokens();
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('workforce:auth-unauthorized'));
         }
+      } else {
+        // For 503 (DB connection pool exhaustion) or 5xx, do NOT clear tokens
+        lastRefreshFailure = {
+          type: 'SERVER_ERROR',
+          status: res.status,
+          message: `Authentication service temporarily unavailable (${res.status}).`,
+        };
       }
-      // For 503 (DB connection pool exhaustion) or 5xx, do NOT clear tokens
       return null;
-    } catch (_) {
+    } catch (err) {
+      lastRefreshFailure = {
+        type: 'NETWORK_ERROR',
+        status: 0,
+        message: 'Network error during token refresh.',
+      };
       return null;
     } finally {
       inFlightRefreshPromise = null;
@@ -120,6 +144,7 @@ export async function apiRequest(path, options = {}) {
     error.status = 0;
     error.code = 'NETWORK_ERROR';
     error.originalError = netErr;
+    captureUnexpectedApiError(error, { path, method: config.method, status: 0 });
     throw error;
   }
 
@@ -139,15 +164,31 @@ export async function apiRequest(path, options = {}) {
           error.originalError = retryNetErr;
           throw error;
         }
-      }
-    }
 
-    if (response.status === 401) {
-      sessionStorage.removeItem('wf_token');
-      sessionStorage.removeItem('wf_refresh_token');
-      sessionStorage.removeItem('wf_tab_id');
-      localStorage.removeItem('wf_token');
-      localStorage.removeItem('wf_refresh_token');
+        // If the retried request STILL returns 401, the fresh token was rejected.
+        // Clear authentication and dispatch unauthorized event once.
+        if (response.status === 401) {
+          clearAuthTokens();
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('workforce:auth-unauthorized'));
+          }
+        }
+      } else {
+        // Refresh did not yield a new token.
+        // If refresh failed temporarily (5xx or network error):
+        if (lastRefreshFailure && lastRefreshFailure.type !== 'AUTH_INVALID') {
+          // DO NOT clear tokens. DO NOT dispatch auth-unauthorized.
+          const error = new Error(lastRefreshFailure.message || 'Authentication service temporarily unavailable.');
+          error.status = lastRefreshFailure.status || 503;
+          error.code = lastRefreshFailure.type === 'NETWORK_ERROR' ? 'NETWORK_ERROR' : 'AUTH_SERVICE_UNAVAILABLE';
+          throw error;
+        }
+        // If AUTH_INVALID, apiRefreshToken() has already called clearAuthTokens()
+        // and dispatched workforce:auth-unauthorized once. We do not repeat it here.
+      }
+    } else {
+      // The request was already a retry (_isRetry: true) and returned 401.
+      clearAuthTokens();
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('workforce:auth-unauthorized'));
       }
@@ -195,6 +236,9 @@ export async function apiRequest(path, options = {}) {
     error.data = data;
     if (data && data.fields) {
       error.fields = data.fields;
+    }
+    if (response.status >= 500) {
+      captureUnexpectedApiError(error, { path, method: config.method, status: response.status });
     }
     throw error;
   }

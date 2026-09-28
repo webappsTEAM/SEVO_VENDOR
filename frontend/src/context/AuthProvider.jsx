@@ -19,6 +19,7 @@ import {
   setAuthTokens,
   clearAuthTokens,
 } from '../utils/authTokens.js';
+import { setSentryUser, clearSentryUser } from '../utils/sentry.js';
 
 const CACHED_USER_KEY = 'calservice_workforce_cached_user';
 const CACHED_EMP_KEY = 'calservice_workforce_cached_emp';
@@ -140,17 +141,12 @@ export function AuthProvider({ children }) {
           } catch (_) {}
           return u;
         } else {
-          clearAuthTokens();
-          try {
-            localStorage.removeItem(CACHED_USER_KEY);
-            localStorage.removeItem(CACHED_EMP_KEY);
-          } catch (_) {}
-          setUser(null);
-          setEmployee(null);
+          console.warn('[AuthProvider] /auth/me/ returned empty or unexpected payload.');
           return null;
         }
       } catch (e) {
         // Only wipe auth tokens if server explicitly rejected with 401
+        // (i.e. authentication confirmed invalid, not a transient 5xx or network error)
         if (e && e.status === 401) {
           clearAuthTokens();
           try {
@@ -355,6 +351,15 @@ export function AuthProvider({ children }) {
       window.removeEventListener('workforce:auth-unauthorized', handleUnauthorized);
     };
   }, []);
+
+  // Synchronize safe user context to Sentry
+  useEffect(() => {
+    if (user) {
+      setSentryUser(user);
+    } else {
+      clearSentryUser();
+    }
+  }, [user]);
 
   useEffect(() => {
     // A hard 4s timer used to force isReady=true even while the profile fetch

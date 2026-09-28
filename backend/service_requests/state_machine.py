@@ -30,19 +30,26 @@ _CUSTOMER_WEBHOOK_EVENT_MAP = {
 ALLOWED_TRANSITIONS = {
     "draft": ["new_request", "confirmed", "offering", "dispatching", "assigned", "unassigned", "cancelled"],
     "new_request": ["confirmed", "offering", "dispatching", "assigned", "unassigned", "cancelled"],
+    "requested": ["new_request", "confirmed", "offering", "dispatching", "assigned", "unassigned", "accepted", "cancelled"],
+    "searching": ["offering", "dispatching", "assigned", "unassigned", "accepted", "cancelled"],
     "unassigned": ["offering", "dispatching", "assigned", "accepted", "redispatching", "cancelled"],
     "offering": ["accepted", "unassigned", "redispatching", "cancelled"],
     "dispatching": ["offering", "accepted", "unassigned", "redispatching", "cancelled"],
     "redispatching": ["offering", "dispatching", "unassigned", "accepted", "cancelled"],
     "confirmed": ["offering", "dispatching", "assigned", "unassigned", "accepted", "cancelled"],
-    "assigned": ["received", "accepted", "reassigned", "redispatching", "cancelled"],
-    "received": ["accepted", "reassigned", "redispatching", "cancelled"],
-    "accepted": ["on_the_way", "en_route", "arrived", "redispatching", "cancelled", "unable_to_complete"],
-    "on_the_way": ["arrived", "redispatching", "cancelled", "unable_to_complete"],
-    "en_route": ["arrived", "redispatching", "cancelled", "unable_to_complete"],
-    "arrived": ["service_started", "in_progress", "cancelled", "unable_to_complete"],
+    "assigned": ["received", "accepted", "on_the_way", "en_route", "arrived", "in_progress", "reassigned", "redispatching", "cancelled"],
+    "received": ["accepted", "on_the_way", "arrived", "in_progress", "reassigned", "redispatching", "cancelled"],
+    "accepted": ["on_the_way", "en_route", "arrived", "in_progress", "redispatching", "cancelled", "unable_to_complete"],
+    "on_the_way": ["arrived", "in_progress", "redispatching", "cancelled", "unable_to_complete"],
+    "en_route": ["arrived", "in_progress", "redispatching", "cancelled", "unable_to_complete"],
+    "arrived": ["service_started", "in_progress", "inspection_in_progress", "cancelled", "unable_to_complete"],
+    "inspection_in_progress": ["in_progress", "on_hold", "proof_submitted", "completed", "cancelled", "unable_to_complete"],
     "service_started": ["in_progress", "cancelled", "unable_to_complete"],
-    "in_progress": ["on_hold", "proof_submitted", "cancelled", "unable_to_complete", "follow_up_required"],
+    "in_progress": ["on_hold", "proof_submitted", "cancelled", "unable_to_complete", "follow_up_required", "quotation_created", "quotation_sent", "inspection_completed"],
+    "quotation_created": ["quotation_sent", "quotation_pending_approval", "in_progress", "cancelled"],
+    "quotation_pending_approval": ["quotation_sent", "in_progress", "cancelled"],
+    "quotation_sent": ["in_progress", "assigned", "accepted", "cancelled", "customer_rejected", "inspection_completed", "proof_submitted"],
+    "inspection_completed": ["quotation_sent", "in_progress", "assigned", "accepted", "proof_submitted", "completed", "cancelled"],
     # A hold is a pause inside an active job, so it can only return to
     # in_progress or end the job -- it can never skip straight to proof.
     "on_hold": ["in_progress", "cancelled", "unable_to_complete"],
@@ -161,10 +168,14 @@ def apply_transition(service_request, target_status: str, actor=None) -> str:
     if target == "accepted":
         try:
             from workforce_api.services.automatic_dispatch import LOGISTICS_SERVICE_CATEGORIES
-            from workforce_api.services.logistics_events import set_logistics_leg
+            from workforce_api.services.logistics_events import initial_leg_for_category, set_logistics_leg
 
             if (service_request.service_category or "").strip().lower() in LOGISTICS_SERVICE_CATEGORIES:
-                set_logistics_leg(service_request, "EN_ROUTE_PICKUP", actor=actor)
+                set_logistics_leg(
+                    service_request,
+                    initial_leg_for_category(service_request.service_category),
+                    actor=actor,
+                )
         except Exception as leg_err:
             logger.info(
                 "Could not set the initial logistics leg on job %s: %s",
@@ -220,12 +231,6 @@ def apply_transition(service_request, target_status: str, actor=None) -> str:
                     "earnings were NOT credited. Needs manual settlement: %s",
                     service_request.pk, _settlement_err,
                 )
-                # Bug found: this used to only log -- the job stayed COMPLETED,
-                # the technician saw no earnings, and nothing pointed anyone
-                # at why. Surface it as an admin notification (mirroring the
-                # completion-blocked notification in workforce_api/views.py)
-                # so ops can act instead of it going unnoticed indefinitely,
-                # and point at the self-service retry command.
                 try:
                     from django.contrib.auth import get_user_model
                     from django.db.models import Q
@@ -252,6 +257,46 @@ def apply_transition(service_request, target_status: str, actor=None) -> str:
                 except Exception as _notify_err:
                     logger.warning(
                         "Could not notify admin of failed settlement for Job #%s: %s",
+                        service_request.pk, _notify_err,
+                    )
+
+            if (service_request.service_category or "").strip().lower() == "packers_movers":
+                try:
+                    from workforce_api.services.logistics_events import set_logistics_leg
+                    set_logistics_leg(service_request, "COMPLETED", actor=actor)
+                except Exception as _leg_err:
+                    logger.info("Could not set COMPLETED leg for P&M job %s: %s", service_request.pk, _leg_err)
+
+            try:
+                from workforce_api.services.invoice_service import generate_invoice_for_job
+                generate_invoice_for_job(service_request)
+            except Exception as _inv_err:
+                logger.warning("Could not auto-generate invoice for completed Job #%s: %s", service_request.pk, _inv_err)
+                try:
+                    from django.contrib.auth import get_user_model
+                    from django.db.models import Q
+                    from workforce_api.models import WorkforceNotification
+                    admin_user = None
+                    if service_request.company:
+                        admin_user = get_user_model().objects.filter(
+                            Q(role__in=["admin", "manager"]) | Q(is_staff=True),
+                            company=service_request.company,
+                        ).first()
+                    if admin_user:
+                        WorkforceNotification.objects.create(
+                            recipient=admin_user,
+                            title="Job Completed but Invoice Generation Failed",
+                            message=(
+                                f"Job #{service_request.pk} ({service_request.request_id}) is COMPLETED but "
+                                f"invoice generation failed: {_inv_err}"
+                            ),
+                            notification_type="JOB_INVOICE_FAILED",
+                            company=service_request.company,
+                            related_object_id=str(service_request.pk),
+                        )
+                except Exception as _notify_err:
+                    logger.warning(
+                        "Could not notify admin of failed invoice generation for Job #%s: %s",
                         service_request.pk, _notify_err,
                     )
 

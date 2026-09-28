@@ -4,6 +4,52 @@ import django
 from django.db import migrations, models
 
 
+def add_jobtrackingsession_columns_postgres(apps, schema_editor):
+    """
+    Postgres-only column-add DDL (information_schema-guarded ALTER TABLE).
+    manage.py test always runs against sqlite (workforce_core.settings
+    IS_TESTING forces this for any 'test' invocation), so this is a genuine
+    no-op there -- the SeparateDatabaseAndState.state_operations above
+    already keep Django's model state in sync for that case. Production is
+    Postgres-only per settings.py's DATABASES config, so this still runs
+    for real there.
+    """
+    if schema_editor.connection.vendor != "postgresql":
+        return
+    schema_editor.execute(
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='workforce_job_tracking_session' AND column_name='geofence_status') THEN
+                ALTER TABLE workforce_job_tracking_session ADD COLUMN geofence_status VARCHAR(50) DEFAULT 'OUTSIDE';
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='workforce_job_tracking_session' AND column_name='last_event_emitted_at') THEN
+                ALTER TABLE workforce_job_tracking_session ADD COLUMN last_event_emitted_at TIMESTAMP WITH TIME ZONE NULL;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='workforce_job_tracking_session' AND column_name='last_event_state_key') THEN
+                ALTER TABLE workforce_job_tracking_session ADD COLUMN last_event_state_key VARCHAR(100) DEFAULT '';
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='workforce_job_tracking_session' AND column_name='movement_status') THEN
+                ALTER TABLE workforce_job_tracking_session ADD COLUMN movement_status VARCHAR(50) DEFAULT 'UNKNOWN';
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='workforce_job_tracking_session' AND column_name='prev_captured_at') THEN
+                ALTER TABLE workforce_job_tracking_session ADD COLUMN prev_captured_at TIMESTAMP WITH TIME ZONE NULL;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='workforce_job_tracking_session' AND column_name='prev_latitude') THEN
+                ALTER TABLE workforce_job_tracking_session ADD COLUMN prev_latitude DOUBLE PRECISION NULL;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='workforce_job_tracking_session' AND column_name='prev_longitude') THEN
+                ALTER TABLE workforce_job_tracking_session ADD COLUMN prev_longitude DOUBLE PRECISION NULL;
+            END IF;
+        END $$;
+        """
+    )
+
+
+def noop_reverse(apps, schema_editor):
+    pass
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -76,35 +122,9 @@ class Migration(migrations.Migration):
                 ),
             ],
             database_operations=[
-                migrations.RunSQL(
-                    sql="""
-                    DO $$
-                    BEGIN
-                        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='workforce_job_tracking_session' AND column_name='geofence_status') THEN
-                            ALTER TABLE workforce_job_tracking_session ADD COLUMN geofence_status VARCHAR(50) DEFAULT 'OUTSIDE';
-                        END IF;
-                        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='workforce_job_tracking_session' AND column_name='last_event_emitted_at') THEN
-                            ALTER TABLE workforce_job_tracking_session ADD COLUMN last_event_emitted_at TIMESTAMP WITH TIME ZONE NULL;
-                        END IF;
-                        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='workforce_job_tracking_session' AND column_name='last_event_state_key') THEN
-                            ALTER TABLE workforce_job_tracking_session ADD COLUMN last_event_state_key VARCHAR(100) DEFAULT '';
-                        END IF;
-                        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='workforce_job_tracking_session' AND column_name='movement_status') THEN
-                            ALTER TABLE workforce_job_tracking_session ADD COLUMN movement_status VARCHAR(50) DEFAULT 'UNKNOWN';
-                        END IF;
-                        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='workforce_job_tracking_session' AND column_name='prev_captured_at') THEN
-                            ALTER TABLE workforce_job_tracking_session ADD COLUMN prev_captured_at TIMESTAMP WITH TIME ZONE NULL;
-                        END IF;
-                        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='workforce_job_tracking_session' AND column_name='prev_latitude') THEN
-                            ALTER TABLE workforce_job_tracking_session ADD COLUMN prev_latitude DOUBLE PRECISION NULL;
-                        END IF;
-                        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='workforce_job_tracking_session' AND column_name='prev_longitude') THEN
-                            ALTER TABLE workforce_job_tracking_session ADD COLUMN prev_longitude DOUBLE PRECISION NULL;
-                        END IF;
-                    END $$;
-                    """,
-                    reverse_sql=""
-                )
+                migrations.RunPython(
+                    add_jobtrackingsession_columns_postgres, noop_reverse
+                ),
             ]
         ),
         migrations.AddField(

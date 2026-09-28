@@ -44,8 +44,28 @@ def record_cash_settlement(employee, company, deposited_amount, recorded_by, not
         raise ValueError("Deposited amount cannot be negative.")
 
     with transaction.atomic():
-        expected_amount, outstanding_qs = compute_outstanding_cash(employee)
-        outstanding_ids = list(outstanding_qs.values_list("id", flat=True))
+        # Lock the outstanding rows and derive BOTH the expected total and the
+        # set of rows to mark reconciled from that one locked snapshot.
+        # Previously the total was summed from one query and the ids were
+        # re-read by a second query, so a cash payment flipping to PAID in
+        # between got marked reconciled without being counted in
+        # expected_amount; and two concurrent settlements for the same
+        # employee could both claim the same payments (double-counting the
+        # expected amount across two CashSettlement rows).
+        payments = list(
+            JobPayment.objects.select_for_update().filter(
+                employee=employee,
+                payment_method=JobPayment.PaymentMethod.CASH_ON_SERVICE,
+                payment_status=JobPayment.PaymentStatus.PAID,
+                reconciled=False,
+            ).order_by("id")
+        )
+        expected_amount = Decimal("0.00")
+        for p in payments:
+            expected_amount += (
+                p.amount_received if p.amount_received is not None else p.amount_paid
+            ) or Decimal("0.00")
+        outstanding_ids = [p.id for p in payments]
         discrepancy = deposited_amount - expected_amount
 
         settlement = CashSettlement.objects.create(
@@ -58,7 +78,9 @@ def record_cash_settlement(employee, company, deposited_amount, recorded_by, not
             recorded_by=recorded_by,
         )
 
-        JobPayment.objects.filter(id__in=outstanding_ids).update(
+        # reconciled=False guard: never re-point a payment that another
+        # settlement already claimed.
+        JobPayment.objects.filter(id__in=outstanding_ids, reconciled=False).update(
             reconciled=True, reconciled_in=settlement, updated_at=timezone.now()
         )
 

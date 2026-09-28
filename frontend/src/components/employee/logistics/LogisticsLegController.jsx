@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Truck,
   Package,
@@ -11,7 +11,8 @@ import {
   MapPin,
   ShieldCheck,
 } from 'lucide-react';
-import { apiSetLogisticsLeg } from '../../../api/workforceService.js';
+import { apiGetLogisticsLeg, apiSetLogisticsLeg, apiGetLogisticsCheckpoints } from '../../../api/workforceService.js';
+import { LogisticsCheckpointGate } from './LogisticsCheckpointGate.jsx';
 
 export const GT_LEG_SEQUENCE = [
   'EN_ROUTE_PICKUP',
@@ -175,8 +176,49 @@ export function LogisticsLegController({ job, onLegUpdated, className = '' }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [selectedJumpLeg, setSelectedJumpLeg] = useState('');
+  const [waitingCharge, setWaitingCharge] = useState(null);
+  // {leg: [missing requirement...]} from the checkpoint endpoint. null =
+  // unknown (not loaded / failed): the button is then left enabled and the
+  // backend's 400 is the gate.
+  const [gates, setGates] = useState(null);
+  const [gateTick, setGateTick] = useState(0);
 
-  if (!job || !isLogisticsJob(job)) return null;
+  const jobId = job?.id;
+  const legKey = (job?.logistics_leg || '').trim().toUpperCase();
+  const isLogistics = !!job && isLogisticsJob(job);
+  // Guard: logistics-leg and logistics-checkpoint are gated on assignment.
+  // Calling them for offer/unassigned jobs returns 403 from the backend.
+  const isAssigned = !!job?.is_assigned_to_current_employee;
+
+  // Read-only waiting/detention info (admin-configured, off by default).
+  // Refetched whenever the leg changes. A failed fetch keeps the last known
+  // value rather than clearing it, so a transient network error on a flaky
+  // mobile connection does not make the panel vanish mid-trip; nothing is
+  // shown only if it has never loaded. Informational only -- never blocks
+  // leg progression.
+  useEffect(() => { setWaitingCharge(null); }, [jobId]);
+
+  useEffect(() => {
+    if (!isLogistics || !jobId || !isAssigned) return undefined;
+    let cancelled = false;
+    apiGetLogisticsLeg(jobId)
+      .then((res) => { if (!cancelled) setWaitingCharge(res?.waiting_charge || null); })
+      .catch(() => { /* keep last known value */ });
+    return () => { cancelled = true; };
+  }, [isLogistics, jobId, legKey, isAssigned]);
+
+  useEffect(() => { setGates(null); }, [jobId]);
+
+  useEffect(() => {
+    if (!isLogistics || !jobId || !isAssigned) return undefined;
+    let cancelled = false;
+    apiGetLogisticsCheckpoints(jobId)
+      .then((res) => { if (!cancelled) setGates(res?.gates || null); })
+      .catch(() => { /* keep last known value; backend still enforces */ });
+    return () => { cancelled = true; };
+  }, [isLogistics, jobId, legKey, gateTick, isAssigned]);
+
+  if (!isLogistics) return null;
 
   const isPM = isPackersMoversJob(job);
   const sequence = isPM ? PM_LEG_SEQUENCE : GT_LEG_SEQUENCE;
@@ -199,6 +241,8 @@ export function LogisticsLegController({ job, onLegUpdated, className = '' }) {
   };
 
   const nextMeta = nextLeg ? LEG_METADATA[nextLeg] : null;
+  const nextMissing = (nextLeg && gates && gates[nextLeg]) || [];
+  const jumpMissing = (selectedJumpLeg && gates && gates[selectedJumpLeg]) || [];
 
   const handleAdvanceLeg = async (targetLeg) => {
     if (!targetLeg) return;
@@ -212,6 +256,7 @@ export function LogisticsLegController({ job, onLegUpdated, className = '' }) {
       }
     } catch (err) {
       setError(err?.message || 'Failed to update logistics leg. Please retry.');
+      setGateTick((t) => t + 1);
     } finally {
       setLoading(false);
     }
@@ -248,7 +293,7 @@ export function LogisticsLegController({ job, onLegUpdated, className = '' }) {
 
       {/* Error notification */}
       {error && (
-        <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-lg text-rose-800 text-[11px] font-medium flex items-center gap-2">
+        <div role="alert" className="p-2.5 bg-rose-50 border border-rose-200 rounded-lg text-rose-800 text-[11px] font-medium flex items-center gap-2">
           <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
           <span>{error}</span>
         </div>
@@ -270,6 +315,23 @@ export function LogisticsLegController({ job, onLegUpdated, className = '' }) {
           {currentMeta.desc}
         </p>
       </div>
+
+      {/* Waiting / detention time (only when an admin has enabled it) */}
+      {waitingCharge?.enabled && (waitingCharge.loading_minutes > 0 || waitingCharge.unloading_minutes > 0) && (
+        <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-[11px] text-amber-900 space-y-0.5" aria-live="polite">
+          <div className="font-bold">Waiting time</div>
+          <div>
+            Loading: {waitingCharge.loading_minutes} min · Unloading: {waitingCharge.unloading_minutes} min
+          </div>
+          {waitingCharge.billable_minutes > 0 ? (
+            <div>
+              Billable beyond free time: {waitingCharge.billable_minutes} min (est. ₹{waitingCharge.amount})
+            </div>
+          ) : (
+            <div>Within free waiting time.</div>
+          )}
+        </div>
+      )}
 
       {/* Horizontal Mini Stage Track */}
       <div className="overflow-x-auto pb-1 -mx-1 px-1">
@@ -302,6 +364,16 @@ export function LogisticsLegController({ job, onLegUpdated, className = '' }) {
         </div>
       </div>
 
+      {/* Checkpoint verification required before the next stage */}
+      {!isFinalLeg && nextMissing.length > 0 && (
+        <LogisticsCheckpointGate
+          jobId={job.id}
+          targetLabel={nextMeta?.label || nextLeg}
+          missing={nextMissing}
+          onVerified={() => setGateTick((t) => t + 1)}
+        />
+      )}
+
       {/* Action Controls */}
       {!isFinalLeg ? (
         <div className="space-y-2 pt-1 border-t border-slate-100">
@@ -311,7 +383,8 @@ export function LogisticsLegController({ job, onLegUpdated, className = '' }) {
               <button
                 type="button"
                 onClick={() => handleAdvanceLeg(nextLeg)}
-                disabled={loading}
+                disabled={loading || nextMissing.length > 0}
+                title={nextMissing.length > 0 ? `Required first: ${nextMissing.map((m) => m.label).join(', ')}` : undefined}
                 className="py-2.5 px-3 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 text-white font-bold text-xs rounded-lg shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 {loading ? (
@@ -343,7 +416,8 @@ export function LogisticsLegController({ job, onLegUpdated, className = '' }) {
                 <button
                   type="button"
                   onClick={() => handleAdvanceLeg(selectedJumpLeg)}
-                  disabled={loading || !selectedJumpLeg}
+                  disabled={loading || !selectedJumpLeg || jumpMissing.length > 0}
+                  title={jumpMissing.length > 0 ? `Required first: ${jumpMissing.map((m) => m.label).join(', ')}` : undefined}
                   className="py-2 px-3 bg-slate-800 hover:bg-slate-900 disabled:opacity-40 text-white font-bold text-xs rounded-lg transition-all cursor-pointer shrink-0"
                 >
                   Jump

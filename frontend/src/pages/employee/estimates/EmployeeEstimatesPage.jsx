@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useParams, useSearchParams } from 'react-router-dom';
 import {
   Calculator,
   Search,
@@ -38,6 +39,10 @@ const STATUS_TABS = [
 ];
 
 export default function EmployeeEstimatesPage() {
+  const { id: urlParamId } = useParams();
+  const [searchParams] = useSearchParams();
+  const urlJobId = searchParams.get('job_id') || urlParamId;
+
   const [activeTab, setActiveTab] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [quotes, setQuotes] = useState([]);
@@ -57,7 +62,8 @@ export default function EmployeeEstimatesPage() {
         tab: activeTab !== 'all' ? activeTab : undefined,
         search: searchQuery || undefined,
       });
-      setQuotes(data || []);
+      const raw = Array.isArray(data) ? data : (Array.isArray(data?.results) ? data.results : []);
+      setQuotes(raw.filter((q) => q && typeof q === 'object'));
     } catch (err) {
       console.error('Failed to load estimates:', err);
       setError(err.message || 'Failed to load quotations list.');
@@ -71,13 +77,26 @@ export default function EmployeeEstimatesPage() {
   }, [fetchQuotes]);
 
   const handleOpenQuote = (quote) => {
+    if (!quote) return;
     setSelectedQuoteId(quote.id);
     setSelectedJob(quote.job_details || { id: quote.job_id, issue_title: quote.service_name, customer_name: quote.customer_name });
     setIsModalOpen(true);
   };
 
+  // Auto-open modal if URL specifies an estimate or job ID
+  useEffect(() => {
+    if (!quotes || quotes.length === 0 || (!urlParamId && !urlJobId)) return;
+    const match = quotes.find(
+      (q) => String(q.id) === String(urlParamId) || String(q.job_id) === String(urlJobId)
+    );
+    if (match) {
+      handleOpenQuote(match);
+    }
+  }, [quotes, urlParamId, urlJobId]);
+
   const handleRevise = async (quote, e) => {
     e.stopPropagation();
+    if (!quote) return;
     try {
       const revised = await apiReviseQuote(quote.id, 'Employee initiated revision');
       handleOpenQuote(revised);
@@ -88,11 +107,15 @@ export default function EmployeeEstimatesPage() {
   };
 
   // Metrics summary
-  const totalCount = quotes.length;
-  const draftCount = quotes.filter((q) => q.status === 'DRAFT').length;
-  const sentCount = quotes.filter((q) => q.status === 'SENT_TO_CUSTOMER').length;
-  const acceptedCount = quotes.filter(
-    (q) => q.status === 'CUSTOMER_ACCEPTED' || q.status === 'CONVERTED'
+  const validQuotes = useMemo(
+    () => (Array.isArray(quotes) ? quotes.filter((q) => q && typeof q === 'object') : []),
+    [quotes]
+  );
+  const totalCount = validQuotes.length;
+  const draftCount = validQuotes.filter((q) => q?.status === 'DRAFT').length;
+  const sentCount = validQuotes.filter((q) => q?.status === 'SENT_TO_CUSTOMER').length;
+  const acceptedCount = validQuotes.filter(
+    (q) => q?.status === 'CUSTOMER_ACCEPTED' || q?.status === 'CONVERTED'
   ).length;
 
   return (
@@ -191,7 +214,7 @@ export default function EmployeeEstimatesPage() {
           <AlertTriangle className="w-4 h-4 shrink-0 text-rose-700" />
           <span>{error}</span>
         </div>
-      ) : quotes.length === 0 ? (
+      ) : validQuotes.length === 0 ? (
         <div className="py-16 text-center border border-zinc-200/90 rounded-md bg-white shadow-card">
           <FileText className="w-10 h-10 text-zinc-300 mx-auto mb-3" />
           <h3 className="text-sm font-bold text-zinc-900">No Quotations Found</h3>
@@ -201,7 +224,7 @@ export default function EmployeeEstimatesPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {quotes.map((quote) => {
+          {validQuotes.map((quote) => {
             const isAccepted = quote.status === 'CUSTOMER_ACCEPTED' || quote.status === 'CONVERTED';
             const isPending = quote.status === 'SENT_TO_CUSTOMER';
             const isDraft = quote.status === 'DRAFT';
@@ -243,7 +266,7 @@ export default function EmployeeEstimatesPage() {
                           : 'bg-zinc-100 text-zinc-700 border border-zinc-200'
                       }`}
                     >
-                      {quote.status.replace(/_/g, ' ')}
+                      {(quote.status || 'DRAFT').replace(/_/g, ' ')}
                     </span>
                   </div>
 

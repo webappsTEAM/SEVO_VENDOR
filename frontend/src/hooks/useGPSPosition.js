@@ -355,6 +355,30 @@ export function useLocationTracker(active, onPositionChange, onError, adapter = 
       forcePoll();
     }
 
+    // Telemetry heartbeat interval (every 60s):
+    // Ensures a stationary online technician sends regular GPS telemetry fixes
+    // so the backend's MAX_GPS_AGE_SECONDS (300s) never expires while they are online.
+    if (intervalRef.current === null) {
+      const HEARTBEAT_INTERVAL_MS = 60_000;
+      intervalRef.current = setInterval(() => {
+        if (!getAccessToken()) return;
+        if (lastPositionRef.current) {
+          const now = Date.now();
+          const payload = {
+            latitude: lastPositionRef.current.latitude,
+            longitude: lastPositionRef.current.longitude,
+            accuracy: lastPositionRef.current.accuracy ?? null,
+            speed: null,
+            heading: null,
+            captured_at: new Date(now).toISOString(),
+          };
+          onPositionChange(payload);
+        } else {
+          forcePoll();
+        }
+      }, HEARTBEAT_INTERVAL_MS);
+    }
+
     return () => {
       if (watchIdRef.current !== null) {
         adapter.clearWatch(watchIdRef.current);

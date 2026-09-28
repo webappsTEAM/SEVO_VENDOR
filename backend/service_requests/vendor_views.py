@@ -162,7 +162,7 @@ def _serialize_estimation(sr, est=None, full_detail=False):
         logger.warning(f"Could not load CustomerInspection: {ci_err}")
 
     # Latest quotation
-    latest_quote = est.quotations.order_by("-version").first() if est else None
+    latest_quote = est.quotations.order_by("-version", "-id").first() if est else None
     latest_quote_data = None
     if latest_quote:
         latest_quote_data = {
@@ -181,10 +181,33 @@ def _serialize_estimation(sr, est=None, full_detail=False):
             "customer_rejected_at": latest_quote.customer_rejected_at.isoformat() if latest_quote.customer_rejected_at else None,
             "rejection_reason": latest_quote.rejection_reason,
             "rejection_note": latest_quote.rejection_note,
-            "admin_notes": getattr(latest_quote, "admin_notes", ""),
             "admin_reviewed_at": latest_quote.admin_reviewed_at.isoformat() if getattr(latest_quote, "admin_reviewed_at", None) else None,
             "admin_reviewed_by_id": getattr(latest_quote, "admin_reviewed_by_id", None),
             "items_count": latest_quote.items.count(),
+            "items": [
+                {
+                    "id": it.id,
+                    "service_name": it.service_name,
+                    "title": it.service_name,
+                    "description": it.description or "",
+                    "item_type": it.catalog_service_id or "LABOR",
+                    "quantity": float(it.quantity),
+                    "unit": it.unit or "unit",
+                    "unit_price": float(it.unit_price),
+                    "unit_price_snapshot": float(it.unit_price_snapshot or it.unit_price),
+                    "tax_rate": float(it.tax_rate),
+                    "tax_amount": float(it.tax_amount),
+                    "discount_amount": float(it.discount_amount),
+                    "line_total": float(it.line_total),
+                    "category": it.category_name_snapshot or "",
+                    "category_name_snapshot": it.category_name_snapshot or "",
+                    "item_name": it.item_name_snapshot or it.service_name,
+                    "item_name_snapshot": it.item_name_snapshot or it.service_name,
+                    "rate_item_id": it.rate_item_id,
+                    "sort_order": it.sort_order,
+                }
+                for it in latest_quote.items.all().order_by("sort_order", "id")
+            ],
         }
 
     # Technician details
@@ -378,13 +401,6 @@ def _get_target_estimation(pk):
             )
         return sr, est
 
-    # Attempt lookup by Estimation.id directly
-    est = Estimation.objects.filter(pk=pk).first()
-    if est:
-        return est.service_request, est
-
-    return None, None
-
 
 def _sync_workforce_quote(sr, quote, computed_items=None):
     """
@@ -397,6 +413,9 @@ def _sync_workforce_quote(sr, quote, computed_items=None):
 
         status_map = {
             "DRAFT": WorkforceQuote.Status.DRAFT,
+            "SUBMITTED_FOR_ADMIN_REVIEW": WorkforceQuote.Status.PENDING_REVIEW,
+            "SENT_BACK_TO_TECHNICIAN": WorkforceQuote.Status.CHANGES_REQUESTED,
+            "ADMIN_APPROVED": WorkforceQuote.Status.ADMIN_APPROVED,
             "SENT": WorkforceQuote.Status.SENT_TO_CUSTOMER,
             "APPROVED": WorkforceQuote.Status.CUSTOMER_ACCEPTED,
             "REJECTED": WorkforceQuote.Status.DECLINED,
@@ -415,43 +434,68 @@ def _sync_workforce_quote(sr, quote, computed_items=None):
 
         company_obj = sr.company or (tech_emp.company if tech_emp else None)
 
-        # Keyed on number AND version: quote_number is shared across revisions
-        # by design, so looking up on it alone returns more than one row as
-        # soon as a v2 exists.
+        defaults_dict = {
+            "job": sr,
+            "technician": tech_emp,
+            "company": company_obj,
+            "customer": sr.customer,
+            "title": f"AC Estimation Quotation {quote.quote_ref}",
+            "description": quote.notes or f"AC Repair & Estimation proposal for {sr.issue_title or sr.customer_name}",
+            "service_category": sr.service_category or "AC Services",
+            "service_name": sr.issue_title or "AC Inspection & Repair",
+            "subtotal_amount": quote.subtotal,
+            "tax_amount": quote.tax_amount,
+            "discount_amount": quote.discount_amount,
+            "total_amount": quote.total_amount,
+            "status": wf_status,
+            "sent_at": timezone.now() if quote.status in ["SENT", "APPROVED"] else None,
+        }
+        if getattr(quote, "admin_reviewed_at", None):
+            defaults_dict["admin_approved_at"] = quote.admin_reviewed_at
+            if getattr(quote, "admin_reviewed_by", None):
+                defaults_dict["admin_approved_by"] = quote.admin_reviewed_by
+
         wf_quote, _ = WorkforceQuote.objects.update_or_create(
             quote_number=quote.quote_ref,
             quote_version=quote.version,
-            defaults={
-                "job": sr,
-                "technician": tech_emp,
-                "company": company_obj,
-                "customer": sr.customer,
-                "title": f"AC Estimation Quotation {quote.quote_ref}",
-                "description": quote.notes or f"AC Repair & Estimation proposal for {sr.issue_title or sr.customer_name}",
-                "service_category": sr.service_category or "AC Services",
-                "service_name": sr.issue_title or "AC Inspection & Repair",
-                "subtotal_amount": quote.subtotal,
-                "tax_amount": quote.tax_amount,
-                "discount_amount": quote.discount_amount,
-                "total_amount": quote.total_amount,
-                "status": wf_status,
-                "sent_at": timezone.now() if quote.status in ["SENT", "APPROVED"] else None,
-            }
+            defaults=defaults_dict,
         )
+
+        # Reverse sync admin review if WFQ was cleared/approved by SEVO admin
+        if not getattr(quote, "admin_reviewed_at", None):
+            admin_at = getattr(wf_quote, "admin_approved_at", None) or getattr(wf_quote, "admin_cleared_at", None)
+            if admin_at:
+                quote.admin_reviewed_at = admin_at
+                quote.admin_reviewed_by = getattr(wf_quote, "admin_approved_by", None) or getattr(wf_quote, "admin_cleared_by", None)
+                quote.save(update_fields=["admin_reviewed_at", "admin_reviewed_by", "updated_at"])
+
+        est_labor = Decimal("0.00")
+        est_materials = Decimal("0.00")
 
         if computed_items:
             WorkforceQuoteItem.objects.filter(quote=wf_quote).delete()
             for c_item in computed_items:
                 raw_type = str(c_item.get("item_type", "LABOR")).upper()
-                item_type = "labor" if "LABOR" in raw_type else ("part" if "PART" in raw_type or "GAS" in raw_type else "item")
+                is_labor = any(k in raw_type for k in ["LABOR", "LABOUR", "SERVICE", "ADJUSTMENT"])
+                item_type = "labor" if is_labor else ("part" if ("PART" in raw_type or "GAS" in raw_type) else "item")
+                section = "LABOUR" if is_labor else "MATERIAL"
+                qty = Decimal(str(c_item.get("quantity", 1)))
+                unit_price = Decimal(str(c_item.get("unit_price", 0)))
+                line_base = qty * unit_price
+                if is_labor:
+                    est_labor += line_base
+                else:
+                    est_materials += line_base
+
                 WorkforceQuoteItem.objects.create(
                     quote=wf_quote,
+                    section=section,
                     name=c_item.get("service_name", "AC Service Item"),
                     description=c_item.get("description", "") or "",
                     item_type=item_type,
                     unit=c_item.get("unit", "unit"),
-                    quantity=Decimal(str(c_item.get("quantity", 1))),
-                    unit_price=Decimal(str(c_item.get("unit_price", 0))),
+                    quantity=qty,
+                    unit_price=unit_price,
                     tax_rate=Decimal(str(c_item.get("tax_rate", 18))),
                     discount_amount=Decimal(str(c_item.get("discount_amount", 0))),
                     total_amount=Decimal(str(c_item.get("line_total", 0))),
@@ -461,9 +505,18 @@ def _sync_workforce_quote(sr, quote, computed_items=None):
             WorkforceQuoteItem.objects.filter(quote=wf_quote).delete()
             for c_item in quote.items.all():
                 raw_type = str(getattr(c_item, "catalog_service_id", "LABOR")).upper()
-                item_type = "labor" if "LABOR" in raw_type else ("part" if "PART" in raw_type or "GAS" in raw_type else "item")
+                is_labor = any(k in raw_type for k in ["LABOR", "LABOUR", "SERVICE", "ADJUSTMENT"])
+                item_type = "labor" if is_labor else ("part" if ("PART" in raw_type or "GAS" in raw_type) else "item")
+                section = "LABOUR" if is_labor else "MATERIAL"
+                line_base = c_item.quantity * c_item.unit_price
+                if is_labor:
+                    est_labor += line_base
+                else:
+                    est_materials += line_base
+
                 WorkforceQuoteItem.objects.create(
                     quote=wf_quote,
+                    section=section,
                     name=c_item.service_name,
                     description=c_item.description or "",
                     item_type=item_type,
@@ -475,11 +528,106 @@ def _sync_workforce_quote(sr, quote, computed_items=None):
                     total_amount=c_item.line_total,
                     sort_order=c_item.sort_order,
                 )
+
+        wf_quote.estimated_labor_cost = est_labor
+        wf_quote.estimated_materials_cost = est_materials
+        wf_quote.save(update_fields=["estimated_labor_cost", "estimated_materials_cost", "updated_at"])
         return wf_quote
     except Exception as err:
         logger.warning(f"Could not synchronize WorkforceQuote: {err}")
         return None
 
+
+def _validate_technician_or_admin(sr, user):
+    """
+    Validates that user is either:
+    1. A superuser or staff
+    2. A vendor admin/manager for sr.company
+    3. The technician assigned to this ServiceRequest (sr.assigned_employee or sr.technician_id)
+    Returns (True, None) or (False, Response).
+    """
+    if not user or not user.is_authenticated:
+        return False, Response(
+            {"error": "Authentication required.", "code": "UNAUTHENTICATED"},
+            status=status.HTTP_401_UNAUTHORIZED
+        )
+
+    if getattr(user, "is_superuser", False) or getattr(user, "is_staff", False):
+        return True, None
+
+    role = (getattr(user, "role", "") or "").lower()
+    emp = getattr(user, "employee_profile", None)
+    if not emp:
+        try:
+            from employees.models import Employee
+            emp = Employee.objects.filter(user_id=user.id).first()
+        except Exception:
+            emp = None
+
+    # Check vendor admin / manager
+    if role in ("admin", "manager", "vendor", "vendor_admin"):
+        if sr.company_id and emp and emp.company_id:
+            if sr.company_id == emp.company_id:
+                return True, None
+        elif not sr.company_id or not (emp and emp.company_id):
+            return True, None
+
+    # Check assigned technician
+    if emp and sr.assigned_employee_id and emp.id == sr.assigned_employee_id:
+        return True, None
+    if str(user.id) == str(getattr(sr, "technician_id", "")) or (emp and str(emp.id) == str(getattr(sr, "technician_id", ""))):
+        return True, None
+    if sr.assigned_employee and emp and sr.assigned_employee.user_id == user.id:
+        return True, None
+
+    # If the booking is not yet assigned to any technician, allow technician from same company
+    if not sr.assigned_employee_id and not getattr(sr, "technician_id", None):
+        if not sr.company_id or (emp and emp.company_id == sr.company_id):
+            return True, None
+
+    return False, Response(
+        {"error": "You do not have permission to view or modify this booking.", "code": "FORBIDDEN"},
+        status=status.HTTP_403_FORBIDDEN
+    )
+
+
+def _validate_vendor_admin(sr, user):
+    """
+    Validates that user is an admin or manager for the company, or superuser/staff.
+    Plain technicians are NOT authorized.
+    """
+    if not user or not user.is_authenticated:
+        return False, Response(
+            {"error": "Authentication required.", "code": "UNAUTHENTICATED"},
+            status=status.HTTP_401_UNAUTHORIZED
+        )
+
+    if getattr(user, "is_superuser", False) or getattr(user, "is_staff", False):
+        return True, None
+
+    role = (getattr(user, "role", "") or "").lower()
+    if role not in ("admin", "manager", "vendor", "vendor_admin"):
+        return False, Response(
+            {"error": "Vendor admin or manager authorization required.", "code": "ADMIN_AUTHORIZATION_REQUIRED"},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    emp = getattr(user, "employee_profile", None)
+    if not emp:
+        try:
+            from employees.models import Employee
+            emp = Employee.objects.filter(user_id=user.id).first()
+        except Exception:
+            emp = None
+
+    if sr.company_id and emp and emp.company_id:
+        if sr.company_id != emp.company_id:
+            return False, Response(
+                {"error": "Booking belongs to another vendor.", "code": "FORBIDDEN_TENANT"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+    return True, None
 
 
 class VendorEstimationListView(APIView):
@@ -836,6 +984,17 @@ class VendorEstimationVerifyOtpView(APIView):
         sr.status = "inspection_in_progress"
         sr.save(update_fields=["otp_verified", "otp_verified_at", "status", "updated_at"])
 
+        try:
+            from workforce_api.models import PreServiceVerification
+            psv = PreServiceVerification.objects.filter(job=sr).first()
+            if psv:
+                psv.otp_verified = True
+                psv.otp_verified_at = now
+                psv.check_completion()
+                psv.save()
+        except Exception as psv_err:
+            logger.warning(f"Could not sync PSV for sr #{sr.id}: {psv_err}")
+
         if est:
             est.status = "INSPECTION_IN_PROGRESS"
             est.save(update_fields=["status", "updated_at"])
@@ -869,6 +1028,10 @@ class VendorEstimationFindingsView(APIView):
         sr, est = _get_target_estimation(pk)
         if not sr or not est:
             return Response({"error": f"Estimation #{pk} not found.", "code": "NOT_FOUND"}, status=status.HTTP_404_NOT_FOUND)
+
+        ok, resp = _validate_technician_or_admin(sr, request.user)
+        if not ok:
+            return resp
 
         findings_data = request.data
         if isinstance(findings_data, dict) and "findings" in findings_data:
@@ -931,6 +1094,10 @@ class VendorEstimationPhotosView(APIView):
         if not sr or not est:
             return Response({"error": f"Estimation #{pk} not found.", "code": "NOT_FOUND"}, status=status.HTTP_404_NOT_FOUND)
 
+        ok, resp = _validate_technician_or_admin(sr, request.user)
+        if not ok:
+            return resp
+
         inspection, _ = Inspection.objects.get_or_create(
             estimation=est,
             defaults={"technician_name": sr.technician_name, "status": "IN_PROGRESS", "diagnosis": "", "notes": ""}
@@ -984,6 +1151,10 @@ class VendorEstimationInspectionCompleteView(APIView):
         if not sr or not est:
             return Response({"error": f"Estimation #{pk} not found.", "code": "NOT_FOUND"}, status=status.HTTP_404_NOT_FOUND)
 
+        ok, resp = _validate_technician_or_admin(sr, request.user)
+        if not ok:
+            return resp
+
         diagnosis_summary = request.data.get("diagnosis_summary") or request.data.get("diagnosis") or "Inspection completed."
         notes = request.data.get("notes", "")
 
@@ -1025,6 +1196,10 @@ class VendorEstimationQuotationView(APIView):
         if not sr or not est:
             return Response({"error": f"Estimation #{pk} not found.", "code": "NOT_FOUND"}, status=status.HTTP_404_NOT_FOUND)
 
+        ok, resp = _validate_technician_or_admin(sr, request.user)
+        if not ok:
+            return resp
+
         data = request.data
         items_data = data.get("items", [])
         if not items_data:
@@ -1035,7 +1210,18 @@ class VendorEstimationQuotationView(APIView):
         discount_amount = Decimal(str(data.get("discount_amount", 0.0)))
         notes = str(data.get("notes") or "Includes 90-day warranty on parts and labor.")
 
-        # Calculate line items
+        # Build rate snapshot index for rate-card validation
+        snapshot_by_rate_id = {}
+        snapshot_by_name = {}
+        cust_insp = sr.customer_inspections.first()
+        if cust_insp:
+            for snap in cust_insp.rate_snapshots.all():
+                if snap.rate_item_id:
+                    snapshot_by_rate_id[snap.rate_item_id] = snap
+                if snap.item_name_snapshot:
+                    snapshot_by_name[snap.item_name_snapshot.strip().lower()] = snap
+
+        # Calculate line items strictly server-side
         subtotal = Decimal("0.00")
         total_tax = Decimal("0.00")
         computed_items = []
@@ -1043,7 +1229,57 @@ class VendorEstimationQuotationView(APIView):
         for idx, item in enumerate(items_data):
             title = str(item.get("title") or item.get("service_name") or item.get("item_name") or f"Item #{idx + 1}")
             qty = Decimal(str(item.get("quantity", 1)))
-            unit_price = Decimal(str(item.get("unit_price", 0)))
+            raw_rate_id = item.get("rate_item_id")
+            resolved_rate_id = None
+
+            # Look up master rate snapshot or master rate item
+            snap = None
+            if raw_rate_id:
+                try:
+                    snap = snapshot_by_rate_id.get(int(raw_rate_id))
+                    if not snap:
+                        snap = CustomerInspectionRateSnapshot.objects.filter(id=raw_rate_id).first()
+                except Exception:
+                    snap = None
+
+            if not snap and title:
+                snap = snapshot_by_name.get(title.strip().lower())
+
+            rate_item_obj = None
+            if raw_rate_id:
+                try:
+                    from service_requests.models import ACInspectionRateItem
+                    rate_item_obj = ACInspectionRateItem.objects.filter(id=raw_rate_id).first()
+                    if rate_item_obj:
+                        resolved_rate_id = rate_item_obj.id
+                except Exception:
+                    resolved_rate_id = None
+
+            if not resolved_rate_id and snap and snap.rate_item_id:
+                resolved_rate_id = snap.rate_item_id
+
+            master_price = None
+            if snap:
+                master_price = Decimal(str(snap.price_snapshot))
+            elif rate_item_obj:
+                master_price = Decimal(str(rate_item_obj.price))
+
+            sent_unit_price = Decimal(str(item.get("unit_price", 0)))
+            override_reason = str(item.get("override_reason") or item.get("price_override_reason") or "").strip()
+
+            if master_price is not None:
+                if sent_unit_price != master_price:
+                    if override_reason:
+                        unit_price = sent_unit_price
+                    else:
+                        unit_price = master_price
+                else:
+                    unit_price = master_price
+                unit_price_snapshot = master_price
+            else:
+                unit_price = sent_unit_price
+                unit_price_snapshot = sent_unit_price
+
             item_tax_rate = Decimal(str(item.get("tax_rate", tax_rate_percent)))
             item_discount = Decimal(str(item.get("discount_amount", 0)))
 
@@ -1054,19 +1290,9 @@ class VendorEstimationQuotationView(APIView):
             subtotal += line_base
             total_tax += line_tax
 
-            raw_rate_id = item.get("rate_item_id")
-            resolved_rate_id = None
-            if raw_rate_id:
-                try:
-                    from service_requests.models import ACInspectionRateItem
-                    if ACInspectionRateItem.objects.filter(id=raw_rate_id).exists():
-                        resolved_rate_id = int(raw_rate_id)
-                except Exception:
-                    resolved_rate_id = None
-
             computed_items.append({
                 "service_name": title,
-                "description": item.get("description", ""),
+                "description": item.get("description", "") or (f"Override: ₹{sent_unit_price} (Reason: {override_reason})" if (master_price is not None and sent_unit_price != master_price and override_reason) else ""),
                 "item_type": item.get("item_type", "LABOR"),
                 "quantity": qty,
                 "unit": item.get("unit", "unit"),
@@ -1076,9 +1302,9 @@ class VendorEstimationQuotationView(APIView):
                 "discount_amount": item_discount,
                 "line_total": line_total,
                 "service_id": item.get("service_id") if item.get("service_id") else None,
-                "category_name_snapshot": str(item.get("category") or item.get("category_name_snapshot") or "General"),
-                "item_name_snapshot": str(item.get("item_name") or item.get("item_name_snapshot") or title),
-                "unit_price_snapshot": unit_price,
+                "category_name_snapshot": str(item.get("category") or item.get("category_name_snapshot") or (snap.category_name_snapshot if snap else "General")),
+                "item_name_snapshot": str(item.get("item_name") or item.get("item_name_snapshot") or (snap.item_name_snapshot if snap else title)),
+                "unit_price_snapshot": unit_price_snapshot,
                 "rate_item_id": resolved_rate_id,
                 "selected_at": timezone.now(),
                 "sort_order": idx,
@@ -1087,7 +1313,7 @@ class VendorEstimationQuotationView(APIView):
         total_amount = max(Decimal("0.00"), subtotal + total_tax - discount_amount)
 
         # Check existing draft quote for this estimation to update, or increment version
-        existing_draft = est.quotations.filter(status__in=["DRAFT", "SENT_BACK_TO_TECHNICIAN"]).order_by("-version").first()
+        existing_draft = est.quotations.filter(status__in=["DRAFT", "SENT_BACK_TO_TECHNICIAN"]).order_by("-version", "-id").first()
         if existing_draft:
             quote = existing_draft
             quote.subtotal = subtotal
@@ -1167,9 +1393,19 @@ class VendorEstimationQuotationSubmitForReviewView(APIView):
         if not sr or not est:
             return Response({"error": f"Estimation #{pk} not found.", "code": "NOT_FOUND"}, status=status.HTTP_404_NOT_FOUND)
 
+        ok, resp = _validate_technician_or_admin(sr, request.user)
+        if not ok:
+            return resp
+
         quote = est.quotations.filter(pk=quote_id).first()
         if not quote:
             return Response({"error": f"Quotation #{quote_id} not found on Estimation #{pk}.", "code": "NOT_FOUND"}, status=status.HTTP_404_NOT_FOUND)
+
+        if quote.status not in ["DRAFT", "SENT_BACK_TO_TECHNICIAN"]:
+            return Response({
+                "error": f"Quotation in status '{quote.status}' cannot be submitted for review.",
+                "code": "INVALID_QUOTE_STATE"
+            }, status=status.HTTP_400_BAD_REQUEST)
 
         quote.status = "SUBMITTED_FOR_ADMIN_REVIEW"
         quote.save(update_fields=["status", "updated_at"])
@@ -1208,6 +1444,10 @@ class VendorEstimationAdminReviewView(APIView):
         if not sr or not est:
             return Response({"error": f"Estimation #{pk} not found.", "code": "NOT_FOUND"}, status=status.HTTP_404_NOT_FOUND)
 
+        ok, resp = _validate_vendor_admin(sr, request.user)
+        if not ok:
+            return resp
+
         quote = est.quotations.filter(pk=quote_id).first()
         if not quote:
             return Response({"error": f"Quotation #{quote_id} not found on Estimation #{pk}.", "code": "NOT_FOUND"}, status=status.HTTP_404_NOT_FOUND)
@@ -1244,27 +1484,49 @@ class VendorEstimationAdminReviewView(APIView):
             quote.admin_reviewed_by = request.user if request.user.is_authenticated else None
             quote.save(update_fields=["status", "admin_notes", "admin_reviewed_at", "admin_reviewed_by", "updated_at"])
 
-            # Publish to Customer
-            quote.status = "SENT"
-            quote.save(update_fields=["status", "updated_at"])
+            # Populate cart_data from approved quotation line items
+            cart_items = []
+            for it in quote.items.all():
+                cart_items.append({
+                    "title": it.service_name,
+                    "description": it.description or "",
+                    "quantity": float(it.quantity),
+                    "unit": it.unit,
+                    "unit_price": float(it.unit_price),
+                    "tax_rate": float(it.tax_rate),
+                    "tax_amount": float(it.tax_amount),
+                    "line_total": float(it.line_total),
+                    "type": it.catalog_service_id or "LABOR",
+                })
+            sr.cart_data = cart_items
+            sr.quote_number = quote.quote_ref
 
-            est.status = "QUOTATION_SENT"
-            est.save(update_fields=["status", "updated_at"])
+            auto_convert = bool(request.data.get("auto_convert", False))
+            if auto_convert:
+                activate_service_job_from_quotation(sr, est, quote, now=now, actor=request.user)
+                message = f"Quotation {quote.quote_ref} approved by Customer Admin and converted directly to active service booking!"
+            else:
+                # Publish to Customer
+                quote.status = "SENT"
+                quote.save(update_fields=["status", "updated_at"])
 
-            sr.status = "quotation_sent"
-            sr.total_amount = quote.total_amount
-            sr.save(update_fields=["status", "total_amount", "updated_at"])
+                est.status = "QUOTATION_SENT"
+                est.save(update_fields=["status", "updated_at"])
 
-            wf_quote = _sync_workforce_quote(sr, quote)
-            if wf_quote:
-                from workforce_api.models import WorkforceQuote
-                wf_quote.status = WorkforceQuote.Status.SENT_TO_CUSTOMER
-                wf_quote.admin_approved_at = now
-                wf_quote.admin_approval_notes = admin_notes
-                wf_quote.admin_approved_by = request.user if request.user.is_authenticated else None
-                wf_quote.save(update_fields=["status", "admin_approved_at", "admin_approval_notes", "admin_approved_by", "updated_at"])
+                sr.status = "quotation_sent"
+                sr.total_amount = quote.total_amount
+                sr.save(update_fields=["status", "total_amount", "cart_data", "quote_number", "updated_at"])
 
-            message = f"Quotation {quote.quote_ref} approved by Customer Admin and published to Customer."
+                wf_quote = _sync_workforce_quote(sr, quote)
+                if wf_quote:
+                    from workforce_api.models import WorkforceQuote
+                    wf_quote.status = WorkforceQuote.Status.SENT_TO_CUSTOMER
+                    wf_quote.admin_approved_at = now
+                    wf_quote.admin_approval_notes = admin_notes
+                    wf_quote.admin_approved_by = request.user if request.user.is_authenticated else None
+                    wf_quote.save(update_fields=["status", "admin_approved_at", "admin_approval_notes", "admin_approved_by", "updated_at"])
+
+                message = f"Quotation {quote.quote_ref} approved by Customer Admin and published to Customer."
 
         return Response({
             "success": True,
@@ -1286,6 +1548,10 @@ class VendorEstimationInspectionSaveView(APIView):
         sr, est = _get_target_estimation(pk)
         if not sr or not est:
             return Response({"error": f"Estimation #{pk} not found.", "code": "NOT_FOUND"}, status=status.HTTP_404_NOT_FOUND)
+
+        ok, resp = _validate_technician_or_admin(sr, request.user)
+        if not ok:
+            return resp
 
         data = request.data
         ac_details = data.get("ac_details") or {}
@@ -1355,8 +1621,12 @@ class VendorEstimationRepairProgressView(APIView):
         if not sr or not est:
             return Response({"error": f"Estimation #{pk} not found.", "code": "NOT_FOUND"}, status=status.HTTP_404_NOT_FOUND)
 
+        ok, resp = _validate_technician_or_admin(sr, request.user)
+        if not ok:
+            return resp
+
         # Block repair if customer rejected quotation or cancelled
-        latest_q = est.quotations.order_by("-version").first()
+        latest_q = est.quotations.order_by("-version", "-id").first()
         if est.status == "CANCELLED" or sr.status == "cancelled" or (latest_q and latest_q.status == "REJECTED"):
             return Response({
                 "error": "Cannot progress repair on a cancelled or rejected estimation booking.",
@@ -1368,6 +1638,18 @@ class VendorEstimationRepairProgressView(APIView):
         now = timezone.now()
 
         if stage in ["START", "START_REPAIR", "REPAIR_STARTED", "REPAIR_IN_PROGRESS"]:
+            # Repair authorization gate: must have customer-approved quotation
+            is_quote_approved = bool(latest_q and latest_q.status == "APPROVED")
+            is_job_authorized = (
+                est.status in ["CUSTOMER_APPROVED", "CONVERTED_TO_JOB", "REPAIR_IN_PROGRESS", "REPAIR_AUTHORIZED"] or
+                sr.status in ["customer_approved", "repair_authorized", "assigned", "in_progress"]
+            )
+            if not is_quote_approved or not is_job_authorized:
+                return Response({
+                    "error": "Cannot start repair before quotation has been approved by the customer and authorized.",
+                    "code": "REPAIR_NOT_AUTHORIZED"
+                }, status=status.HTTP_400_BAD_REQUEST)
+
             sr.status = "in_progress"
             sr.save(update_fields=["status", "updated_at"])
             est.status = "REPAIR_IN_PROGRESS"
@@ -1407,6 +1689,7 @@ class VendorEstimationQuotationSendView(APIView):
     """
     POST /api/vendor/estimations/{id}/quotation/{quote_id}/send/
     Publishes quotation to customer. Advances status to QUOTATION_SENT.
+    Requires Vendor Admin authorization. Plain technicians cannot bypass Admin review.
     """
     permission_classes = [permissions.IsAuthenticated]
 
@@ -1415,6 +1698,10 @@ class VendorEstimationQuotationSendView(APIView):
         sr, est = _get_target_estimation(pk)
         if not sr or not est:
             return Response({"error": f"Estimation #{pk} not found.", "code": "NOT_FOUND"}, status=status.HTTP_404_NOT_FOUND)
+
+        ok, resp = _validate_vendor_admin(sr, request.user)
+        if not ok:
+            return resp
 
         quote = est.quotations.filter(pk=quote_id).first()
         if not quote:
@@ -1452,6 +1739,10 @@ class VendorEstimationQuotationReviseView(APIView):
         sr, est = _get_target_estimation(pk)
         if not sr or not est:
             return Response({"error": f"Estimation #{pk} not found.", "code": "NOT_FOUND"}, status=status.HTTP_404_NOT_FOUND)
+
+        ok, resp = _validate_technician_or_admin(sr, request.user)
+        if not ok:
+            return resp
 
         orig_quote = est.quotations.filter(pk=quote_id).first()
         if not orig_quote:
@@ -1616,7 +1907,7 @@ def activate_service_job_from_quotation(sr, est, quote, now=None, target_date=No
 
     # Resolve technician: either existing assigned_employee or inspection technician
     tech_emp = sr.assigned_employee
-    if not tech_emp and sr.technician_id:
+    if not tech_emp and getattr(sr, "technician_id", None):
         try:
             tech_emp = Employee.objects.filter(user_id=sr.technician_id).first()
         except Exception:
@@ -1656,31 +1947,25 @@ def activate_service_job_from_quotation(sr, est, quote, now=None, target_date=No
         })
     sr.cart_data = cart_items
 
-    # 4. Same-Day Scheduling Rule: assign immediately to same technician
+    # 4. Same-Day / Scheduled Assignment Rule: assign immediately to same technician
+    sr.status = "assigned"
+    if tech_emp:
+        sr.assigned_employee = tech_emp
+        sr.technician_name = sr.technician_name or (tech_emp.user.get_full_name() if tech_emp.user else tech_emp.employee_id)
+        sr.technician_phone = sr.technician_phone or tech_emp.phone
+        try:
+            from service_requests.models import EmployeeJob
+            EmployeeJob.objects.update_or_create(
+                service_request=sr,
+                employee=tech_emp,
+                defaults={"status": "ASSIGNED", "assigned_date": now}
+            )
+        except Exception as ej_err:
+            logger.warning(f"Could not update EmployeeJob: {ej_err}")
+
     if is_same_day:
-        sr.status = "assigned"
-        if tech_emp:
-            sr.assigned_employee = tech_emp
-            sr.technician_name = sr.technician_name or (tech_emp.user.get_full_name() if tech_emp.user else tech_emp.employee_id)
-            sr.technician_phone = sr.technician_phone or tech_emp.phone
-            sr.technician_id = tech_emp.user_id
-            try:
-                from service_requests.models import EmployeeJob
-                EmployeeJob.objects.update_or_create(
-                    service_request=sr,
-                    employee=tech_emp,
-                    defaults={"status": "ASSIGNED", "assigned_date": now}
-                )
-            except Exception as ej_err:
-                logger.warning(f"Could not update EmployeeJob: {ej_err}")
         message = f"Quotation approved! Converted to service job #{sr.request_id} and scheduled for today with technician {sr.technician_name}."
     else:
-        sr.status = "assigned"
-        if tech_emp:
-            sr.assigned_employee = tech_emp
-            sr.technician_name = sr.technician_name or (tech_emp.user.get_full_name() if tech_emp.user else tech_emp.employee_id)
-            sr.technician_phone = sr.technician_phone or tech_emp.phone
-            sr.technician_id = tech_emp.user_id
         message = f"Quotation approved! Converted to service job #{sr.request_id} scheduled for {target_date.strftime('%d %b %Y')}."
 
     # 5. Payment Isolation: Waive estimation fee; only service job payment collected upon execution
@@ -1733,7 +2018,7 @@ class VendorEstimationCustomerDecideView(APIView):
         rejection_reason = request.data.get("rejection_reason", "PRICE_TOO_HIGH")
         rejection_note = request.data.get("rejection_note", "")
 
-        quote = est.quotations.order_by("-version").first()
+        quote = est.quotations.order_by("-version", "-id").first()
         if not quote:
             return Response({"error": "No quotation exists for this estimation to decide upon.", "code": "NO_QUOTE"}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -1768,8 +2053,14 @@ class VendorEstimationCustomerDecideView(APIView):
 
             wf_quote = _sync_workforce_quote(sr, quote)
 
-            # If quote was already reviewed by admin or admin approval is not required:
-            if quote.admin_reviewed_at or not quotation_service.requires_admin_approval():
+            # If quote was already reviewed/approved/cleared by admin, or admin approval is not required:
+            is_admin_approved = bool(
+                quote.admin_reviewed_at or
+                (wf_quote and (getattr(wf_quote, "admin_cleared_at", None) or getattr(wf_quote, "admin_approved_at", None))) or
+                quote.status in ["ADMIN_APPROVED", "SENT", "APPROVED"] or
+                not quotation_service.requires_admin_approval()
+            )
+            if is_admin_approved:
                 message, _same_day = activate_service_job_from_quotation(
                     sr, est, quote, now=now, target_date=target_date,
                     scheduled_time=scheduled_time, actor=request.user,
@@ -1785,7 +2076,8 @@ class VendorEstimationCustomerDecideView(APIView):
                 # activation schedules what the customer actually chose.
                 sr.preferred_date = target_date
                 sr.preferred_time = scheduled_time
-                sr.save(update_fields=["preferred_date", "preferred_time", "updated_at"])
+                sr.status = "customer_approved"
+                sr.save(update_fields=["preferred_date", "preferred_time", "status", "updated_at"])
 
                 if wf_quote:
                     from workforce_api.models import WorkforceQuote as _WFQ
@@ -1941,7 +2233,7 @@ class VendorEstimationInvoiceView(APIView):
 
         # Determine line items based on whether estimation fee was collected or job quotation was accepted
         is_fee_invoice = (fee and fee.status == "COLLECTED") or sr.status == "cancelled"
-        quote = est.quotations.order_by("-version").first() if est else None
+        quote = est.quotations.order_by("-version", "-id").first() if est else None
 
         line_items = []
         if is_fee_invoice:

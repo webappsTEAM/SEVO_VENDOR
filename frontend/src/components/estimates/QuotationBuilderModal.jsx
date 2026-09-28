@@ -30,6 +30,7 @@ import {
   apiBulkSaveQuoteMeasurements,
   apiSaveQuoteInspection,
   apiSendQuoteToCustomer,
+  apiSubmitQuoteToCRM,
 } from '../../api/workforceService.js';
 
 /**
@@ -39,12 +40,12 @@ import {
 function describeRate(rc) {
   switch (rc.pricing_model) {
     case 'PER_UNIT':
-      return `₹${rc.default_rate}/${rc.unit}`;
+      return `₹${Number(rc.default_rate || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/${rc.unit}`;
     case 'FLAT':
-      return `₹${rc.default_rate} flat`;
+      return `₹${Number(rc.default_rate || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} flat`;
     case 'TIERED': {
       const rates = Object.values(rc.pricing_config?.tiers || {});
-      return rates.length ? `₹${Math.min(...rates)}–₹${Math.max(...rates)}/${rc.unit}` : 'tiered';
+      return rates.length ? `₹${Math.min(...rates).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}–₹${Math.max(...rates).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/${rc.unit}` : 'tiered';
     }
     case 'CAPACITY_BAND':
     case 'SIZE_BAND':
@@ -52,8 +53,16 @@ function describeRate(rc) {
     case 'QUOTE_ONLY':
       return 'priced on site';
     default:
-      return `₹${rc.default_rate}/${rc.unit}`;
+      return `₹${Number(rc.default_rate || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/${rc.unit}`;
   }
+}
+
+export function formatCurrency(val) {
+  const num = Number(val || 0);
+  return num.toLocaleString('en-IN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 }
 
 export default function QuotationBuilderModal({
@@ -97,27 +106,50 @@ export default function QuotationBuilderModal({
     job?.issue_title?.toLowerCase().includes('brick') ||
     job?.issue_title?.toLowerCase().includes('plaster');
 
+  // AC Inspection & Estimation job — use job-specific rate card snapshot
+  const isEstimation =
+    job?.request_kind === 'ESTIMATION' ||
+    job?.pricing_mode === 'QUOTATION' ||
+    job?.is_estimation === true;
+
   const isReadOnly = Boolean(
     quoteStatus &&
     quoteStatus !== 'DRAFT' &&
     quoteStatus !== 'CHANGES_REQUESTED'
   );
 
-  // Load existing quote or initialize from job
+  const hasInitializedRef = useRef(false);
+  const jobId = job?.id;
+
+  // Load existing quote or initialize from job once when modal opens
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      hasInitializedRef.current = false;
+      return;
+    }
+    if (hasInitializedRef.current) return;
+    hasInitializedRef.current = true;
 
     const loadData = async () => {
       setLoading(true);
       setError(null);
       try {
-        // Load rate cards
-        const categoryParam = isPainting ? 'painting' : isMason ? 'mason' : '';
-        const rCards = await apiGetRateCards(categoryParam);
+        // Load rate cards.
+        // For AC Inspection (ESTIMATION) jobs, pass job_id so the backend
+        // returns the frozen CustomerInspectionRateSnapshot for this booking.
+        let rCards;
+        if (isEstimation && job?.id) {
+          rCards = await apiGetRateCards('', '', job.id);
+        } else {
+          const categoryParam = isPainting ? 'painting' : isMason ? 'mason' : '';
+          rCards = await apiGetRateCards(categoryParam);
+        }
         setRateCards(rCards || []);
 
-        if (activeQuoteId) {
-          const detail = await apiGetQuoteDetail(activeQuoteId);
+        const targetQuoteId = quoteId || activeQuoteId;
+        if (targetQuoteId) {
+          const detail = await apiGetQuoteDetail(targetQuoteId);
+          setActiveQuoteId(detail.id);
           setQuoteNumber(detail.quote_number || '');
           setQuoteVersion(detail.quote_version || 1);
           setQuoteStatus(detail.status || 'DRAFT');
@@ -135,12 +167,6 @@ export default function QuotationBuilderModal({
         } else if (job) {
           setTitle(`Quotation for ${job.issue_title || job.service_category}`);
           setDescription(`Site inspection and estimation for ${job.customer_name || 'Customer'}.`);
-
-          // Deliberately no pre-populated line items. Seeding the first three
-          // rate cards put work on the quote that the technician had not
-          // chosen and the customer had not been shown -- and for banded or
-          // quote-only items, default_rate is not the price at all, so the
-          // suggested figures were wrong as well as unasked for.
           setItems([]);
         }
       } catch (err) {
@@ -152,7 +178,7 @@ export default function QuotationBuilderModal({
     };
 
     loadData();
-  }, [isOpen, activeQuoteId, job]);
+  }, [isOpen, quoteId, jobId]);
 
   // Live total calculations
   const calculateTotals = () => {
@@ -176,10 +202,12 @@ export default function QuotationBuilderModal({
       totalDiscount += disc;
       totalTax += tax;
 
-      if (item.section === 'MATERIAL') {
-        materialsCost += net;
-      } else if (item.section === 'LABOUR') {
+      const section = String(item.section || '').toUpperCase();
+      const type = String(item.item_type || '').toLowerCase();
+      if (['LABOUR', 'LABOR', 'SERVICE', 'ADJUSTMENT'].includes(section) || type === 'labor') {
         laborCost += net;
+      } else {
+        materialsCost += net;
       }
     });
 
@@ -220,28 +248,35 @@ export default function QuotationBuilderModal({
 
   // Add line item from Rate Card select
   const handleSelectRateCardItem = (rcId) => {
-    const rc = rateCards.find((r) => r.id === parseInt(rcId));
+    const rc = rateCards.find((r) => String(r.id) === String(rcId));
     if (!rc) return;
 
+    const isSnapshot = Boolean(rc.is_snapshot);
     const tiers = Object.keys(rc.pricing_config?.tiers || {});
+    // For AC inspection snapshots the price is already locked at booking time.
+    // Use it directly — no server re-price call needed.
+    const snapshotPrice = isSnapshot ? parseFloat(rc.default_rate) || 0 : 0;
+
     const next = {
       id: `temp_${Date.now()}`,
-      rate_card_id: rc.id,
+      rate_card_id: isSnapshot ? null : rc.id,    // no server pricing call for snapshots
+      snapshot_id: isSnapshot ? rc.snapshot_id : null,
+      is_snapshot: isSnapshot,
       pricing_model: rc.pricing_model,
       pricing_tiers: tiers,
       pricing_tier: tiers.length === 1 ? tiers[0] : '',
       minimum_quantity: parseFloat(rc.minimum_quantity) || 0,
-      pricing_note: '',
+      pricing_note: isSnapshot && snapshotPrice === 0 ? 'Included in diagnostic / free' : '',
       pricing_error: '',
       section: rc.section,
       name: rc.item_name,
       description: rc.description || '',
-      quantity: rc.minimum_quantity > 0 ? parseFloat(rc.minimum_quantity) : 1,
+      quantity: 1,
       unit: rc.unit,
-      // Left at zero until the server prices it. Showing default_rate here
-      // would be a lie for every banded, tiered, flat or quote-only item.
-      unit_price: 0,
-      total_amount: 0,
+      // For snapshots: use the frozen agreed price directly.
+      // For generic rate cards: left at zero until the server prices it.
+      unit_price: snapshotPrice,
+      total_amount: snapshotPrice,
       tax_rate: parseFloat(rc.tax_rate) || 18,
       discount_amount: 0,
       material_source: 'CALTRACK',
@@ -252,8 +287,11 @@ export default function QuotationBuilderModal({
     const nextIndex = items.length;
     setItems([...items, next]);
 
-    if (rc.pricing_model === 'QUOTE_ONLY') {
-      // No standard rate exists; the technician sets the price.
+    // Snapshot items already have their price frozen at booking time.
+    // Generic rate cards need a server round-trip to compute banded/tiered prices.
+    if (isSnapshot) {
+      // price already set — nothing more to do
+    } else if (rc.pricing_model === 'QUOTE_ONLY') {
       handleUpdateItem(nextIndex, 'pricing_note', 'No standard rate — enter the price for this site.');
     } else if (rc.pricing_model === 'TIERED' && !next.pricing_tier) {
       handleUpdateItem(nextIndex, 'pricing_note', 'Choose a specification to price this line.');
@@ -272,7 +310,8 @@ export default function QuotationBuilderModal({
    */
   const repriceLine = async (index, itemOverride = null) => {
     const item = itemOverride || items[index];
-    if (!item?.rate_card_id || item.pricing_model === 'QUOTE_ONLY') return;
+    // Snapshot items have price frozen at booking — skip server call.
+    if (!item?.rate_card_id || item.is_snapshot || item.pricing_model === 'QUOTE_ONLY') return;
 
     setPricingIndexes((prev) => [...new Set([...prev, index])]);
     try {
@@ -504,7 +543,7 @@ export default function QuotationBuilderModal({
     }
   };
 
-  // Send Quote to Customer
+  // Send Quote to Customer / Submit for Admin Approval
   const handleSendQuote = async () => {
     setSending(true);
     setError(null);
@@ -517,8 +556,14 @@ export default function QuotationBuilderModal({
       }
 
       const res = await apiSendQuoteToCustomer(currentId);
-      setSuccessMsg(res.message || 'Quotation successfully sent to customer!');
-      setQuoteStatus('SENT_TO_CUSTOMER');
+      const isPendingReview = res?.status === 'PENDING_REVIEW' || res?.held_reason;
+      if (isPendingReview) {
+        setSuccessMsg(res?.message || 'Quotation submitted for Admin Approval!');
+        setQuoteStatus('PENDING_REVIEW');
+      } else {
+        setSuccessMsg(res?.message || 'Quotation successfully sent to customer!');
+        setQuoteStatus('SENT_TO_CUSTOMER');
+      }
 
       if (onQuoteSaved) onQuoteSaved(currentId);
       setTimeout(() => {
@@ -526,7 +571,35 @@ export default function QuotationBuilderModal({
       }, 2000);
     } catch (err) {
       console.error('Failed to send quote:', err);
-      setError(err.message || 'Failed to send quotation to customer.');
+      setError(err.message || 'Failed to submit quotation.');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  // Submit Quote to CRM for Review
+  const handleSubmitToCRM = async () => {
+    setSending(true);
+    setError(null);
+    setSuccessMsg(null);
+
+    try {
+      const currentId = await handleSaveDraft();
+      if (!currentId) {
+        throw new Error('Please save quotation before submitting.');
+      }
+
+      const res = await apiSubmitQuoteToCRM(currentId);
+      setSuccessMsg(res.message || 'Quotation submitted to CRM / Operations for review!');
+      setQuoteStatus('PENDING_APPROVAL');
+
+      if (onQuoteSaved) onQuoteSaved(currentId);
+      setTimeout(() => {
+        onClose();
+      }, 2000);
+    } catch (err) {
+      console.error('Failed to submit quote to CRM:', err);
+      setError(err.message || 'Failed to submit quotation to CRM.');
     } finally {
       setSending(false);
     }
@@ -552,8 +625,10 @@ export default function QuotationBuilderModal({
                   className={`text-[11px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-wider ${
                     quoteStatus === 'SENT_TO_CUSTOMER'
                       ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300'
-                      : quoteStatus === 'CUSTOMER_ACCEPTED'
+                      : quoteStatus === 'CUSTOMER_ACCEPTED' || quoteStatus === 'CONVERTED'
                       ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300'
+                      : quoteStatus === 'PENDING_REVIEW' || quoteStatus === 'PENDING_ADMIN_APPROVAL' || quoteStatus === 'SUBMITTED_FOR_ADMIN_REVIEW'
+                      ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300'
                       : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
                   }`}
                 >
@@ -570,7 +645,7 @@ export default function QuotationBuilderModal({
             <div className="hidden sm:flex flex-col items-end px-3 py-1 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
               <span className="text-[10px] uppercase font-bold text-gray-400">Estimated Total</span>
               <span className="text-sm font-extrabold text-blue-600 dark:text-blue-400">
-                ₹{totals.netPayable.toLocaleString()}
+                ₹{formatCurrency(totals.netPayable)}
               </span>
             </div>
 
@@ -617,9 +692,11 @@ export default function QuotationBuilderModal({
               <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0" />
               <span>
                 {quoteStatus === 'CUSTOMER_ACCEPTED' || quoteStatus === 'CONVERTED'
-                  ? 'Quotation has been accepted by customer and is locked for execution.'
+                  ? 'Quotation has been accepted by customer and is converted into active service booking.'
                   : quoteStatus === 'SENT_TO_CUSTOMER'
                   ? 'Quotation has been delivered to customer and is awaiting decision.'
+                  : quoteStatus === 'PENDING_REVIEW' || quoteStatus === 'PENDING_ADMIN_APPROVAL' || quoteStatus === 'SUBMITTED_FOR_ADMIN_REVIEW'
+                  ? 'Quotation has been submitted for Admin Review and is awaiting approval.'
                   : `Quotation is in ${quoteStatus.replace(/_/g, ' ')} state (Read-Only).`}
               </span>
             </div>
@@ -657,6 +734,78 @@ export default function QuotationBuilderModal({
                     <PaintingInspectionForm data={inspectionData} onChange={setInspectionData} />
                   ) : isMason ? (
                     <MasonInspectionForm data={inspectionData} onChange={setInspectionData} />
+                  ) : isEstimation ? (
+                    <div className="space-y-4">
+                      {/* AC Appliance Details Banner */}
+                      <div className="rounded-xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 p-4">
+                        <p className="text-xs font-bold text-indigo-700 dark:text-indigo-300 uppercase tracking-wider mb-3">
+                          AC Inspection Details
+                        </p>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                          {job?.estimation_details?.ac_brand && (
+                            <div>
+                              <span className="text-[10px] font-bold text-indigo-500 uppercase block">Brand</span>
+                              <span className="font-semibold text-indigo-900 dark:text-indigo-200">{job.estimation_details.ac_brand}</span>
+                            </div>
+                          )}
+                          {job?.estimation_details?.ac_type && (
+                            <div>
+                              <span className="text-[10px] font-bold text-indigo-500 uppercase block">Type</span>
+                              <span className="font-semibold text-indigo-900 dark:text-indigo-200">
+                                {job.estimation_details.ac_type === 'SPLIT' ? 'Split AC'
+                                  : job.estimation_details.ac_type === 'WINDOW' ? 'Window AC'
+                                  : job.estimation_details.ac_type}
+                              </span>
+                            </div>
+                          )}
+                          {job?.estimation_details?.ac_capacity && (
+                            <div>
+                              <span className="text-[10px] font-bold text-indigo-500 uppercase block">Capacity</span>
+                              <span className="font-semibold text-indigo-900 dark:text-indigo-200">
+                                {String(job.estimation_details.ac_capacity).replace('_TON', ' Ton').replace('_', '.')}
+                              </span>
+                            </div>
+                          )}
+                          {job?.total_amount && (
+                            <div>
+                              <span className="text-[10px] font-bold text-indigo-500 uppercase block">Diagnostic Fee</span>
+                              <span className="font-semibold text-indigo-900 dark:text-indigo-200">
+                                ₹{parseFloat(job.total_amount || 0).toLocaleString()}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        {job?.description && (
+                          <div className="mt-3 pt-3 border-t border-indigo-200 dark:border-indigo-700">
+                            <span className="text-[10px] font-bold text-indigo-500 uppercase block mb-1">Customer Issue</span>
+                            <p className="text-xs text-indigo-800 dark:text-indigo-300">{job.description}</p>
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
+                          Quotation Title
+                        </label>
+                        <input
+                          type="text"
+                          value={title}
+                          onChange={(e) => setTitle(e.target.value)}
+                          className="w-full text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 p-2.5"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
+                          Diagnosis &amp; Findings
+                        </label>
+                        <textarea
+                          rows={3}
+                          value={description}
+                          onChange={(e) => setDescription(e.target.value)}
+                          placeholder="Describe what was found during inspection (e.g. gas leak, capacitor failure, blocked coil…)"
+                          className="w-full text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 p-2.5"
+                        />
+                      </div>
+                    </div>
                   ) : (
                     <div className="space-y-4">
                       <div>
@@ -672,7 +821,7 @@ export default function QuotationBuilderModal({
                       </div>
                       <div>
                         <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
-                          Scope & Findings
+                          Scope &amp; Findings
                         </label>
                         <textarea
                           rows={3}
@@ -825,13 +974,18 @@ export default function QuotationBuilderModal({
               {/* STEP 3: Line Items & Rate Cards */}
               {step === 3 && (
                 <div className="space-y-5">
+                  {/* Rate Card Catalog — grouped by category for AC inspection, flat list for others */}
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-blue-50/50 dark:bg-blue-950/20 p-3.5 rounded-xl border border-blue-100 dark:border-blue-900/40">
                     <div>
                       <h4 className="text-xs font-bold text-blue-900 dark:text-blue-200">
-                        Add from Approved Rate Card Catalog
+                        {isEstimation
+                          ? 'Add from AC Inspection Rate Card'
+                          : 'Add from Approved Rate Card Catalog'}
                       </h4>
                       <p className="text-[11px] text-blue-700 dark:text-blue-300">
-                        Select pre-approved standard rates for material, labour, and logistics.
+                        {isEstimation
+                          ? 'Pre-agreed rates for this AC inspection booking (Spare Parts, Labour, Gas Charge…)'
+                          : 'Select pre-approved standard rates for material, labour, and logistics.'}
                       </p>
                     </div>
 
@@ -848,11 +1002,34 @@ export default function QuotationBuilderModal({
                       <option value="" disabled>
                         + Choose approved item...
                       </option>
-                      {rateCards.map((rc) => (
-                        <option key={rc.id} value={rc.id}>
-                          [{rc.section}] {rc.item_name} — {describeRate(rc)}
-                        </option>
-                      ))}
+                      {isEstimation ? (
+                        // Group by category for AC inspection
+                        Object.entries(
+                          rateCards.reduce((acc, rc) => {
+                            const cat = rc.category_name || rc.service_category || 'Other';
+                            acc[cat] = acc[cat] || [];
+                            acc[cat].push(rc);
+                            return acc;
+                          }, {})
+                        ).map(([cat, items]) => (
+                          <optgroup key={cat} label={cat}>
+                            {items.map((rc) => (
+                              <option key={rc.id} value={rc.id}>
+                                {rc.item_name}
+                                {parseFloat(rc.default_rate) > 0
+                                  ? ` — ₹${parseFloat(rc.default_rate).toLocaleString()}/${rc.unit}`
+                                  : ' — Free'}
+                              </option>
+                            ))}
+                          </optgroup>
+                        ))
+                      ) : (
+                        rateCards.map((rc) => (
+                          <option key={rc.id} value={rc.id}>
+                            [{rc.section}] {rc.item_name} — {describeRate(rc)}
+                          </option>
+                        ))
+                      )}
                     </select>
                   </div>
 
@@ -1004,9 +1181,9 @@ export default function QuotationBuilderModal({
                               ) : (
                                 <>
                                   ₹
-                                  {(
+                                  {formatCurrency(
                                     Math.max(0, (item.quantity || 1) * (item.unit_price || 0) - (item.discount_amount || 0))
-                                  ).toLocaleString()}
+                                  )}
                                 </>
                               )}
                             </span>
@@ -1079,25 +1256,25 @@ export default function QuotationBuilderModal({
                       <div>
                         <span className="text-gray-500 dark:text-gray-400 block text-[11px]">Material Subtotal</span>
                         <span className="font-bold text-gray-900 dark:text-gray-100 text-sm">
-                          ₹{totals.materialsCost.toLocaleString()}
+                          ₹{formatCurrency(totals.materialsCost)}
                         </span>
                       </div>
                       <div>
                         <span className="text-gray-500 dark:text-gray-400 block text-[11px]">Labour Subtotal</span>
                         <span className="font-bold text-gray-900 dark:text-gray-100 text-sm">
-                          ₹{totals.laborCost.toLocaleString()}
+                          ₹{formatCurrency(totals.laborCost)}
                         </span>
                       </div>
                       <div>
                         <span className="text-gray-500 dark:text-gray-400 block text-[11px]">GST / Tax (18%)</span>
                         <span className="font-bold text-gray-900 dark:text-gray-100 text-sm">
-                          ₹{totals.totalTax.toLocaleString()}
+                          ₹{formatCurrency(totals.totalTax)}
                         </span>
                       </div>
                       <div>
                         <span className="text-gray-500 dark:text-gray-400 block text-[11px]">Gross Total</span>
                         <span className="font-bold text-gray-900 dark:text-gray-100 text-sm">
-                          ₹{totals.grandTotal.toLocaleString()}
+                          ₹{formatCurrency(totals.grandTotal)}
                         </span>
                       </div>
                     </div>
@@ -1118,8 +1295,35 @@ export default function QuotationBuilderModal({
                       <div className="flex items-center gap-3">
                         <span className="text-xs font-bold text-gray-700 dark:text-gray-300">Net Payable:</span>
                         <span className="text-xl font-black text-blue-600 dark:text-blue-400">
-                          ₹{totals.netPayable.toLocaleString()}
+                          ₹{formatCurrency(totals.netPayable)}
                         </span>
+                      </div>
+                    </div>
+
+                    {/* Multi-Day Contracting Advance Policy Display */}
+                    <div className="bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div>
+                        <div className="text-xs font-bold text-indigo-900 dark:text-indigo-200 flex items-center gap-1.5">
+                          <ShieldCheck className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                          Commercial Milestone Terms (50% Advance)
+                        </div>
+                        <p className="text-[11px] text-indigo-700 dark:text-indigo-300">
+                          50% advance is required before work starts. Remaining 50% is billed upon verified completion.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-4 text-right">
+                        <div>
+                          <span className="text-[10px] uppercase font-bold text-indigo-500 block">50% Advance</span>
+                          <span className="text-sm font-extrabold text-indigo-800 dark:text-indigo-200">
+                            ₹{formatCurrency(totals.netPayable * 0.5)}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] uppercase font-bold text-gray-500 block">Final Balance</span>
+                          <span className="text-sm font-extrabold text-gray-700 dark:text-gray-300">
+                            ₹{formatCurrency(totals.netPayable - (totals.netPayable * 0.5))}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1138,14 +1342,14 @@ export default function QuotationBuilderModal({
                             </span>
                             <span className="font-medium text-gray-900 dark:text-gray-100">{item.name}</span>
                             <span className="text-gray-400 text-[11px] ml-2">
-                              ({item.quantity} {item.unit} @ ₹{item.unit_price})
+                              ({item.quantity} {item.unit} @ ₹{formatCurrency(item.unit_price)})
                             </span>
                           </div>
                           <span className="font-bold text-gray-900 dark:text-gray-100">
                             ₹
-                            {(
+                            {formatCurrency(
                               Math.max(0, (item.quantity || 1) * (item.unit_price || 0) - (item.discount_amount || 0))
-                            ).toLocaleString()}
+                            )}
                           </span>
                         </div>
                       ))}
@@ -1186,13 +1390,30 @@ export default function QuotationBuilderModal({
             )}
 
             {step < 4 ? (
-              <button
-                onClick={() => setStep(step + 1)}
-                className="inline-flex items-center gap-1.5 text-xs font-semibold px-5 py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700 shadow-md shadow-blue-600/20 cursor-pointer"
-              >
-                Next Step
-                <ChevronRight className="w-4 h-4" />
-              </button>
+              <div className="flex items-center gap-2">
+                {step === 3 && items.length > 0 && !isReadOnly && (
+                  <button
+                    onClick={handleSendQuote}
+                    disabled={sending || saving}
+                    className="inline-flex items-center gap-1.5 text-xs font-bold px-4 py-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 shadow-md shadow-emerald-600/20 disabled:opacity-50 cursor-pointer"
+                    title="Submit directly to Admin for approval"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    {sending
+                      ? 'Submitting...'
+                      : isEstimation
+                      ? 'Submit for Admin Approval'
+                      : 'Submit Quotation'}
+                  </button>
+                )}
+                <button
+                  onClick={() => setStep(step + 1)}
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold px-5 py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700 shadow-md shadow-blue-600/20 cursor-pointer"
+                >
+                  {step === 3 ? 'Review & Finalize' : 'Next Step'}
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
             ) : isReadOnly ? (
               <button
                 onClick={onClose}
@@ -1201,14 +1422,24 @@ export default function QuotationBuilderModal({
                 Close View
               </button>
             ) : (
-              <button
-                onClick={handleSendQuote}
-                disabled={sending || saving || items.length === 0}
-                className="inline-flex items-center gap-1.5 text-xs font-bold px-5 py-2 rounded-xl bg-green-600 text-white hover:bg-green-700 shadow-md shadow-green-600/20 disabled:opacity-50 cursor-pointer"
-              >
-                <Send className="w-4 h-4" />
-                {sending ? 'Sending to Customer...' : 'Send Quote to Customer'}
-              </button>
+              <>
+                <button
+                  onClick={handleSubmitToCRM}
+                  disabled={sending || saving || items.length === 0}
+                  className="inline-flex items-center gap-1.5 text-xs font-bold px-4 py-2 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 shadow-md shadow-indigo-600/20 disabled:opacity-50 cursor-pointer"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  {sending ? 'Submitting...' : 'Submit to CRM'}
+                </button>
+                <button
+                  onClick={handleSendQuote}
+                  disabled={sending || saving || items.length === 0}
+                  className="inline-flex items-center gap-1.5 text-xs font-bold px-5 py-2 rounded-xl bg-green-600 text-white hover:bg-green-700 shadow-md shadow-green-600/20 disabled:opacity-50 cursor-pointer"
+                >
+                  <Send className="w-4 h-4" />
+                  {sending ? 'Sending...' : 'Send Quote to Customer'}
+                </button>
+              </>
             )}
           </div>
         </div>

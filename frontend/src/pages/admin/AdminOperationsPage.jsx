@@ -14,8 +14,6 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   apiGetAdminApplications,
-  apiGetEligibleTechnicians,
-  apiTriggerAutoDispatch,
   apiGetWorkforceJobs,
   apiGetFleetMap,
   apiGetAdminPendingServices,
@@ -417,7 +415,6 @@ function LocationFormModal({ editingLocation, onClose, onSaved }) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export function AdminOperationsPage() {
   const [technicians, setTechnicians] = useState([]);
-  const [eligibleFleet, setEligibleFleet] = useState([]);
   const [fleetMap, setFleetMap] = useState([]);
   const [pendingServices, setPendingServices] = useState([]);
   const [pendingExtensions, setPendingExtensions] = useState([]);
@@ -440,21 +437,19 @@ export function AdminOperationsPage() {
   const loadData = async () => {
     try {
       setIsLoading(true);
-      const [techs, jobsList, eligible, locsData, fleetData, pendingSvcData, pendingExtData] =
+      const [techs, jobsList, locsData, fleetData, pendingSvcData, pendingExtData] =
         await Promise.all([
-          apiGetAdminApplications('approved').catch(() => []),
-          apiGetWorkforceJobs().catch(() => []),
-          apiGetEligibleTechnicians().catch(() => []),
-          apiGetLocations().catch(() => []),
-          apiGetFleetMap().catch(() => []),
-          apiGetAdminPendingServices().catch(() => []),
-          apiGetAdminPendingExtensions().catch(() => []),
+          apiGetAdminApplications('approved'),
+          apiGetWorkforceJobs(),
+          apiGetLocations(),
+          apiGetFleetMap(),
+          apiGetAdminPendingServices(),
+          apiGetAdminPendingExtensions(),
         ]);
 
       const safe = (d) => (Array.isArray(d) ? d : d?.results || []);
       setTechnicians(safe(techs));
       setJobs(safe(jobsList));
-      setEligibleFleet(safe(eligible));
       setLocations(safe(locsData));
       setFleetMap(safe(fleetData));
       setPendingServices(safe(pendingSvcData));
@@ -463,7 +458,8 @@ export function AdminOperationsPage() {
       if (safe(jobsList).length > 0 && !selectedJob) {
         setSelectedJob(safe(jobsList)[0]);
       }
-    } catch (_) {
+    } catch (err) {
+      setStatusMsg({ type: 'error', text: err?.message || 'Failed to load operations data. Please refresh.' });
     } finally {
       setIsLoading(false);
     }
@@ -482,30 +478,6 @@ export function AdminOperationsPage() {
     loadData();
   }, []);
 
-  // ── Dispatch & Jobs Queue: active polling every 5s so new customer bookings appear in radar automatically ──
-  useEffect(() => {
-    const pollQueue = async () => {
-      try {
-        const [jobsList, eligible] = await Promise.all([
-          apiGetWorkforceJobs().catch(() => []),
-          apiGetEligibleTechnicians().catch(() => []),
-        ]);
-        const safe = (d) => (Array.isArray(d) ? d : d?.results || []);
-        setJobs(safe(jobsList));
-        setEligibleFleet(safe(eligible));
-      } catch (_) {}
-    };
-
-    const interval = setInterval(pollQueue, 5000);
-    const onFocus = () => pollQueue();
-    window.addEventListener('focus', onFocus);
-
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener('focus', onFocus);
-    };
-  }, []);
-
   // ── Fleet Map: auto-refresh every 60s when tab is visible ──────────────────
   useEffect(() => {
     if (activeTab !== 'fleet_map') return;
@@ -517,22 +489,6 @@ export function AdminOperationsPage() {
     }, 60_000);
     return () => clearInterval(interval);
   }, [activeTab]);
-
-  const handleTriggerAutoDispatch = async () => {
-    if (!selectedJob) return;
-    try {
-      setDispatchLoading(true);
-      setStatusMsg({ type: '', text: '' });
-      const res = await apiTriggerAutoDispatch(selectedJob.id);
-      setStatusMsg({ type: res.success ? 'success' : 'error', text: res.message });
-      await loadData();
-      setTimeout(() => setStatusMsg({ type: '', text: '' }), 4000);
-    } catch (err) {
-      setStatusMsg({ type: 'error', text: err.message || 'Auto dispatch failed.' });
-    } finally {
-      setDispatchLoading(false);
-    }
-  };
 
   const handleAdminCancelBooking = async (job) => {
     if (!job) return;

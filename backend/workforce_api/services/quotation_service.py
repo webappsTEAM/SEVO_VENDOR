@@ -238,8 +238,22 @@ def send_quote_to_customer(quote_id, actor=None, valid_days=7):
         recalculate_quote_totals(quote)
         quote.refresh_from_db()
 
+        # Technician submitting AC estimation quote must always route through Vendor Admin review
+        is_ac_estimation = (
+            getattr(quote.job, "is_estimation", False) or
+            getattr(quote.job, "request_kind", "") == "ESTIMATION" or
+            getattr(quote.job, "job_type", "") == "ESTIMATION" or
+            "ac" in (quote.service_category or "").lower()
+        )
+        is_admin_actor = bool(actor and ((getattr(actor, "role", "") or "").lower() in ("admin", "manager") or getattr(actor, "is_staff", False)))
+
         held_reason = None
-        if quote.requires_structural_clearance and not quote.is_structurally_cleared:
+        if is_ac_estimation and not quote.admin_cleared_at and not is_admin_actor:
+            held_reason = (
+                "AC Estimation quotation must be reviewed and approved by Vendor Admin "
+                "before sending to customer."
+            )
+        elif quote.requires_structural_clearance and not quote.is_structurally_cleared:
             held_reason = (
                 "Quotation involves structural modification or load-bearing demolition. "
                 "Admin or Structural Engineer clearance is required before sending."
@@ -249,7 +263,7 @@ def send_quote_to_customer(quote_id, actor=None, valid_days=7):
             over_threshold, threshold = pricing_policy.needs_pre_send_review(
                 quote.service_category, amount
             )
-            if over_threshold and not quote.admin_cleared_at:
+            if over_threshold and not quote.admin_cleared_at and not is_admin_actor:
                 held_reason = (
                     f"Quotation total {amount} exceeds the {threshold} review threshold "
                     f"for {quote.service_category}. It has been sent for admin review "
@@ -258,7 +272,9 @@ def send_quote_to_customer(quote_id, actor=None, valid_days=7):
 
         if held_reason:
             quote.status = WorkforceQuote.Status.PENDING_REVIEW
-            quote.save(update_fields=["status", "updated_at"])
+            quote.submitted_for_approval_at = timezone.now()
+            quote.save(update_fields=["status", "submitted_for_approval_at", "updated_at"])
+            _project(quote)
 
     if held_reason:
         _emit("QUOTATION_PENDING_REVIEW", quote, reason=held_reason)
@@ -326,7 +342,13 @@ def record_customer_decision(quote_id, action, notes="", reason="", token=None, 
             quote.customer_decided_at = now
             quote.customer_notes = notes
 
-            if requires_admin_approval(quote.service_category):
+            already_approved = bool(
+                quote.admin_cleared_at or
+                quote.admin_approved_at or
+                quote.status in [WorkforceQuote.Status.ADMIN_APPROVED, WorkforceQuote.Status.SENT_TO_CUSTOMER]
+            )
+
+            if not already_approved and requires_admin_approval(quote.service_category):
                 # The customer accepting is a commercial commitment, not an
                 # authorisation to start work. The quote parks here until a
                 # SEVO admin approves it; admin_review_quote() is what
@@ -349,7 +371,7 @@ def record_customer_decision(quote_id, action, notes="", reason="", token=None, 
             quote.save(update_fields=["status", "customer_decision", "customer_decided_at", "customer_notes", "updated_at"])
 
             # Admin approval disabled for this deployment -- convert directly.
-            work_job = convert_accepted_quote_to_work_booking(quote, actor=actor)
+            work_job = _activate_approved_quote(quote, actor)
             invoice_service.generate_invoice_for_quote(quote, work_job=work_job, actor=actor)
             quote.refresh_from_db()
             return quote, work_job
@@ -556,7 +578,6 @@ def convert_accepted_quote_to_work_booking(quote, actor=None):
             elif insp_job is not None:
                 technician_name = insp_job.technician_name or ""
                 technician_phone = insp_job.technician_phone or ""
-                technician_user_id = insp_job.technician_id
 
             work_sr = ServiceRequest.objects.create(
                 request_kind="WORK",
@@ -594,12 +615,32 @@ def convert_accepted_quote_to_work_booking(quote, actor=None):
                 assigned_employee=technician,
                 technician_name=technician_name,
                 technician_phone=technician_phone,
-                technician_id=technician_user_id,
             )
 
             quote.work_job = work_sr
             quote.status = WorkforceQuote.Status.CONVERTED
             quote.save(update_fields=["work_job", "status", "updated_at"])
+
+            if technician:
+                try:
+                    from service_requests.models import EmployeeJob
+                    EmployeeJob.objects.update_or_create(
+                        service_request=work_sr,
+                        employee=technician,
+                        defaults={"status": "ASSIGNED", "assigned_date": timezone.now()}
+                    )
+                except Exception as ej_err:
+                    logger.warning("Could not update EmployeeJob for work_sr #%s: %s", work_sr.id, ej_err)
+
+            if insp_job:
+                try:
+                    from service_requests.models import Estimation
+                    est = Estimation.objects.filter(service_request=insp_job).first()
+                    if est:
+                        est.status = "CONVERTED_TO_JOB"
+                        est.save(update_fields=["status", "updated_at"])
+                except Exception as est_err:
+                    logger.warning("Could not sync Estimation status: %s", est_err)
 
             logger.info("Successfully converted Quote %s to Work ServiceRequest #%s", quote.quote_number, work_sr.id)
             return work_sr
@@ -671,6 +712,7 @@ def quotes_awaiting_admin_approval():
         WorkforceQuote.objects
         .filter(status=WorkforceQuote.Status.PENDING_ADMIN_APPROVAL)
         .select_related("job", "technician", "company", "customer")
+        .prefetch_related("items", "measurements")
         .order_by("submitted_for_approval_at", "id")
     )
 
@@ -784,9 +826,14 @@ def _activate_approved_quote(quote, admin_user):
         from service_requests.models import EstimationQuotation
         from service_requests.vendor_views import activate_service_job_from_quotation
 
+        from django.db.models import Q
         est_quote = (
             EstimationQuotation.objects
-            .filter(quote_ref=quote.quote_number)
+            .filter(
+                Q(quote_ref=quote.quote_number)
+                | Q(quote_ref__startswith=quote.quote_number)
+                | Q(estimation__service_request_id=quote.job_id)
+            )
             .select_related("estimation")
             .order_by("-version")
             .first()
@@ -832,13 +879,15 @@ def release_high_value_quote(quote_id, admin_user, approve=True, notes="", valid
             )
 
         if not approve:
-            quote.status = WorkforceQuote.Status.CANCELLED
+            quote.status = WorkforceQuote.Status.ADMIN_REJECTED
+            quote.admin_rejection_reason = notes or ""
             quote.admin_clearance_notes = f"REJECTED: {notes}".strip()
             quote.admin_cleared_by = admin_user if getattr(admin_user, "is_authenticated", False) else None
             quote.save(update_fields=[
-                "status", "admin_clearance_notes", "admin_cleared_by", "updated_at",
+                "status", "admin_rejection_reason", "admin_clearance_notes", "admin_cleared_by", "updated_at",
             ])
             logger.info("High-value quote %s rejected pre-send by %s", quote.quote_number, admin_user)
+            _project(quote)
             return quote
 
         quote.admin_cleared_by = admin_user if getattr(admin_user, "is_authenticated", False) else None
@@ -860,5 +909,6 @@ def quotes_awaiting_pre_send_review():
         WorkforceQuote.objects
         .filter(status=WorkforceQuote.Status.PENDING_REVIEW)
         .select_related("job", "technician", "company", "customer")
+        .prefetch_related("items", "measurements")
         .order_by("updated_at", "id")
     )

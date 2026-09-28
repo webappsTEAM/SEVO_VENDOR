@@ -36,7 +36,7 @@ from workforce_api.models import (
     WorkforceQuoteItem,
     WorkforceQuoteMeasurement,
 )
-from workforce_api.permissions import IsApprovedTechnician
+from workforce_api.permissions import IsApprovedTechnician, IsWorkforceEmployee
 from workforce_api.services import pricing_policy, quotation_service
 
 logger = logging.getLogger(__name__)
@@ -99,7 +99,7 @@ def _visible_quotes(request):
 
     # Plain technician: their own work only. company_id is also matched so a
     # reassigned employee cannot reach quotes left behind at a previous vendor.
-    scoped = qs.filter(technician_id=emp.id)
+    scoped = qs.filter(Q(technician_id=emp.id) | Q(job__assigned_employee_id=emp.id))
     if emp.company_id:
         scoped = scoped.filter(Q(company_id=emp.company_id) | Q(company__isnull=True))
     return scoped
@@ -138,6 +138,11 @@ def _serialize(q, full=False):
         "company_id": q.company_id,
         "customer_id": q.customer_id,
         "customer_name": (q.job.customer_name if q.job_id else "") or "",
+        "technician_name": (
+            (q.technician.user.get_full_name() or q.technician.user.username)
+            if q.technician and getattr(q.technician, "user", None)
+            else (f"Technician #{q.technician_id}" if q.technician_id else "")
+        ),
         "estimated_labor_cost": _money(q.estimated_labor_cost),
         "estimated_materials_cost": _money(q.estimated_materials_cost),
         "subtotal_amount": _money(q.subtotal_amount),
@@ -147,6 +152,9 @@ def _serialize(q, full=False):
         "inspection_fee": _money(q.inspection_fee),
         "inspection_fee_adjusted": _money(q.inspection_fee_adjusted),
         "net_payable": _money(q.net_payable),
+        "advance_percent": float(q.advance_percent) if q.advance_percent is not None else 50.0,
+        "advance_amount": round(_money(q.net_payable) * ((float(q.advance_percent) if q.advance_percent is not None else 50.0) / 100.0), 2),
+        "balance_amount": round(_money(q.net_payable) - round(_money(q.net_payable) * ((float(q.advance_percent) if q.advance_percent is not None else 50.0) / 100.0), 2), 2),
         "structural_impact": q.structural_impact,
         "requires_structural_clearance": q.requires_structural_clearance,
         "is_structurally_cleared": q.is_structurally_cleared,
@@ -189,8 +197,29 @@ def _serialize(q, full=False):
                 "area": _money(m.area), "quantity": _money(m.quantity), "unit": m.unit,
                 "notes": m.notes,
             }
-            for m in q.measurements.all().order_by("id")
+            for m in q.measurements.all()
         ]
+        if q.job_id:
+            try:
+                from service_requests.models import Estimation, CustomerInspection
+                est = Estimation.objects.filter(service_request_id=q.job_id).first()
+                if est:
+                    data["ac_details"] = {
+                        "ac_brand": est.ac_brand,
+                        "ac_type": est.ac_type,
+                        "ac_capacity": est.ac_capacity,
+                        "ac_quantity": est.ac_quantity,
+                        "customer_symptom": est.customer_symptom,
+                        "customer_notes": est.customer_notes,
+                    }
+                ci = CustomerInspection.objects.filter(service_request_id=q.job_id).first()
+                if ci:
+                    data["customer_inspection"] = {
+                        "inspection_name": ci.inspection_name_snapshot,
+                        "diagnostic_fee": float(ci.diagnostic_fee_snapshot),
+                    }
+            except Exception:
+                pass
     return data
 
 
@@ -228,7 +257,7 @@ def _dec(value, field, default=None):
 # list / create
 # --------------------------------------------------------------------------- #
 class QuoteListCreateView(APIView):
-    permission_classes = [IsApprovedTechnician]
+    permission_classes = [IsWorkforceEmployee]
 
     def get(self, request):
         qs = _visible_quotes(request)
@@ -636,6 +665,15 @@ class QuoteSendView(APIView):
         try:
             quotation_service.send_quote_to_customer(quote.id, actor=request.user, valid_days=valid_days)
         except Exception as exc:
+            quote.refresh_from_db()
+            if quote.status == WorkforceQuote.Status.PENDING_REVIEW:
+                logger.info("[QUOTE_SEND] Quote %s held in PENDING_REVIEW: %s", quote.id, exc)
+                return Response({
+                    "status": quote.status,
+                    "held_reason": str(exc),
+                    "message": str(exc),
+                    "quote": _serialize(quote, full=True),
+                }, status=status.HTTP_200_OK)
             logger.warning("[QUOTE_SEND] refused for %s: %s", quote.id, exc)
             return Response({"error": str(exc)}, status=status.HTTP_409_CONFLICT)
         quote.refresh_from_db()

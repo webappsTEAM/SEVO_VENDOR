@@ -85,6 +85,7 @@ import {
   Compass,
   Briefcase,
   RefreshCw,
+  RotateCw,
   Ban,
   XCircle,
   Navigation,
@@ -96,8 +97,8 @@ import {
   Power,
   Loader2,
   Lock,
-  RotateCw,
 } from 'lucide-react';
+
 import QuotationBuilderModal from '../../components/estimates/QuotationBuilderModal.jsx';
 
 /**
@@ -247,8 +248,14 @@ export function EmployeeDashboardPage() {
   const isClockedIn = Boolean(timeTracking?.is_clocked_in);
   const isBreak = timeTracking?.shift_status === 'on_break';
 
-  const allRequestedServices = profile?.all_requested_services || (profile?.bank_details?.onboarding?.services) || [];
-  const approvedServices = allRequestedServices.filter((s) => s.status === 'approved');
+  const allRequestedServices = Array.isArray(profile?.all_requested_services)
+    ? profile.all_requested_services
+    : Array.isArray(profile?.bank_details?.onboarding?.services)
+    ? profile.bank_details.onboarding.services
+    : [];
+  const approvedServices = Array.isArray(allRequestedServices)
+    ? allRequestedServices.filter((s) => s && s.status === 'approved')
+    : [];
 
   const [currentLocation, setCurrentLocation] = useState(
     user?.last_known_location || employee?.user?.last_known_location || null
@@ -291,6 +298,31 @@ export function EmployeeDashboardPage() {
   const [viewingDoc, setViewingDoc] = useState(null);
   const [isUploadingDoc, setIsUploadingDoc] = useState(false);
   const [uploadingDocKey, setUploadingDocKey] = useState(null);
+
+  const loadDashboard = useCallback(async (options = {}) => {
+    const hasCachedData = Boolean(localStorage.getItem(CACHED_PROFILE_KEY) || employee);
+    const isSilent = options?.silent === true || hasCachedData;
+    try {
+      if (!isSilent) setIsLoading(true);
+      const [timeData, profileData] = await Promise.all([
+        apiGetTimeTracking().catch(() => null),
+        apiGetOnboardingProfile().catch(() => null),
+        typeof refreshActiveJobs === 'function' ? refreshActiveJobs(options) : Promise.resolve(),
+        typeof refreshCompletedJobs === 'function' ? refreshCompletedJobs(options) : Promise.resolve(),
+      ]);
+      if (profileData) {
+        setProfile(profileData);
+        try { localStorage.setItem(CACHED_PROFILE_KEY, JSON.stringify(profileData)); } catch (_) {}
+      }
+      if (timeData) {
+        setTimeTracking(timeData);
+        try { localStorage.setItem(CACHED_TIMETRACKING_KEY, JSON.stringify(timeData)); } catch (_) {}
+      }
+    } catch (_) {
+    } finally {
+      setIsLoading(false);
+    }
+  }, [refreshActiveJobs, refreshCompletedJobs, employee]);
 
   const handleDocUpload = async (docKey, file, title = '') => {
     if (!file) return;
@@ -348,6 +380,12 @@ export function EmployeeDashboardPage() {
       }
       if (typeof refreshProfile === 'function') {
         refreshProfile(true).catch(() => {});
+      }
+      if (typeof refreshCompletedJobs === 'function') {
+        refreshCompletedJobs({ force: true }).catch(() => {});
+      }
+      if (typeof refreshActiveJobs === 'function') {
+        refreshActiveJobs({ force: true }).catch(() => {});
       }
       await loadDashboard({ force: true });
       setTimeout(() => setSuccessMsg(''), 5000);
@@ -744,30 +782,6 @@ export function EmployeeDashboardPage() {
   const [catalogCategories, setCatalogCategories] = useState([]);
   const [serviceActionLoading, setServiceActionLoading] = useState(null);
 
-  const loadDashboard = useCallback(async (options = {}) => {
-    const hasCachedData = Boolean(localStorage.getItem(CACHED_PROFILE_KEY) || employee);
-    const isSilent = options?.silent === true || hasCachedData;
-    try {
-      if (!isSilent) setIsLoading(true);
-      const [timeData, profileData] = await Promise.all([
-        apiGetTimeTracking().catch(() => null),
-        apiGetOnboardingProfile().catch(() => null),
-        refreshActiveJobs(options),
-      ]);
-      if (profileData) {
-        setProfile(profileData);
-        try { localStorage.setItem(CACHED_PROFILE_KEY, JSON.stringify(profileData)); } catch (_) {}
-      }
-      if (timeData) {
-        setTimeTracking(timeData);
-        try { localStorage.setItem(CACHED_TIMETRACKING_KEY, JSON.stringify(timeData)); } catch (_) {}
-      }
-    } catch (_) {
-    } finally {
-      setIsLoading(false);
-    }
-  }, [refreshActiveJobs, employee]);
-
   // Initial dashboard load on mount
   useEffect(() => {
     loadDashboard();
@@ -1007,9 +1021,12 @@ export function EmployeeDashboardPage() {
       if (!candidateJob) return;
 
       const targetJob = (activeJobs && activeJobs.find(j => j.id === candidateJob.id)) || candidateJob;
-      const amtDue = (customAmount !== null && customAmount !== undefined && !isNaN(customAmount) && parseFloat(customAmount) > 0)
+      const quoteAmt = targetJob.active_quote_balance_amount ?? targetJob.active_quote_net_payable ?? targetJob.active_quote_total_amount;
+      const amtDue = (customAmount !== null && customAmount !== undefined && !isNaN(customAmount) && parseFloat(customAmount) >= 0)
         ? parseFloat(customAmount)
-        : (targetJob.payment?.amount_due ? parseFloat(targetJob.payment.amount_due) : (targetJob.total_amount ? parseFloat(targetJob.total_amount) : null));
+        : (quoteAmt !== undefined && quoteAmt !== null && parseFloat(quoteAmt) > 0)
+        ? parseFloat(quoteAmt)
+        : (targetJob.payment?.amount_due !== undefined && targetJob.payment?.amount_due !== null ? parseFloat(targetJob.payment.amount_due) : (targetJob.total_amount !== undefined && targetJob.total_amount !== null ? parseFloat(targetJob.total_amount) : 0));
 
       try {
         setIsCollectingCash(true);
@@ -1361,7 +1378,15 @@ export function EmployeeDashboardPage() {
             handleDirectJobClockIn={handleDirectJobClockIn}
             onOpenCancelModal={handleOpenCancelModal}
             onOpenProofModal={(j) => setProofModalJob(j || activeAssignedJob)}
-            onOpenCashModal={(j) => setCashModalJob(j || activeAssignedJob)}
+            onOpenCashModal={(j) => {
+              const target = j || activeAssignedJob;
+              setCashModalJob(target);
+              const quoteAmt = target?.active_quote_balance_amount ?? target?.active_quote_net_payable ?? target?.active_quote_total_amount;
+              const due = (quoteAmt !== undefined && quoteAmt !== null && parseFloat(quoteAmt) > 0)
+                ? parseFloat(quoteAmt)
+                : (target?.payment?.amount_due ?? target?.total_amount ?? '');
+              setCashAmountReceived(due ? String(due) : '');
+            }}
             preServiceState={preServiceState}
             otpInput={otpInput}
             setOtpInput={setOtpInput}
@@ -1404,9 +1429,14 @@ export function EmployeeDashboardPage() {
               job={selectedJob || activeAssignedJob}
               quoteId={(selectedJob || activeAssignedJob)?.active_quote_id}
               isOpen={isQuotationModalOpen}
-              onClose={() => setIsQuotationModalOpen(false)}
+              onClose={() => {
+                setIsQuotationModalOpen(false);
+                if (typeof refreshActiveJobs === 'function') refreshActiveJobs({ force: true });
+                loadDashboard({ force: true });
+              }}
               onQuoteSaved={() => {
-                loadDashboard({ silent: true });
+                if (typeof refreshActiveJobs === 'function') refreshActiveJobs({ force: true });
+                loadDashboard({ force: true });
               }}
             />
           )}
@@ -1753,7 +1783,7 @@ export function EmployeeDashboardPage() {
                   <div className="flex justify-between items-center text-xs">
                     <span className="text-amber-800 font-semibold">Authoritative Amount Due:</span>
                     <span className="font-mono font-bold text-base text-amber-950">
-                      ₹{cashModalJob.payment?.amount_due || cashModalJob.total_amount || 0}
+                      ₹{cashModalJob.active_quote_balance_amount || cashModalJob.active_quote_net_payable || cashModalJob.payment?.amount_due || cashModalJob.total_amount || 0}
                     </span>
                   </div>
                 </div>
@@ -1832,7 +1862,7 @@ export function EmployeeDashboardPage() {
                       </button>
                       <button
                         type="submit"
-                        disabled={isCollectingCash || !cashAmountReceived}
+                        disabled={isCollectingCash || cashAmountReceived === '' || cashAmountReceived === null || cashAmountReceived === undefined || isNaN(Number(cashAmountReceived))}
                         className="px-5 py-2 rounded-lg bg-emerald-600 disabled:opacity-50 text-white font-bold hover:bg-emerald-700 shadow-sm cursor-pointer"
                       >
                         {isCollectingCash ? 'Confirming...' : 'Confirm Cash Received'}
@@ -3447,10 +3477,31 @@ export function EmployeeDashboardPage() {
                                           {selectedJob.active_quote_number}
                                         </span>
                                       )}
+                                      {selectedJob.active_quote_status && (
+                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
+                                          ['APPROVED', 'CUSTOMER_ACCEPTED'].includes(selectedJob.active_quote_status)
+                                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                                            : selectedJob.active_quote_status === 'PENDING_REVIEW'
+                                            ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                                            : selectedJob.active_quote_status === 'CHANGES_REQUESTED'
+                                            ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                                            : 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300'
+                                        }`}>
+                                          {selectedJob.active_quote_status.replace(/_/g, ' ')}
+                                        </span>
+                                      )}
                                     </div>
                                     <p className="text-[11px] text-indigo-700 dark:text-indigo-300 mt-0.5">
-                                      {preServiceState.is_complete || selectedJob.can_create_quote
-                                        ? 'Site inspection unlocked. Record dimensions, select rate-card items, and deliver formal quote to customer.'
+                                      {['APPROVED', 'CUSTOMER_ACCEPTED'].includes(selectedJob.active_quote_status)
+                                        ? 'Customer has accepted the quotation. Repair is authorized to begin.'
+                                        : selectedJob.active_quote_status === 'PENDING_REVIEW'
+                                        ? 'Quotation submitted for Vendor Admin review. Waiting for admin approval before customer release.'
+                                        : selectedJob.active_quote_status === 'CHANGES_REQUESTED'
+                                        ? 'Vendor Admin requested changes. Please open Quotation Builder to revise and resubmit.'
+                                        : selectedJob.active_quote_status === 'SENT_TO_CUSTOMER'
+                                        ? 'Quotation released to customer. Awaiting customer review and authorization.'
+                                        : (preServiceState.is_complete || selectedJob.can_create_quote)
+                                        ? 'Site inspection unlocked. Record dimensions, select rate-card items, and submit quote for Vendor Admin approval.'
                                         : 'Complete Step 1 Arrival and Step 2 OTP/Selfie verification above to unlock Quotation Builder.'}
                                     </p>
                                   </div>
@@ -3714,6 +3765,29 @@ export function EmployeeDashboardPage() {
                                 </button>
                               </div>
                             )
+                          )}
+
+                          {selectedJob.status === 'proof_submitted' && (
+                            <div className="w-full pt-2">
+                              <button
+                                type="button"
+                                disabled={actionLoading === selectedJob.id}
+                                onClick={() => handleTransitionJob(selectedJob.id, 'completed')}
+                                className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:opacity-60 text-white font-bold rounded-lg text-xs shadow-md flex items-center justify-center gap-2 transition-all cursor-pointer"
+                              >
+                                {actionLoading === selectedJob.id ? (
+                                  <>
+                                    <RotateCw className="w-4 h-4 animate-spin" />
+                                    <span>FINALIZING COMPLETION...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <CheckCircle2 className="w-4 h-4" />
+                                    <span>FINALIZE &amp; COMPLETE JOB</span>
+                                  </>
+                                )}
+                              </button>
+                            </div>
                           )}
                         </div>
                       )}
@@ -4282,7 +4356,7 @@ export function EmployeeDashboardPage() {
                 <div className="flex justify-between items-center text-xs">
                   <span className="text-amber-800 font-semibold">Authoritative Amount Due:</span>
                   <span className="font-mono font-bold text-base text-amber-950">
-                    ₹{cashModalJob.payment?.amount_due || cashModalJob.total_amount}
+                    ₹{cashModalJob.active_quote_balance_amount || cashModalJob.active_quote_net_payable || cashModalJob.payment?.amount_due || cashModalJob.total_amount || 0}
                   </span>
                 </div>
               </div>
@@ -4511,9 +4585,14 @@ export function EmployeeDashboardPage() {
             job={selectedJob || activeAssignedJob}
             quoteId={(selectedJob || activeAssignedJob)?.active_quote_id}
             isOpen={isQuotationModalOpen}
-            onClose={() => setIsQuotationModalOpen(false)}
+            onClose={() => {
+              setIsQuotationModalOpen(false);
+              if (typeof refreshActiveJobs === 'function') refreshActiveJobs({ force: true });
+              loadDashboard({ force: true });
+            }}
             onQuoteSaved={() => {
-              loadDashboard({ silent: true });
+              if (typeof refreshActiveJobs === 'function') refreshActiveJobs({ force: true });
+              loadDashboard({ force: true });
             }}
           />
         )}

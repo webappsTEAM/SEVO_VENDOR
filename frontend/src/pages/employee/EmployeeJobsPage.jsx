@@ -17,7 +17,9 @@ import { LoadingState } from '../../components/enterprise/LoadingState.jsx';
 import { ErrorState } from '../../components/enterprise/ErrorState.jsx';
 import { Modal } from '../../components/enterprise/Modal.jsx';
 import { LogisticsLegController } from '../../components/employee/logistics/LogisticsLegController.jsx';
+import { LogisticsRouteMap } from '../../components/employee/logistics/LogisticsRouteMap.jsx';
 import { LogisticsStopManager } from '../../components/employee/logistics/LogisticsStopManager.jsx';
+import { PackersMoversManifestCard } from '../../components/employee/logistics/PackersMoversManifestCard.jsx';
 import {
   Search,
   MapPin,
@@ -341,6 +343,12 @@ function getStatusTag(job) {
   }
 
   const st = ((typeof job === 'string' ? job : job.status) || '').toUpperCase();
+  if (['CUSTOMER_APPROVED', 'REPAIR_AUTHORIZED'].includes(st)) {
+    return {
+      label: 'Repair Authorized',
+      badgeClass: 'bg-emerald-600 text-white font-bold',
+    };
+  }
   if (['ASSIGNED', 'ACCEPTED'].includes(st)) {
     return {
       label: 'Assigned',
@@ -359,7 +367,13 @@ function getStatusTag(job) {
       badgeClass: 'bg-violet-600 text-white font-bold',
     };
   }
-  if (['IN_PROGRESS', 'IN_SERVICE', 'INSPECTION', 'PROOF_SUBMITTED'].includes(st)) {
+  if (['QUOTATION_SENT', 'QUOTATION_PENDING_APPROVAL', 'QUOTATION_CREATED'].includes(st)) {
+    return {
+      label: 'Quotation Sent',
+      badgeClass: 'bg-amber-600 text-white font-bold',
+    };
+  }
+  if (['IN_PROGRESS', 'IN_SERVICE', 'INSPECTION', 'PROOF_SUBMITTED', 'INSPECTION_COMPLETED'].includes(st)) {
     return {
       label: 'In Progress',
       badgeClass: 'bg-emerald-600 text-white font-bold',
@@ -706,7 +720,7 @@ export function EmployeeJobsPage() {
         scheduled++;
       } else if (!isOfferJob(j)) {
         const st = (j.status || '').toUpperCase();
-        if (['ASSIGNED', 'ACCEPTED', 'ON_THE_WAY', 'EN_ROUTE', 'ARRIVED', 'IN_PROGRESS', 'IN_SERVICE', 'INSPECTION', 'PROOF_SUBMITTED'].includes(st)) {
+        if (['ASSIGNED', 'ACCEPTED', 'CUSTOMER_APPROVED', 'REPAIR_AUTHORIZED', 'ON_THE_WAY', 'EN_ROUTE', 'ARRIVED', 'IN_PROGRESS', 'IN_SERVICE', 'INSPECTION', 'PROOF_SUBMITTED', 'QUOTATION_SENT', 'QUOTATION_PENDING_APPROVAL', 'QUOTATION_CREATED', 'INSPECTION_COMPLETED'].includes(st)) {
           active++;
         }
       }
@@ -781,7 +795,7 @@ export function EmployeeJobsPage() {
         activeTab === 'ACTIVE' &&
         (job.is_scheduled_future ||
           isOffer ||
-          !['ASSIGNED', 'ACCEPTED', 'ON_THE_WAY', 'EN_ROUTE', 'ARRIVED', 'IN_PROGRESS', 'IN_SERVICE', 'INSPECTION', 'PROOF_SUBMITTED'].includes(status))
+          !['ASSIGNED', 'ACCEPTED', 'CUSTOMER_APPROVED', 'REPAIR_AUTHORIZED', 'ON_THE_WAY', 'EN_ROUTE', 'ARRIVED', 'IN_PROGRESS', 'IN_SERVICE', 'INSPECTION', 'PROOF_SUBMITTED', 'QUOTATION_SENT', 'QUOTATION_PENDING_APPROVAL', 'QUOTATION_CREATED', 'INSPECTION_COMPLETED'].includes(status))
       ) {
         return false;
       }
@@ -1025,10 +1039,11 @@ export function EmployeeJobsPage() {
             {filteredJobs.map((job) => {
               const isOffer = isOfferJob(job);
               const status = (job.status || '').toUpperCase();
+              const isCustomerApproved = !isOffer && (status === 'CUSTOMER_APPROVED' || status === 'REPAIR_AUTHORIZED');
               const isAssigned = !isOffer && (status === 'ASSIGNED' || status === 'ACCEPTED');
               const isOnTheWay = !isOffer && (status === 'ON_THE_WAY' || status === 'EN_ROUTE');
               const isArrived = !isOffer && status === 'ARRIVED';
-              const isInProgress = !isOffer && (status === 'IN_PROGRESS' || status === 'IN_SERVICE' || status === 'INSPECTION' || status === 'PROOF_SUBMITTED');
+              const isInProgress = !isOffer && (status === 'IN_PROGRESS' || status === 'IN_SERVICE' || status === 'INSPECTION' || status === 'PROOF_SUBMITTED' || status === 'QUOTATION_SENT' || status === 'QUOTATION_PENDING_APPROVAL' || status === 'QUOTATION_CREATED' || status === 'INSPECTION_COMPLETED' || isCustomerApproved);
               const isCompleted = !isOffer && (status === 'COMPLETED' || status === 'WORK_COMPLETED' || status === 'WAITING_FOR_PAYMENT');
 
               const catMeta = getServiceCategoryMeta(job.service_category, job.service_title);
@@ -1039,14 +1054,10 @@ export function EmployeeJobsPage() {
                 ? `https://maps.google.com/?q=${encodeURIComponent(job.address)}`
                 : null;
 
-              // Bug found: job.estimated_price / job.price are not fields the
-              // vendor API ever returns (WorkforceJobSerializer sends
-              // total_amount and a computed payment{amount_due,...} object) --
-              // so this always fell through to the 450 literal, showing the
-              // exact same payout on every job regardless of its real value.
-              // Matches the correct pattern already used in
-              // EmployeeDashboardPage.jsx (selectedJob.payment?.amount_due || selectedJob.total_amount).
-              const payoutAmount = job.payment?.amount_due || job.total_amount || 0;
+              const quoteAmount = job.active_quote_net_payable ?? job.active_quote_total_amount;
+              const payoutAmount = (quoteAmount !== undefined && quoteAmount !== null && parseFloat(quoteAmount) > 0)
+                ? parseFloat(quoteAmount)
+                : (job.payment?.amount_due || job.total_amount || 0);
 
               return (
                 <div
@@ -1320,6 +1331,18 @@ export function EmployeeJobsPage() {
                         </div>
                       )}
 
+                      {/* CUSTOMER APPROVED / REPAIR AUTHORIZED -> START REPAIR IN COCKPIT */}
+                      {isCustomerApproved && (
+                        <Link
+                          to="/workforce/employee/dashboard"
+                          className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-2"
+                        >
+                          <Play className="w-3.5 h-3.5 fill-current" />
+                          <span>Start Repair</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </Link>
+                      )}
+
                       {/* ASSIGNED -> START TRIP */}
                       {isAssigned && (
                         <button
@@ -1395,7 +1418,7 @@ export function EmployeeJobsPage() {
                       {/* ESTIMATION WORKFLOW LINK */}
                       {(job.job_type === 'ESTIMATION' || (job.status || '').toLowerCase().includes('inspection') || (job.status || '').toLowerCase().includes('quotation')) && (
                         <Link
-                          to="/workforce/vendor/estimations"
+                          to={job.id ? `/workforce/employee/estimates/${job.id}` : '/workforce/employee/estimates'}
                           className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-1.5"
                         >
                           <Wrench className="w-3.5 h-3.5" />
@@ -1441,7 +1464,13 @@ export function EmployeeJobsPage() {
                     Payout Amount
                   </span>
                   <span className="text-base font-black text-slate-900 font-mono">
-                    ₹{Number(selectedJobForDetails.payment?.amount_due || selectedJobForDetails.total_amount || 0).toLocaleString('en-IN')}
+                    ₹{Number(
+                      selectedJobForDetails.active_quote_net_payable ??
+                      selectedJobForDetails.active_quote_total_amount ??
+                      selectedJobForDetails.payment?.amount_due ??
+                      selectedJobForDetails.total_amount ??
+                      0
+                    ).toLocaleString('en-IN')}
                   </span>
                 </div>
               </div>
@@ -1490,22 +1519,36 @@ export function EmployeeJobsPage() {
                 )}
               </div>
 
-              {/* Logistics Journey & Leg Controls (if logistics job) */}
-              <LogisticsLegController
-                job={selectedJobForDetails}
-                onLegUpdated={(newLeg) => {
-                  setSelectedJobForDetails((prev) => (prev ? { ...prev, logistics_leg: newLeg } : null));
-                  loadJobs();
-                }}
-              />
+              {/* Packers & Movers Relocation Manifest & Access Card (self-gated for P&M) */}
+              <PackersMoversManifestCard job={selectedJobForDetails} />
 
-              {/* Multi-Stop Route Itinerary (if stops exist) */}
-              <LogisticsStopManager
-                job={selectedJobForDetails}
-                onStopsUpdated={() => {
-                  loadJobs();
-                }}
-              />
+              {/* Pickup / drop / live-location map (logistics jobs only; self-gated) */}
+              <LogisticsRouteMap job={selectedJobForDetails} />
+
+              {/* Logistics Journey & Leg Controls — only for assigned jobs.
+                  Both components fire authenticated API calls (logistics-leg,
+                  logistics-checkpoint, stoppage) that the backend gates on
+                  job assignment. Rendering them for offer/unassigned jobs
+                  generates a flood of 403s. */}
+              {selectedJobForDetails.is_assigned_to_current_employee && (
+                <LogisticsLegController
+                  job={selectedJobForDetails}
+                  onLegUpdated={(newLeg) => {
+                    setSelectedJobForDetails((prev) => (prev ? { ...prev, logistics_leg: newLeg } : null));
+                    loadJobs();
+                  }}
+                />
+              )}
+
+              {/* Multi-Stop Route Itinerary — same guard: only for assigned jobs */}
+              {selectedJobForDetails.is_assigned_to_current_employee && (
+                <LogisticsStopManager
+                  job={selectedJobForDetails}
+                  onStopsUpdated={() => {
+                    loadJobs();
+                  }}
+                />
+              )}
 
               {/* Modal Footer */}
               <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
