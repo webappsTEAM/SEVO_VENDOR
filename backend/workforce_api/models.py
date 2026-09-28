@@ -6128,3 +6128,65 @@ class WorkforceVendorBaseLocation(models.Model):
         target = self.company.company_name if self.company else str(self.employee)
         return f"BaseLocation for {target}: ({self.base_latitude}, {self.base_longitude}) - Max {self.max_service_radius_km}km"
 
+
+class WorkforceJobHold(models.Model):
+    """
+    Records a hold event on a multi-day job (e.g. weather delay, client emergency).
+    Toggling the hold releases the technician back to AVAILABLE status.
+    """
+
+    class Status(models.TextChoices):
+        ACTIVE = "ACTIVE", "Active Hold"
+        RESUMED = "RESUMED", "Resumed"
+        CANCELLED = "CANCELLED", "Cancelled"
+
+    class Reason(models.TextChoices):
+        WEATHER_DELAY = "WEATHER_DELAY", "Weather / Rain Delay"
+        CLIENT_REQUEST = "CLIENT_REQUEST", "Client Request"
+        MATERIAL_DELAY = "MATERIAL_DELAY", "Material / Parts Delay"
+        EMERGENCY = "EMERGENCY", "Emergency"
+        OTHER = "OTHER", "Other"
+
+    job = models.ForeignKey(
+        "service_requests.ServiceRequest",
+        on_delete=models.CASCADE,
+        related_name="job_holds",
+        db_index=True,
+    )
+    employee = models.ForeignKey(
+        "employees.Employee",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="job_holds",
+    )
+    held_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="initiated_job_holds",
+    )
+    reason = models.CharField(
+        max_length=50,
+        choices=Reason.choices,
+        default=Reason.WEATHER_DELAY,
+        db_index=True,
+    )
+    notes = models.TextField(blank=True, default="")
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.ACTIVE,
+        db_index=True,
+    )
+    hold_end = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "workforce_job_hold"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"JobHold #{self.id} on Job #{self.job_id} [{self.status}] - {self.reason}"
