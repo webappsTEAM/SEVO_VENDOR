@@ -1991,6 +1991,7 @@ class SellerHubCategoryAdminSerializer(serializers.ModelSerializer):
             "description",
             "icon",
             "image",
+            "image_url",
             "is_active",
             "sort_order",
             "parent",
@@ -2023,6 +2024,13 @@ class SellerHubCategoryAdminSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        img_val = data.get("image_url") or data.get("image") or ""
+        data["image_url"] = img_val
+        data["image"] = img_val
+        return data
 
     def get_services_count(self, obj):
         return 0
@@ -2114,6 +2122,36 @@ class SellerHubCategoryAdminSerializer(serializers.ModelSerializer):
                 visited.add(curr.id)
                 curr = getattr(curr, "parent", None)
 
+        # Validate category image URL / upload path
+        image_url = attrs.get("image_url")
+        if image_url is not None:
+            image_url_str = str(image_url).strip()
+            if image_url_str:
+                if len(image_url_str) > 1000:
+                    raise serializers.ValidationError({
+                        "image_url": "Category image URL cannot exceed 1000 characters."
+                    })
+                is_valid_url = (
+                    image_url_str.startswith("http://")
+                    or image_url_str.startswith("https://")
+                    or image_url_str.startswith("/media/")
+                    or image_url_str.startswith("/static/")
+                    or image_url_str.startswith("data:image/")
+                )
+                if not is_valid_url:
+                    raise serializers.ValidationError({
+                        "image_url": "Category image URL must start with http://, https://, or a valid media storage path."
+                    })
+                attrs["image_url"] = image_url_str
+                if not attrs.get("image"):
+                    attrs["image"] = image_url_str[:255]
+            else:
+                attrs["image_url"] = ""
+
+        image = attrs.get("image")
+        if image is not None and not attrs.get("image_url"):
+            attrs["image_url"] = str(image).strip()
+
         return attrs
 
 
@@ -2134,6 +2172,7 @@ class SellerHubCategoryTreeSerializer(serializers.ModelSerializer):
             "description",
             "icon",
             "image",
+            "image_url",
             "is_active",
             "sort_order",
             "parent_id",
@@ -2143,6 +2182,13 @@ class SellerHubCategoryTreeSerializer(serializers.ModelSerializer):
             "inventory_items_count",
             "children",
         ]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        img_val = data.get("image_url") or data.get("image") or ""
+        data["image_url"] = img_val
+        data["image"] = img_val
+        return data
 
     def get_services_count(self, obj):
         return 0
@@ -2195,6 +2241,7 @@ class SellerCatalogCategoryItemSerializer(serializers.ModelSerializer):
             "description",
             "icon",
             "image",
+            "image_url",
             "parent_id",
             "sort_order",
             "is_active",
@@ -2203,6 +2250,13 @@ class SellerCatalogCategoryItemSerializer(serializers.ModelSerializer):
             "path",
             "path_string",
         ]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        img_val = data.get("image_url") or data.get("image") or ""
+        data["image_url"] = img_val
+        data["image"] = img_val
+        return data
 
     def get_has_children(self, obj):
         if hasattr(obj, "_has_children"):
