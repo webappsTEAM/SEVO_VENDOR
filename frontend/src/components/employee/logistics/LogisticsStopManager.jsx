@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { apiGetJobStops, apiUpdateJobStop } from '../../../api/workforceService.js';
 import { isLogisticsJob } from './LogisticsLegController.jsx';
+import { navUrl, stopPoint } from './logisticsNav.js';
 
 export function LogisticsStopManager({ job, onStopsUpdated, className = '' }) {
   // Bug found: this component used to `return null` here, BEFORE any of the
@@ -213,9 +214,10 @@ export function LogisticsStopManager({ job, onStopsUpdated, className = '' }) {
                     <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
                     <span>{stop.address || 'Address not specified'}</span>
                   </div>
-                  {stop.address && (
+                  {(stopPoint(stop) || stop.address) && (
                     <a
-                      href={`https://maps.google.com/?q=${encodeURIComponent(stop.address)}`}
+                      // Exact pinned coordinates when the stop has them; a re-geocoded address only as a fallback.
+                      href={stopPoint(stop) ? navUrl(stopPoint(stop)) : `https://maps.google.com/?q=${encodeURIComponent(stop.address)}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-[11px] font-bold text-sky-700 hover:text-sky-900 shrink-0 flex items-center gap-1 hover:underline"

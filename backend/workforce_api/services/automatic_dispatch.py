@@ -640,7 +640,7 @@ def check_candidate_eligibility(
     """
     check_workload = kwargs.get("check_workload", None)
     is_for_acceptance = (purpose == "acceptance") or (check_workload is True)
-    gate_results = {f"G{i}": True for i in range(1, 11)}
+    gate_results = {f"G{i}": True for i in range(1, 12)}
 
     from service_requests.models import ServiceRequest
     if isinstance(service_name, ServiceRequest) or (service_name is not None and hasattr(service_name, "service_category")):
@@ -930,7 +930,37 @@ def check_candidate_eligibility(
                 f"could not evaluate cash float ceiling, allowing: {exc}"
             )
 
-    return True, "All 10 Eligibility Gates Passed", gate_results
+    # ── Gate 11: Vendor Relationship Status (Suspend/Terminate honored) ───────
+    # Employee.company_id is the field dispatch's company-scoped queries filter
+    # on, but it is only a mirror of the underlying VendorTechnicianRelationship.
+    # Nothing here previously checked that relationship's own status, so a
+    # technician SUSPENDED by their vendor (company_id left unchanged) stayed
+    # fully dispatch-eligible for that vendor's jobs -- defeating "suspend".
+    # Fails closed: no relationship row for a set company_id is a data-integrity
+    # gap, not a reason to dispatch.
+    if emp.company_id:
+        from workforce_api.models import VendorTechnicianRelationship
+
+        rel = (
+            VendorTechnicianRelationship.objects.filter(
+                technician=emp, vendor_id=emp.company_id
+            )
+            .order_by("-id")
+            .first()
+        )
+        if not rel or rel.status not in (
+            VendorTechnicianRelationship.Status.ACTIVE,
+            VendorTechnicianRelationship.Status.RESIGNATION_REQUESTED,
+        ):
+            gate_results["G11"] = False
+            logger.debug(
+                f"[9GATE_REJECT_GATE11_VENDOR_RELATIONSHIP_INACTIVE] Employee #{emp.id} "
+                f"company_id={emp.company_id} relationship status="
+                f"{getattr(rel, 'status', 'MISSING')}."
+            )
+            return False, "Gate 11: Technician's vendor relationship is not active.", gate_results
+
+    return True, "All 11 Eligibility Gates Passed", gate_results
 
 
 def can_receive_offer(emp: Employee, job_obj: Any) -> Tuple[bool, str]:

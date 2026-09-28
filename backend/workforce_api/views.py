@@ -10130,7 +10130,7 @@ class WorkforceAdminChangeRequestDecideView(APIView):
             if not change_req.company_id or user_company.id != change_req.company_id:
                 return Response({"error": "Unauthorized cross-company action.", "code": "CROSS_TENANT_FORBIDDEN"}, status=status.HTTP_403_FORBIDDEN)
 
-        action = (request.data.get("action") or "").strip().upper()
+        action = str(request.data.get("action") or "").strip().upper()
         admin_notes = request.data.get("admin_notes", "").strip()
 
         if action not in ["APPROVE", "REJECT"]:
@@ -11985,7 +11985,7 @@ class WorkforceJobLogisticsLegView(APIView):
                 "error": f"Job #{job.id} is already '{job.status}' -- leg cannot be updated."
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        leg = (request.data.get("leg") or "").strip().upper()
+        leg = str(request.data.get("leg") or "").strip().upper()
         if leg not in ServiceRequest.LogisticsLeg.values:
             valid_legs = ", ".join(ServiceRequest.LogisticsLeg.values)
             return Response({
@@ -12268,6 +12268,21 @@ class WorkforceJobTripStopsView(APIView):
 
         stop_id = request.data.get("stop_id")
         stop_sequence = request.data.get("stop_sequence") or request.data.get("sequence")
+        # Ids / sequences are integers; anything else is a bad request, not a server error.
+        def _as_int(value):
+            if value is None or isinstance(value, bool):
+                return None if value is None else "bad"
+            try:
+                iv = int(str(value).strip())
+            except (TypeError, ValueError):
+                return "bad"
+            return iv if -2 ** 62 < iv < 2 ** 62 else "bad"
+        stop_id, stop_sequence = _as_int(stop_id), _as_int(stop_sequence)
+        if stop_id == "bad" or stop_sequence == "bad":
+            return Response(
+                {"error": "stop_id and stop_sequence must be whole numbers."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         stop = None
         if stop_id is not None:
             stop = TripStop.objects.filter(booking=job, id=stop_id).first()
@@ -12346,7 +12361,7 @@ class WorkforceJobMessagesView(APIView):
         if not emp or job.assigned_employee != emp:
             return Response({"error": "Unauthorized: Job is not assigned to you."}, status=status.HTTP_403_FORBIDDEN)
 
-        body = (request.data.get("body") or "").strip()
+        body = str(request.data.get("body") or "").strip()
         if not body:
             return Response({"error": "Message cannot be empty."}, status=status.HTTP_400_BAD_REQUEST)
         if len(body) > 2000:
