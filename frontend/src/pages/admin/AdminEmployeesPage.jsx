@@ -8,7 +8,8 @@ import { DataTable } from '../../components/enterprise/DataTable.jsx';
 import { StatusBadge } from '../../components/enterprise/StatusBadge.jsx';
 import { Drawer } from '../../components/enterprise/Drawer.jsx';
 import { Pagination } from '../../components/enterprise/Pagination.jsx';
-import { Users, Phone, Mail, MapPin, Wrench, ShieldCheck, ArrowRight } from 'lucide-react';
+import { ErrorState } from '../../components/enterprise/ErrorState.jsx';
+import { Users, Phone, Mail, MapPin, Wrench, ShieldCheck, ArrowRight, AlertCircle, RefreshCw } from 'lucide-react';
 
 export function AdminEmployeesPage() {
   const [technicians, setTechnicians] = useState([]);
@@ -20,13 +21,16 @@ export function AdminEmployeesPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(12);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   const loadEmployees = async () => {
     try {
       setIsLoading(true);
-      const techs = await apiGetAdminApplications().catch(() => []);
+      setError(null);
+      const techs = await apiGetAdminApplications();
       setTechnicians(techs || []);
-    } catch (_) {
+    } catch (err) {
+      setError(err?.message || 'Failed to load technician roster.');
     } finally {
       setIsLoading(false);
     }
@@ -38,6 +42,25 @@ export function AdminEmployeesPage() {
     if (fetchedRef.current) return;
     fetchedRef.current = true;
     loadEmployees();
+  }, []);
+
+  // Freshness: refresh roster when window regains focus or realtime status change occurs
+  useEffect(() => {
+    const onFocus = () => loadEmployees();
+    const onRealtime = (e) => {
+      const type = e?.detail?.type || e?.detail?.event_type || '';
+      if (['APPLICATION_APPROVED', 'APPLICATION_REJECTED', 'TECHNICIAN_STATUS_CHANGED', 'EMPLOYEE_STATUS_CHANGED'].some(t => type.includes(t))) {
+        loadEmployees();
+      }
+    };
+    window.addEventListener('focus', onFocus);
+    window.addEventListener('workforce_event', onRealtime);
+    window.addEventListener('workforce:realtime', onRealtime);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('workforce_event', onRealtime);
+      window.removeEventListener('workforce:realtime', onRealtime);
+    };
   }, []);
 
   const filteredData = useMemo(() => {
@@ -155,6 +178,21 @@ export function AdminEmployeesPage() {
           title="Workforce Employee Roster"
           subtitle="Directory of field technicians, active roster statuses, and dispatch credentials"
         />
+
+        {error && (
+          <div className="flex items-center justify-between p-3.5 bg-rose-50 border border-rose-200 rounded-lg text-rose-800 text-xs">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
+              <span>{error}</span>
+            </div>
+            <button
+              onClick={loadEmployees}
+              className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white font-semibold rounded text-xs transition-colors"
+            >
+              Retry
+            </button>
+          </div>
+        )}
 
         {/* Toolbar */}
         <Toolbar

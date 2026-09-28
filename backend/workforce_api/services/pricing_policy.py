@@ -82,6 +82,25 @@ def policy_for(category):
     return None
 
 
+DEFAULT_TECHNICIAN_FREE_CANCEL_MINUTES = 5
+
+
+def technician_cancel_window_minutes(category):
+    """Minutes after acceptance during which the assigned technician may
+    cancel without penalty. Falls back to 5 (the previously hardcoded value)
+    when no active policy exists or the lookup fails, so a DB hiccup can
+    never widen or close the window unexpectedly."""
+    try:
+        policy = policy_for(category)
+    except Exception:  # pragma: no cover - defensive
+        logger.exception("technician_cancel_window_minutes: policy lookup failed")
+        policy = None
+    value = getattr(policy, "technician_free_cancel_minutes", None) if policy else None
+    if value is None:
+        return DEFAULT_TECHNICIAN_FREE_CANCEL_MINUTES
+    return max(0, int(value))
+
+
 def policy_value(category, field):
     policy = policy_for(category)
     if policy is None:

@@ -238,8 +238,22 @@ def send_quote_to_customer(quote_id, actor=None, valid_days=7):
         recalculate_quote_totals(quote)
         quote.refresh_from_db()
 
+        # Technician submitting AC estimation quote must always route through Vendor Admin review
+        is_ac_estimation = (
+            getattr(quote.job, "is_estimation", False) or
+            getattr(quote.job, "request_kind", "") == "ESTIMATION" or
+            getattr(quote.job, "job_type", "") == "ESTIMATION" or
+            "ac" in (quote.service_category or "").lower()
+        )
+        is_admin_actor = bool(actor and ((getattr(actor, "role", "") or "").lower() in ("admin", "manager") or getattr(actor, "is_staff", False)))
+
         held_reason = None
-        if quote.requires_structural_clearance and not quote.is_structurally_cleared:
+        if is_ac_estimation and not quote.admin_cleared_at and not is_admin_actor:
+            held_reason = (
+                "AC Estimation quotation must be reviewed and approved by Vendor Admin "
+                "before sending to customer."
+            )
+        elif quote.requires_structural_clearance and not quote.is_structurally_cleared:
             held_reason = (
                 "Quotation involves structural modification or load-bearing demolition. "
                 "Admin or Structural Engineer clearance is required before sending."
@@ -258,7 +272,9 @@ def send_quote_to_customer(quote_id, actor=None, valid_days=7):
 
         if held_reason:
             quote.status = WorkforceQuote.Status.PENDING_REVIEW
-            quote.save(update_fields=["status", "updated_at"])
+            quote.submitted_for_approval_at = timezone.now()
+            quote.save(update_fields=["status", "submitted_for_approval_at", "updated_at"])
+            _project(quote)
 
     if held_reason:
         _emit("QUOTATION_PENDING_REVIEW", quote, reason=held_reason)
@@ -612,6 +628,27 @@ def convert_accepted_quote_to_work_booking(quote, actor=None):
             quote.status = WorkforceQuote.Status.CONVERTED
             quote.save(update_fields=["work_job", "status", "updated_at"])
 
+            if technician:
+                try:
+                    from service_requests.models import EmployeeJob
+                    EmployeeJob.objects.update_or_create(
+                        service_request=work_sr,
+                        employee=technician,
+                        defaults={"status": "ASSIGNED", "assigned_date": timezone.now()}
+                    )
+                except Exception as ej_err:
+                    logger.warning("Could not update EmployeeJob for work_sr #%s: %s", work_sr.id, ej_err)
+
+            if insp_job:
+                try:
+                    from service_requests.models import Estimation
+                    est = Estimation.objects.filter(service_request=insp_job).first()
+                    if est:
+                        est.status = "CONVERTED_TO_JOB"
+                        est.save(update_fields=["status", "updated_at"])
+                except Exception as est_err:
+                    logger.warning("Could not sync Estimation status: %s", est_err)
+
             logger.info("Successfully converted Quote %s to Work ServiceRequest #%s", quote.quote_number, work_sr.id)
             return work_sr
 
@@ -796,9 +833,14 @@ def _activate_approved_quote(quote, admin_user):
         from service_requests.models import EstimationQuotation
         from service_requests.vendor_views import activate_service_job_from_quotation
 
+        from django.db.models import Q
         est_quote = (
             EstimationQuotation.objects
-            .filter(quote_ref=quote.quote_number)
+            .filter(
+                Q(quote_ref=quote.quote_number)
+                | Q(quote_ref__startswith=quote.quote_number)
+                | Q(estimation__service_request_id=quote.job_id)
+            )
             .select_related("estimation")
             .order_by("-version")
             .first()

@@ -47,7 +47,7 @@ def _get_request_company(request):
 
 
 class LocationViewSet(viewsets.ModelViewSet):
-    queryset = Location.objects.all()
+    queryset = Location.objects.all().order_by("-id")
     serializer_class = LocationSerializer
     permission_classes = [IsWorkforceAdminOrReadOnly]
 
@@ -58,12 +58,12 @@ class LocationViewSet(viewsets.ModelViewSet):
         if getattr(self.request.user, "is_superuser", False):
             company_id = self.request.query_params.get("company_id")
             if company_id:
-                return Location.objects.filter(company_id=company_id)
-            return Location.objects.all()
+                return Location.objects.filter(company_id=company_id).order_by("-id")
+            return Location.objects.all().order_by("-id")
         company = self._get_company()
         if not company:
             return Location.objects.none()
-        return Location.objects.filter(company=company)
+        return Location.objects.filter(company=company).order_by("-id")
 
     def perform_create(self, serializer):
         company = self._get_company()
@@ -71,7 +71,7 @@ class LocationViewSet(viewsets.ModelViewSet):
 
 
 class JobSiteViewSet(viewsets.ModelViewSet):
-    queryset = JobSite.objects.all()
+    queryset = JobSite.objects.all().order_by("-id")
     serializer_class = JobSiteSerializer
     permission_classes = [IsWorkforceAdminOrReadOnly]
 
@@ -82,12 +82,12 @@ class JobSiteViewSet(viewsets.ModelViewSet):
         if getattr(self.request.user, "is_superuser", False):
             company_id = self.request.query_params.get("company_id")
             if company_id:
-                return JobSite.objects.filter(company_id=company_id)
-            return JobSite.objects.all()
+                return JobSite.objects.filter(company_id=company_id).order_by("-id")
+            return JobSite.objects.all().order_by("-id")
         company = self._get_company()
         if not company:
             return JobSite.objects.none()
-        return JobSite.objects.filter(company=company)
+        return JobSite.objects.filter(company=company).order_by("-id")
 
     def perform_create(self, serializer):
         company = self._get_company()
@@ -291,7 +291,7 @@ class ClockInView(APIView):
         if gps_timestamp:
             try:
                 from django.utils.dateparse import parse_datetime
-                if isinstance(gps_timestamp, (int, float)) or (isinstance(gps_timestamp, str) and str(gps_timestamp).isdigit()):
+                if isinstance(gps_timestamp, (int, float)) or (isinstance(gps_timestamp, str) and gps_timestamp.isdigit()):
                     ts_num = float(gps_timestamp)
                     if ts_num > 1e11:  # milliseconds
                         ts_num /= 1000.0

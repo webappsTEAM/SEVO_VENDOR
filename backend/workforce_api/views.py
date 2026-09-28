@@ -10,6 +10,7 @@ import datetime
 from datetime import timedelta
 import logging
 from decimal import Decimal
+from typing import Any, cast
 from django.conf import settings
 
 from django.contrib.auth import get_user_model
@@ -46,9 +47,18 @@ from time_tracking.geo import evaluate
 from datetime import timedelta
 import secrets
 from django.contrib.auth.hashers import make_password, check_password
-from accounts.permissions import is_admin_role
+from accounts.permissions import is_admin_role, is_platform_admin
+from accounts.platform import is_platform_admin_user, is_platform_company, PLATFORM_COMPANY_ID
 from .permissions import IsWorkforceAdmin, IsWorkforceEmployee, IsApprovedTechnician, IsInternalWorkforceCaller
+
 from .serializers import (
+    GrocerySellerApplicationDetailSerializer,
+    GrocerySellerSignupSerializer,
+    GroceryOrderSerializer,
+    EmployeeSavedLocationSerializer,
+    FinancialLedgerEntrySerializer,
+    InventoryTransactionSerializer,
+    VendorSettlementSerializer,
     WorkforceSignupSerializer,
     ProviderSignupSerializer,
     WalletAccountSerializer,
@@ -68,6 +78,8 @@ from .serializers import (
     WorkforceJobFeedbackSerializer,
     JobPaymentSerializer,
     PaymentCollectionEventSerializer,
+    GrocerySellerSignupSerializer,
+    GrocerySellerApplicationDetailSerializer,
 )
 from .models import (
     WorkforceEmployeeSchedule,
@@ -156,8 +168,9 @@ def _is_admin_authorized_for_company(request, company) -> bool:
     user = getattr(request, "user", None)
     if not user or not is_admin_role(user):
         return False
-    if getattr(user, "is_superuser", False):
+    if getattr(user, "is_superuser", False) or is_platform_admin_user(user):
         return True
+
     user_company = resolve_actor_company(request)
     company_id = getattr(company, "id", company)
     return bool(user_company and company_id and user_company.id == company_id)
@@ -446,7 +459,7 @@ class WorkforceSignupView(APIView):
             user.save()
 
             employee_id = generate_next_employee_id(None)
-            bank_details = {
+            bank_details: dict[str, Any] = {
                 "onboarding": {
                     "status": "not_started",
                     "step": 1,
@@ -2909,7 +2922,6 @@ class WorkforcePresenceToggleView(APIView):
         reconcile_employee_availability(emp)
         emp.refresh_from_db(fields=["current_availability", "is_online"])
 
-
         try:
             PresenceLog.objects.create(
                 employee=emp,
@@ -3084,8 +3096,9 @@ class WorkforceJobListView(APIView):
             if user.is_superuser:
                 jobs_qs = ServiceRequest.objects.all()
             elif company:
-                if company.id == 1 or getattr(company, "slug", "") in ("calservices", "caldim-engineering-pvt-ltd", "caldim-platform", "caldim-services"):
+                if is_platform_company(company):
                     jobs_qs = ServiceRequest.objects.all()
+
                 else:
                     jobs_qs = ServiceRequest.objects.filter(
                         Q(company=company) |
@@ -3106,13 +3119,6 @@ class WorkforceJobListView(APIView):
 
             jobs = list(jobs_qs.select_related("customer", "assigned_employee", "assigned_employee__user", "company").order_by("-created_at")[:100])
         elif emp:
-            # Opportunistically sweep expired offers and recover stranded dispatch states
-            try:
-                from workforce_api.services.automatic_dispatch import expire_and_reassign_offers
-                expire_and_reassign_offers()
-            except Exception:
-                pass
-
             server_now = timezone.now()
             from workforce_api.models import WorkforceJobOffer, WorkforceJobLifecycleEvent, WorkforceWorkExtension, JobPayment
             from workforce_api.services.workload import ACTIVE_QUEUE_STATUSES, WORKLOAD_OCCUPIED_STATUSES
@@ -3241,9 +3247,10 @@ class WorkforceJobListView(APIView):
                 ).exclude(status__in=["completed", "cancelled"]).exclude(is_declined_by_emp)
 
             if emp.company:
-                if emp.company.id == 1 or getattr(emp.company, "slug", "") in ("calservices", "caldim-engineering-pvt-ltd", "caldim-platform", "caldim-services"):
+                if is_platform_company(emp.company):
                     # Platform technicians can service jobs from any partner company
                     pass
+
                 else:
                     qs = qs.filter(Q(company=emp.company) | Q(assigned_employee=emp) | Q(id__in=offered_job_ids_qs) | Q(id__in=future_job_ids) | Q(company__isnull=True))
 
@@ -3528,6 +3535,7 @@ def _expected_job_minutes(job):
     """
     category = (getattr(job, "service_category", "") or "").strip()
     if category:
+        from workforce_api.models import WorkforceServiceCatalog
         entry = (
             WorkforceServiceCatalog.objects
             .filter(category__iexact=category, is_active=True)
@@ -3770,7 +3778,40 @@ class WorkforceJobProofView(APIView):
                 return Response({"error": "Unauthorized: Job belongs to another vendor company.", "code": "CROSS_TENANT_FORBIDDEN"}, status=status.HTTP_403_FORBIDDEN)
 
         if job.status not in ["in_progress", "proof_submitted"]:
-            return Response({"error": f"Cannot submit completion proof for job in status '{job.status}'. Expected 'in_progress'."}, status=status.HTTP_400_BAD_REQUEST)
+            valid_pre_proof_statuses = ["assigned", "accepted", "arrived", "quotation_sent", "inspection_completed"]
+            if job.status in valid_pre_proof_statuses:
+                try:
+                    apply_transition(job, "in_progress", actor=request.user)
+                except Exception as ex:
+                    logger.warning("[PROOF_SUBMIT] Auto-transition to in_progress failed: %s", ex)
+
+            if job.status not in ["in_progress", "proof_submitted"]:
+                return Response({"error": f"Cannot submit completion proof for job in status '{job.status}'. Expected 'in_progress'."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Logistics trips: proof of delivery also closes the trip leg
+        # (DELIVERED, below), so it must not become a way around the drop
+        # checkpoint gates the leg endpoint enforces. The proof upload itself
+        # is the unloading photo, so only the remaining gates are required.
+        # Admin-submitted proof (a dispute/back-office path) is not gated.
+        if not is_admin_role(request.user):
+            try:
+                from workforce_api.services.automatic_dispatch import LOGISTICS_SERVICE_CATEGORIES
+                from workforce_api.services import logistics_checkpoints as _lc
+                if (job.service_category or "").strip().lower() in LOGISTICS_SERVICE_CATEGORIES:
+                    _missing = [m for m in _lc.missing_for_leg(job, "DELIVERED")
+                                if m != (_lc.DROP, _lc.PHOTO)]
+                    if _missing:
+                        return Response({
+                            "error": "Complete the trip checkpoint verification before submitting proof of delivery. Still required: "
+                                     + "; ".join(_lc.REQUIREMENT_LABELS[m] for m in _missing) + ".",
+                            "code": "CHECKPOINT_VERIFICATION_REQUIRED",
+                            "missing": [{"checkpoint": c, "requirement": r, "label": _lc.REQUIREMENT_LABELS[(c, r)]}
+                                        for c, r in _missing],
+                        }, status=status.HTTP_400_BAD_REQUEST)
+            except Exception:
+                logger.exception("checkpoint gate check failed on proof for job %s", job.id)
+                return Response({"error": "Could not verify trip checkpoints. Please retry."},
+                                status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
         completion_notes = request.data.get("notes", "").strip() or request.data.get("completion_notes", "").strip()
         after_presence = request.FILES.get("after_presence_photo") or request.FILES.get("after_selfie") or request.FILES.get("presence_photo")
@@ -3804,8 +3845,43 @@ class WorkforceJobProofView(APIView):
         proof.check_submission()
         proof.save()
 
+        # GT audit fix: this endpoint excludes (DROP, PHOTO) from the
+        # checkpoint gate above on the theory that "the proof upload itself
+        # is the unloading photo" -- but nothing ever actually wrote a photo
+        # into the DROP LogisticsCheckpointVerification record, and none of
+        # after_presence_photo (a selfie)/after_appliance_photo/
+        # after_work_area_photo is guaranteed to depict the unloaded goods.
+        # For logistics jobs, record the best available uploaded photo as
+        # the real DROP checkpoint proof (requires GPS at DROP to already be
+        # verified, same as the direct checkpoint-photo endpoint) instead of
+        # leaving that evidence permanently unset.
+        try:
+            from workforce_api.services.automatic_dispatch import LOGISTICS_SERVICE_CATEGORIES
+            from workforce_api.services import logistics_checkpoints as _lc
+            if (job.service_category or "").strip().lower() in LOGISTICS_SERVICE_CATEGORIES:
+                _drop_photo = after_work_area or after_appliance or after_presence
+                if _drop_photo:
+                    _lc.record_checkpoint_photo(job, emp, _lc.DROP, _drop_photo)
+        except Exception:
+            logger.exception("Could not record DROP checkpoint photo from proof-of-delivery upload for job %s", job.id)
+
         # Step 1: Transition job to proof_submitted (service completed)
         apply_transition(job, "proof_submitted", actor=request.user)
+
+        # Proof of delivery closes the trip leg. state_machine.py documented
+        # this ("DELIVERED is set when proof of delivery is submitted") but
+        # nothing did it, so a driver who submitted proof without also
+        # tapping DELIVERED left the customer's tracking on UNLOADING and the
+        # Customer app's DELIVERED-triggered fare reconciliation never ran.
+        # set_logistics_leg is forward-only and idempotent, so a retry or a
+        # leg the driver already set is a no-op; failure never blocks proof.
+        try:
+            from workforce_api.services.automatic_dispatch import LOGISTICS_SERVICE_CATEGORIES
+            from workforce_api.services.logistics_events import set_logistics_leg
+            if (job.service_category or "").strip().lower() in LOGISTICS_SERVICE_CATEGORIES:
+                set_logistics_leg(job, "DELIVERED", actor=request.user)
+        except Exception as leg_err:
+            logger.info("Could not set DELIVERED leg on proof for job %s: %s", job.id, leg_err)
 
         # Step 2: Check payment state machine. If payment is already PAID (e.g. verified ONLINE), close the job.
         pmt = JobPayment.objects.filter(job=job).first()
@@ -4807,6 +4883,32 @@ class WorkforceJobAcceptOfferView(APIView):
         if not is_employee_authorized_for_job(emp, job):
             return Response({"error": "Unauthorized access to job belonging to another company.", "code": "CROSS_TENANT_FORBIDDEN"}, status=status.HTTP_403_FORBIDDEN)
 
+        # GT vehicle-compatibility fix (this session): dispatch's Gate 3
+        # (check_candidate_eligibility in automatic_dispatch.py) already
+        # blocks OFFERING a class-mismatched job to this technician, but a
+        # technician can also accept via a direct assignment or a stale
+        # offer that predates the fix -- so the acceptance path re-checks
+        # the same single narrow authority here, exactly the "single
+        # narrow authority shared by dispatch + acceptance" pattern this
+        # codebase already uses elsewhere (see is_employee_authorized_for_job
+        # just above, and get_scheduled_dispatch_window below).
+        from workforce_api.services.automatic_dispatch import (
+            check_vehicle_class_compatibility,
+            check_vehicle_capacity_compatibility,
+        )
+        class_ok, class_reason = check_vehicle_class_compatibility(emp, job)
+        if not class_ok:
+            return Response({
+                "error": class_reason,
+                "code": "VEHICLE_CLASS_MISMATCH",
+            }, status=status.HTTP_403_FORBIDDEN)
+        cap_ok, cap_reason = check_vehicle_capacity_compatibility(emp, job)
+        if not cap_ok:
+            return Response({
+                "error": cap_reason,
+                "code": "VEHICLE_CAPACITY_MISMATCH",
+            }, status=status.HTTP_403_FORBIDDEN)
+
         with transaction.atomic():
             job_obj = ServiceRequest.objects.select_for_update().filter(pk=pk).first()
             if not job_obj:
@@ -4896,7 +4998,10 @@ class WorkforceJobAcceptOfferView(APIView):
                 }, status=status.HTTP_400_BAD_REQUEST)
 
             now = timezone.now()
-            cancellation_deadline = now + timedelta(minutes=5)
+            from workforce_api.services.pricing_policy import technician_cancel_window_minutes
+            cancellation_deadline = now + timedelta(
+                minutes=technician_cancel_window_minutes(getattr(job_obj, "service_category", None))
+            )
 
             # Hard Single Active Job Rule: Check if employee has a conflicting active job BEFORE mutating offer
             from workforce_api.services.workload import get_employee_active_job
@@ -4942,6 +5047,18 @@ class WorkforceJobAcceptOfferView(APIView):
             job_obj.assigned_employee = emp_obj
             job_obj.save(update_fields=["assigned_employee"])
             apply_transition(job_obj, "accepted", actor=request.user)
+
+            # Initialize logistics leg (EN_ROUTE_PICKUP for GT, ASSIGNED for P&M)
+            try:
+                from workforce_api.services.automatic_dispatch import LOGISTICS_SERVICE_CATEGORIES
+                from workforce_api.services.logistics_events import initial_leg_for_category, set_logistics_leg
+                cat_clean = (job_obj.service_category or "").strip().lower()
+                if cat_clean in LOGISTICS_SERVICE_CATEGORIES and not job_obj.logistics_leg:
+                    init_leg = initial_leg_for_category(job_obj.service_category)
+                    if init_leg:
+                        set_logistics_leg(job_obj, init_leg, actor=request.user)
+            except Exception as leg_err:
+                logger.warning("Could not set initial logistics leg on accept for job %s: %s", job_obj.id, leg_err)
 
             # Synchronize WorkforceDispatchState to ASSIGNED
             from workforce_api.models import WorkforceDispatchState
@@ -5184,6 +5301,19 @@ class WorkforceJobCancelAssignmentView(APIView):
                     "code": "CANCELLATION_NOT_ALLOWED_IN_CURRENT_STATE",
                 }, status=status.HTTP_409_CONFLICT)
 
+            # Logistics / P&M physical progress cancellation lock: Once loading, packing, or transit has started,
+            # technician self-service cancellation is locked (same physical progress lock enforced on customer app).
+            _LOGISTICS_CANCEL_LOCK_LEGS = {
+                "LOADING", "EN_ROUTE_DROP", "UNLOADING", "DELIVERED",
+                "PACKING", "DISMANTLING", "IN_TRANSIT", "ARRIVED_DROP", "REASSEMBLY", "UNPACKING", "COMPLETED",
+            }
+            _leg = str(getattr(job_obj, "logistics_leg", "") or "").strip().upper()
+            if _leg in _LOGISTICS_CANCEL_LOCK_LEGS:
+                return Response({
+                    "error": f"Cannot cancel job: Trip has already reached stage '{_leg}'. Please contact dispatch support.",
+                    "code": "TRIP_PROGRESS_CANCELLATION_LOCKED",
+                }, status=status.HTTP_409_CONFLICT)
+
             # 5-minute cancellation window check
             from service_requests.models import EmployeeJob
             from workforce_api.models import WorkforceJobLifecycleEvent, JobTrackingSession, WorkforceEventLog
@@ -5200,14 +5330,16 @@ class WorkforceJobCancelAssignmentView(APIView):
             )
 
             now = timezone.now()
+            from workforce_api.services.pricing_policy import technician_cancel_window_minutes
+            cancel_window_minutes = technician_cancel_window_minutes(getattr(job_obj, "service_category", None))
             cancellation_deadline = (
                 accept_event.cancellation_deadline if accept_event and accept_event.cancellation_deadline
-                else (accepted_at + timedelta(minutes=5))
+                else (accepted_at + timedelta(minutes=cancel_window_minutes))
             )
 
             if now > cancellation_deadline:
                 return Response({
-                    "error": "The 5-minute cancellation window for this job has expired. Please contact dispatch support.",
+                    "error": f"The {cancel_window_minutes}-minute cancellation window for this job has expired. Please contact dispatch support.",
                     "code": "CANCELLATION_WINDOW_EXPIRED",
                     "cancellation_deadline": cancellation_deadline.isoformat(),
                 }, status=status.HTTP_409_CONFLICT)
@@ -5395,16 +5527,31 @@ class WorkforceJobTechnicianCancelView(APIView):
                     "code": "CANCELLATION_NOT_ALLOWED_IN_CURRENT_STATE",
                 }, status=status.HTTP_409_CONFLICT)
 
+            # Logistics / P&M physical progress cancellation lock: Once loading, packing, or transit has started,
+            # technician self-service cancellation is locked (same physical progress lock enforced on customer app).
+            _LOGISTICS_CANCEL_LOCK_LEGS = {
+                "LOADING", "EN_ROUTE_DROP", "UNLOADING", "DELIVERED",
+                "PACKING", "DISMANTLING", "IN_TRANSIT", "ARRIVED_DROP", "REASSEMBLY", "UNPACKING", "COMPLETED",
+            }
+            _leg = str(getattr(job, "logistics_leg", "") or "").strip().upper()
+            if _leg in _LOGISTICS_CANCEL_LOCK_LEGS:
+                return Response({
+                    "error": f"Cannot cancel job: Trip has already reached stage '{_leg}'. Please contact dispatch support.",
+                    "code": "TRIP_PROGRESS_CANCELLATION_LOCKED",
+                }, status=status.HTTP_409_CONFLICT)
+
             # 5-minute cancellation window check
             from service_requests.models import EmployeeJob
             emp_job = EmployeeJob.objects.filter(service_request=job, employee=emp).first()
             accepted_at = (emp_job.accepted_date if emp_job and emp_job.accepted_date else None) or job.updated_at
             
-            cancellation_deadline = accepted_at + timedelta(minutes=5)
+            from workforce_api.services.pricing_policy import technician_cancel_window_minutes
+            cancel_window_minutes = technician_cancel_window_minutes(getattr(job, "service_category", None))
+            cancellation_deadline = accepted_at + timedelta(minutes=cancel_window_minutes)
             now = timezone.now()
             if now > cancellation_deadline:
                 return Response({
-                    "error": "Cancellation window has closed (5 minutes elapsed since acceptance).",
+                    "error": f"Cancellation window has closed ({cancel_window_minutes} minutes elapsed since acceptance).",
                     "code": "CANCELLATION_WINDOW_EXPIRED",
                     "accepted_at": accepted_at.isoformat(),
                     "cancellation_deadline": cancellation_deadline.isoformat(),
@@ -5530,11 +5677,20 @@ class WorkforceJobAdminCancelView(APIView):
         if not job:
             return Response({"error": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
 
+        if not _is_admin_authorized_for_company(request, job.company):
+            return Response(
+                {"error": "Unauthorized access to job belonging to another company.", "code": "CROSS_TENANT_FORBIDDEN"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         if job.status == "cancelled":
             return Response({"message": "Job already cancelled.", "status": job.status}, status=status.HTTP_200_OK)
 
         if job.status == "completed":
-            return Response({"error": "Completed jobs cannot be cancelled."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": "Completed jobs cannot be cancelled.", "code": "INVALID_STATE_TRANSITION"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         reason = request.data.get("reason") or request.data.get("cancellation_reason") or "Cancelled by workforce administrator"
 
@@ -5542,13 +5698,17 @@ class WorkforceJobAdminCancelView(APIView):
         from workforce_api.models import WorkforceJobLifecycleEvent, WorkforceJobOffer
         from service_requests.models import EmployeeJob
 
+        old_status = job.status
         try:
             new_status = apply_transition(job, "cancelled", actor=user)
-        except Exception:
-            job.status = "cancelled"
-            job.cancellation_reason = reason
-            job.save(update_fields=["status", "cancellation_reason", "updated_at"])
-            new_status = "cancelled"
+        except ValidationError as e:
+            err_msg = str(e.detail if hasattr(e, "detail") else e)
+            return Response({"error": err_msg, "code": "INVALID_STATE_TRANSITION"}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({"error": str(e), "code": "CANCELLATION_FAILED"}, status=status.HTTP_400_BAD_REQUEST)
+
+        job.cancellation_reason = reason
+        job.save(update_fields=["cancellation_reason", "updated_at"])
 
         WorkforceJobOffer.objects.filter(job=job, status="PENDING").update(status="CANCELLED")
         EmployeeJob.objects.filter(service_request=job).exclude(status__in=["COMPLETED", "CANCELLED"]).update(status="CANCELLED")
@@ -5560,12 +5720,19 @@ class WorkforceJobAdminCancelView(APIView):
         try:
             WorkforceJobLifecycleEvent.objects.create(
                 job=job,
-                event_type="CANCELLED_BY_ADMIN",
-                actor_id=user.id,
-                details={"reason": reason, "cancelled_by": user.email or user.username}
+                company=job.company,
+                employee=job.assigned_employee,
+                actor_user=user,
+                event_type=WorkforceJobLifecycleEvent.EventType.EMPLOYEE_JOB_CANCELLED,
+                previous_status=old_status,
+                new_status="cancelled",
+                cancelled_at=timezone.now(),
+                reason_text=reason,
+                metadata={"reason": reason, "cancelled_by": user.email or user.username},
             )
-        except Exception:
-            pass
+        except Exception as log_err:
+            logger.warning("Failed to record cancellation lifecycle event for job %s: %s", job.id, log_err)
+
 
         return Response({
             "message": f"Job #{job.id} cancelled successfully by administrator.",
@@ -7139,42 +7306,51 @@ class WorkforceLeaveListView(APIView):
         if start_date > end_date:
             return Response({"error": "start_date cannot be after end_date."}, status=status.HTTP_400_BAD_REQUEST)
 
-        bank_details = emp.bank_details or {}
-        leaves = bank_details.get("leaves", [])
+        with transaction.atomic():
+            emp = Employee.objects.select_for_update().get(pk=emp.pk)
+            bank_details = emp.bank_details or {}
+            leaves = list(bank_details.get("leaves", []))
 
-        # Check for overlapping pending/approved leave requests
-        for existing in leaves:
-            if existing.get("status") in ["submitted", "approved"]:
-                e_start = existing.get("start_date")
-                e_end = existing.get("end_date")
-                if e_start and e_end:
-                    if not (end_date < e_start or start_date > e_end):
-                        return Response({
-                            "error": f"An active or pending leave application already exists for the range {e_start} to {e_end}."
-                        }, status=status.HTTP_400_BAD_REQUEST)
+            # Check for overlapping pending/approved leave requests
+            for existing in leaves:
+                if existing.get("status") in ["submitted", "approved"]:
+                    e_start = existing.get("start_date")
+                    e_end = existing.get("end_date")
+                    if e_start and e_end:
+                        if not (end_date < e_start or start_date > e_end):
+                            return Response({
+                                "error": f"An active or pending leave application already exists for the range {e_start} to {e_end}."
+                            }, status=status.HTTP_400_BAD_REQUEST)
 
-        new_leave = {
-            "id": len(leaves) + 1,
-            "employee_id": emp.employee_id,
-            "employee_name": user.get_full_name() or user.username,
-            "leave_type": leave_type,
-            "start_date": start_date,
-            "end_date": end_date,
-            "reason": reason,
-            "status": "submitted",
-            "applied_at": timezone.now().isoformat(),
-            "reviewer": None,
-            "review_reason": "",
-        }
-        leaves.append(new_leave)
-        bank_details["leaves"] = leaves
-        emp.bank_details = bank_details
-        emp.save()
+            existing_ids = [
+                int(l["id"]) for l in leaves
+                if isinstance(l.get("id"), (int, str)) and str(l.get("id")).isdigit()
+            ]
+            new_id = (max(existing_ids) + 1) if existing_ids else 1
+
+            new_leave = {
+                "id": new_id,
+                "employee_id": emp.employee_id,
+                "employee_name": user.get_full_name() or user.username,
+                "leave_type": leave_type,
+                "start_date": start_date,
+                "end_date": end_date,
+                "reason": reason,
+                "status": "submitted",
+                "applied_at": timezone.now().isoformat(),
+                "reviewer": None,
+                "review_reason": "",
+            }
+            leaves.append(new_leave)
+            bank_details["leaves"] = leaves
+            emp.bank_details = bank_details
+            emp.save(update_fields=["bank_details"])
 
         return Response({
             "message": "Leave application submitted successfully for Admin approval.",
             "leave": new_leave,
         }, status=status.HTTP_201_CREATED)
+
 
 
 class WorkforceLeaveCancelView(APIView):
@@ -7217,7 +7393,7 @@ class WorkforceAdminLeaveDecideView(APIView):
         if not emp:
             return Response({"error": "Employee not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        if not getattr(request.user, "is_superuser", False):
+        if not getattr(request.user, "is_superuser", False) and not is_platform_admin_user(request.user):
             user_company = resolve_actor_company(request)
             if not user_company:
                 return Response({"error": "Tenant company context required.", "code": "TENANT_REQUIRED"}, status=status.HTTP_403_FORBIDDEN)
@@ -7233,30 +7409,33 @@ class WorkforceAdminLeaveDecideView(APIView):
         if action == "reject" and not reason:
             return Response({"error": "Rejection reason is required."}, status=status.HTTP_400_BAD_REQUEST)
 
-        bank_details = emp.bank_details or {}
-        leaves = bank_details.get("leaves", [])
-        found = False
+        with transaction.atomic():
+            emp = Employee.objects.select_for_update().get(pk=emp.pk)
+            bank_details = emp.bank_details or {}
+            leaves = list(bank_details.get("leaves", []))
+            found = False
 
-        for l in leaves:
-            if str(l.get("id")) == str(leave_id):
-                l["status"] = "approved" if action == "approve" else "rejected"
-                l["reviewer"] = request.user.username
-                l["review_reason"] = reason
-                l["reviewed_at"] = timezone.now().isoformat()
-                found = True
-                break
+            for l in leaves:
+                if str(l.get("id")) == str(leave_id):
+                    l["status"] = "approved" if action == "approve" else "rejected"
+                    l["reviewer"] = request.user.username
+                    l["review_reason"] = reason
+                    l["reviewed_at"] = timezone.now().isoformat()
+                    found = True
+                    break
 
-        if not found:
-            return Response({"error": "Leave application not found."}, status=status.HTTP_404_NOT_FOUND)
+            if not found:
+                return Response({"error": "Leave application not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        bank_details["leaves"] = leaves
-        emp.bank_details = bank_details
-        emp.save()
+            bank_details["leaves"] = leaves
+            emp.bank_details = bank_details
+            emp.save(update_fields=["bank_details"])
 
         return Response({
             "message": f"Leave application marked as {l['status'].upper()}.",
             "leave": l,
         }, status=status.HTTP_200_OK)
+
 
 
 # ─── 14. Real-Time Fleet Map & Live Location ──────────────────────────────────
@@ -7270,7 +7449,7 @@ class WorkforceFleetMapView(APIView):
 
     def get(self, request):
         user = request.user
-        if getattr(user, "is_superuser", False):
+        if is_platform_admin(user):
             technicians = list(Employee.objects.filter(is_active=True).select_related("user", "company"))
         else:
             company = resolve_actor_company(request)
@@ -7452,9 +7631,20 @@ class WorkforceLocationUpdateView(APIView):
         # Find active accepted / en-route jobs owned by this technician
         emp_job_sr_ids = list(EmployeeJob.objects.filter(employee=emp).values_list("service_request_id", flat=True))
         emp_company = getattr(emp, "company", None) if getattr(emp, "company_id", None) else None
+        # Pre-arrival jobs get telemetry AND automatic arrival evaluation.
+        # Logistics jobs additionally keep getting telemetry after arrival:
+        # the pickup->drop transit happens while the job is in_progress, and
+        # the job's JobTrackingSession stays ACTIVE until completion, so the
+        # tracking endpoint (which reads that session first) previously
+        # showed the frozen pickup-time position and LOCATION_LOST for the
+        # whole transit. Arrival evaluation is skipped for these.
+        from workforce_api.services.automatic_dispatch import LOGISTICS_SERVICE_CATEGORIES
+        _PRE_ARRIVAL_STATUSES = ["accepted", "on_the_way", "en_route"]
+        _IN_TRIP_STATUSES = ["arrived", "service_started", "in_progress", "on_hold", "proof_submitted", "follow_up_required"]
         active_jobs_qs = ServiceRequest.objects.filter(
             Q(assigned_employee=emp) | Q(id__in=emp_job_sr_ids),
-            status__in=["accepted", "on_the_way", "en_route"],
+            Q(status__in=_PRE_ARRIVAL_STATUSES)
+            | Q(status__in=_IN_TRIP_STATUSES, service_category__in=list(LOGISTICS_SERVICE_CATEGORIES)),
             latitude__isnull=False,
             longitude__isnull=False,
         )
@@ -7490,6 +7680,7 @@ class WorkforceLocationUpdateView(APIView):
 
                 # Throttled persistence of JobLocationPoint
                 should_record_point = False
+                seq_num = 1
                 last_point = session.location_points.order_by("-sequence_number").first()
                 if not last_point:
                     should_record_point = True
@@ -7554,7 +7745,10 @@ class WorkforceLocationUpdateView(APIView):
                     and gps_age_s <= ARRIVAL_MAX_GPS_AGE_SECONDS
                 )
 
-                if is_fix_valid:
+                if job.status not in _PRE_ARRIVAL_STATUSES:
+                    # In-trip logistics telemetry only; arrival already done.
+                    pass
+                elif is_fix_valid:
                     if session.consecutive_arrival_fixes == 0 or not session.last_fix_time:
                         # Fix #1 recorded
                         session.consecutive_arrival_fixes = 1
@@ -7748,6 +7942,39 @@ class WorkforceJobLiveTrackingView(APIView):
         cust_lon = float(job.longitude) if job.longitude else None
         tech = job.assigned_employee
 
+        # Additive: explicit pickup/drop points for logistics (Goods & Transport /
+        # Packers & Movers) jobs so both the technician and the customer can show
+        # pickup, drop and live vehicle position together. For non-logistics jobs
+        # drop_location is always None (there is no pickup/drop concept).
+        from workforce_api.services.automatic_dispatch import LOGISTICS_SERVICE_CATEGORIES
+        is_logistics = (job.service_category or "").strip().lower() in LOGISTICS_SERVICE_CATEGORIES
+        route_points = {
+            "is_logistics": is_logistics,
+            "pickup_location": {
+                "latitude": cust_lat,
+                "longitude": cust_lon,
+                "address": job.address or "",
+            } if is_logistics else None,
+            "drop_location": {
+                "latitude": float(job.drop_latitude) if job.drop_latitude is not None else None,
+                "longitude": float(job.drop_longitude) if job.drop_longitude is not None else None,
+                "address": job.drop_address or "",
+            } if is_logistics else None,
+        }
+
+        # P&M audit fix: surface crew_size, inventory_items, and relocation_details
+        # from either fare_breakdown or cart_data so the crew/coordinator knows the full manifest
+        # and access requirements. Read-only, additive, scoped to packers_movers.
+        pm_crew_size = None
+        pm_items = None
+        pm_relocation = None
+        if (job.service_category or "").strip().lower() == "packers_movers":
+            try:
+                from workforce_api.services.logistics_events import extract_pm_job_details
+                pm_crew_size, pm_items, pm_relocation = extract_pm_job_details(job)
+            except Exception:
+                logger.exception("Could not extract P&M details for job %s", job.id)
+
         # Privacy Guard: If job is completed/cancelled/closed/redispatching, or has no assigned technician
         if job.status in ["completed", "cancelled", "closed", "redispatching"] or not job.assigned_employee:
             logger.info(f"[MAP_RECONCILIATION] job_id={job.id} status={job.status} technician_masked=True")
@@ -7766,6 +7993,10 @@ class WorkforceJobLiveTrackingView(APIView):
                 "freshness_state": "FINDING_NEW_PROFESSIONAL" if job.status == "redispatching" else "LOCATION_LOST",
                 "age_seconds": None,
                 "updated_at": now.isoformat(),
+                "crew_size": pm_crew_size,
+                "inventory_items": pm_items,
+                "relocation_details": pm_relocation,
+                **route_points,
             }, status=status.HTTP_200_OK)
 
         tech_loc = None
@@ -7868,6 +8099,51 @@ class WorkforceJobLiveTrackingView(APIView):
             tech_photo = profile_img.url if hasattr(profile_img, "url") else str(profile_img or "")
             tech_rating = getattr(tech, "rating", None)
 
+        # GT Mini Truck audit fix: the Customer app's tracking payload
+        # builder already reads top-level "vehicle_number"/"vehicle_type"
+        # from this response (service_requests/views.py's technician_data
+        # dict) -- but this view never included them, so a Mini Truck
+        # customer could never see which truck was actually coming, only
+        # the driver's name/photo. Vehicle model has real registration_number
+        # / vehicle_type fields; resolve the driver's active,
+        # document-current vehicle whose class satisfies the job's quoted
+        # vehicle_class (same matching rule automatic_dispatch.
+        # check_vehicle_class_compatibility uses for dispatch eligibility),
+        # falling back to their first active vehicle if the class can't be
+        # determined. Scoped to the distance-priced GT categories (Mini
+        # Truck, Two Wheeler); _VEHICLE_CLASS_RANK already has a
+        # "two_wheeler" entry so the same resolution logic applies
+        # unchanged. P&M tracking responses are unaffected.
+        vehicle_number = ""
+        vehicle_type = ""
+        if tech and (job.service_category or "").strip().lower() in ("goods_transport_truck", "goods_transport_two_wheeler"):
+            try:
+                from workforce_api.models import Vehicle
+                from workforce_api.services.automatic_dispatch import _VEHICLE_CLASS_RANK
+
+                fare_breakdown = getattr(job, "fare_breakdown", None) or {}
+                required_class = str(fare_breakdown.get("vehicle_class") or "").strip().lower() if isinstance(fare_breakdown, dict) else ""
+                required_rank = _VEHICLE_CLASS_RANK.get(required_class)
+
+                active_vehicles = list(Vehicle.objects.filter(employee=tech, is_active=True))
+                chosen = None
+                if required_rank is not None:
+                    for v in active_vehicles:
+                        if not v.is_document_current():
+                            continue
+                        v_rank = _VEHICLE_CLASS_RANK.get(str(v.vehicle_type or "").strip().lower())
+                        if v_rank is not None and v_rank >= required_rank:
+                            chosen = v
+                            break
+                if chosen is None and active_vehicles:
+                    chosen = active_vehicles[0]
+                if chosen is not None:
+                    vehicle_number = chosen.registration_number or ""
+                    vehicle_type = chosen.get_vehicle_type_display() if hasattr(chosen, "get_vehicle_type_display") else (chosen.vehicle_type or "")
+            except Exception:
+                logger.exception("Could not resolve vehicle info for job %s live tracking", job.id)
+
+
         logger.info(f"[MAP_RECONCILIATION] job_id={job.id} freshness_state={freshness_state} distance_m={distance_m} age_seconds={age_seconds}")
 
         return Response({
@@ -7887,9 +8163,13 @@ class WorkforceJobLiveTrackingView(APIView):
                 "photo": tech_photo,
                 "rating": tech_rating,
                 "location": tech_loc,
+                "vehicle_number": vehicle_number,
+                "vehicle_type": vehicle_type,
             } if tech else None,
             "technician_photo": tech_photo,
             "technician_rating": tech_rating,
+            "vehicle_number": vehicle_number,
+            "vehicle_type": vehicle_type,
             "start_otp": start_otp,
             "payment_otp": payment_otp,
             "payment_status": pmt.payment_status if pmt else "PENDING",
@@ -7899,6 +8179,10 @@ class WorkforceJobLiveTrackingView(APIView):
             "freshness_state": freshness_state,
             "age_seconds": age_seconds,
             "updated_at": now.isoformat(),
+            "crew_size": pm_crew_size,
+            "inventory_items": pm_items,
+            "relocation_details": pm_relocation,
+            **route_points,
         }, status=status.HTTP_200_OK)
 
 
@@ -8214,13 +8498,15 @@ class WorkforceSkillManageView(APIView):
     permission_classes = [IsWorkforceAdmin]
 
     def get(self, request):
-        if getattr(request.user, "is_superuser", False):
+        if getattr(request.user, "is_superuser", False) or is_platform_admin_user(request.user):
             skills = WorkforceSkill.objects.all()
         else:
             company = resolve_actor_company(request)
             if not company:
                 return Response({"error": "Tenant company context required.", "code": "TENANT_REQUIRED"}, status=status.HTTP_403_FORBIDDEN)
-            skills = WorkforceSkill.objects.filter(company=company)
+            skills = WorkforceSkill.objects.filter(
+                Q(company=company) | Q(company__isnull=True) | Q(company_id=PLATFORM_COMPANY_ID)
+            )
         data = [
             {
                 "id": s.id,
@@ -8235,9 +8521,17 @@ class WorkforceSkillManageView(APIView):
         return Response(data, status=status.HTTP_200_OK)
 
     def post(self, request):
-        company = resolve_actor_company(request)
-        if not company and not getattr(request.user, "is_superuser", False):
-            return Response({"error": "Tenant company context required.", "code": "TENANT_REQUIRED"}, status=status.HTTP_403_FORBIDDEN)
+        if getattr(request.user, "is_superuser", False) or is_platform_admin_user(request.user):
+            company_id = request.data.get("company_id")
+            if company_id:
+                company = Company.objects.filter(pk=company_id).first()
+            else:
+                company = resolve_actor_company(request)
+        else:
+            company = resolve_actor_company(request)
+            if not company:
+                return Response({"error": "Tenant company context required.", "code": "TENANT_REQUIRED"}, status=status.HTTP_403_FORBIDDEN)
+
         name = request.data.get("name", "").strip()
         code = request.data.get("code", "").strip()
         category = request.data.get("category", "General").strip()
@@ -8283,7 +8577,8 @@ class WorkforceEmployeeSkillAssignView(APIView):
         if not emp:
             return Response({"error": "Employee not found.", "code": "NOT_FOUND", "details": {}}, status=status.HTTP_404_NOT_FOUND)
 
-        if not getattr(request.user, "is_superuser", False):
+        user_company = None
+        if not getattr(request.user, "is_superuser", False) and not is_platform_admin_user(request.user):
             user_company = resolve_actor_company(request)
             if not user_company:
                 return Response({"error": "Tenant company context required.", "code": "TENANT_REQUIRED"}, status=status.HTTP_403_FORBIDDEN)
@@ -8297,6 +8592,14 @@ class WorkforceEmployeeSkillAssignView(APIView):
         skill = WorkforceSkill.objects.filter(pk=skill_id).first()
         if not skill:
             return Response({"error": "Skill not found.", "code": "NOT_FOUND", "details": {}}, status=status.HTTP_404_NOT_FOUND)
+
+        if user_company is not None:
+            if skill.company_id is not None and skill.company_id != user_company.id and not is_platform_company(skill.company_id):
+                return Response(
+                    {"error": "Unauthorized: Skill belongs to another company.", "code": "CROSS_TENANT_SKILL_FORBIDDEN"},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
 
         if action == "remove":
             WorkforceEmployeeSkill.objects.filter(employee=emp, skill=skill).delete()
@@ -9058,11 +9361,11 @@ class WorkforceVerificationSuiteView(APIView):
             suite_name = request.query_params.get("suite", "master")
             if suite_name == "employee_platform":
                 file_path = os.path.join(settings.BASE_DIR, "test_employee_platform_integration.py")
-                glob = {"__file__": file_path, "__name__": "test_suite"}
+                glob: dict[str, Any] = {"__file__": file_path, "__name__": "test_suite"}
                 with open(file_path, "r", encoding="utf-8") as f:
                     code = compile(f.read(), file_path, "exec")
                     exec(code, glob)
-                if "run_tests" in glob:
+                if "run_tests" in glob and callable(glob["run_tests"]):
                     results = glob["run_tests"]()
                 else:
                     results = {"passed": 0, "failed": 1, "errors": ["run_tests function not found"]}
@@ -9076,10 +9379,10 @@ class WorkforceVerificationSuiteView(APIView):
 
             elif suite_name == "phase4":
                 file_path = os.path.join(settings.BASE_DIR, "test_phase4_completed_features.py")
-                glob = {"__file__": file_path, "__name__": "__main__"}
+                glob_p4: dict[str, Any] = {"__file__": file_path, "__name__": "__main__"}
                 with open(file_path, "r", encoding="utf-8") as f:
-                    exec(compile(f.read(), file_path, "exec"), glob)
-                results = glob["run_tests"]() if "run_tests" in glob else {"passed": 0, "failed": 1}
+                    exec(compile(f.read(), file_path, "exec"), glob_p4)
+                results = glob_p4["run_tests"]() if ("run_tests" in glob_p4 and callable(glob_p4["run_tests"])) else {"passed": 0, "failed": 1}
                 name = "Phase 4 Verification Suite"
                 is_ok = results.get("failed", 0) == 0
 
@@ -11687,10 +11990,43 @@ class WorkforceJobLogisticsLegView(APIView):
         job = ServiceRequest.objects.filter(pk=pk).first()
         if not job:
             return Response({"error": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
+        # Object-level authorization: the leg history (timestamps, actor ids)
+        # of a job is only readable by the technician it is assigned to.
+        # Previously any approved technician could read any job by id (IDOR).
+        emp = getattr(request.user, "employee_profile", None)
+        if not emp or job.assigned_employee_id != getattr(emp, "id", None):
+            return Response({"error": "Unauthorized: Job is not assigned to you."}, status=status.HTTP_403_FORBIDDEN)
+
+        # Read-only, informational: admin-configured waiting/detention charge
+        # derived from the leg timestamps. Never written to the fare here.
+        from workforce_api.services.waiting_charges import waiting_charge_for_booking
+        try:
+            wc = waiting_charge_for_booking(job)
+            waiting_charge = {
+                "enabled": wc["enabled"],
+                "loading_minutes": wc["loading_minutes"],
+                "unloading_minutes": wc["unloading_minutes"],
+                "billable_minutes": wc["billable_minutes"],
+                "rate_per_minute": str(wc["rate_per_minute"]),
+                "cap": str(wc["cap"]) if wc["cap"] is not None else None,
+                "amount": str(wc["amount"]),
+            }
+        except Exception:
+            logger.exception("waiting charge computation failed for job %s", job.pk)
+            waiting_charge = None
+        # Which verifications each leg still needs (drives the driver UI).
+        try:
+            from workforce_api.services.logistics_checkpoints import gate_summary
+            checkpoint_gates = gate_summary(job)
+        except Exception:
+            logger.exception("checkpoint gate summary failed for job %s", job.pk)
+            checkpoint_gates = None
         return Response({
             "logistics_leg": job.logistics_leg,
             "logistics_leg_updated_at": job.logistics_leg_updated_at,
             "logistics_leg_history": job.logistics_leg_history,
+            "waiting_charge": waiting_charge,
+            "checkpoint_gates": checkpoint_gates,
         }, status=status.HTTP_200_OK)
 
     def post(self, request, pk):
@@ -11742,17 +12078,166 @@ class WorkforceJobLogisticsLegView(APIView):
         # moved timestamp), and emission of `logistics.leg_changed` so a
         # customer watching the map sees the change immediately instead of
         # on their next poll.
-        from workforce_api.services.logistics_events import set_logistics_leg
+        from workforce_api.services.logistics_events import final_leg_status_error, set_logistics_leg
+
+        final_err = final_leg_status_error(job.status, leg)
+        if final_err:
+            return Response({"error": final_err, "code": "FINAL_LEG_NOT_ALLOWED_YET"},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        # Checkpoint verification gates (pickup/drop GPS, proof photos,
+        # delivery OTP). Before this a driver could click from To Pickup to
+        # Delivered with no evidence of ever reaching either end of the trip.
+        # See services/logistics_checkpoints.py for the per-leg rules.
+        from workforce_api.services.logistics_checkpoints import checkpoint_gate_error, notify_leg_advanced
+
+        gate_err, gate_missing = checkpoint_gate_error(job, leg)
+        if gate_err:
+            return Response({
+                "error": gate_err,
+                "code": "CHECKPOINT_VERIFICATION_REQUIRED",
+                "missing": gate_missing,
+            }, status=status.HTTP_400_BAD_REQUEST)
 
         changed, error = set_logistics_leg(job, leg, actor=request.user)
         if error:
             return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)
+
+        if changed:
+            notify_leg_advanced(job, leg)
 
         return Response({
             "logistics_leg": job.logistics_leg,
             "logistics_leg_updated_at": job.logistics_leg_updated_at,
             "changed": changed,
         }, status=status.HTTP_200_OK)
+
+
+class WorkforceJobLogisticsCheckpointView(APIView):
+    """
+    Pickup / drop checkpoint verification for logistics trips -- the mid-trip
+    counterpart of the job-start Pre-Service Verification (arrive/, verify-otp/,
+    pre-service-photo/), stored per checkpoint in
+    LogisticsCheckpointVerification so the job-start record is never touched.
+
+    GET  -> {"checkpoints": {...}, "gates": {leg: [missing...]}}
+    POST {"checkpoint": "PICKUP"|"DROP", "action": "gps", "lat", "lon"}
+         {"checkpoint": ..., "action": "photo", file=<image>}   (multipart)
+         {"checkpoint": "DROP", "action": "otp", "otp": "123456"}
+         {"checkpoint": "DROP", "action": "resend_otp"}
+    """
+    permission_classes = [IsApprovedTechnician]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "workforce_otp"
+
+    _TERMINAL_STATUSES = {"completed", "cancelled", "unable_to_complete"}
+
+    def get_throttles(self):
+        # Only OTP guess/resend attempts are rate limited, as on verify-otp/.
+        action = str(getattr(self.request, "data", {}).get("action", "") if self.request.method == "POST" else "").lower()
+        if action in ("otp", "resend_otp"):
+            return super().get_throttles()
+        return []
+
+    def _resolve(self, request, pk):
+        from workforce_api.services.automatic_dispatch import LOGISTICS_SERVICE_CATEGORIES
+
+        job = ServiceRequest.objects.filter(pk=pk).first()
+        if not job:
+            return None, None, Response({"error": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
+        emp = getattr(request.user, "employee_profile", None)
+        if not emp or job.assigned_employee_id != getattr(emp, "id", None):
+            return None, None, Response({"error": "Unauthorized: Job is not assigned to you."}, status=status.HTTP_403_FORBIDDEN)
+        if not is_employee_authorized_for_job(emp, job):
+            return None, None, Response(
+                {"error": "Unauthorized access to job belonging to another company.", "code": "CROSS_TENANT_FORBIDDEN"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if (job.service_category or "").strip().lower() not in LOGISTICS_SERVICE_CATEGORIES:
+            return None, None, Response(
+                {"error": f"Checkpoint verification is only available for logistics jobs, not '{job.service_category}'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return job, emp, None
+
+    def _payload(self, job):
+        from workforce_api.services.logistics_checkpoints import checkpoint_state, drop_otp_required, gate_summary
+        state = checkpoint_state(job)
+        return {
+            "logistics_leg": job.logistics_leg,
+            "checkpoints": state,
+            "gates": gate_summary(job, state=state),
+            "drop_otp_required": drop_otp_required(job),
+        }
+
+    def get(self, request, pk):
+        job, _emp, err = self._resolve(request, pk)
+        if err:
+            return err
+        return Response(self._payload(job), status=status.HTTP_200_OK)
+
+    def post(self, request, pk):
+        from workforce_api.services import logistics_checkpoints as lc
+
+        job, emp, err = self._resolve(request, pk)
+        if err:
+            return err
+        if job.status in self._TERMINAL_STATUSES:
+            return Response({"error": f"Job #{job.id} is already '{job.status}'."}, status=status.HTTP_400_BAD_REQUEST)
+
+        checkpoint = str(request.data.get("checkpoint") or "").strip().upper()
+        action = str(request.data.get("action") or "").strip().lower()
+        if checkpoint not in lc.CHECKPOINTS:
+            return Response({"error": "checkpoint must be PICKUP or DROP."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if action == "gps":
+            lat = request.data.get("lat") if request.data.get("lat") is not None else request.data.get("latitude")
+            lon = request.data.get("lon") if request.data.get("lon") is not None else (request.data.get("longitude") or request.data.get("lng"))
+            try:
+                lat_val, lon_val = float(lat), float(lon)
+            except (TypeError, ValueError):
+                return Response({"error": "Real device GPS coordinates (lat and lon) are required."},
+                                status=status.HTTP_400_BAD_REQUEST)
+            if not (-90.0 <= lat_val <= 90.0 and -180.0 <= lon_val <= 180.0):
+                return Response({"error": "GPS coordinates out of valid range."}, status=status.HTTP_400_BAD_REQUEST)
+            ok, data = lc.verify_checkpoint_gps(job, emp, request.user, checkpoint, lat_val, lon_val)
+            if not ok:
+                return Response(data, status=status.HTTP_403_FORBIDDEN)
+        elif action == "photo":
+            photo_file = request.FILES.get("file") or request.FILES.get("photo")
+            if not photo_file:
+                return Response({"error": "Photo file required."}, status=status.HTTP_400_BAD_REQUEST)
+            _photo_err = _validate_photo_upload(photo_file)
+            if _photo_err:
+                return Response({"error": _photo_err}, status=status.HTTP_400_BAD_REQUEST)
+            ok, data = lc.record_checkpoint_photo(job, emp, checkpoint, photo_file)
+            if not ok:
+                return Response(data, status=status.HTTP_400_BAD_REQUEST)
+        elif action in ("otp", "resend_otp"):
+            if checkpoint != lc.DROP or not lc.drop_otp_required(job):
+                return Response({"error": "No delivery OTP is required for this checkpoint."},
+                                status=status.HTTP_400_BAD_REQUEST)
+            if action == "resend_otp":
+                state = lc.checkpoint_state(job)
+                if not state[lc.DROP][lc.GPS]:
+                    return Response({"error": "Verify GPS at the drop location first.", "code": "GPS_REQUIRED_FIRST"},
+                                    status=status.HTTP_400_BAD_REQUEST)
+                if state[lc.DROP][lc.OTP]:
+                    return Response({"error": "Delivery OTP already verified."}, status=status.HTTP_400_BAD_REQUEST)
+                lc.issue_delivery_otp(job, force=True)
+                data = {"otp_issued": True, "message": "Fresh delivery OTP sent to the customer."}
+            else:
+                ok, data = lc.verify_delivery_otp(job, emp, request.data.get("otp") or request.data.get("otp_code"))
+                if not ok:
+                    return Response(data, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            return Response({"error": "action must be one of: gps, photo, otp, resend_otp."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        body = self._payload(job)
+        body.update(data)
+        return Response(body, status=status.HTTP_200_OK)
 
 
 class WorkforceJobTripStopsView(APIView):
@@ -12666,7 +13151,7 @@ class PlatformVendorsListView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        if not getattr(request.user, "is_superuser", False):
+        if not is_platform_admin(request.user):
             return Response({"error": "Platform Superadmin privileges required."}, status=status.HTTP_403_FORBIDDEN)
 
         companies = list(Company.objects.select_related("region").all().order_by("-id"))
@@ -12733,7 +13218,7 @@ class PlatformWorkforceListView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        if not getattr(request.user, "is_superuser", False):
+        if not is_platform_admin(request.user):
             return Response({"error": "Platform Superadmin privileges required."}, status=status.HTTP_403_FORBIDDEN)
 
         workforce_type = request.query_params.get("type", "ALL").upper()
@@ -12837,7 +13322,7 @@ class PlatformTieTechnicianView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, pk):
-        if not getattr(request.user, "is_superuser", False):
+        if not is_platform_admin(request.user):
             return Response({"error": "Platform Superadmin privileges required."}, status=status.HTTP_403_FORBIDDEN)
 
         vendor_id = request.data.get("vendor_id")
@@ -12879,7 +13364,7 @@ class PlatformUntieTechnicianView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, pk):
-        if not getattr(request.user, "is_superuser", False):
+        if not is_platform_admin(request.user):
             return Response({"error": "Platform Superadmin privileges required."}, status=status.HTTP_403_FORBIDDEN)
 
         try:
@@ -13002,8 +13487,10 @@ class VendorRelievingRequestsView(APIView):
 
     def get(self, request):
         company = resolve_actor_company(request)
-        if not company and getattr(request.user, "is_superuser", False):
-            company = Company.objects.first()
+        if not company and is_platform_admin(request.user):
+            target_id = request.query_params.get("vendor_id") or request.query_params.get("company_id")
+            if target_id:
+                company = Company.objects.filter(id=target_id).first()
         if not company:
             return Response({"error": "Vendor company context required."}, status=status.HTTP_403_FORBIDDEN)
 
@@ -13054,8 +13541,10 @@ class VendorApproveRelievingView(APIView):
 
     def post(self, request, pk):
         company = resolve_actor_company(request)
-        if not company and getattr(request.user, "is_superuser", False):
-            company = Company.objects.first()
+        if not company and is_platform_admin(request.user):
+            target_id = request.data.get("vendor_id") or request.data.get("company_id")
+            if target_id:
+                company = Company.objects.filter(id=target_id).first()
         if not company:
             return Response({"error": "Vendor company context required."}, status=status.HTTP_403_FORBIDDEN)
 
@@ -13087,7 +13576,7 @@ class PlatformRelievingRequestsView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        if not getattr(request.user, "is_superuser", False):
+        if not is_platform_admin(request.user):
             return Response({"error": "Platform Superadmin privileges required."}, status=status.HTTP_403_FORBIDDEN)
 
         requests_qs = (
@@ -13138,7 +13627,7 @@ class PlatformApproveRelievingView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, pk):
-        if not getattr(request.user, "is_superuser", False):
+        if not is_platform_admin(request.user):
             return Response({"error": "Platform Superadmin privileges required."}, status=status.HTTP_403_FORBIDDEN)
 
         audit_notes = request.data.get("audit_notes", "Verified all platform job commissions and billings have settled.")
@@ -13814,7 +14303,7 @@ class VendorDealListView(APIView):
             deal_type=data.get("deal_type", "strike_through"),
             original_price=original_price,
             deal_price=deal_price,
-            badge_text=data.get("badge_text", f"{int(round(((original_price - deal_price)/original_price)*100))}% OFF" if original_price > deal_price else "SPECIAL DEAL"),
+            badge_text=data.get("badge_text", f"{round(((original_price - deal_price)/original_price)*100)}% OFF" if original_price > deal_price else "SPECIAL DEAL"),
             is_active=bool(data.get("is_active", True)),
         )
         return Response({

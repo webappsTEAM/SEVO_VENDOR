@@ -24,7 +24,8 @@ export function LogisticsStopManager({ job, onStopsUpdated, className = '' }) {
   const [error, setError] = useState('');
 
   const loadStops = useCallback(async () => {
-    if (!job?.id || !isLogisticsJob(job)) return;
+    // Guard: stops endpoint requires a logistics job assigned to current employee (403 if unassigned).
+    if (!job?.id || !isLogisticsJob(job) || !job?.is_assigned_to_current_employee) return;
     try {
       setLoading(true);
       setError('');
@@ -42,7 +43,7 @@ export function LogisticsStopManager({ job, onStopsUpdated, className = '' }) {
     } finally {
       setLoading(false);
     }
-  }, [job?.id]);
+  }, [job?.id, job?.is_assigned_to_current_employee]);
 
   useEffect(() => {
     loadStops();

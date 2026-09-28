@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom
 import { AuthProvider, useAuth } from './context/AuthProvider.jsx';
 import { ThemeProvider } from './context/ThemeContext.jsx';
 import { EmployeeRuntimeProvider } from './context/EmployeeRuntimeProvider.jsx';
-import { AdminRoute, EmployeeRoute, PlatformAdminRoute, AuthenticatedRoute, SellerHubRoute } from './components/common/ProtectedRoute.jsx';
+import { AdminRoute, EmployeeRoute, PlatformAdminRoute, AuthenticatedRoute, SellerHubRoute, WarehouseRoute } from './components/common/ProtectedRoute.jsx';
 
 import { LoginPage } from './pages/auth/LoginPage.jsx';
 import { SignupPage } from './pages/auth/SignupPage.jsx';
@@ -87,6 +87,15 @@ import { SellerInventoryPage } from './pages/seller/SellerInventoryPage.jsx';
 import { SellerCatalogUploadsPage } from './pages/seller/SellerCatalogUploadsPage.jsx';
 import { SellerReportsPage } from './pages/seller/SellerReportsPage.jsx';
 
+import { WarehouseLayout } from './pages/warehouse/WarehouseLayout.jsx';
+import { WarehouseHomePage } from './pages/warehouse/WarehouseHomePage.jsx';
+import { WarehouseOrdersPage } from './pages/warehouse/WarehouseOrdersPage.jsx';
+import { WarehouseReturnsPage } from './pages/warehouse/WarehouseReturnsPage.jsx';
+import { WarehouseInventoryPage } from './pages/warehouse/WarehouseInventoryPage.jsx';
+import { WarehouseReportsPage } from './pages/warehouse/WarehouseReportsPage.jsx';
+import { WarehouseProfilePage } from './pages/warehouse/WarehouseProfilePage.jsx';
+import { WarehouseRackViewPage } from './pages/warehouse/WarehouseRackViewPage.jsx';
+
 
 function EmployeeWorkspaceLayout() {
   return (
@@ -113,10 +122,22 @@ function RootRedirect() {
   }
   if (!isAuthenticated) return <Navigate to="/workforce/login" replace />;
 
+  const isWarehouse = Boolean(
+    user?.isWarehouseStaff ||
+    user?.role === 'warehouse' ||
+    user?.warehouseId
+  );
+
+  if (isWarehouse) {
+    return <Navigate to="/workforce/warehouse/home" replace />;
+  }
+
   const isDedicatedSeller = Boolean(
-    isSeller ||
-    (user?.businessType === 'grocery_supplier' && !isPlatformAdmin) ||
-    user?.role === 'seller'
+    !isWarehouse && (
+      isSeller ||
+      (user?.businessType === 'grocery_supplier' && !isPlatformAdmin) ||
+      user?.role === 'seller'
+    )
   );
 
   if (isDedicatedSeller) {
@@ -156,6 +177,8 @@ export function App() {
             <Route path="/admin/*" element={<Navigate to="/workforce/admin" replace />} />
             <Route path="/seller" element={<Navigate to="/workforce/seller/dashboard" replace />} />
             <Route path="/seller/*" element={<Navigate to="/workforce/seller/dashboard" replace />} />
+            <Route path="/warehouse" element={<Navigate to="/workforce/warehouse/home" replace />} />
+            <Route path="/warehouse/*" element={<Navigate to="/workforce/warehouse/home" replace />} />
             <Route path="/vendor/estimations" element={<Navigate to="/workforce/admin/estimations" replace />} />
             <Route path="/employee" element={<Navigate to="/workforce/employee/dashboard" replace />} />
             <Route path="/employee/*" element={<Navigate to="/workforce/employee/dashboard" replace />} />
@@ -289,6 +312,14 @@ export function App() {
               element={<Navigate to="/workforce/admin/provider-profile" replace />}
             />
             <Route
+              path="/workforce/admin"
+              element={
+                <AdminRoute>
+                  <AdminDashboardPage />
+                </AdminRoute>
+              }
+            />
+            <Route
               path="/workforce/admin/applications"
               element={
                 <AdminRoute>
@@ -401,39 +432,6 @@ export function App() {
               }
             />
 
-          {/* Workforce Admin Operations Workspace */}
-          <Route
-            path="/workforce/admin"
-            element={
-              <AdminRoute>
-                <AdminDashboardPage />
-              </AdminRoute>
-            }
-          />
-          <Route
-            path="/workforce/admin/applications"
-            element={
-              <AdminRoute>
-                <AdminApplicationsPage />
-              </AdminRoute>
-            }
-          />
-          <Route
-            path="/workforce/admin/applications/:id"
-            element={
-              <AdminRoute>
-                <AdminApplicationDetailPage />
-              </AdminRoute>
-            }
-          />
-          <Route
-            path="/workforce/admin/employees"
-            element={
-              <AdminRoute>
-                <AdminEmployeesPage />
-              </AdminRoute>
-            }
-          />
           {/* SEVO Platform Admin Routes */}
           <Route
             path="/workforce/platform/vendors"
@@ -466,46 +464,6 @@ export function App() {
             element={
               <AdminRoute>
                 <VendorInvitationsPage />
-              </AdminRoute>
-            }
-          />
-          <Route
-            path="/workforce/admin/jobs"
-            element={
-              <AdminRoute>
-                <AdminJobsPage />
-              </AdminRoute>
-            }
-          />
-          <Route
-            path="/workforce/admin/dispatch"
-            element={
-              <AdminRoute>
-                <AdminOperationsPage />
-              </AdminRoute>
-            }
-          />
-          <Route
-            path="/workforce/admin/operations"
-            element={
-              <AdminRoute>
-                <AdminOperationsPage />
-              </AdminRoute>
-            }
-          />
-          <Route
-            path="/workforce/admin/services"
-            element={
-              <AdminRoute>
-                <AdminApplicationsPage />
-              </AdminRoute>
-            }
-          />
-          <Route
-            path="/workforce/admin/skills"
-            element={
-              <AdminRoute>
-                <AdminSkillsPage />
               </AdminRoute>
             }
           />
@@ -881,14 +839,48 @@ export function App() {
               </AdminRoute>
             }
           />
+
+          {/* ═══════════════════════════════════════════════════════════════════════ */}
+          {/* WAREHOUSE OPERATIONS PORTAL ROUTES (Phase V)                       */}
+          {/* ═══════════════════════════════════════════════════════════════════════ */}
           <Route
-            path="/workforce/admin/settings"
+            path="/workforce/warehouse"
             element={
-              <AdminRoute>
-                <AdminDashboardPage />
-              </AdminRoute>
+              <WarehouseRoute>
+                <WarehouseLayout />
+              </WarehouseRoute>
             }
-          />
+          >
+            <Route index element={<Navigate to="/workforce/warehouse/home" replace />} />
+            <Route path="home" element={<WarehouseHomePage />} />
+            <Route path="orders" element={<WarehouseOrdersPage />} />
+            <Route path="returns" element={<WarehouseReturnsPage />} />
+            <Route path="inventory" element={<WarehouseInventoryPage />} />
+            <Route path="reports" element={<WarehouseReportsPage />} />
+            <Route path="profile" element={<WarehouseProfilePage />} />
+            <Route path="rack-view" element={<WarehouseRackViewPage />} />
+          </Route>
+
+          {/* ═══════════════════════════════════════════════════════════════════════ */}
+          {/* WAREHOUSE OPERATIONS PORTAL ROUTES (Phase V)                       */}
+          {/* ═══════════════════════════════════════════════════════════════════════ */}
+          <Route
+            path="/workforce/warehouse"
+            element={
+              <WarehouseRoute>
+                <WarehouseLayout />
+              </WarehouseRoute>
+            }
+          >
+            <Route index element={<Navigate to="/workforce/warehouse/home" replace />} />
+            <Route path="home" element={<WarehouseHomePage />} />
+            <Route path="orders" element={<WarehouseOrdersPage />} />
+            <Route path="returns" element={<WarehouseReturnsPage />} />
+            <Route path="inventory" element={<WarehouseInventoryPage />} />
+            <Route path="reports" element={<WarehouseReportsPage />} />
+            <Route path="profile" element={<WarehouseProfilePage />} />
+            <Route path="rack-view" element={<WarehouseRackViewPage />} />
+          </Route>
 
           {/* Customer Live Tracking Routes */}
           <Route path="/track/:jobId" element={<CustomerTrackingPage />} />

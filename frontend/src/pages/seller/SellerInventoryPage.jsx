@@ -34,6 +34,7 @@ import {
   Check,
   Scan,
   Barcode as BarcodeIcon,
+  Boxes,
 } from 'lucide-react';
 import { BarcodeScannerModal } from '../../components/common/BarcodeScannerModal.jsx';
 import { BarcodeRenderer } from '../../components/common/BarcodeRenderer.jsx';
@@ -565,6 +566,14 @@ export function SellerInventoryPage() {
           </div>
 
           <div className="flex items-center gap-2">
+            <Link
+              to="/workforce/seller-hub/catalogs?tab=inbound_requests"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl shadow-xs transition-all"
+            >
+              <Boxes className="w-4 h-4 text-indigo-600" />
+              <span>Warehouse Storage Requests</span>
+            </Link>
+
             <button
               onClick={() => {
                 fetchApprovedProductsForInit();

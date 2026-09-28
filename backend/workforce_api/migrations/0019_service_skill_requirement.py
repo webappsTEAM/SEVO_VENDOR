@@ -4,6 +4,45 @@ import django.db.models.deletion
 from django.db import migrations, models
 
 
+def add_primary_employee_job_index_postgres(apps, schema_editor):
+    """
+    Postgres-only conditional partial-unique-index creation, guarded on the
+    target table already existing (service_requests_employeejob is owned by
+    a different app's migration history). manage.py test always runs
+    against sqlite (workforce_core.settings IS_TESTING), which has neither
+    information_schema.tables in this form nor partial-index syntax
+    compatible with this block, so this is a genuine no-op there. Production
+    is Postgres-only per settings.py's DATABASES config.
+    """
+    if schema_editor.connection.vendor != "postgresql":
+        return
+    schema_editor.execute(
+        """
+        DO $$
+        BEGIN
+            IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'service_requests_employeejob') THEN
+                CREATE UNIQUE INDEX IF NOT EXISTS unique_primary_employee_job_per_sr ON service_requests_employeejob (service_request_id) WHERE is_primary = true;
+            END IF;
+        END $$;
+        """
+    )
+
+
+def drop_primary_employee_job_index_postgres(apps, schema_editor):
+    if schema_editor.connection.vendor != "postgresql":
+        return
+    schema_editor.execute(
+        """
+        DO $$
+        BEGIN
+            IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'unique_primary_employee_job_per_sr') THEN
+                DROP INDEX IF EXISTS unique_primary_employee_job_per_sr;
+            END IF;
+        END $$;
+        """
+    )
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -26,22 +65,8 @@ class Migration(migrations.Migration):
                 'unique_together': {('service', 'skill')},
             },
         ),
-        migrations.RunSQL(
-            sql="""
-            DO $$
-            BEGIN
-                IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'service_requests_employeejob') THEN
-                    CREATE UNIQUE INDEX IF NOT EXISTS unique_primary_employee_job_per_sr ON service_requests_employeejob (service_request_id) WHERE is_primary = true;
-                END IF;
-            END $$;
-            """,
-            reverse_sql="""
-            DO $$
-            BEGIN
-                IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'unique_primary_employee_job_per_sr') THEN
-                    DROP INDEX IF EXISTS unique_primary_employee_job_per_sr;
-                END IF;
-            END $$;
-            """
+        migrations.RunPython(
+            add_primary_employee_job_index_postgres,
+            drop_primary_employee_job_index_postgres,
         ),
     ]
