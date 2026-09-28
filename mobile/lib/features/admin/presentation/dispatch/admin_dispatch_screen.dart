@@ -1,0 +1,3715 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:latlong2/latlong.dart';
+
+import '../../../../core/theme/app_theme.dart';
+import '../../../../shared/widgets/empty_state.dart';
+import '../../../../shared/widgets/status_chip.dart';
+import '../../../../shared/widgets/workforce_app_bar.dart';
+import '../../../jobs/domain/job.dart';
+import '../../data/admin_dashboard_api.dart';
+import '../../domain/admin_scope_extension.dart';
+import '../../domain/admin_service_request_item.dart';
+import '../../domain/eligible_technician.dart';
+import '../../domain/fleet_member.dart';
+import '../../domain/work_location.dart';
+import '../admin_dashboard_providers.dart';
+import '../widgets/admin_drawer.dart';
+
+/// Admin Operations: Dynamic Dispatch & Fleet Operations.
+/// Real-time GPS telemetry radar, fleet presence, 9-Gate matching, scope extensions,
+/// service authorization requests, and geofenced work locations.
+class AdminDispatchScreen extends ConsumerStatefulWidget {
+  const AdminDispatchScreen({
+    super.key,
+    this.jobId,
+    this.initialTabIndex = 0,
+  });
+
+  final String? jobId;
+  final int initialTabIndex;
+
+  @override
+  ConsumerState<AdminDispatchScreen> createState() => _AdminDispatchScreenState();
+}
+
+class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  Job? _selectedJob;
+  String _selectedBand = 'all';
+  bool _isActionInProgress = false;
+  FleetMember? _selectedMapMember;
+  final MapController _mapController = MapController();
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(
+      length: 5,
+      vsync: this,
+      initialIndex: widget.initialTabIndex.clamp(0, 4),
+    );
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _refreshAll() async {
+    ref.invalidate(adminDashboardDataProvider);
+    ref.invalidate(adminJobsListProvider(null));
+    ref.invalidate(adminFleetListProvider);
+    ref.invalidate(adminPendingExtensionsProvider);
+    ref.invalidate(adminPendingServicesProvider);
+    ref.invalidate(adminLocationsProvider);
+    if (_selectedJob != null) {
+      ref.invalidate(adminEligibleTechniciansProvider(_selectedJob!.id));
+      ref.invalidate(adminJobTimelineProvider(_selectedJob!.id));
+    }
+  }
+
+  void _selectJob(Job job) {
+    setState(() {
+      _selectedJob = job;
+    });
+  }
+
+  // ── Auto-Dispatch Re-evaluation ────────────────────────────────────────────
+  Future<void> _triggerAutoDispatch(Job job) async {
+    setState(() => _isActionInProgress = true);
+    try {
+      final api = ref.read(adminDashboardApiProvider);
+      final res = await api.triggerAutoDispatch(job.id);
+      if (mounted) {
+        final msg = res['message']?.toString() ??
+            'Auto-dispatch re-evaluated for ${job.requestId}.';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(msg),
+            backgroundColor: const Color(0xFF059669),
+          ),
+        );
+        await _refreshAll();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Auto-dispatch failed: $e'),
+            backgroundColor: const Color(0xFFDC2626),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isActionInProgress = false);
+    }
+  }
+
+  // ── Manual Dispatch Assignment ─────────────────────────────────────────────
+  Future<void> _assignTechnician(Job job, EligibleTechnician tech) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.card)),
+        title: Text('Confirm Dispatch Offer',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Dispatch job offer ${job.requestId} to ${tech.name}?'),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceMuted,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Service: ${job.displayTitle}',
+                      style: TextStyle(
+                          fontSize: 12, fontWeight: FontWeight.w600)),
+                  if (job.customerName != null)
+                    Text('Customer: ${job.customerName}',
+                        style: TextStyle(
+                            fontSize: 12, color: AppColors.textSecondary)),
+                  if (tech.employeeId != null)
+                    Text('Technician ID: ${tech.employeeId}',
+                        style: TextStyle(
+                            fontSize: 12, color: AppColors.textSecondary)),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF059669),
+            ),
+            child: Text('Dispatch Offer'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() => _isActionInProgress = true);
+    try {
+      final api = ref.read(adminDashboardApiProvider);
+      final result = await api.assignTechnician(
+        jobId: job.id,
+        employeeId: tech.id,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              result['message']?.toString() ??
+                  'Job ${job.requestId} offer dispatched to ${tech.name}.',
+            ),
+            backgroundColor: const Color(0xFF059669),
+          ),
+        );
+        await _refreshAll();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Dispatch assignment failed: $e'),
+            backgroundColor: const Color(0xFFDC2626),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isActionInProgress = false);
+    }
+  }
+
+  // ── View Job Lifecycle Timeline ────────────────────────────────────────────
+  void _openJobTimeline(Job job) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _JobTimelineBottomSheet(job: job),
+    );
+  }
+
+  // ── Decide Scope Extension ─────────────────────────────────────────────────
+  Future<void> _decideScopeExtension(
+    AdminScopeExtension ext,
+    String action,
+  ) async {
+    double? approvedAmount;
+    String reason = '';
+
+    if (action == 'APPROVED') {
+      final amountController = TextEditingController(
+        text: ext.requestedAmount > 0
+            ? ext.requestedAmount.toStringAsFixed(2)
+            : ext.totalCost.toStringAsFixed(2),
+      );
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppRadius.card)),
+          title: Text('Approve Scope Extension',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Review approved amount for #${ext.requestId ?? 'Job ${ext.jobId}'}:'),
+              const SizedBox(height: 12),
+              TextField(
+                controller: amountController,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(
+                  labelText: 'Approved Amount (₹)',
+                  border: OutlineInputBorder(),
+                  prefixText: '₹ ',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              style: FilledButton.styleFrom(backgroundColor: const Color(0xFF059669)),
+              child: Text('Approve Extension'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+      approvedAmount = double.tryParse(amountController.text.trim());
+    } else {
+      final reasonController = TextEditingController(
+        text: 'Scope expansion not authorized.',
+      );
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppRadius.card)),
+          title: Text('Reject Scope Extension',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Enter rejection reason for technician:'),
+              const SizedBox(height: 12),
+              TextField(
+                controller: reasonController,
+                maxLines: 2,
+                decoration: const InputDecoration(
+                  labelText: 'Rejection Reason',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              style: FilledButton.styleFrom(backgroundColor: const Color(0xFFDC2626)),
+              child: Text('Reject Extension'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+      reason = reasonController.text.trim();
+    }
+
+    setState(() => _isActionInProgress = true);
+    try {
+      final api = ref.read(adminDashboardApiProvider);
+      await api.decideExtension(
+        jobId: ext.jobId,
+        extId: ext.id,
+        action: action,
+        reason: reason,
+        approvedAmount: approvedAmount,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Extension marked as $action.'),
+            backgroundColor: action == 'APPROVED'
+                ? const Color(0xFF059669)
+                : const Color(0xFFDC2626),
+          ),
+        );
+        ref.invalidate(adminPendingExtensionsProvider);
+        await _refreshAll();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Extension review failed: $e'),
+            backgroundColor: const Color(0xFFDC2626),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isActionInProgress = false);
+    }
+  }
+
+  // ── Decide Service Request ─────────────────────────────────────────────────
+  Future<void> _decideServiceRequest(
+    AdminServiceRequestItem req,
+    String action,
+  ) async {
+    String reason = '';
+    if (action == 'reject') {
+      final reasonController = TextEditingController(
+        text: 'Qualifications do not meet minimum threshold',
+      );
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppRadius.card)),
+          title: Text('Reject Service Authorization',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: reasonController,
+                maxLines: 2,
+                decoration: const InputDecoration(
+                  labelText: 'Rejection Reason',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              style: FilledButton.styleFrom(backgroundColor: const Color(0xFFDC2626)),
+              child: Text('Reject Request'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+      reason = reasonController.text.trim();
+    }
+
+    setState(() => _isActionInProgress = true);
+    try {
+      final api = ref.read(adminDashboardApiProvider);
+      await api.decideService(
+        employeeId: req.employeeId,
+        serviceId: req.serviceId,
+        action: action,
+        reason: reason,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Service request ${action}d successfully.'),
+            backgroundColor: action == 'approve'
+                ? const Color(0xFF059669)
+                : const Color(0xFFDC2626),
+          ),
+        );
+        ref.invalidate(adminPendingServicesProvider);
+        await _refreshAll();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Service decision failed: $e'),
+            backgroundColor: const Color(0xFFDC2626),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isActionInProgress = false);
+    }
+  }
+
+  // ── Toggle / Delete / Edit Work Location ───────────────────────────────────
+  Future<void> _toggleLocationActive(WorkLocation loc) async {
+    try {
+      final api = ref.read(adminDashboardApiProvider);
+      await api.toggleLocationActive(loc.id, !loc.isActive);
+      ref.invalidate(adminLocationsProvider);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to toggle location: $e'),
+            backgroundColor: const Color(0xFFDC2626),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _deleteLocation(WorkLocation loc) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.card)),
+        title: Text('Delete Location?',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+        content: Text(
+          'Delete "${loc.name}"? This removes the authorized boundary. Historical shift records referencing this location remain intact.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFDC2626)),
+            child: Text('Delete Location'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      final api = ref.read(adminDashboardApiProvider);
+      await api.deleteLocation(loc.id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Location "${loc.name}" deleted.'),
+            backgroundColor: const Color(0xFF059669),
+          ),
+        );
+        ref.invalidate(adminLocationsProvider);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to delete location: $e'),
+            backgroundColor: const Color(0xFFDC2626),
+          ),
+        );
+      }
+    }
+  }
+
+  void _openLocationFormModal({WorkLocation? editingLocation}) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _LocationFormBottomSheet(
+        editingLocation: editingLocation,
+        onSaved: (msg) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(msg),
+              backgroundColor: const Color(0xFF059669),
+            ),
+          );
+          ref.invalidate(adminLocationsProvider);
+        },
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dashboardAsync = ref.watch(adminDashboardDataProvider);
+    final fleetAsync = ref.watch(adminFleetListProvider);
+    final pendingExtAsync = ref.watch(adminPendingExtensionsProvider);
+    final pendingSvcAsync = ref.watch(adminPendingServicesProvider);
+    final locationsAsync = ref.watch(adminLocationsProvider);
+
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      appBar: const WorkforceAppBar(
+        titleText: 'Dispatch Console',
+        showStatusSubBar: false,
+        showDrawerMenu: true,
+      ),
+      drawer: const AdminDrawer(),
+      body: dashboardAsync.when(
+        loading: () => const Center(
+          child: CircularProgressIndicator(
+            color: Color(0xFF005965),
+          ),
+        ),
+        error: (err, _) => Center(
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.errorBg,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.error_outline_rounded,
+                      color: Color(0xFFDC2626), size: 36),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Unable to load operations data: $err',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  onPressed: _refreshAll,
+                  icon: const Icon(Icons.refresh_rounded, size: 16),
+                  label: Text('Retry'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF005965),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        data: (data) {
+          final activeJobs = data.jobs.where((j) {
+            final st = j.status.toLowerCase();
+            return st != 'completed' &&
+                st != 'cancelled' &&
+                st != 'unable_to_complete';
+          }).toList();
+          final fleet = fleetAsync.valueOrNull ?? data.fleet;
+          final pendingExtensions = pendingExtAsync.valueOrNull ?? [];
+          final pendingServices = pendingSvcAsync.valueOrNull ?? [];
+          final locations = locationsAsync.valueOrNull ?? [];
+
+          // Initial selection handling from route param
+          if (_selectedJob == null && widget.jobId != null) {
+            final targetId = widget.jobId!.trim();
+            _selectedJob = activeJobs.where((j) =>
+                j.id.toString() == targetId ||
+                j.requestId.toLowerCase() == targetId.toLowerCase()).firstOrNull;
+          }
+          if (_selectedJob != null &&
+              !activeJobs.any((j) => j.id == _selectedJob!.id)) {
+            _selectedJob = null;
+          }
+          if (_selectedJob == null && activeJobs.isNotEmpty) {
+            _selectedJob = activeJobs.first;
+          }
+
+          final onlineCount = fleet.where((f) => f.isOnline).length;
+          final offlineCount = fleet.where((f) => !f.isOnline).length;
+          final activeBookingsCount = activeJobs.length;
+
+          return RefreshIndicator(
+            onRefresh: _refreshAll,
+            color: const Color(0xFF005965),
+            child: ListView(
+              padding: const EdgeInsets.all(AppSpacing.md),
+              children: [
+                // ── Header Title & Refresh Action ────────────────────────────
+                Container(
+                  padding: const EdgeInsets.all(AppSpacing.md),
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: AppColors.border),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x060F172A),
+                        blurRadius: 8,
+                        offset: Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            width: 42,
+                            height: 42,
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFF005965), Color(0xFF2563EB)],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              borderRadius: BorderRadius.circular(11),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Color(0x28005965),
+                                  blurRadius: 6,
+                                  offset: Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: const Icon(
+                              Icons.radar_rounded,
+                              color: Colors.white,
+                              size: 22,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        'Dynamic Dispatch & Fleet Operations',
+                                        style: TextStyle(
+                                          fontSize: 14.5,
+                                          fontWeight: FontWeight.w800,
+                                          color: AppColors.textPrimary,
+                                          letterSpacing: -0.2,
+                                        ),
+                                      ),
+                                    ),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 7, vertical: 2.5),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.successBg,
+                                        borderRadius: BorderRadius.circular(20),
+                                        border: Border.all(
+                                            color: const Color(0xFFA7F3D0)),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Container(
+                                            width: 6,
+                                            height: 6,
+                                            decoration: BoxDecoration(
+                                              color: Color(0xFF10B981),
+                                              shape: BoxShape.circle,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            'LIVE',
+                                            style: TextStyle(
+                                              fontSize: 9.5,
+                                              fontWeight: FontWeight.w800,
+                                              color: Color(0xFF065F46),
+                                              letterSpacing: 0.5,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  'Skill-based technician matching and real-time GPS telemetry radar',
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    color: AppColors.textSecondary,
+                                    height: 1.3,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Divider(height: 1, color: AppColors.border),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        alignment: WrapAlignment.spaceBetween,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          Text(
+                            'Authoritative Geodesic Haversine',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textMuted,
+                            ),
+                          ),
+                          InkWell(
+                            onTap: _isActionInProgress ? null : _refreshAll,
+                            borderRadius: BorderRadius.circular(6),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 5),
+                              decoration: BoxDecoration(
+                                color: AppColors.surfaceMuted,
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: AppColors.border),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  _isActionInProgress
+                                      ? const SizedBox(
+                                          width: 12,
+                                          height: 12,
+                                          child: CircularProgressIndicator(
+                                              strokeWidth: 2),
+                                        )
+                                      : const Icon(Icons.refresh_rounded,
+                                          size: 14, color: Color(0xFF005965)),
+                                  const SizedBox(width: 5),
+                                  Text(
+                                    'Refresh Fleet Data',
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFF005965),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+
+                // ── Summary Metric Cards Strip (4 Cards) ─────────────────────
+                _buildMetricsSection(
+                  totalFleet: fleet.length,
+                  onlineCount: onlineCount,
+                  offlineCount: offlineCount,
+                  activeBookings: activeBookingsCount,
+                ),
+                const SizedBox(height: AppSpacing.md),
+
+                // ── Tab Bar Navigation (5 Tabs) ──────────────────────────────
+                Container(
+                  padding: const EdgeInsets.all(3),
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceMuted,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: TabBar(
+                    controller: _tabController,
+                    isScrollable: true,
+                    tabAlignment: TabAlignment.start,
+                    labelColor: const Color(0xFF005965),
+                    unselectedLabelColor: AppColors.textSecondary,
+                    labelStyle: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                    ),
+                    unselectedLabelStyle: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    indicator: BoxDecoration(
+                      color: AppColors.surface,
+                      borderRadius: BorderRadius.circular(9),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x100F172A),
+                          blurRadius: 4,
+                          offset: Offset(0, 1),
+                        ),
+                      ],
+                    ),
+                    indicatorSize: TabBarIndicatorSize.tab,
+                    dividerColor: Colors.transparent,
+                    tabs: [
+                      const Tab(
+                        icon: Icon(Icons.send_rounded, size: 15),
+                        text: 'Dispatch Monitor',
+                      ),
+                      Tab(
+                        icon: const Icon(Icons.near_me_rounded, size: 15),
+                        text: 'Live Fleet (${fleet.length})',
+                      ),
+                      Tab(
+                        icon: const Icon(Icons.add_circle_outline_rounded, size: 15),
+                        text: 'Scope Extensions (${pendingExtensions.length})',
+                      ),
+                      Tab(
+                        icon: const Icon(Icons.build_circle_outlined, size: 15),
+                        text: 'Service Requests (${pendingServices.length})',
+                      ),
+                      Tab(
+                        icon: const Icon(Icons.location_on_outlined, size: 15),
+                        text: 'Work Locations (${locations.length})',
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+
+                // ── Tab Content Views ────────────────────────────────────────
+                _buildActiveTabContent(
+                  allJobs: activeJobs,
+                  fleet: fleet,
+                  pendingExtensions: pendingExtensions,
+                  pendingServices: pendingServices,
+                  locations: locations,
+                ),
+                const SizedBox(height: AppSpacing.xl),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  // ── Metrics Strip Grid ─────────────────────────────────────────────────────
+  Widget _buildMetricsSection({
+    required int totalFleet,
+    required int onlineCount,
+    required int offlineCount,
+    required int activeBookings,
+  }) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isNarrow = constraints.maxWidth < 360;
+        final cardWidth = isNarrow
+            ? constraints.maxWidth
+            : (constraints.maxWidth - AppSpacing.sm) / 2;
+
+        return Wrap(
+          spacing: AppSpacing.sm,
+          runSpacing: AppSpacing.sm,
+          children: [
+            _MetricCard(
+              title: 'Total Fleet',
+              value: '$totalFleet',
+              subtitle: 'Total technicians/workforce tracked by dispatch.',
+              icon: Icons.groups_rounded,
+              color: const Color(0xFF005965),
+              badgeBg: AppColors.infoBg,
+              width: cardWidth,
+            ),
+            _MetricCard(
+              title: 'Online & Ready',
+              value: '$onlineCount',
+              subtitle: 'Available for work',
+              icon: Icons.check_circle_rounded,
+              color: const Color(0xFF059669),
+              badgeBg: AppColors.successBg,
+              width: cardWidth,
+            ),
+            _MetricCard(
+              title: 'Offline Fleet',
+              value: '$offlineCount',
+              subtitle: 'Off duty / break',
+              icon: Icons.pause_circle_rounded,
+              color: AppColors.textSecondary,
+              badgeBg: AppColors.surfaceMuted,
+              width: cardWidth,
+            ),
+            _MetricCard(
+              title: 'Active Bookings',
+              value: '$activeBookings',
+              subtitle: 'In queue / assigned',
+              icon: Icons.work_outline_rounded,
+              color: const Color(0xFFD97706),
+              badgeBg: AppColors.warningBg,
+              width: cardWidth,
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // ── Tab Content Builder ────────────────────────────────────────────────────
+  Widget _buildActiveTabContent({
+    required List<Job> allJobs,
+    required List<FleetMember> fleet,
+    required List<AdminScopeExtension> pendingExtensions,
+    required List<AdminServiceRequestItem> pendingServices,
+    required List<WorkLocation> locations,
+  }) {
+    return AnimatedBuilder(
+      animation: _tabController,
+      builder: (context, _) {
+        switch (_tabController.index) {
+          case 0:
+            return _buildDispatchMonitorTab(allJobs);
+          case 1:
+            return _buildLiveFleetTelemetryTab(fleet);
+          case 2:
+            return _buildScopeExtensionsTab(pendingExtensions);
+          case 3:
+            return _buildServiceRequestsTab(pendingServices);
+          case 4:
+            return _buildWorkLocationsTab(locations);
+          default:
+            return const SizedBox.shrink();
+        }
+      },
+    );
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // TAB 1: AUTOMATED DISPATCH MONITOR
+  // ───────────────────────────────────────────────────────────────────────────
+  Widget _buildDispatchMonitorTab(List<Job> allJobs) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 1. Customer Service Requests Section
+        _buildSectionHeader(
+          title: '1. Customer Service Requests (${allJobs.length})',
+          badgeText: 'Auto-Dispatched',
+          icon: Icons.assignment_outlined,
+        ),
+        const SizedBox(height: 8),
+        if (allJobs.isEmpty)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppColors.border),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x040F172A),
+                  blurRadius: 6,
+                  offset: Offset(0, 1),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF0FDF4),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: const Color(0xFFBBF7D0)),
+                  ),
+                  child: const Icon(
+                    Icons.check_circle_outline_rounded,
+                    color: Color(0xFF16A34A),
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'No Active Bookings',
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      SizedBox(height: 2),
+                      Text(
+                        'No active service bookings in queue.',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          )
+        else
+          ...allJobs.map((j) {
+            final isSelected = _selectedJob?.id == j.id;
+            return _DispatchJobItemCard(
+              job: j,
+              isSelected: isSelected,
+              onTap: () => _selectJob(j),
+            );
+          }),
+        const SizedBox(height: AppSpacing.lg),
+
+        // 2. Live Automated Geo-Dispatch Engine Monitor Section
+        _buildSectionHeader(
+          title: '2. Live Automated Geo-Dispatch Engine Monitor',
+          icon: Icons.radar_rounded,
+        ),
+        const SizedBox(height: 8),
+        _buildGeoDispatchMonitorCard(_selectedJob),
+      ],
+    );
+  }
+
+  Widget _buildGeoDispatchMonitorCard(Job? selectedJob) {
+    final candidatesAsync = selectedJob != null
+        ? ref.watch(adminEligibleTechniciansProvider(selectedJob.id))
+        : null;
+
+    final candidatesCount = candidatesAsync?.valueOrNull?.length ?? 0;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x060F172A),
+            blurRadius: 8,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // ── Header Bar ──────────────────────────────────────────────
+          Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: 12,
+            ),
+            decoration: BoxDecoration(
+              color: Color(0xFFFAFAFC),
+              border: Border(bottom: BorderSide(color: AppColors.border)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(7),
+                      decoration: BoxDecoration(
+                        color: AppColors.infoBg,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: const Color(0xFFDBEAFE)),
+                      ),
+                      child: const Icon(
+                        Icons.radar_rounded,
+                        color: Color(0xFF005965),
+                        size: 18,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Autonomous Dispatch Active',
+                            style: TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF003B46),
+                              letterSpacing: -0.1,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text.rich(
+                            TextSpan(
+                              text: 'Inspecting Job: ',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w500,
+                                color: AppColors.textSecondary,
+                              ),
+                              children: [
+                                TextSpan(
+                                  text: selectedJob != null
+                                      ? (selectedJob.requestId.isNotEmpty
+                                          ? selectedJob.requestId
+                                          : 'SR-${selectedJob.id}')
+                                      : 'None Selected',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    fontFamily: 'monospace',
+                                    color: selectedJob != null
+                                        ? const Color(0xFF005965)
+                                        : AppColors.textPrimary,
+                                  ),
+                                ),
+                                if (selectedJob != null &&
+                                    selectedJob.status.isNotEmpty)
+                                  TextSpan(
+                                    text:
+                                        ' (${selectedJob.status.toUpperCase()})',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 10.5,
+                                      color: Color(0xFF059669),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          if (selectedJob != null &&
+                              selectedJob.technicianName != null &&
+                              selectedJob.technicianName!.isNotEmpty) ...[
+                            const SizedBox(height: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 9, vertical: 5),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF0FDF4),
+                                borderRadius: BorderRadius.circular(6),
+                                border:
+                                    Border.all(color: const Color(0xFFBBF7D0)),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.badge_outlined,
+                                    size: 14,
+                                    color: Color(0xFF16A34A),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text.rich(
+                                      TextSpan(
+                                        text: 'Assigned: ',
+                                        style: TextStyle(
+                                          fontSize: 11.5,
+                                          fontWeight: FontWeight.w600,
+                                          color: Color(0xFF166534),
+                                        ),
+                                        children: [
+                                          TextSpan(
+                                            text: selectedJob.technicianName!,
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.w800,
+                                              color: AppColors.textPrimary,
+                                            ),
+                                          ),
+                                          if (selectedJob.technicianPhone !=
+                                                  null &&
+                                              selectedJob
+                                                  .technicianPhone!.isNotEmpty)
+                                            TextSpan(
+                                              text:
+                                                  ' • ${selectedJob.technicianPhone!}',
+                                              style: TextStyle(
+                                                fontFamily: 'monospace',
+                                                color: Color(0xFF166534),
+                                              ),
+                                            ),
+                                          if (selectedJob.technicianEmail !=
+                                                  null &&
+                                              selectedJob
+                                                  .technicianEmail!.isNotEmpty)
+                                            TextSpan(
+                                              text:
+                                                  ' • ${selectedJob.technicianEmail!}',
+                                              style: TextStyle(
+                                                fontFamily: 'monospace',
+                                                color: Color(0xFF166534),
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                if (selectedJob != null) ...[
+                  const SizedBox(height: 10),
+                  LayoutBuilder(
+                    builder: (context, btnConstraints) {
+                      final isNarrowBtn = btnConstraints.maxWidth < 280;
+                      if (isNarrowBtn) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            OutlinedButton.icon(
+                              onPressed: () => _openJobTimeline(selectedJob),
+                              icon: const Icon(Icons.history_rounded, size: 14),
+                              label: Text('Timeline'),
+                              style: OutlinedButton.styleFrom(
+                                visualDensity: VisualDensity.compact,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 7),
+                                textStyle: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                                side: BorderSide(color: AppColors.border),
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            FilledButton.icon(
+                              onPressed: _isActionInProgress
+                                  ? null
+                                  : () => _triggerAutoDispatch(selectedJob),
+                              icon: const Icon(Icons.auto_awesome_rounded, size: 14),
+                              label: Text('Re-evaluate Auto-Dispatch'),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xFF005965),
+                                visualDensity: VisualDensity.compact,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 7),
+                                textStyle: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+                      }
+                      return Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () => _openJobTimeline(selectedJob),
+                              icon: const Icon(Icons.history_rounded, size: 14),
+                              label: Text('Timeline'),
+                              style: OutlinedButton.styleFrom(
+                                visualDensity: VisualDensity.compact,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 7),
+                                textStyle: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                                side: BorderSide(color: AppColors.border),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: FilledButton.icon(
+                              onPressed: _isActionInProgress
+                                  ? null
+                                  : () => _triggerAutoDispatch(selectedJob),
+                              icon: const Icon(Icons.auto_awesome_rounded, size: 14),
+                              label: Text('Re-evaluate Auto-Dispatch'),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xFF005965),
+                                visualDensity: VisualDensity.compact,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 7),
+                                textStyle: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ],
+              ],
+            ),
+          ),
+
+          // ── Autonomous Dispatch Information Banner ───────────────────
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+            decoration: BoxDecoration(
+              color: Color(0xFFF0FDF4),
+              border: Border(
+                top: BorderSide(color: Color(0xFFDCFCE7)),
+                bottom: BorderSide(color: Color(0xFFDCFCE7)),
+              ),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: EdgeInsets.only(top: 1),
+                  child: Icon(
+                    Icons.check_circle_rounded,
+                    size: 15,
+                    color: Color(0xFF16A34A),
+                  ),
+                ),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text.rich(
+                    TextSpan(
+                      text: 'Autonomous Dispatch Active: ',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF15803D),
+                        height: 1.35,
+                      ),
+                      children: [
+                        TextSpan(
+                          text:
+                              'Jobs are automatically assigned to nearest eligible technicians using the 9-Gate Employee Eligibility Engine (real-time GPS freshness window, Haversine proximity, skill match, and shift clock-in state).',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                            color: Color(0xFF166534),
+                            height: 1.35,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // ── Distance Rings Strip ──────────────────────────────────
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              border: Border(bottom: BorderSide(color: AppColors.border)),
+            ),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  Text(
+                    'Distance Rings:',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  ...[
+                    {'id': 'all', 'label': 'All 20km ($candidatesCount)'},
+                    {'id': '0-1km', 'label': '0–1 km'},
+                    {'id': '1-2km', 'label': '1–2 km'},
+                    {'id': '2-5km', 'label': '2–5 km'},
+                    {'id': '5-10km', 'label': '5–10 km'},
+                    {'id': '10-15km', 'label': '10–15 km'},
+                    {'id': '15-20km', 'label': '15–20 km'},
+                  ].map((ring) {
+                    final isSelected = _selectedBand == ring['id'];
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: InkWell(
+                        onTap: () =>
+                            setState(() => _selectedBand = ring['id']!),
+                        borderRadius: BorderRadius.circular(20),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 150),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 4.5),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? const Color(0xFF005965)
+                                : AppColors.surfaceMuted,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: isSelected
+                                  ? const Color(0xFF005965)
+                                  : AppColors.border,
+                            ),
+                            boxShadow: isSelected
+                                ? const [
+                                    BoxShadow(
+                                      color: Color(0x28005965),
+                                      blurRadius: 4,
+                                      offset: Offset(0, 1.5),
+                                    ),
+                                  ]
+                                : null,
+                          ),
+                          child: Text(
+                            ring['label']!,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: isSelected
+                                  ? FontWeight.w800
+                                  : FontWeight.w600,
+                              color: isSelected
+                                  ? Colors.white
+                                  : AppColors.textSecondary,
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
+          ),
+
+          // ── Candidate Matching Area ──────────────────────────────
+          if (selectedJob == null)
+            Container(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 20, vertical: 24),
+              color: const Color(0xFFFAFAFC),
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceMuted,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.search_off_rounded,
+                        size: 22,
+                        color: AppColors.textMuted,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _selectedBand == 'all'
+                          ? 'No qualified technicians currently found within the 20 km operational radius for this service request.'
+                          : 'No qualified technicians currently found in the $_selectedBand distance ring.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: AppColors.textSecondary,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            _buildCandidatesList(selectedJob, candidatesAsync!),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCandidatesList(
+    Job selectedJob,
+    AsyncValue<List<EligibleTechnician>> candidatesAsync,
+  ) {
+    return candidatesAsync.when(
+      loading: () => Container(
+        padding: const EdgeInsets.all(AppSpacing.xl),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  color: Color(0xFF005965),
+                ),
+              ),
+              SizedBox(height: 12),
+              Text(
+                'Scanning 20 km candidate pool across all directions...',
+                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+              ),
+            ],
+          ),
+        ),
+      ),
+      error: (err, _) => Container(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        color: AppColors.errorBg,
+        child: Column(
+          children: [
+            Text(
+              'Failed to scan candidates: $err',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12, color: Color(0xFF991B1B)),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton(
+              onPressed: () => ref.invalidate(
+                  adminEligibleTechniciansProvider(selectedJob.id)),
+              child: Text('Retry Scan'),
+            ),
+          ],
+        ),
+      ),
+      data: (candidates) {
+        final filtered = candidates.where((tech) {
+          if (_selectedBand == 'all') return true;
+          if (tech.distanceBand == _selectedBand) return true;
+          final d = tech.distanceKm;
+          if (d == null) return false;
+          switch (_selectedBand) {
+            case '0-1km':
+              return d <= 1.0;
+            case '1-2km':
+              return d > 1.0 && d <= 2.0;
+            case '2-5km':
+              return d > 2.0 && d <= 5.0;
+            case '5-10km':
+              return d > 5.0 && d <= 10.0;
+            case '10-15km':
+              return d > 10.0 && d <= 15.0;
+            case '15-20km':
+              return d > 15.0 && d <= 20.0;
+            default:
+              return false;
+          }
+        }).toList();
+
+        if (filtered.isEmpty) {
+          return Container(
+            padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.lg, vertical: 28),
+            child: Center(
+              child: Text(
+                _selectedBand == 'all'
+                    ? 'No qualified technicians currently found within the 20 km operational radius for this service request.'
+                    : 'No qualified technicians currently found in the $_selectedBand distance ring.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: AppColors.textSecondary,
+                  height: 1.4,
+                ),
+              ),
+            ),
+          );
+        }
+
+        return ListView.separated(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(AppSpacing.sm),
+          itemCount: filtered.length,
+          separatorBuilder: (context, index) => const SizedBox(height: AppSpacing.sm),
+          itemBuilder: (context, index) {
+            final tech = filtered[index];
+            return _EligibleTechnicianCard(
+              technician: tech,
+              isAssigning: _isActionInProgress,
+              onAssign: () => _assignTechnician(selectedJob, tech),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // TAB 2: LIVE FLEET TELEMETRY
+  // ───────────────────────────────────────────────────────────────────────────
+  Widget _buildLiveFleetTelemetryTab(List<FleetMember> fleet) {
+    final withGps = fleet.where((f) => f.hasLocation && f.latitude != null && f.longitude != null).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Real-Time GPS Telemetry Radar',
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    'Live coordinate locations and dispatch statuses',
+                    style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: AppColors.successBg,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFA7F3D0)),
+              ),
+              child: Text(
+                '${withGps.length}/${fleet.length} GPS Active',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF065F46),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.sm),
+
+        // Interactive Map Widget
+        Container(
+          height: 260,
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppColors.border),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x060F172A),
+                blurRadius: 8,
+                offset: Offset(0, 2),
+              ),
+            ],
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: withGps.isEmpty
+              ? Container(
+                  color: AppColors.surfaceMuted,
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.location_off_rounded,
+                            size: 32, color: AppColors.textMuted),
+                        SizedBox(height: 8),
+                        Text(
+                          'No live GPS coordinates reported yet.',
+                          style: TextStyle(
+                              fontSize: 12, color: AppColors.textSecondary),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : FlutterMap(
+                  mapController: _mapController,
+                  options: MapOptions(
+                    initialCenter: LatLng(
+                      withGps.first.latitude!,
+                      withGps.first.longitude!,
+                    ),
+                    initialZoom: withGps.length == 1 ? 14.0 : 9.0,
+                  ),
+                  children: [
+                    TileLayer(
+                      urlTemplate:
+                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      userAgentPackageName: 'com.calservices.workforce',
+                    ),
+                    MarkerLayer(
+                      markers: withGps.map((member) {
+                        final isOnline = member.isOnline;
+                        return Marker(
+                          point: LatLng(member.latitude!, member.longitude!),
+                          width: 38,
+                          height: 38,
+                          child: GestureDetector(
+                            onTap: () {
+                              setState(() => _selectedMapMember = member);
+                            },
+                            child: Container(
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: isOnline
+                                    ? const Color(0xFF10B981)
+                                    : AppColors.textMuted,
+                                border: Border.all(color: Colors.white, width: 2.5),
+                                boxShadow: const [
+                                  BoxShadow(
+                                    color: Color(0x33000000),
+                                    blurRadius: 4,
+                                    offset: Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: Center(
+                                child: Text(
+                                  member.name.isNotEmpty
+                                      ? member.name[0].toUpperCase()
+                                      : 'T',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ],
+                ),
+        ),
+        const SizedBox(height: 8),
+
+        // Map Legend
+        Row(
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Color(0xFF10B981),
+              ),
+            ),
+            const SizedBox(width: 4),
+            Text('Online',
+                style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+            const SizedBox(width: 12),
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.textMuted,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Text('Offline',
+                style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+            const Spacer(),
+            Text('Auto-refreshes on tab focus',
+                style: TextStyle(fontSize: 10.5, color: AppColors.textMuted)),
+          ],
+        ),
+
+        // Selected Pin Detail Card
+        if (_selectedMapMember != null) ...[
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            decoration: BoxDecoration(
+              color: AppColors.infoBg,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFFBFDBFE)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _selectedMapMember!.name,
+                        style: TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.w800),
+                      ),
+                      Text(
+                        'ID: ${_selectedMapMember!.employeeId ?? '—'} • ${_selectedMapMember!.isOnline ? 'Online' : 'Offline'}',
+                        style: TextStyle(fontSize: 11, color: Color(0xFF2563EB)),
+                      ),
+                      if (_selectedMapMember!.activeJob != null)
+                        Text(
+                          'Job: ${_selectedMapMember!.activeJob}',
+                          style: TextStyle(
+                              fontSize: 11, fontWeight: FontWeight.w700),
+                        ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => setState(() => _selectedMapMember = null),
+                  icon: const Icon(Icons.close_rounded, size: 16),
+                ),
+              ],
+            ),
+          ),
+        ],
+
+        const SizedBox(height: AppSpacing.md),
+
+        // Telemetry Detailed Cards List
+        if (fleet.isEmpty)
+          const EmptyState(
+            icon: Icons.location_off_outlined,
+            title: 'No Telemetry Data',
+            message: 'No fleet members reporting telemetry.',
+          )
+        else
+          ...fleet.map((m) => _FleetMemberTelemetryCard(member: m)),
+      ],
+    );
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // TAB 3: SCOPE EXTENSIONS
+  // ───────────────────────────────────────────────────────────────────────────
+  Widget _buildScopeExtensionsTab(List<AdminScopeExtension> pendingExtensions) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionHeader(
+          title: 'Scope Extensions (${pendingExtensions.length})',
+          badgeText: 'Awaiting Decision',
+          icon: Icons.add_circle_outline_rounded,
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        if (pendingExtensions.isEmpty)
+          const EmptyState(
+            icon: Icons.check_circle_outline_rounded,
+            title: 'No Pending Scope Extensions',
+            message: 'All work extensions and scope expansions have been reviewed.',
+          )
+        else
+          ...pendingExtensions.map((ext) {
+            return _ScopeExtensionCard(
+              extension: ext,
+              isProcessing: _isActionInProgress,
+              onApprove: () => _decideScopeExtension(ext, 'APPROVED'),
+              onReject: () => _decideScopeExtension(ext, 'REJECTED'),
+            );
+          }),
+      ],
+    );
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // TAB 4: SERVICE REQUESTS
+  // ───────────────────────────────────────────────────────────────────────────
+  Widget _buildServiceRequestsTab(List<AdminServiceRequestItem> pendingServices) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionHeader(
+          title: 'Service Requests (${pendingServices.length})',
+          badgeText: 'Authorization Queue',
+          icon: Icons.build_circle_outlined,
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        if (pendingServices.isEmpty)
+          const EmptyState(
+            icon: Icons.check_circle_outline_rounded,
+            title: 'No Pending Service Authorizations',
+            message: 'No technician service authorization requests in queue.',
+          )
+        else
+          ...pendingServices.map((req) {
+            return _ServiceRequestItemCard(
+              item: req,
+              isProcessing: _isActionInProgress,
+              onApprove: () => _decideServiceRequest(req, 'approve'),
+              onReject: () => _decideServiceRequest(req, 'reject'),
+            );
+          }),
+      ],
+    );
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // TAB 5: WORK LOCATIONS
+  // ───────────────────────────────────────────────────────────────────────────
+  Widget _buildWorkLocationsTab(List<WorkLocation> locations) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Company Work Locations',
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    'Configured shift sites & geofence boundaries',
+                    style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
+                  ),
+                ],
+              ),
+            ),
+            FilledButton.icon(
+              onPressed: () => _openLocationFormModal(),
+              icon: const Icon(Icons.add_location_alt_rounded, size: 15),
+              label: Text('Add Location'),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF2563EB),
+                visualDensity: VisualDensity.compact,
+                textStyle: TextStyle(
+                    fontSize: 11.5, fontWeight: FontWeight.w800),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        if (locations.isEmpty)
+          const EmptyState(
+            icon: Icons.location_off_outlined,
+            title: 'No Locations Configured',
+            message:
+                'No authorized company locations configured yet. Tap "Add Location" to create one.',
+          )
+        else
+          ...locations.map((loc) {
+            return _WorkLocationCard(
+              location: loc,
+              onToggleActive: () => _toggleLocationActive(loc),
+              onEdit: () => _openLocationFormModal(editingLocation: loc),
+              onDelete: () => _deleteLocation(loc),
+            );
+          }),
+      ],
+    );
+  }
+
+  // ── Section Header Helper ──────────────────────────────────────────────────
+  Widget _buildSectionHeader({
+    required String title,
+    String? badgeText,
+    required IconData icon,
+  }) {
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: AppColors.textPrimary),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            title,
+            style: TextStyle(
+              fontSize: 13.5,
+              fontWeight: FontWeight.w800,
+              color: AppColors.textPrimary,
+              letterSpacing: 0.2,
+            ),
+          ),
+        ),
+        if (badgeText != null) ...[
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceMuted,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Text(
+              badgeText,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COMPONENT WIDGETS
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── Metric Card Widget ───────────────────────────────────────────────────────
+class _MetricCard extends StatelessWidget {
+  const _MetricCard({
+    required this.title,
+    required this.value,
+    required this.subtitle,
+    required this.icon,
+    required this.color,
+    required this.width,
+    this.badgeBg,
+  });
+
+  final String title;
+  final String value;
+  final String subtitle;
+  final IconData icon;
+  final Color color;
+  final double width;
+  final Color? badgeBg;
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = badgeBg ?? color.withValues(alpha: 0.1);
+
+    return Container(
+      width: width,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x050F172A),
+            blurRadius: 6,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textSecondary,
+                    letterSpacing: 0.1,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: bg,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(icon, size: 15, color: color),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.w900,
+              color: color,
+              height: 1.1,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              color: AppColors.textMuted,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Dispatch Service Request Card ───────────────────────────────────────────
+class _DispatchJobItemCard extends StatelessWidget {
+  const _DispatchJobItemCard({
+    required this.job,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  final Job job;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final customer = job.customerName?.trim();
+    final address = job.address?.trim();
+    final scheduledDate = job.preferredDate?.trim();
+    final scheduledTime = job.preferredTime?.trim();
+
+    String formattedSchedule = 'Schedule not specified';
+    if (scheduledDate != null && scheduledDate.isNotEmpty) {
+      formattedSchedule = scheduledDate;
+      if (scheduledTime != null && scheduledTime.isNotEmpty) {
+        formattedSchedule += ' • $scheduledTime';
+      }
+    }
+
+    String? displayLocation;
+    if (address != null && address.isNotEmpty) {
+      displayLocation = address;
+    } else if (job.latitude != null && job.longitude != null) {
+      displayLocation = 'Location: GPS (${job.latitude!.toStringAsFixed(4)}, ${job.longitude!.toStringAsFixed(4)})';
+    }
+
+    String dispatchMode = 'Auto-Dispatch Active';
+    Color dispatchModeBg = AppColors.infoBg;
+    Color dispatchModeFg = const Color(0xFF1E40AF);
+    if (job.technicianName != null && job.technicianName!.isNotEmpty) {
+      dispatchMode = 'Assigned: ${job.technicianName}';
+      dispatchModeBg = AppColors.successBg;
+      dispatchModeFg = const Color(0xFF065F46);
+    } else if (job.isOffer || (job.activeOffer != null && !job.activeOffer!.isExpired)) {
+      dispatchMode = 'Offer Active (Awaiting Acceptance)';
+      dispatchModeBg = AppColors.warningBg;
+      dispatchModeFg = const Color(0xFFB45309);
+    } else if (job.status.toLowerCase() == 'assigned' || job.status.toLowerCase() == 'in_progress') {
+      dispatchMode = 'Assigned';
+      dispatchModeBg = AppColors.successBg;
+      dispatchModeFg = const Color(0xFF065F46);
+    }
+
+    String displayDate = formattedSchedule;
+    if (job.createdAt != null && (scheduledDate == null || scheduledDate.isEmpty)) {
+      displayDate = '${job.createdAt!.year}-${job.createdAt!.month.toString().padLeft(2, '0')}-${job.createdAt!.day.toString().padLeft(2, '0')}';
+    }
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(AppSpacing.md),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.infoBg : AppColors.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isSelected ? const Color(0xFF2563EB) : AppColors.border,
+            width: isSelected ? 1.5 : 1.0,
+          ),
+          boxShadow: isSelected
+              ? const [
+                  BoxShadow(
+                    color: Color(0x142563EB),
+                    blurRadius: 6,
+                    offset: Offset(0, 2),
+                  ),
+                ]
+              : const [
+                  BoxShadow(
+                    color: Color(0x040F172A),
+                    blurRadius: 4,
+                    offset: Offset(0, 1),
+                  ),
+                ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Row(
+                    children: [
+                      Icon(
+                        isSelected
+                            ? Icons.radio_button_checked_rounded
+                            : Icons.radio_button_off_rounded,
+                        size: 16,
+                        color: isSelected
+                            ? const Color(0xFF2563EB)
+                            : AppColors.textMuted,
+                      ),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          job.requestId,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w900,
+                            color: isSelected
+                                ? const Color(0xFF1E40AF)
+                                : const Color(0xFF2563EB),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                StatusChip(status: job.status, dense: true),
+              ],
+            ),
+            const SizedBox(height: 6),
+            if (customer != null && customer.isNotEmpty) ...[
+              Text(
+                customer,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 2),
+            ],
+            Text(
+              job.displayTitle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textSecondary,
+              ),
+            ),
+            if (displayLocation != null && displayLocation.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: EdgeInsets.only(top: 1),
+                    child: Icon(Icons.location_on_outlined,
+                        size: 13, color: AppColors.textMuted),
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      displayLocation,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            if (job.technicianName != null && job.technicianName!.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.only(top: 1),
+                    child: Icon(
+                      Icons.badge_outlined,
+                      size: 13,
+                      color: Color(0xFF059669),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      'Technician: ${job.technicianName!}${job.technicianPhone != null && job.technicianPhone!.isNotEmpty ? " • ${job.technicianPhone!}" : ""}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF059669),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: dispatchModeBg,
+                    borderRadius: BorderRadius.circular(5),
+                  ),
+                  child: Text(
+                    dispatchMode,
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w700,
+                      color: dispatchModeFg,
+                    ),
+                  ),
+                ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.calendar_today_outlined,
+                        size: 11, color: AppColors.textMuted),
+                    const SizedBox(width: 4),
+                    Text(
+                      displayDate,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontFamily: 'monospace',
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Live Fleet Member Telemetry Card ────────────────────────────────────────
+class _FleetMemberTelemetryCard extends StatelessWidget {
+  const _FleetMemberTelemetryCard({required this.member});
+
+  final FleetMember member;
+
+  @override
+  Widget build(BuildContext context) {
+    final initial = member.name.isNotEmpty ? member.name[0].toUpperCase() : 'T';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x040F172A),
+            blurRadius: 4,
+            offset: Offset(0, 1),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: member.isOnline
+                      ? AppColors.successBg
+                      : AppColors.surfaceMuted,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: member.isOnline
+                        ? const Color(0xFFA7F3D0)
+                        : AppColors.border,
+                  ),
+                ),
+                child: Center(
+                  child: Text(
+                    initial,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w900,
+                      color: member.isOnline
+                          ? const Color(0xFF065F46)
+                          : AppColors.textSecondary,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      member.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    if (member.employeeId != null)
+                      Text(
+                        member.employeeId!,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontFamily: 'monospace',
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              _buildPresenceBadge(member),
+            ],
+          ),
+          if (member.activeJob != null && member.activeJob!.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppColors.infoBg,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: const Color(0xFFDBEAFE)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.engineering_rounded,
+                      size: 13, color: Color(0xFF2563EB)),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Active Job: ${member.activeJob}',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF1E40AF),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Icon(
+                member.hasLocation
+                    ? Icons.gps_fixed_rounded
+                    : Icons.gps_off_rounded,
+                size: 13,
+                color: member.hasLocation
+                    ? const Color(0xFF059669)
+                    : AppColors.textMuted,
+              ),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  member.hasLocation &&
+                          member.latitude != null &&
+                          member.longitude != null
+                      ? 'GPS: ${member.latitude!.toStringAsFixed(4)}, ${member.longitude!.toStringAsFixed(4)}'
+                      : (member.locationStatus ?? 'Location unavailable'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontFamily: 'monospace',
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPresenceBadge(FleetMember member) {
+    final isOnline = member.isOnline;
+    final isBusy = member.isOnActiveJob;
+
+    Color bg = AppColors.surfaceMuted;
+    Color fg = AppColors.textSecondary;
+    String label = 'Offline';
+
+    if (isOnline) {
+      if (isBusy) {
+        bg = AppColors.infoBg;
+        fg = const Color(0xFF1E40AF);
+        label = 'Busy (On Job)';
+      } else {
+        bg = AppColors.successBg;
+        fg = const Color(0xFF065F46);
+        label = 'Online & Ready';
+      }
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 10.5,
+          fontWeight: FontWeight.w800,
+          color: fg,
+        ),
+      ),
+    );
+  }
+}
+
+// ── Eligible Candidate Card ─────────────────────────────────────────────────
+class _EligibleTechnicianCard extends StatelessWidget {
+  const _EligibleTechnicianCard({
+    required this.technician,
+    required this.isAssigning,
+    required this.onAssign,
+  });
+
+  final EligibleTechnician technician;
+  final bool isAssigning;
+  final VoidCallback onAssign;
+
+  @override
+  Widget build(BuildContext context) {
+    final initial = technician.name.isNotEmpty ? technician.name[0].toUpperCase() : 'T';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: technician.isDispatchReady
+              ? const Color(0xFFBFDBFE)
+              : AppColors.border,
+        ),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x040F172A),
+            blurRadius: 4,
+            offset: Offset(0, 1),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: AppColors.infoBg,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: const Color(0xFFBFDBFE)),
+                ),
+                child: Center(
+                  child: Text(
+                    initial,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w900,
+                      color: Color(0xFF005965),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(
+                          technician.name,
+                          style: TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 1.5),
+                          decoration: BoxDecoration(
+                            color: technician.isOnline
+                                ? AppColors.successBg
+                                : AppColors.surfaceMuted,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            technician.isOnline ? 'Online' : 'Offline',
+                            style: TextStyle(
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w700,
+                              color: technician.isOnline
+                                  ? const Color(0xFF065F46)
+                                  : AppColors.textSecondary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${technician.employeeId ?? 'Tech'} • ${technician.phone ?? 'No phone'}',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontFamily: 'monospace',
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: technician.isDispatchReady
+                    ? AppColors.successBg
+                    : const Color(0xFFFFF7ED),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                technician.isDispatchReady
+                    ? '✓ Qualified Candidate'
+                    : (technician.ineligibilityReason.isNotEmpty
+                        ? technician.ineligibilityReason
+                        : 'Ineligible'),
+                style: TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w800,
+                  color: technician.isDispatchReady
+                      ? const Color(0xFF065F46)
+                      : const Color(0xFFC2410C),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+
+          // Distance, Band & Match Score
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppColors.infoBg,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  technician.distanceKm != null
+                      ? '${technician.distanceKm!.toStringAsFixed(1)} km away'
+                      : 'Proximity Pending GPS',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF1E40AF),
+                  ),
+                ),
+              ),
+              if (technician.distanceBand != null &&
+                  technician.distanceBand != 'unknown')
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceMuted,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    'Ring: ${technician.distanceBand}',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ),
+              if (technician.gpsFreshness != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: technician.gpsFreshness == 'LIVE'
+                        ? AppColors.successBg
+                        : AppColors.warningBg,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    'GPS: ${technician.gpsFreshness}',
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w700,
+                      color: technician.gpsFreshness == 'LIVE'
+                          ? const Color(0xFF065F46)
+                          : const Color(0xFFB45309),
+                    ),
+                  ),
+                ),
+              Text(
+                'Match Score: ${technician.score.toStringAsFixed(0)}',
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF2563EB),
+                ),
+              ),
+            ],
+          ),
+
+          // 9-Gate Audit Badges
+          if (technician.gateAudit.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 4,
+              runSpacing: 4,
+              children: technician.gateAudit.map((g) {
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                  decoration: BoxDecoration(
+                    color: g.passed
+                        ? AppColors.successBg
+                        : AppColors.errorBg,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(
+                      color: g.passed
+                          ? const Color(0xFFA7F3D0)
+                          : const Color(0xFFFECACA),
+                    ),
+                  ),
+                  child: Text(
+                    '${g.passed ? "✓" : "✗"} ${g.name}',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: g.passed
+                          ? const Color(0xFF065F46)
+                          : const Color(0xFF991B1B),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
+
+          if (!technician.isDispatchReady &&
+              technician.ineligibilityReason.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Ineligible: ${technician.ineligibilityReason}',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFFDC2626),
+              ),
+            ),
+          ],
+
+          if (technician.isDispatchReady) ...[
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                FilledButton.icon(
+                  onPressed: isAssigning ? null : onAssign,
+                  icon: const Icon(Icons.send_rounded, size: 14),
+                  label: Text('Dispatch Offer'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF059669),
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 6),
+                    textStyle: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ── Scope Extension Card ─────────────────────────────────────────────────────
+class _ScopeExtensionCard extends StatelessWidget {
+  const _ScopeExtensionCard({
+    required this.extension,
+    required this.isProcessing,
+    required this.onApprove,
+    required this.onReject,
+  });
+
+  final AdminScopeExtension extension;
+  final bool isProcessing;
+  final VoidCallback onApprove;
+  final VoidCallback onReject;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x040F172A),
+            blurRadius: 4,
+            offset: Offset(0, 1),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(
+                  'Job #${extension.requestId ?? extension.jobId}',
+                  style: TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF2563EB),
+                  ),
+                ),
+              ),
+              if (extension.isCritical)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppColors.errorBg,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: const Color(0xFFFECACA)),
+                  ),
+                  child: Text(
+                    'CRITICAL',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFFDC2626),
+                    ),
+                  ),
+                ),
+              if (extension.requiresSpecialist) ...[
+                const SizedBox(width: 4),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppColors.warningBg,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: const Color(0xFFFDE68A)),
+                  ),
+                  child: Text(
+                    'SPECIALIST',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFFD97706),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            extension.title,
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+          ),
+          if (extension.reason.isNotEmpty)
+            Text(
+              'Reason: ${extension.reason}',
+              style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
+            ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Text(
+                'Labor: ₹${extension.additionalLaborCost.toStringAsFixed(2)} • Materials: ₹${extension.additionalMaterialsCost.toStringAsFixed(2)}',
+                style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          Text(
+            'Total Requested: ₹${extension.requestedAmount.toStringAsFixed(2)}',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF059669),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              OutlinedButton(
+                onPressed: isProcessing ? null : onReject,
+                style: OutlinedButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  foregroundColor: const Color(0xFFDC2626),
+                  side: BorderSide(color: Color(0xFFFECACA)),
+                ),
+                child: Text('Reject'),
+              ),
+              const SizedBox(width: 8),
+              FilledButton(
+                onPressed: isProcessing ? null : onApprove,
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF059669),
+                  visualDensity: VisualDensity.compact,
+                ),
+                child: Text('Approve'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Service Request Card ─────────────────────────────────────────────────────
+class _ServiceRequestItemCard extends StatelessWidget {
+  const _ServiceRequestItemCard({
+    required this.item,
+    required this.isProcessing,
+    required this.onApprove,
+    required this.onReject,
+  });
+
+  final AdminServiceRequestItem item;
+  final bool isProcessing;
+  final VoidCallback onApprove;
+  final VoidCallback onReject;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x040F172A),
+            blurRadius: 4,
+            offset: Offset(0, 1),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.employeeName,
+                      style: TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w800),
+                    ),
+                    if (item.employeeCode != null)
+                      Text(
+                        item.employeeCode!,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontFamily: 'monospace',
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: item.isRemoval
+                      ? AppColors.errorBg
+                      : AppColors.infoBg,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  item.isRemoval ? 'REMOVAL' : 'AUTHORIZATION',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    color: item.isRemoval
+                        ? const Color(0xFFDC2626)
+                        : const Color(0xFF2563EB),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Service: ${item.serviceName} (ID #${item.serviceId})',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              OutlinedButton(
+                onPressed: isProcessing ? null : onReject,
+                style: OutlinedButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  foregroundColor: const Color(0xFFDC2626),
+                  side: BorderSide(color: Color(0xFFFECACA)),
+                ),
+                child: Text('Reject'),
+              ),
+              const SizedBox(width: 8),
+              FilledButton(
+                onPressed: isProcessing ? null : onApprove,
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF059669),
+                  visualDensity: VisualDensity.compact,
+                ),
+                child: Text('Approve'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Work Location Card ───────────────────────────────────────────────────────
+class _WorkLocationCard extends StatelessWidget {
+  const _WorkLocationCard({
+    required this.location,
+    required this.onToggleActive,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  final WorkLocation location;
+  final VoidCallback onToggleActive;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x040F172A),
+            blurRadius: 4,
+            offset: Offset(0, 1),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(
+                  location.name,
+                  style: TextStyle(
+                      fontSize: 13.5, fontWeight: FontWeight.w800),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: location.isActive
+                      ? AppColors.successBg
+                      : AppColors.surfaceMuted,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  location.isActive ? 'Active' : 'Inactive',
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w800,
+                    color: location.isActive
+                        ? const Color(0xFF065F46)
+                        : AppColors.textSecondary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (location.address.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text(
+              location.address,
+              style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
+            ),
+          ],
+          const SizedBox(height: 4),
+          Text(
+            'GPS: ${location.lat != null ? location.lat!.toStringAsFixed(4) : "—"}, ${location.lng != null ? location.lng!.toStringAsFixed(4) : "—"} • Geofence: ${location.geofenceRadius}m (${location.geofenceType})',
+            style: TextStyle(
+              fontSize: 11,
+              fontFamily: 'monospace',
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              IconButton(
+                onPressed: onToggleActive,
+                icon: Icon(
+                  location.isActive
+                      ? Icons.toggle_on_rounded
+                      : Icons.toggle_off_rounded,
+                  color: location.isActive
+                      ? const Color(0xFF059669)
+                      : AppColors.textMuted,
+                  size: 24,
+                ),
+                tooltip: location.isActive ? 'Deactivate' : 'Activate',
+              ),
+              IconButton(
+                onPressed: onEdit,
+                icon: const Icon(Icons.edit_outlined, size: 18),
+                color: const Color(0xFF2563EB),
+                tooltip: 'Edit',
+              ),
+              IconButton(
+                onPressed: onDelete,
+                icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                color: const Color(0xFFDC2626),
+                tooltip: 'Delete',
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Location Form Bottom Sheet ───────────────────────────────────────────────
+class _LocationFormBottomSheet extends ConsumerStatefulWidget {
+  const _LocationFormBottomSheet({
+    this.editingLocation,
+    required this.onSaved,
+  });
+
+  final WorkLocation? editingLocation;
+  final ValueChanged<String> onSaved;
+
+  @override
+  ConsumerState<_LocationFormBottomSheet> createState() =>
+      _LocationFormBottomSheetState();
+}
+
+class _LocationFormBottomSheetState
+    extends ConsumerState<_LocationFormBottomSheet> {
+  late final TextEditingController _nameController;
+  late final TextEditingController _addressController;
+  late final TextEditingController _latController;
+  late final TextEditingController _lngController;
+  late final TextEditingController _radiusController;
+  String _geofenceType = 'circle';
+  bool _isActive = true;
+  bool _isSaving = false;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    final loc = widget.editingLocation;
+    _nameController = TextEditingController(text: loc?.name ?? '');
+    _addressController = TextEditingController(text: loc?.address ?? '');
+    _latController =
+        TextEditingController(text: loc?.lat?.toString() ?? '');
+    _lngController =
+        TextEditingController(text: loc?.lng?.toString() ?? '');
+    _radiusController =
+        TextEditingController(text: (loc?.geofenceRadius ?? 500).toString());
+    _geofenceType = loc?.geofenceType ?? 'circle';
+    _isActive = loc?.isActive ?? true;
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _addressController.dispose();
+    _latController.dispose();
+    _lngController.dispose();
+    _radiusController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final name = _nameController.text.trim();
+    final lat = double.tryParse(_latController.text.trim());
+    final lng = double.tryParse(_lngController.text.trim());
+    final radius = int.tryParse(_radiusController.text.trim()) ?? 500;
+
+    if (name.isEmpty) {
+      setState(() => _errorMessage = 'Location name is required.');
+      return;
+    }
+    if (lat == null || lng == null) {
+      setState(() => _errorMessage =
+          'Valid latitude and longitude coordinates are required.');
+      return;
+    }
+
+    setState(() {
+      _isSaving = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final payload = {
+        'name': name,
+        'address': _addressController.text.trim(),
+        'lat': lat,
+        'lng': lng,
+        'geofence_radius': radius,
+        'geofence_type': _geofenceType,
+        'is_active': _isActive,
+      };
+
+      final api = ref.read(adminDashboardApiProvider);
+      final isEditing = widget.editingLocation != null;
+      if (isEditing) {
+        await api.updateLocation(widget.editingLocation!.id, payload);
+      } else {
+        await api.createLocation(payload);
+      }
+
+      if (mounted) {
+        Navigator.of(context).pop();
+        widget.onSaved(
+          'Location "$name" ${isEditing ? "updated" : "created"} successfully.',
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _errorMessage = 'Failed to save location: $e');
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isEditing = widget.editingLocation != null;
+
+    return Container(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+        top: 16,
+        left: 16,
+        right: 16,
+      ),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  isEditing ? 'Edit Authorized Location' : 'Add Authorized Location',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.close_rounded),
+                ),
+              ],
+            ),
+            if (_errorMessage != null) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.errorBg,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  _errorMessage!,
+                  style: TextStyle(fontSize: 12, color: Color(0xFFDC2626)),
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
+            TextField(
+              controller: _nameController,
+              decoration: const InputDecoration(
+                labelText: 'Location Name *',
+                hintText: 'e.g. Central Hub / Headquarters',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _addressController,
+              decoration: const InputDecoration(
+                labelText: 'Address (Optional)',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _latController,
+                    keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true, signed: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Latitude *',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    controller: _lngController,
+                    keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true, signed: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Longitude *',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _radiusController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Radius (metres)',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    initialValue: _geofenceType,
+                    decoration: const InputDecoration(
+                      labelText: 'Geofence Type',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: 'circle', child: Text('Circle')),
+                      DropdownMenuItem(value: 'polygon', child: Text('Polygon')),
+                      DropdownMenuItem(value: 'hybrid', child: Text('Hybrid')),
+                    ],
+                    onChanged: (val) {
+                      if (val != null) setState(() => _geofenceType = val);
+                    },
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text('Active (visible to employees for clock-in)',
+                  style: TextStyle(fontSize: 12.5)),
+              value: _isActive,
+              onChanged: (val) => setState(() => _isActive = val ?? true),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: _isSaving ? null : _submit,
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF2563EB),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+                child: Text(
+                  _isSaving
+                      ? 'Saving...'
+                      : isEditing
+                          ? 'Update Location'
+                          : 'Save Location',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Job Lifecycle Timeline Bottom Sheet ──────────────────────────────────────
+class _JobTimelineBottomSheet extends ConsumerWidget {
+  const _JobTimelineBottomSheet({required this.job});
+
+  final Job job;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final timelineAsync = ref.watch(adminJobTimelineProvider(job.id));
+
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.75,
+      ),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.border,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: AppColors.infoBg,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Icon(Icons.history_rounded,
+                        color: Color(0xFF2563EB), size: 18),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Timeline — #${job.requestId}',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ],
+              ),
+              IconButton(
+                onPressed: () => Navigator.of(context).pop(),
+                icon: const Icon(Icons.close_rounded),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '${job.displayTitle} • Customer: ${job.customerName ?? "—"}',
+            style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
+          ),
+          Divider(height: 16),
+          Expanded(
+            child: timelineAsync.when(
+              loading: () => const Center(
+                child: CircularProgressIndicator(
+                  color: Color(0xFF005965),
+                ),
+              ),
+              error: (err, _) => Center(
+                child: Text('Failed to load timeline: $err',
+                    style: TextStyle(fontSize: 12, color: Color(0xFFDC2626))),
+              ),
+              data: (timelineData) {
+                if (timelineData.events.isEmpty) {
+                  return Center(
+                    child: Text('No lifecycle events recorded for this job yet.',
+                        style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                  );
+                }
+
+                return ListView.separated(
+                  itemCount: timelineData.events.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 10),
+                  itemBuilder: (ctx, idx) {
+                    final item = timelineData.events[idx];
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 22,
+                          height: 22,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: AppColors.infoBg,
+                            border: Border.all(color: const Color(0xFF2563EB)),
+                          ),
+                          child: Center(
+                            child: Text(
+                              '${idx + 1}',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF2563EB),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: AppColors.surfaceMuted,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: AppColors.border),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        item.title,
+                                        style: TextStyle(
+                                          fontSize: 12.5,
+                                          fontWeight: FontWeight.w700,
+                                          color: AppColors.textPrimary,
+                                        ),
+                                      ),
+                                    ),
+                                    Text(
+                                      '${item.timestamp.hour.toString().padLeft(2, "0")}:${item.timestamp.minute.toString().padLeft(2, "0")}',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontFamily: 'monospace',
+                                        color: AppColors.textSecondary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                if (item.description.isNotEmpty) ...[
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    item.description,
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      color: AppColors.textSecondary,
+                                    ),
+                                  ),
+                                ],
+                                const SizedBox(height: 4),
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      'Actor: ${item.actor}',
+                                      style: TextStyle(
+                                        fontSize: 10.5,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppColors.textSecondary,
+                                      ),
+                                    ),
+                                    Text(
+                                      item.eventType,
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontFamily: 'monospace',
+                                        color: AppColors.textMuted,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

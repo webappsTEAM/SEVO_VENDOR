@@ -1114,6 +1114,7 @@ class MarketplaceOrderIntakeView(APIView):
                     ordered_quantity=qty,
                     unit_price=p_item["unit_price"],
                     line_total=p_item["line_total"],
+                    procurement_price_snapshot=getattr(product, "procurement_price", None),
                 )
 
             # Audit Log
