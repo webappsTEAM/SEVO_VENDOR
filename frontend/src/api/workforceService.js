@@ -1639,6 +1639,16 @@ export async function apiDeleteSellerHubCategory(id) {
   });
 }
 
+export async function apiUploadSellerHubImage(file) {
+  const formData = new FormData();
+  formData.append('image', file);
+  return await apiRequest('/workforce/seller-hub/products/upload-image/', {
+    method: 'POST',
+    body: formData,
+    isFormData: true,
+  });
+}
+
 export async function apiGetSellerHubActiveCategories(tree = false) {
   return await apiRequest(`/workforce/seller-hub/categories/active/${tree ? '?tree=true' : ''}`);
 }

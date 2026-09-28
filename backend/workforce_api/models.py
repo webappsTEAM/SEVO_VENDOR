@@ -3942,6 +3942,12 @@ class SellerHubCategory(models.Model):
     description = models.TextField(blank=True, default="")
     icon = models.CharField(max_length=100, blank=True, default="Store")
     image = models.CharField(max_length=500, blank=True, default="")
+    image_url = models.CharField(
+        max_length=1000,
+        blank=True,
+        default="",
+        help_text="Category photo image URL or uploaded asset path",
+    )
     parent = models.ForeignKey(
         "self",
         on_delete=models.RESTRICT,
