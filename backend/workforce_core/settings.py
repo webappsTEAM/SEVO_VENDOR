@@ -311,7 +311,7 @@ else:
 # even though the Customer app has a fully-built idempotent webhook receiver
 # (workforce_integration/views.py) waiting for exactly this. See
 # workforce_api/services/customer_webhook.py for the sender.
-CUSTOMER_APP_BASE_URL = os.getenv("CUSTOMER_APP_BASE_URL", "http://localhost:8000").rstrip("/")
+CUSTOMER_APP_BASE_URL = os.getenv("CUSTOMER_APP_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
 # Fails closed in production, for the same reason WORKFORCE_WEBHOOK_SECRET
 # does below -- but this one is easier to miss, because getting it wrong is
 # SILENT. Webhook delivery is fire-and-forget on a background thread, so an

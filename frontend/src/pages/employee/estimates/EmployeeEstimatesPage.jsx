@@ -49,8 +49,8 @@ export default function EmployeeEstimatesPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedJob, setSelectedJob] = useState(null);
 
-  const fetchQuotes = useCallback(async () => {
-    setLoading(true);
+  const fetchQuotes = useCallback(async (isSilent = false) => {
+    if (!isSilent) setLoading(true);
     setError(null);
     try {
       const data = await apiGetQuotes({
@@ -60,15 +60,31 @@ export default function EmployeeEstimatesPage() {
       const raw = Array.isArray(data) ? data : (Array.isArray(data?.results) ? data.results : []);
       setQuotes(raw.filter((q) => q && typeof q === 'object'));
     } catch (err) {
-      console.error('Failed to load estimates:', err);
-      setError(err.message || 'Failed to load quotations list.');
+      if (!isSilent) {
+        console.error('Failed to load estimates:', err);
+        setError(err.message || 'Failed to load quotations list.');
+      }
     } finally {
-      setLoading(false);
+      if (!isSilent) setLoading(false);
     }
   }, [activeTab, searchQuery]);
 
   useEffect(() => {
-    fetchQuotes();
+    fetchQuotes(false);
+
+    // Active auto-refresh: sync quotations list every 5s and on window focus
+    const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      fetchQuotes(true);
+    }, 5000);
+
+    const onFocus = () => fetchQuotes(true);
+    window.addEventListener('focus', onFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+    };
   }, [fetchQuotes]);
 
   const handleOpenQuote = (quote) => {

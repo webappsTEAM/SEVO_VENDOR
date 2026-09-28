@@ -119,6 +119,10 @@ export function PortalCockpitLayout({
   onStartBreak,
   onEndBreak,
   onOpenQuotationModal,
+  error,
+  setError,
+  successMsg,
+  setSuccessMsg,
 }) {
   const navigate = useNavigate();
   const [shiftElapsedSeconds, setShiftElapsedSeconds] = useState(0);
@@ -198,9 +202,42 @@ export function PortalCockpitLayout({
   const isAssigned = status === 'ASSIGNED' || status === 'ACCEPTED';
   const isEnRoute = status === 'EN_ROUTE' || status === 'ON_THE_WAY';
   const isArrived = status === 'ARRIVED';
-  const isInProgress = status === 'IN_PROGRESS' || status === 'IN_SERVICE' || status === 'INSPECTION';
+  const isQuotationSent = status === 'QUOTATION_SENT';
+  const isOnHold = status === 'ON_HOLD' || status === 'JOB_HOLD';
+  const isInProgress = status === 'IN_PROGRESS' || status === 'IN_SERVICE' || status === 'INSPECTION' || status === 'INSPECTION_IN_PROGRESS' || isQuotationSent || isOnHold;
   const isProofSubmitted = status === 'PROOF_SUBMITTED' || status === 'PENDING_APPROVAL' || status === 'WAITING_FOR_PAYMENT';
   const isCompleted = status === 'COMPLETED' || status === 'WORK_COMPLETED';
+
+  // isEstimationJob is driven EXCLUSIVELY by backend-authoritative fields.
+  const isWorkExecutionJob = Boolean(
+    job?.request_kind === 'WORK' ||
+    job?.parent_request_id ||
+    activeJob?.request_kind === 'WORK' ||
+    activeJob?.parent_request_id
+  );
+
+  const isEstimationJob = !isWorkExecutionJob && Boolean(
+    job?.is_estimation ||
+    job?.pricing_mode === 'QUOTATION' ||
+    job?.request_kind === 'ESTIMATION' ||
+    activeJob?.is_estimation ||
+    activeJob?.pricing_mode === 'QUOTATION' ||
+    activeJob?.request_kind === 'ESTIMATION'
+  );
+
+  const activeQuoteNumber = job?.active_quote_number || activeJob?.active_quote_number;
+  const activeQuoteId = job?.active_quote_id || activeJob?.active_quote_id;
+  const activeQuoteStatus = job?.active_quote_status || activeJob?.active_quote_status;
+  const activeQuoteVersion = job?.active_quote_version || activeJob?.active_quote_version || 1;
+  const activeQuoteTotal = Number(job?.active_quote_net_payable ?? job?.active_quote_total_amount ?? activeJob?.active_quote_net_payable ?? activeJob?.active_quote_total_amount ?? 0);
+  const activeQuoteAdvance = Number(job?.active_quote_advance_amount ?? activeJob?.active_quote_advance_amount ?? (activeQuoteTotal ? activeQuoteTotal * 0.5 : 0));
+  const activeQuoteBalance = Number(job?.active_quote_balance_amount ?? activeJob?.active_quote_balance_amount ?? (activeQuoteTotal ? activeQuoteTotal - activeQuoteAdvance : 0));
+  const activeQuoteAdvancePaid = Boolean(job?.active_quote_advance_paid ?? activeJob?.active_quote_advance_paid);
+  const activeQuoteAdvanceDue = Number(job?.active_quote_advance_due ?? activeJob?.active_quote_advance_due ?? (activeQuoteAdvancePaid ? 0 : activeQuoteAdvance));
+  const activeMilestoneDue = !activeQuoteAdvancePaid && activeQuoteAdvanceDue > 0 ? activeQuoteAdvanceDue : activeQuoteBalance;
+  const activeQuoteCustomerNotes = job?.active_quote_customer_notes || activeJob?.active_quote_customer_notes || '';
+  const activeQuoteCustomerDeclineReason = job?.active_quote_customer_decline_reason || activeJob?.active_quote_customer_decline_reason || '';
+  const activeQuoteAdminRejectionReason = job?.active_quote_admin_rejection_reason || activeJob?.active_quote_admin_rejection_reason || '';
 
   const isCashJob = Boolean(
     job?.payment_method === 'COD' ||
@@ -212,20 +249,23 @@ export function PortalCockpitLayout({
     activeJob?.payment_method === 'CASH' ||
     activeJob?.payment_method === 'CASH_ON_SERVICE' ||
     activeJob?.payment_method === 'CASH_ON_DELIVERY' ||
-    activeJob?.payment?.payment_method === 'CASH_ON_SERVICE'
+    activeJob?.payment?.payment_method === 'CASH_ON_SERVICE' ||
+    Boolean(activeQuoteNumber)
   );
-  const isPaid = Boolean(
-    job?.payment_status === 'paid' ||
-    job?.payment_status === 'collected' ||
-    job?.payment_status === 'advance_paid' ||
-    job?.payment?.payment_status === 'PAID' ||
-    job?.payment?.customer_confirmed_at ||
-    activeJob?.payment_status === 'paid' ||
-    activeJob?.payment_status === 'collected' ||
-    activeJob?.payment_status === 'advance_paid' ||
-    activeJob?.payment?.payment_status === 'PAID' ||
-    activeJob?.payment?.customer_confirmed_at
+  const activeQuoteIsFullyPaid = Boolean(activeJob?.active_quote_is_fully_paid ?? job?.active_quote_is_fully_paid);
+  const isFullyPaid = Boolean(
+    activeQuoteTotal > 0
+      ? (activeQuoteIsFullyPaid || (activeMilestoneDue <= 0 && activeQuoteAdvancePaid))
+      : (
+          job?.payment_status === 'paid' ||
+          job?.payment_status === 'collected' ||
+          job?.payment?.payment_status === 'PAID' ||
+          activeJob?.payment_status === 'paid' ||
+          activeJob?.payment_status === 'collected' ||
+          activeJob?.payment?.payment_status === 'PAID'
+        )
   );
+  const isPaid = isFullyPaid;
   const isCashPending = Boolean(
     (job?.payment_status === 'cash_pending' ||
     job?.payment?.payment_status === 'CASH_PENDING' ||
@@ -316,33 +356,6 @@ export function PortalCockpitLayout({
     });
   };
 
-  // isEstimationJob is driven EXCLUSIVELY by backend-authoritative fields.
-  // DO NOT add keyword/string-matching fallbacks here (e.g. 'painting', 'waterproof',
-  // 'consultation') — those cause direct fixed-price jobs to be misclassified as
-  // estimation jobs, which makes both the quotation card AND the completion button
-  // appear at the same time for any new painting/waterproofing direct job.
-  // The backend serializer (WorkforceJobSerializer) already sets is_estimation,
-  // pricing_mode, and request_kind correctly from the DB.
-  const isEstimationJob = Boolean(
-    job?.is_estimation ||
-    job?.pricing_mode === 'QUOTATION' ||
-    job?.request_kind === 'ESTIMATION' ||
-    activeJob?.is_estimation ||
-    activeJob?.pricing_mode === 'QUOTATION' ||
-    activeJob?.request_kind === 'ESTIMATION'
-  );
-
-  const activeQuoteNumber = job?.active_quote_number || activeJob?.active_quote_number;
-  const activeQuoteId = job?.active_quote_id || activeJob?.active_quote_id;
-  const activeQuoteStatus = job?.active_quote_status || activeJob?.active_quote_status;
-  const activeQuoteVersion = job?.active_quote_version || activeJob?.active_quote_version || 1;
-  const activeQuoteTotal = Number(job?.active_quote_net_payable ?? job?.active_quote_total_amount ?? activeJob?.active_quote_net_payable ?? activeJob?.active_quote_total_amount ?? 0);
-  const activeQuoteAdvance = Number(job?.active_quote_advance_amount ?? activeJob?.active_quote_advance_amount ?? (activeQuoteTotal ? activeQuoteTotal * 0.5 : 0));
-  const activeQuoteBalance = Number(job?.active_quote_balance_amount ?? activeJob?.active_quote_balance_amount ?? (activeQuoteTotal ? activeQuoteTotal - activeQuoteAdvance : 0));
-  const activeQuoteCustomerNotes = job?.active_quote_customer_notes || activeJob?.active_quote_customer_notes || '';
-  const activeQuoteCustomerDeclineReason = job?.active_quote_customer_decline_reason || activeJob?.active_quote_customer_decline_reason || '';
-  const activeQuoteAdminRejectionReason = job?.active_quote_admin_rejection_reason || activeJob?.active_quote_admin_rejection_reason || '';
-
   // Approved services from profile
   const allRequestedServices = Array.isArray(profile?.all_requested_services)
     ? profile.all_requested_services
@@ -367,6 +380,32 @@ export function PortalCockpitLayout({
         <div className="mb-2 flex items-center gap-2 px-3 py-2 bg-red-50 border border-red-300 rounded-xl text-red-900 shrink-0">
           <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
           <span className="text-xs font-semibold">{locationError}</span>
+        </div>
+      )}
+      {error && (
+        <div className="mb-2 flex items-center justify-between gap-2 px-3 py-2 bg-rose-50 border border-rose-300 rounded-xl text-rose-900 shrink-0 animate-fade-in">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+            <span className="text-xs font-bold">{error}</span>
+          </div>
+          {setError && (
+            <button type="button" onClick={() => setError('')} className="text-rose-500 hover:text-rose-800 font-bold p-1 cursor-pointer">
+              ✕
+            </button>
+          )}
+        </div>
+      )}
+      {successMsg && (
+        <div className="mb-2 flex items-center justify-between gap-2 px-3 py-2 bg-emerald-50 border border-emerald-300 rounded-xl text-emerald-900 shrink-0 animate-fade-in">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span className="text-xs font-bold">{successMsg}</span>
+          </div>
+          {setSuccessMsg && (
+            <button type="button" onClick={() => setSuccessMsg('')} className="text-emerald-500 hover:text-emerald-800 font-bold p-1 cursor-pointer">
+              ✕
+            </button>
+          )}
         </div>
       )}
       {/* ── MAIN 2-COLUMN SPLIT WORKSPACE (Elevated Card Layout, Clean Separation from Header) ── */}
@@ -719,7 +758,7 @@ export function PortalCockpitLayout({
                       <div className="p-3 bg-white/95 border border-amber-200 rounded-lg space-y-1.5">
                         <div className="flex justify-between items-center text-xs">
                           <span className="text-slate-600 font-semibold">Cash Amount Collected:</span>
-                          <span className="font-mono text-base font-black text-emerald-700">₹{formatMoney(isEstimationJob && activeQuoteBalance > 0 ? activeQuoteBalance : payoutAmount)}</span>
+                          <span className="font-mono text-base font-black text-emerald-700">₹{formatMoney(activeQuoteTotal > 0 ? activeMilestoneDue : payoutAmount)}</span>
                         </div>
                         <p className="text-[11px] text-amber-950 leading-relaxed pt-1 border-t border-amber-100">
                           Ask customer <strong>{customerName || 'Customer'}</strong> for the <strong>6-digit Cash Payment Confirmation OTP</strong> displayed in their app to verify payment and complete this booking.
@@ -917,8 +956,8 @@ export function PortalCockpitLayout({
                 )}
 
                 {/* ── COMMERCIAL ESTIMATION & QUOTATION WORKFLOW CARD ──
-                    Render for estimation jobs so the technician can draft/view quotations during inspection. */}
-                {isActiveAssignment && isEstimationJob && !isCompleted && (
+                    Always visible for estimation and execution jobs so technician has the Quotation button available alongside completion */}
+                {isActiveAssignment && (isEstimationJob || isWorkExecutionJob || activeQuoteNumber || job?.can_create_quote || activeJob?.can_create_quote) && !isCompleted && (
                   <div className="p-4 bg-indigo-50/70 border border-indigo-200 rounded-xl space-y-3 shadow-xs">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div className="flex items-start gap-2.5">
@@ -988,11 +1027,15 @@ export function PortalCockpitLayout({
                             <div className="mt-2.5 pt-2 border-t border-indigo-200/70 flex items-center gap-4 flex-wrap text-xs">
                               <div className="flex items-center gap-1.5">
                                 <span className="text-[10px] font-mono font-bold text-indigo-700 uppercase">Quoted Total:</span>
-                                <span className="font-mono font-black text-slate-900">₹{formatMoney(activeQuoteTotal)}</span>
+                                <span className="font-mono text-black dark:text-white">₹{formatMoney(activeQuoteTotal)}</span>
                               </div>
                               <div className="flex items-center gap-1.5">
-                                <span className="text-[10px] font-mono font-bold text-emerald-700 uppercase">Remaining Balance:</span>
-                                <span className="font-mono font-black text-emerald-700">₹{formatMoney(activeQuoteBalance)}</span>
+                                <span className="text-[10px] font-mono font-bold text-emerald-700 uppercase">
+                                  {activeQuoteAdvancePaid ? 'Final Balance Due:' : '50% Advance Due:'}
+                                </span>
+                                <span className="font-mono font-black text-emerald-700">
+                                  ₹{formatMoney(!activeQuoteAdvancePaid && activeQuoteAdvanceDue > 0 ? activeQuoteAdvanceDue : activeQuoteBalance)}
+                                </span>
                               </div>
                             </div>
                           )}
@@ -1059,16 +1102,16 @@ export function PortalCockpitLayout({
                     className="w-full py-3.5 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white shadow-md cursor-pointer"
                   >
                     <ShieldCheck className="w-4 h-4" />
-                    <span>Confirm Customer Cash Payment (₹{formatMoney(isEstimationJob && activeQuoteBalance > 0 ? activeQuoteBalance : payoutAmount)})</span>
+                    <span>Confirm Customer Cash Payment (₹{formatMoney(activeQuoteTotal > 0 ? activeMilestoneDue : payoutAmount)})</span>
                   </button>
-                ) : isCashJob && !isPaid ? (
+                ) : !isFullyPaid ? (
                   <button
                     type="button"
                     onClick={() => onOpenCashModal && onOpenCashModal(activeJob)}
                     className="w-full py-3.5 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 bg-emerald-700 hover:bg-emerald-800 active:bg-emerald-900 text-white shadow-md cursor-pointer"
                   >
                     <Banknote className="w-4 h-4" />
-                    <span>Collect Cash Payment (₹{formatMoney(isEstimationJob && activeQuoteBalance > 0 ? activeQuoteBalance : payoutAmount)})</span>
+                    <span>Collect Cash Payment (₹{formatMoney(activeQuoteTotal > 0 ? activeMilestoneDue : payoutAmount)})</span>
                   </button>
                 ) : (
                   <button
@@ -1107,6 +1150,15 @@ export function PortalCockpitLayout({
                       : 'Draft Quotation'}
                   </span>
                 </button>
+              ) : isEstimationJob && (activeQuoteStatus === 'CUSTOMER_ACCEPTED' || activeQuoteStatus === 'CONVERTED') ? (
+                <button
+                  type="button"
+                  onClick={() => onOpenQuotationModal && onOpenQuotationModal(activeJob)}
+                  className="w-full py-3.5 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-md cursor-pointer"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Quotation Accepted (v{activeQuoteVersion}) — View Scope &amp; Quote</span>
+                </button>
               ) : isInProgress ? (
                 <button
                   type="button"
@@ -1115,7 +1167,7 @@ export function PortalCockpitLayout({
                   className="w-full py-3.5 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 bg-[#2d6a4f] hover:bg-[#1b4332] active:bg-[#153427] text-white shadow-md cursor-pointer"
                 >
                   <CheckCircle2 className="w-4 h-4" />
-                  <span>Complete {isEstimationJob ? 'Consultation' : 'Service'} &amp; Submit Proof</span>
+                  <span>Complete Service &amp; Submit Proof</span>
                 </button>
               ) : (
                 <button

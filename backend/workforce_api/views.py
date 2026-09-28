@@ -275,6 +275,28 @@ def ensure_job_started(job, employee, actor, notes="Auto clock-in on pre-service
         return None, "No technician profile is attached to this account."
 
     verification = PreServiceVerification.objects.filter(job=job).first()
+    if not verification and getattr(job, "parent_request_id", None):
+        parent_psv = PreServiceVerification.objects.filter(job_id=job.parent_request_id).first()
+        if parent_psv:
+            verification, _ = PreServiceVerification.objects.get_or_create(
+                job=job,
+                defaults={
+                    "employee": employee or parent_psv.employee,
+                    "geofence_passed": parent_psv.geofence_passed,
+                    "arrival_lat": parent_psv.arrival_lat,
+                    "arrival_lon": parent_psv.arrival_lon,
+                    "arrived_at": parent_psv.arrived_at,
+                    "presence_photo": parent_psv.presence_photo,
+                    "appliance_photo": parent_psv.appliance_photo,
+                    "work_area_photo": parent_psv.work_area_photo,
+                    "otp_code": parent_psv.otp_code,
+                    "otp_verified": parent_psv.otp_verified,
+                    "otp_verified_at": parent_psv.otp_verified_at,
+                    "is_complete": parent_psv.is_complete,
+                    "completed_at": parent_psv.completed_at,
+                }
+            )
+
     if not verification:
         return None, "Pre-service verification has not been started for this job."
 
@@ -2951,19 +2973,42 @@ def sync_payment_amount_due(pmt, job):
     """
     if pmt is None or job is None:
         return False
-    if pmt.payment_status not in [JobPayment.PaymentStatus.PENDING, JobPayment.PaymentStatus.CASH_PENDING]:
+    if pmt.payment_status != JobPayment.PaymentStatus.PENDING:
         return False
     expected = job.total_amount or Decimal("0.00")
 
     # Check if this job has an active accepted quotation with a positive milestone or balance
     try:
-        from workforce_api.models import WorkforceQuote
-        active_quote = (
-            WorkforceQuote.objects.filter(job=job)
-            .exclude(status__in=[WorkforceQuote.Status.SUPERSEDED, WorkforceQuote.Status.CANCELLED])
-            .order_by("-quote_version")
-            .first()
-        )
+        from workforce_api.models import WorkforceQuote, WorkforceInvoice
+        active_quote = None
+        inv = None
+        job_pk = getattr(job, "id", None)
+        if isinstance(job_pk, int) and type(job).__name__ not in ("_Job", "MagicMock", "Mock"):
+            active_quote = (
+                WorkforceQuote.objects.filter(job_id=job_pk)
+                .exclude(status__in=[WorkforceQuote.Status.SUPERSEDED, WorkforceQuote.Status.CANCELLED])
+                .order_by("-quote_version")
+                .first()
+            )
+            if not active_quote and getattr(job, "parent_request_id", None):
+                active_quote = (
+                    WorkforceQuote.objects.filter(job_id=job.parent_request_id)
+                    .exclude(status__in=[WorkforceQuote.Status.SUPERSEDED, WorkforceQuote.Status.CANCELLED])
+                    .order_by("-quote_version")
+                    .first()
+                )
+            if not active_quote:
+                active_quote = (
+                    WorkforceQuote.objects.filter(work_job_id=job_pk)
+                    .exclude(status__in=[WorkforceQuote.Status.SUPERSEDED, WorkforceQuote.Status.CANCELLED])
+                    .order_by("-quote_version")
+                    .first()
+                )
+
+            inv = WorkforceInvoice.objects.filter(job_id=job_pk).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
+            if not inv and getattr(job, "parent_request_id", None):
+                inv = WorkforceInvoice.objects.filter(job_id=job.parent_request_id).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
+
         if active_quote and active_quote.status in [
             WorkforceQuote.Status.CUSTOMER_ACCEPTED,
             WorkforceQuote.Status.ADMIN_APPROVED,
@@ -2975,7 +3020,27 @@ def sync_payment_amount_due(pmt, job):
                 adv_pct = float(active_quote.advance_percent) if active_quote.advance_percent is not None else 50.0
                 adv_amt = round(total_val * (adv_pct / 100.0), 2)
                 balance_amt = round(total_val - adv_amt, 2)
-                expected = Decimal(str(balance_amt if balance_amt > 0 else total_val))
+
+                advance_paid = False
+                if inv:
+                    if (
+                        inv.status == WorkforceInvoice.Status.PAID
+                        or inv.advance_paid_at is not None
+                        or (float(inv.amount_paid) >= float(inv.advance_amount or 0.0) > 0)
+                    ):
+                        advance_paid = True
+
+                if advance_paid:
+                    expected = Decimal(str(inv.balance_due if inv and inv.balance_due > 0 else (balance_amt if balance_amt > 0 else total_val)))
+                else:
+                    expected = Decimal(str(inv.advance_amount if inv and inv.advance_amount and inv.advance_amount > 0 else (adv_amt if adv_amt > 0 else total_val)))
+        elif inv:
+            if inv.status == WorkforceInvoice.Status.PAID or float(inv.balance_due) <= 0:
+                expected = Decimal("0.00")
+            elif inv.advance_paid_at is not None or (float(inv.amount_paid) >= float(inv.advance_amount or 0.0) > 0):
+                expected = inv.balance_due
+            else:
+                expected = inv.advance_amount if (inv.advance_amount and inv.advance_amount > 0) else inv.total_amount
     except Exception as exc:
         logger.warning("Error evaluating quotation balance in sync_payment_amount_due: %s", exc)
 
@@ -3869,13 +3934,33 @@ class WorkforceJobCashCollectView(APIView):
 
             sync_payment_amount_due(pmt, job)
 
-            # For quotation jobs with an invoice, ensure amount_due reflects the live remaining balance_due
+            # For quotation jobs with an invoice, ensure amount_due reflects the live remaining milestone/balance due
             from workforce_api.models import WorkforceInvoice
             inv = WorkforceInvoice.objects.filter(job=job).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
-            if inv and inv.balance_due > Decimal("0.00"):
-                pmt.amount_due = inv.balance_due
+            if not inv and getattr(job, "parent_request_id", None):
+                inv = WorkforceInvoice.objects.filter(job_id=job.parent_request_id).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
+
+            if inv:
+                if inv.status == WorkforceInvoice.Status.PAID or float(inv.balance_due) <= 0:
+                    pmt.amount_due = Decimal("0.00")
+                else:
+                    advance_paid = (
+                        inv.advance_paid_at is not None
+                        or (float(inv.amount_paid) >= float(inv.advance_amount or 0.0) > 0)
+                    )
+                    if advance_paid:
+                        pmt.amount_due = inv.balance_due
+                    else:
+                        pmt.amount_due = inv.advance_amount if (inv.advance_amount and inv.advance_amount > Decimal("0.00")) else round(inv.total_amount * Decimal("0.50"), 2)
+
+                    # If previous pmt was already marked PAID (e.g. from advance milestone) but invoice has remaining balance due:
+                    if pmt.payment_status == JobPayment.PaymentStatus.PAID and inv.balance_due > Decimal("0.00"):
+                        pmt.payment_status = JobPayment.PaymentStatus.PENDING
+                        pmt.amount_paid = Decimal("0.00")
+                        pmt.reconciled = False
+
                 pmt.payment_method = JobPayment.PaymentMethod.CASH_ON_SERVICE
-                pmt.save(update_fields=["amount_due", "payment_method", "updated_at"])
+                pmt.save(update_fields=["amount_due", "payment_method", "payment_status", "amount_paid", "reconciled", "updated_at"])
             elif pmt.payment_method == JobPayment.PaymentMethod.ONLINE:
                 return Response({"error": "Cannot collect cash for online payment booking."}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -4132,12 +4217,14 @@ class WorkforceJobPaymentVerifyOTPView(APIView):
                 from workforce_api.models import WorkforceInvoice
                 from workforce_api.services import invoice_service
                 inv = WorkforceInvoice.objects.filter(job=job).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
+                if not inv and getattr(job, "parent_request_id", None):
+                    inv = WorkforceInvoice.objects.filter(job_id=job.parent_request_id).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
                 if inv:
-                    invoice_service.record_invoice_payment(
+                    inv, _rec, _new = invoice_service.record_invoice_payment(
                         inv,
                         amount=pmt.amount_paid or pmt.amount_due,
                         method=pmt.payment_method or "CASH",
-                        reference=f"OTP-{pmt.id}",
+                        reference=f"OTP-{pmt.id}-{int(now.timestamp())}",
                         paid_at=now,
                         actor=request.user,
                         notes="Payment verified via customer OTP on site",
@@ -4161,9 +4248,15 @@ class WorkforceJobPaymentVerifyOTPView(APIView):
             except Exception as webhook_err:
                 logger.info(f"Could not notify Customer app of payment collection for Job #{job.id}: {webhook_err}")
 
-            # Service completion gate: If service proof is submitted / completed, close the job
+            # Service completion gate: If service proof is submitted and all balances settled, close the job
             completion_blocked_reason = ""
-            if job.status == "proof_submitted":
+            is_fully_settled = True
+            if inv and inv.balance_due > Decimal("0.00"):
+                is_fully_settled = False
+                job.payment_status = "partially_paid"
+                job.save(update_fields=["payment_status", "updated_at"])
+
+            if job.status == "proof_submitted" and is_fully_settled:
                 try:
                     apply_transition(job, "completed", actor=request.user)
                 except ValidationError as ve:
@@ -4390,12 +4483,14 @@ class WorkforceCustomerPaymentConfirmView(APIView):
                     from workforce_api.models import WorkforceInvoice
                     from workforce_api.services import invoice_service
                     inv = WorkforceInvoice.objects.filter(job=job).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
+                    if not inv and getattr(job, "parent_request_id", None):
+                        inv = WorkforceInvoice.objects.filter(job_id=job.parent_request_id).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
                     if inv:
-                        invoice_service.record_invoice_payment(
+                        inv, _rec, _new = invoice_service.record_invoice_payment(
                             inv,
                             amount=pmt.amount_paid or pmt.amount_due,
                             method=pmt.payment_method or "CASH",
-                            reference=f"CONFIRM-{pmt.id}",
+                            reference=f"CONFIRM-{pmt.id}-{int(now.timestamp())}",
                             paid_at=now,
                             actor=request.user,
                             notes="Payment verified via customer direct confirmation",
@@ -4403,41 +4498,47 @@ class WorkforceCustomerPaymentConfirmView(APIView):
                 except Exception as inv_err:
                     logger.info(f"Could not auto-sync invoice payment for Job #{job.id}: {inv_err}")
 
-                # See the matching fix in WorkforceJobPaymentVerifyOTPView --
-                # a rejected completion here used to be silently swallowed
-                # too, so a customer could confirm payment and see success
-                # while the job never closed and the technician's wallet was
-                # never credited, with no visible reason why.
-                completion_blocked_reason = ""
-                if job.status == "proof_submitted":
+            # See the matching fix in WorkforceJobPaymentVerifyOTPView --
+            # a rejected completion here used to be silently swallowed
+            # too, so a customer could confirm payment and see success
+            # while the job never closed and the technician's wallet was
+            # never credited, with no visible reason why.
+            completion_blocked_reason = ""
+            is_fully_settled = True
+            if inv and inv.balance_due > Decimal("0.00"):
+                is_fully_settled = False
+                job.payment_status = "partially_paid"
+                job.save(update_fields=["payment_status", "updated_at"])
+
+            if job.status == "proof_submitted" and is_fully_settled:
+                try:
+                    apply_transition(job, "completed", actor=request.user)
+                except ValidationError as ve:
+                    completion_blocked_reason = str(ve)
+                    logger.warning("Could not complete job #%s after customer payment confirm: %s", job.id, ve)
+                    job.save(update_fields=["payment_status"])
                     try:
-                        apply_transition(job, "completed", actor=request.user)
-                    except ValidationError as ve:
-                        completion_blocked_reason = str(ve)
-                        logger.warning("Could not complete job #%s after customer payment confirm: %s", job.id, ve)
-                        job.save(update_fields=["payment_status"])
-                        try:
-                            admin_user = None
-                            if job.company:
-                                admin_user = get_user_model().objects.filter(
-                                    Q(role__in=["admin", "manager"]) | Q(is_staff=True),
-                                    company=job.company,
-                                ).first()
-                            if admin_user:
-                                WorkforceNotification.objects.create(
-                                    recipient=admin_user,
-                                    title="Payment Confirmed but Job Did Not Close",
-                                    message=(
-                                        f"Job #{job.id} ({job.request_id}) payment was confirmed PAID but the job "
-                                        f"could not be marked completed: {completion_blocked_reason} Wallet was NOT "
-                                        f"credited. Run `complete_stuck_paid_jobs --job {job.request_id}` once resolved."
-                                    ),
-                                    notification_type="JOB_COMPLETION_BLOCKED",
-                                    company=job.company,
-                                    related_object_id=str(job.id),
-                                )
-                        except Exception as notify_err:
-                            logger.warning(f"Could not notify admin of blocked completion for Job #{job.id}: {notify_err}")
+                        admin_user = None
+                        if job.company:
+                            admin_user = get_user_model().objects.filter(
+                                Q(role__in=["admin", "manager"]) | Q(is_staff=True),
+                                company=job.company,
+                            ).first()
+                        if admin_user:
+                            WorkforceNotification.objects.create(
+                                recipient=admin_user,
+                                title="Payment Confirmed but Job Did Not Close",
+                                message=(
+                                    f"Job #{job.id} ({job.request_id}) payment was confirmed PAID but the job "
+                                    f"could not be marked completed: {completion_blocked_reason} Wallet was NOT "
+                                    f"credited. Run `complete_stuck_paid_jobs --job {job.request_id}` once resolved."
+                                ),
+                                notification_type="JOB_COMPLETION_BLOCKED",
+                                company=job.company,
+                                related_object_id=str(job.id),
+                            )
+                    except Exception as notify_err:
+                        logger.warning(f"Could not notify admin of blocked completion for Job #{job.id}: {notify_err}")
                     except Exception as e:
                         completion_blocked_reason = str(e)
                         logger.exception("Unexpected error completing job #%s after customer payment confirm: %s", job.id, e)

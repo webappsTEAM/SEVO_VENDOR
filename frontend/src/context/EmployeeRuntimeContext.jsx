@@ -6,7 +6,10 @@ export const ACTIVE_QUEUE_STATUSES = [
   'on_the_way',
   'en_route',
   'arrived',
+  'inspection_in_progress',
   'in_progress',
+  'quotation_sent',
+  'on_hold',
   'proof_submitted',
 ];
 

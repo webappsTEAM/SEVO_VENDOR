@@ -96,21 +96,33 @@ export default function QuotationBuilderModal({
   // "working" instead of showing a stale figure as if it were final.
   const [pricingIndexes, setPricingIndexes] = useState([]);
 
+  const serviceCategory = String(job?.service_category || '').toLowerCase();
+  const issueTitle = String(job?.issue_title || '').toLowerCase();
+
   const isPainting =
-    job?.service_category?.toLowerCase().includes('painting') ||
-    job?.issue_title?.toLowerCase().includes('painting');
+    serviceCategory.includes('paint') ||
+    issueTitle.includes('paint') ||
+    serviceCategory.includes('waterproof') ||
+    issueTitle.includes('waterproof');
 
   const isMason =
-    job?.service_category?.toLowerCase().includes('mason') ||
-    job?.issue_title?.toLowerCase().includes('mason') ||
-    job?.issue_title?.toLowerCase().includes('brick') ||
-    job?.issue_title?.toLowerCase().includes('plaster');
+    serviceCategory.includes('mason') ||
+    issueTitle.includes('mason') ||
+    issueTitle.includes('brick') ||
+    issueTitle.includes('plaster') ||
+    issueTitle.includes('tile');
+
+  const isAC =
+    serviceCategory.includes('hvac') ||
+    serviceCategory.includes('ac') ||
+    issueTitle.includes('ac ') ||
+    issueTitle.includes('air conditioner');
 
   // AC Inspection & Estimation job — use job-specific rate card snapshot
-  const isEstimation =
+  const isEstimation = isAC && (
     job?.request_kind === 'ESTIMATION' ||
-    job?.pricing_mode === 'QUOTATION' ||
-    job?.is_estimation === true;
+    job?.is_estimation === true
+  );
 
   const isReadOnly = Boolean(
     quoteStatus &&
@@ -118,31 +130,33 @@ export default function QuotationBuilderModal({
     quoteStatus !== 'CHANGES_REQUESTED'
   );
 
-  const hasInitializedRef = useRef(false);
   const jobId = job?.id;
 
   // Load existing quote or initialize from job once when modal opens
   useEffect(() => {
     if (!isOpen) {
-      hasInitializedRef.current = false;
       return;
     }
-    if (hasInitializedRef.current) return;
-    hasInitializedRef.current = true;
 
     const loadData = async () => {
       setLoading(true);
       setError(null);
       try {
-        // Load rate cards.
-        // For AC Inspection (ESTIMATION) jobs, pass job_id so the backend
-        // returns the frozen CustomerInspectionRateSnapshot for this booking.
+        // Load rate cards strictly for the current service category
         let rCards;
+        const categoryParam = isPainting ? 'painting' : isMason ? 'mason' : (serviceCategory || '');
         if (isEstimation && job?.id) {
           rCards = await apiGetRateCards('', '', job.id);
         } else {
-          const categoryParam = isPainting ? 'painting' : isMason ? 'mason' : '';
-          rCards = await apiGetRateCards(categoryParam);
+          rCards = await apiGetRateCards(categoryParam, '', job?.id);
+        }
+
+        if (rCards && Array.isArray(rCards)) {
+          if (isPainting) {
+            rCards = rCards.filter((rc) => rc.is_snapshot || String(rc.service_category || '').toLowerCase().includes('paint'));
+          } else if (isMason) {
+            rCards = rCards.filter((rc) => rc.is_snapshot || String(rc.service_category || '').toLowerCase().includes('mason'));
+          }
         }
         setRateCards(rCards || []);
 
@@ -226,6 +240,18 @@ export default function QuotationBuilderModal({
   };
 
   const totals = calculateTotals();
+
+  const displayedRateCards = (rateCards || []).filter((rc) => {
+    if (rc.is_snapshot) return true;
+    const cat = String(rc.service_category || '').toLowerCase();
+    if (isPainting) {
+      return cat.includes('paint') || cat.includes('waterproof');
+    }
+    if (isMason) {
+      return cat.includes('mason') || cat.includes('brick') || cat.includes('plaster') || cat.includes('tile');
+    }
+    return true;
+  });
 
   // Add line item
   const handleAddItem = (section = 'MATERIAL') => {
@@ -974,12 +1000,16 @@ export default function QuotationBuilderModal({
               {/* STEP 3: Line Items & Rate Cards */}
               {step === 3 && (
                 <div className="space-y-5">
-                  {/* Rate Card Catalog — grouped by category for AC inspection, flat list for others */}
+                  {/* Rate Card Catalog */}
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-blue-50/50 dark:bg-blue-950/20 p-3.5 rounded-xl border border-blue-100 dark:border-blue-900/40">
                     <div>
                       <h4 className="text-xs font-bold text-blue-900 dark:text-blue-200">
                         {isEstimation
                           ? 'Add from AC Inspection Rate Card'
+                          : isPainting
+                          ? 'Add from Painting & Waterproofing Rate Card'
+                          : isMason
+                          ? 'Add from Masonry & Construction Rate Card'
                           : 'Add from Approved Rate Card Catalog'}
                       </h4>
                       <p className="text-[11px] text-blue-700 dark:text-blue-300">
@@ -1002,33 +1032,19 @@ export default function QuotationBuilderModal({
                       <option value="" disabled>
                         + Choose approved item...
                       </option>
-                      {isEstimation ? (
-                        // Group by category for AC inspection
-                        Object.entries(
-                          rateCards.reduce((acc, rc) => {
-                            const cat = rc.category_name || rc.service_category || 'Other';
-                            acc[cat] = acc[cat] || [];
-                            acc[cat].push(rc);
-                            return acc;
-                          }, {})
-                        ).map(([cat, items]) => (
-                          <optgroup key={cat} label={cat}>
-                            {items.map((rc) => (
-                              <option key={rc.id} value={rc.id}>
-                                {rc.item_name}
-                                {parseFloat(rc.default_rate) > 0
-                                  ? ` — ₹${parseFloat(rc.default_rate).toLocaleString()}/${rc.unit}`
-                                  : ' — Free'}
-                              </option>
-                            ))}
-                          </optgroup>
-                        ))
-                      ) : (
-                        rateCards.map((rc) => (
+                      {displayedRateCards.length > 0 ? (
+                        displayedRateCards.map((rc) => (
                           <option key={rc.id} value={rc.id}>
-                            [{rc.section}] {rc.item_name} — {describeRate(rc)}
+                            {rc.item_name}
+                            {parseFloat(rc.default_rate) > 0
+                              ? ` — ₹${parseFloat(rc.default_rate).toLocaleString('en-IN')}/${rc.unit || 'unit'}`
+                              : ' — Free'}
                           </option>
                         ))
+                      ) : (
+                        <option disabled value="none">
+                          No rate card items found
+                        </option>
                       )}
                     </select>
                   </div>
@@ -1390,56 +1406,32 @@ export default function QuotationBuilderModal({
             )}
 
             {step < 4 ? (
-              <div className="flex items-center gap-2">
-                {step === 3 && items.length > 0 && !isReadOnly && (
-                  <button
-                    onClick={handleSendQuote}
-                    disabled={sending || saving}
-                    className="inline-flex items-center gap-1.5 text-xs font-bold px-4 py-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 shadow-md shadow-emerald-600/20 disabled:opacity-50 cursor-pointer"
-                    title="Submit directly to Admin for approval"
-                  >
-                    <Send className="w-3.5 h-3.5" />
-                    {sending
-                      ? 'Submitting...'
-                      : isEstimation
-                      ? 'Submit for Admin Approval'
-                      : 'Submit Quotation'}
-                  </button>
-                )}
-                <button
-                  onClick={() => setStep(step + 1)}
-                  className="inline-flex items-center gap-1.5 text-xs font-semibold px-5 py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700 shadow-md shadow-blue-600/20 cursor-pointer"
-                >
-                  {step === 3 ? 'Review & Finalize' : 'Next Step'}
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => setStep(step + 1)}
+                className="inline-flex items-center gap-1.5 text-xs font-bold px-5 py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700 shadow-md shadow-blue-600/20 cursor-pointer"
+              >
+                <span>Next Step</span>
+                <ChevronRight className="w-4 h-4" />
+              </button>
             ) : isReadOnly ? (
               <button
+                type="button"
                 onClick={onClose}
                 className="inline-flex items-center gap-1.5 text-xs font-bold px-5 py-2 rounded-xl bg-slate-700 text-white hover:bg-slate-800 shadow-md cursor-pointer"
               >
                 Close View
               </button>
             ) : (
-              <>
-                <button
-                  onClick={handleSubmitToCRM}
-                  disabled={sending || saving || items.length === 0}
-                  className="inline-flex items-center gap-1.5 text-xs font-bold px-4 py-2 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 shadow-md shadow-indigo-600/20 disabled:opacity-50 cursor-pointer"
-                >
-                  <Sparkles className="w-4 h-4" />
-                  {sending ? 'Submitting...' : 'Submit to CRM'}
-                </button>
-                <button
-                  onClick={handleSendQuote}
-                  disabled={sending || saving || items.length === 0}
-                  className="inline-flex items-center gap-1.5 text-xs font-bold px-5 py-2 rounded-xl bg-green-600 text-white hover:bg-green-700 shadow-md shadow-green-600/20 disabled:opacity-50 cursor-pointer"
-                >
-                  <Send className="w-4 h-4" />
-                  {sending ? 'Sending...' : 'Send Quote to Customer'}
-                </button>
-              </>
+              <button
+                type="button"
+                onClick={handleSendQuote}
+                disabled={sending || saving || items.length === 0}
+                className="inline-flex items-center gap-1.5 text-xs font-bold px-5 py-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 shadow-md shadow-emerald-600/20 disabled:opacity-50 cursor-pointer"
+              >
+                <Send className="w-4 h-4" />
+                <span>{sending ? 'Submitting...' : 'Submit for Admin Approval'}</span>
+              </button>
             )}
           </div>
         </div>

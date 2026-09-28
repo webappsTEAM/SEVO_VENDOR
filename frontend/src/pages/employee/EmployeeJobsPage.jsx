@@ -49,6 +49,8 @@ import {
   Copy,
   Lock,
   Camera,
+  Paintbrush,
+  Hammer,
 } from 'lucide-react';
 
 /**
@@ -82,47 +84,73 @@ function cleanErrorMessage(error) {
   return msg || 'Action could not be completed.';
 }
 
+function formatCategoryLabel(raw) {
+  if (!raw) return 'Home Service';
+  return String(raw)
+    .replace(/[_\-]+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, c => c.toUpperCase());
+}
+
 /**
- * Service Category Styling (Swiggy / Urban Company clean style)
+ * Service Category Styling (Dynamic Urban Company / CalTrack Style)
  */
 function getServiceCategoryMeta(categoryName = '', title = '') {
   const cat = (categoryName || '').trim().toLowerCase();
+  const t = (title || '').trim().toLowerCase();
+  const text = `${cat} ${t}`.toLowerCase();
 
-  // Canonical category match first (robust against service title renames)
-  if (cat === 'goods_transport_truck' || cat === 'truck' || cat === 'mini_truck') {
-    return {
-      id: 'goods_transport_truck',
-      icon: Truck,
-      label: 'Mini Truck',
-      tagColor: 'bg-blue-500/10 text-blue-800 border-blue-200',
-      iconBg: 'bg-blue-100 text-blue-700',
-    };
-  }
-
-  if (cat === 'goods_transport_two_wheeler' || cat === 'two_wheeler' || cat === 'two-wheeler') {
-    return {
-      id: 'goods_transport_two_wheeler',
-      icon: Truck,
-      label: 'Two-Wheeler',
-      tagColor: 'bg-indigo-500/10 text-indigo-800 border-indigo-200',
-      iconBg: 'bg-indigo-100 text-indigo-700',
-    };
-  }
-
-  if (cat === 'packers_movers' || cat === 'packers-and-movers' || cat === 'packers_and_movers') {
-    return {
-      id: 'packers_movers',
-      icon: Layers,
-      label: 'Packers & Movers',
-      tagColor: 'bg-purple-500/10 text-purple-800 border-purple-200',
-      iconBg: 'bg-purple-100 text-purple-700',
-    };
-  }
-
-  const text = `${categoryName} ${title}`.toLowerCase();
-
-  // 1. Mini Truck Delivery / Heavy Goods Transport
+  // 1. Painting, Waterproofing & Wall Care
   if (
+    cat.includes('paint') ||
+    cat.includes('waterproof') ||
+    text.includes('paint') ||
+    text.includes('waterproof') ||
+    text.includes('wall') ||
+    text.includes('ceiling') ||
+    text.includes('emulsion') ||
+    text.includes('stencil') ||
+    text.includes('texture') ||
+    text.includes('tar sheet') ||
+    text.includes('epoxy') ||
+    text.includes('pu coat') ||
+    text.includes('primer')
+  ) {
+    return {
+      id: 'painting',
+      icon: Paintbrush,
+      label: 'Painting & Wall Care',
+      tagColor: 'bg-rose-500/10 text-rose-800 border-rose-200',
+      iconBg: 'bg-rose-100 text-rose-700',
+    };
+  }
+
+  // 2. Masonry & Civil Construction
+  if (
+    cat.includes('mason') ||
+    cat.includes('civil') ||
+    cat.includes('construction') ||
+    text.includes('mason') ||
+    text.includes('brick') ||
+    text.includes('tile') ||
+    text.includes('civil') ||
+    text.includes('construction') ||
+    text.includes('grouting') ||
+    text.includes('plaster') ||
+    text.includes('concrete')
+  ) {
+    return {
+      id: 'masonry',
+      icon: Hammer,
+      label: 'Masonry & Civil',
+      tagColor: 'bg-amber-600/10 text-amber-900 border-amber-300',
+      iconBg: 'bg-amber-100 text-amber-800',
+    };
+  }
+
+  // 3. Mini Truck Delivery / Heavy Goods Transport
+  if (
+    cat === 'goods_transport_truck' || cat === 'truck' || cat === 'mini_truck' ||
     text.includes('goods_transport_truck') ||
     text.includes('mini truck') ||
     text.includes('3 wheeler') ||
@@ -143,8 +171,9 @@ function getServiceCategoryMeta(categoryName = '', title = '') {
     };
   }
 
-  // 2. Two-Wheeler / Bike Courier
+  // 4. Two-Wheeler / Bike Courier
   if (
+    cat === 'goods_transport_two_wheeler' || cat === 'two_wheeler' || cat === 'two-wheeler' ||
     text.includes('goods_transport_two_wheeler') ||
     text.includes('two_wheeler') ||
     text.includes('two wheeler') ||
@@ -163,8 +192,9 @@ function getServiceCategoryMeta(categoryName = '', title = '') {
     };
   }
 
-  // 3. Packers & Movers / Relocation
+  // 5. Packers & Movers / Relocation
   if (
+    cat === 'packers_movers' || cat === 'packers-and-movers' || cat === 'packers_and_movers' ||
     text.includes('packers_movers') ||
     text.includes('packer') ||
     text.includes('mover') ||
@@ -181,7 +211,7 @@ function getServiceCategoryMeta(categoryName = '', title = '') {
     };
   }
 
-  // 4. General Goods & Transport / Logistics
+  // 6. General Goods & Transport / Logistics
   if (
     text.includes('goods_transport') ||
     text.includes('logistics') ||
@@ -197,7 +227,7 @@ function getServiceCategoryMeta(categoryName = '', title = '') {
     };
   }
 
-  // 5. Electrical & Power
+  // 7. Electrical & Power
   if (
     text.includes('electr') ||
     text.includes('socket') ||
@@ -218,7 +248,7 @@ function getServiceCategoryMeta(categoryName = '', title = '') {
     };
   }
 
-  // 6. AC & Appliances
+  // 8. AC & Appliances
   if (
     text.includes('ac') ||
     text.includes('air') ||
@@ -238,7 +268,7 @@ function getServiceCategoryMeta(categoryName = '', title = '') {
     };
   }
 
-  // 7. Plumbing & Water
+  // 9. Plumbing & Water
   if (
     text.includes('plumb') ||
     text.includes('pipe') ||
@@ -258,7 +288,7 @@ function getServiceCategoryMeta(categoryName = '', title = '') {
     };
   }
 
-  // 8. Carpentry, Locks & Doors
+  // 10. Carpentry, Locks & Doors
   if (
     text.includes('lock') ||
     text.includes('mortise') ||
@@ -277,7 +307,7 @@ function getServiceCategoryMeta(categoryName = '', title = '') {
     };
   }
 
-  // 9. Cleaning & Disinfection
+  // 11. Cleaning & Disinfection
   if (text.includes('clean') || text.includes('pest') || text.includes('deep') || text.includes('disinfect')) {
     return {
       id: 'cleaning',
@@ -288,7 +318,18 @@ function getServiceCategoryMeta(categoryName = '', title = '') {
     };
   }
 
-  // Fallback
+  // 12. Dynamic Fallback from categoryName
+  if (categoryName && categoryName.trim()) {
+    return {
+      id: cat || 'custom',
+      icon: Wrench,
+      label: formatCategoryLabel(categoryName),
+      tagColor: 'bg-slate-100 text-slate-800 border-slate-200',
+      iconBg: 'bg-slate-100 text-slate-700',
+    };
+  }
+
+  // General Fallback
   return {
     id: 'general',
     icon: Wrench,
@@ -510,21 +551,41 @@ export function EmployeeJobsPage() {
     }
   }, [refreshActiveJobs, refreshCompletedJobs, activeTab]);
 
-  // Combined jobs according to active tab
+  // Combined jobs according to active tab with dynamic consultation/work deduplication
   const jobs = useMemo(() => {
-    if (activeTab === 'COMPLETED') return completedJobs;
-    if (activeTab === 'OFFERS') return incomingOffers;
-    if (activeTab === 'SCHEDULED') return activeJobs.filter((j) => j.is_scheduled_future);
-    if (activeTab === 'ACTIVE') {
-      return activeJobs.filter((j) => !isOfferJob(j) && !j.is_scheduled_future);
+    let rawList = [];
+    if (activeTab === 'COMPLETED') {
+      rawList = completedJobs;
+    } else if (activeTab === 'OFFERS') {
+      rawList = incomingOffers;
+    } else if (activeTab === 'SCHEDULED') {
+      rawList = activeJobs.filter((j) => j.is_scheduled_future);
+    } else if (activeTab === 'ACTIVE') {
+      rawList = activeJobs.filter((j) => !isOfferJob(j) && !j.is_scheduled_future);
+    } else {
+      // 'ALL' tab: combines activeJobs and completedJobs
+      const map = new Map();
+      activeJobs.forEach(j => map.set(j.id, j));
+      completedJobs.forEach(j => {
+        if (!map.has(j.id)) map.set(j.id, j);
+      });
+      rawList = Array.from(map.values());
     }
-    // 'ALL' tab: combines activeJobs and completedJobs
-    const map = new Map();
-    activeJobs.forEach(j => map.set(j.id, j));
-    completedJobs.forEach(j => {
-      if (!map.has(j.id)) map.set(j.id, j);
+
+    // Dynamic Deduplication: When an execution WORK job exists alongside its parent consultation job,
+    // suppress the redundant parent consultation card so only 1 unified card is shown per customer service.
+    const parentIdsWithCompletedWork = new Set();
+    rawList.forEach(j => {
+      if (j.parent_request_id) {
+        parentIdsWithCompletedWork.add(Number(j.parent_request_id));
+      }
     });
-    return Array.from(map.values());
+
+    if (parentIdsWithCompletedWork.size > 0) {
+      return rawList.filter(j => !parentIdsWithCompletedWork.has(Number(j.id)));
+    }
+
+    return rawList;
   }, [activeTab, activeJobs, completedJobs, incomingOffers]);
 
   const handleCopyId = (id, e) => {
@@ -749,7 +810,10 @@ export function EmployeeJobsPage() {
       }
 
       countsMap.ALL = (countsMap.ALL || 0) + 1;
-      const meta = getServiceCategoryMeta(job.service_category, job.service_title);
+      const meta = getServiceCategoryMeta(
+        job.service_category || job.category_name || job.category,
+        job.service_title || job.issue_title || job.title
+      );
       const catId = meta.id;
       countsMap[catId] = (countsMap[catId] || 0) + 1;
       if (catId === 'goods_transport') {
@@ -1031,7 +1095,10 @@ export function EmployeeJobsPage() {
               const isInProgress = !isOffer && (status === 'IN_PROGRESS' || status === 'IN_SERVICE' || status === 'INSPECTION' || status === 'PROOF_SUBMITTED');
               const isCompleted = !isOffer && (status === 'COMPLETED' || status === 'WORK_COMPLETED' || status === 'WAITING_FOR_PAYMENT');
 
-              const catMeta = getServiceCategoryMeta(job.service_category, job.service_title);
+              const catMeta = getServiceCategoryMeta(
+                job.service_category || job.category_name || job.category,
+                job.service_title || job.issue_title || job.title
+              );
               const statusTag = getStatusTag(job);
               const CategoryIcon = catMeta.icon;
 

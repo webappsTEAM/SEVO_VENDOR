@@ -1061,6 +1061,8 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
         }
 
     def _is_estimation_job(self, obj):
+        if getattr(obj, "request_kind", "") == "WORK" or getattr(obj, "parent_request_id", None):
+            return False
         if getattr(obj, "is_estimation", False):
             return True
         if getattr(obj, "request_kind", "") == "ESTIMATION":
@@ -1075,19 +1077,25 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
         )
 
     def _get_active_quote(self, obj):
-        if not self._is_estimation_job(obj):
-            return None
         quotes_map = self.context.get("quotes_map")
-        if quotes_map is not None:
+        if quotes_map is not None and obj.id in quotes_map:
             return quotes_map.get(obj.id)
         if not hasattr(obj, "_cached_active_quote"):
             from .models import WorkforceQuote
-            obj._cached_active_quote = (
+            q = (
                 WorkforceQuote.objects.filter(job=obj)
                 .exclude(status__in=[WorkforceQuote.Status.SUPERSEDED, WorkforceQuote.Status.CANCELLED])
                 .order_by("-quote_version")
                 .first()
             )
+            if not q and getattr(obj, "parent_request_id", None):
+                q = (
+                    WorkforceQuote.objects.filter(job_id=obj.parent_request_id)
+                    .exclude(status__in=[WorkforceQuote.Status.SUPERSEDED, WorkforceQuote.Status.CANCELLED])
+                    .order_by("-quote_version")
+                    .first()
+                )
+            obj._cached_active_quote = q
         return obj._cached_active_quote
 
     def get_is_estimation(self, obj):
@@ -1134,6 +1142,8 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
         try:
             from workforce_api.models import WorkforceInvoice
             inv = WorkforceInvoice.objects.filter(job=obj).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
+            if not inv and getattr(obj, "parent_request_id", None):
+                inv = WorkforceInvoice.objects.filter(job_id=obj.parent_request_id).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
             if inv:
                 if inv.status == WorkforceInvoice.Status.PAID:
                     return True
@@ -1141,11 +1151,9 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
                     return True
                 if float(inv.amount_paid) >= float(inv.advance_amount or 0.0) > 0:
                     return True
+                return False
         except Exception:
             pass
-        st = str(getattr(obj, "status", "")).lower()
-        if st in ["in_progress", "proof_submitted", "completed"]:
-            return True
         return False
 
     def get_active_quote_advance_due(self, obj):
@@ -1154,15 +1162,26 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
         return self.get_active_quote_advance_amount(obj)
 
     def get_active_quote_is_fully_paid(self, obj):
-        bal = self.get_active_quote_balance_amount(obj)
-        return bal is not None and bal <= 0.0
+        try:
+            from workforce_api.models import WorkforceInvoice
+            inv = WorkforceInvoice.objects.filter(job=obj).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
+            if not inv and getattr(obj, "parent_request_id", None):
+                inv = WorkforceInvoice.objects.filter(job_id=obj.parent_request_id).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
+            if inv:
+                return inv.status == WorkforceInvoice.Status.PAID or float(inv.balance_due) <= 0.0
+        except Exception:
+            pass
+        return False
 
     def get_active_quote_balance_amount(self, obj):
         try:
             from workforce_api.models import WorkforceInvoice
             inv = WorkforceInvoice.objects.filter(job=obj).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
+            if not inv and getattr(obj, "parent_request_id", None):
+                inv = WorkforceInvoice.objects.filter(job_id=obj.parent_request_id).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
             if inv:
-                return round(float(inv.balance_due), 2)
+                bal = float(inv.balance_amount) if inv.balance_amount and float(inv.balance_amount) > 0 else (float(inv.total_amount) - float(inv.advance_amount or 0.0))
+                return round(bal, 2)
         except Exception:
             pass
 

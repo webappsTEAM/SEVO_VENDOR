@@ -246,13 +246,13 @@ def send_quote_to_customer(quote_id, actor=None, valid_days=7):
             )
         else:
             amount = quote.net_payable or quote.total_amount
+            requires_admin = pricing_policy.requires_admin_approval(quote.service_category)
             over_threshold, threshold = pricing_policy.needs_pre_send_review(
                 quote.service_category, amount
             )
-            if over_threshold and not quote.admin_cleared_at:
+            if (requires_admin or over_threshold) and not quote.admin_cleared_at:
                 held_reason = (
-                    f"Quotation total {amount} exceeds the {threshold} review threshold "
-                    f"for {quote.service_category}. It has been sent for admin review "
+                    f"Quotation for {quote.service_category} requires CRM Admin clearance before release "
                     "and will reach the customer once approved."
                 )
 
@@ -262,7 +262,9 @@ def send_quote_to_customer(quote_id, actor=None, valid_days=7):
 
     if held_reason:
         _emit("QUOTATION_PENDING_REVIEW", quote, reason=held_reason)
-        raise ValidationError(held_reason)
+        # Suppress customer projection until admin releases
+        _project(quote)
+        return quote
 
     with transaction.atomic():
         quote = WorkforceQuote.objects.select_for_update().get(id=quote_id)
@@ -325,33 +327,15 @@ def record_customer_decision(quote_id, action, notes="", reason="", token=None, 
             quote.customer_decision = "ACCEPTED"
             quote.customer_decided_at = now
             quote.customer_notes = notes
-
-            if requires_admin_approval(quote.service_category):
-                # The customer accepting is a commercial commitment, not an
-                # authorisation to start work. The quote parks here until a
-                # SEVO admin approves it; admin_review_quote() is what
-                # converts and invoices it.
-                quote.status = WorkforceQuote.Status.PENDING_ADMIN_APPROVAL
-                quote.submitted_for_approval_at = now
-                quote.save(update_fields=[
-                    "status", "customer_decision", "customer_decided_at",
-                    "customer_notes", "submitted_for_approval_at", "updated_at",
-                ])
-                logger.info(
-                    "Quote %s v%s accepted by customer; awaiting SEVO admin approval.",
-                    quote.quote_number, quote.quote_version,
-                )
-                _emit("QUOTATION_APPROVED", quote, awaiting_admin_approval=True)
-                _project(quote)
-                return quote, None
-
             quote.status = WorkforceQuote.Status.CUSTOMER_ACCEPTED
             quote.save(update_fields=["status", "customer_decision", "customer_decided_at", "customer_notes", "updated_at"])
 
-            # Admin approval disabled for this deployment -- convert directly.
+            # Directly convert to active work booking and generate 50% milestone invoice
             work_job = convert_accepted_quote_to_work_booking(quote, actor=actor)
             invoice_service.generate_invoice_for_quote(quote, work_job=work_job, actor=actor)
             quote.refresh_from_db()
+            _emit("QUOTATION_ACCEPTED", quote, work_job_id=work_job.id if work_job else None)
+            _project(quote)
             return quote, work_job
 
         elif clean_action == "DECLINE":
@@ -553,10 +537,16 @@ def convert_accepted_quote_to_work_booking(quote, actor=None):
                 )
                 technician_phone = getattr(technician, "phone", "") or ""
                 technician_user_id = getattr(technician, "user_id", None)
-            elif insp_job is not None:
-                technician_name = insp_job.technician_name or ""
-                technician_phone = insp_job.technician_phone or ""
-                technician_user_id = insp_job.technician_id
+            if insp_job:
+                insp_updates = []
+                if insp_job.quote_number == quote.quote_number:
+                    insp_job.quote_number = f"{quote.quote_number}-INSP"
+                    insp_updates.append("quote_number")
+                if insp_job.status in ["quotation_sent", "in_progress", "inspection_in_progress", "arrived", "accepted", "en_route", "standard"]:
+                    insp_job.status = "completed"
+                    insp_updates.append("status")
+                if insp_updates:
+                    insp_job.save(update_fields=insp_updates)
 
             work_sr = ServiceRequest.objects.create(
                 request_kind="WORK",
@@ -594,8 +584,29 @@ def convert_accepted_quote_to_work_booking(quote, actor=None):
                 assigned_employee=technician,
                 technician_name=technician_name,
                 technician_phone=technician_phone,
-                technician_id=technician_user_id,
             )
+
+            if insp_job:
+                insp_psv = PreServiceVerification.objects.filter(job=insp_job).first()
+                if insp_psv:
+                    PreServiceVerification.objects.get_or_create(
+                        job=work_sr,
+                        defaults={
+                            "employee": technician or insp_psv.employee,
+                            "geofence_passed": insp_psv.geofence_passed,
+                            "arrival_lat": insp_psv.arrival_lat,
+                            "arrival_lon": insp_psv.arrival_lon,
+                            "arrived_at": insp_psv.arrived_at,
+                            "presence_photo": insp_psv.presence_photo,
+                            "appliance_photo": insp_psv.appliance_photo,
+                            "work_area_photo": insp_psv.work_area_photo,
+                            "otp_code": insp_psv.otp_code,
+                            "otp_verified": insp_psv.otp_verified,
+                            "otp_verified_at": insp_psv.otp_verified_at,
+                            "is_complete": insp_psv.is_complete,
+                            "completed_at": insp_psv.completed_at,
+                        }
+                    )
 
             quote.work_job = work_sr
             quote.status = WorkforceQuote.Status.CONVERTED
