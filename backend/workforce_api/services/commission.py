@@ -115,6 +115,19 @@ def commission_rate_for(wallet, channel: str) -> Decimal:
 
 
 @transaction.atomic
+def _extra_charges_total(service_request):
+    """Sum of APPLIED toll/parking entries the Customer app recorded (ServiceRequest.extra_charges)."""
+    total = Decimal("0.00")
+    items = getattr(service_request, "extra_charges", None)
+    for e in (items if isinstance(items, list) else []):
+        if isinstance(e, dict) and e.get("status") == "APPLIED":
+            try:
+                total += Decimal(str(e.get("amount") or 0))
+            except Exception:
+                pass
+    return total
+
+
 def settle_completed_job(service_request):
     """
     Idempotent: safe to call more than once for the same job (e.g. a retry
@@ -163,6 +176,24 @@ def settle_completed_job(service_request):
         raise SettlementError(msg)
 
     gross = payment.amount_due or payment.amount_paid or Decimal("0")
+    reimbursement = Decimal("0.00")
+    # Logistics trips: the fare is reconciled at delivery (distance, stops, waiting), after an
+    # online JobPayment was already written PAID at the booking-time total -- and that row's
+    # amount_due is never refreshed once paid. Earnings must follow the FINAL fare, and the
+    # insurance premium (SEVO's revenue, collected online) is never part of the commissionable fare.
+    try:
+        from workforce_api.services.automatic_dispatch import LOGISTICS_SERVICE_CATEGORIES
+        if (service_request.service_category or "").strip().lower() in LOGISTICS_SERVICE_CATEGORIES:
+            final_fare = Decimal(str(service_request.total_amount or 0))
+            if getattr(service_request, "insurance_opted_in", False):
+                final_fare -= Decimal(str(service_request.insurance_premium or 0))
+            # Toll / parking receipts are reimbursed to the driver in full, not commissioned.
+            reimbursement = _extra_charges_total(service_request)
+            final_fare -= reimbursement
+            if final_fare > 0:
+                gross = final_fare
+    except Exception:
+        logger.exception("Could not derive the logistics gross for job #%s; using the payment row.", service_request.id)
     if gross <= 0:
         logger.info(f"Job #{service_request.id} has zero gross amount (consultation/free service) -- skipping commission settlement.")
         return None
@@ -170,6 +201,7 @@ def settle_completed_job(service_request):
     rate = commission_rate_for(wallet, channel)
     commission = (gross * rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     net = gross - commission
+    payout = net + reimbursement          # what the wallet is credited (net earning + receipts refunded)
 
     hold_release_at = timezone.now() + timezone.timedelta(hours=DISPUTE_HOLD_HOURS)
     worker_performed = service_request.assigned_employee
@@ -180,7 +212,7 @@ def settle_completed_job(service_request):
         job=service_request,
         worker_performed=worker_performed,
         entry_type=WalletLedgerEntry.EntryType.JOB_CREDIT,
-        signed_amount=net,
+        signed_amount=payout,
         gross_job_amount=gross,
         commission_rate_applied=rate,
         status=WalletLedgerEntry.Status.HELD,
@@ -236,8 +268,8 @@ def settle_completed_job(service_request):
             if not EmployeeWalletTransaction.objects.filter(
                 wallet=emp_wallet, reference_type=REF_JOB_PAYMENT, reference_id=ref_id
             ).exists():
-                emp_wallet.pending_balance = emp_wallet.pending_balance + net
-                emp_wallet.lifetime_earnings = emp_wallet.lifetime_earnings + net
+                emp_wallet.pending_balance = emp_wallet.pending_balance + payout
+                emp_wallet.lifetime_earnings = emp_wallet.lifetime_earnings + payout
                 emp_wallet.save(update_fields=["pending_balance", "lifetime_earnings", "updated_at"])
 
                 EmployeeWalletTransaction.objects.create(
@@ -247,11 +279,11 @@ def settle_completed_job(service_request):
                     transaction_type=TXN_SERVICE_EARNING,
                     direction=DIRECTION_CREDIT,
                     status=TXN_STATUS_PENDING_SETTLEMENT,
-                    amount=net,
+                    amount=payout,
                     gross_amount=gross,
                     earn_rate_snapshot=Decimal("1.0") - rate,
                     platform_deduction_amount=commission,
-                    balance_before=emp_wallet.pending_balance - net,
+                    balance_before=emp_wallet.pending_balance - payout,
                     balance_after=emp_wallet.pending_balance,
                     balance_type=BALANCE_PENDING,
                     settlement_release_at=hold_release_at,
@@ -263,6 +295,7 @@ def settle_completed_job(service_request):
                         "request_id": service_request.request_id,
                         "gross": str(gross),
                         "net": str(net),
+                        "reimbursement": str(reimbursement),
                         "commission": str(commission),
                     },
                 )

@@ -8112,6 +8112,44 @@ class WorkforceJobLiveTrackingView(APIView):
         }, status=status.HTTP_200_OK)
 
 
+_FEEDBACK_ELIGIBLE_JOB_STATUSES = frozenset({
+    "completed", "closed", "verified", "feedback_pending", "feedback_received",
+    "proof_submitted",
+})
+
+
+def _job_is_rateable(job):
+    """A trip can be rated once it is delivered, even if proof / cash settlement is still pending."""
+    if job.status in _FEEDBACK_ELIGIBLE_JOB_STATUSES:
+        return True
+    return (getattr(job, "logistics_leg", "") or "") in ("DELIVERED", "COMPLETED") and job.status not in ("cancelled", "rejected")
+
+
+def _may_rate_job(request, job):
+    """Who may attach a customer rating to `job`.
+
+    These endpoints only required *some* authenticated session, so any logged-in
+    user -- including the very technician being rated -- could post a 5-star
+    review against any job id and move that technician's scorecard. A rating is
+    the customer's statement: it may come from the Customer app server-to-server
+    (shared secret), from the booking's own customer, or from an admin of the
+    job's own tenant / a superuser.
+    """
+    if IsInternalWorkforceCaller().has_permission(request, None):
+        return True
+    user = request.user
+    if not getattr(user, "is_authenticated", False):
+        return False
+    if job.customer_id and job.customer_id == user.id:
+        return True
+    if getattr(user, "is_superuser", False):
+        return True
+    if is_admin_role(user):
+        company = resolve_actor_company(request)
+        return bool(company and job.company_id and company.id == job.company_id)
+    return False
+
+
 class WorkforceTechnicianFeedbackView(APIView):
     """
     Accepts feedback/rating for a technician from Customer integration or technician direct URL.
@@ -8121,7 +8159,9 @@ class WorkforceTechnicianFeedbackView(APIView):
 
     def post(self, request, technician_id=None):
         from employees.models import Employee
-        from service_requests.models import ServiceRequest, WorkforceJobFeedback
+        # (WorkforceJobFeedback lives in workforce_api.models and is imported at module level; importing it
+        # from service_requests.models raised ImportError, so every rating pushed by the Customer app 500'd.)
+        from service_requests.models import ServiceRequest
         from workforce_api.serializers import WorkforceJobFeedbackSerializer
         from workforce_api.services import recalculate_employee_scorecard
 
@@ -8129,24 +8169,39 @@ class WorkforceTechnicianFeedbackView(APIView):
         booking_id = request.data.get("booking_id") or request.data.get("request_id")
         workforce_job_id = request.data.get("workforce_job_id") or request.data.get("job_id")
 
-        emp = None
-        if tech_id:
-            if str(tech_id).isdigit():
-                emp = Employee.objects.filter(pk=int(tech_id)).first()
-            if not emp:
-                emp = Employee.objects.filter(employee_id__iexact=str(tech_id)).first()
-
         job = None
         if workforce_job_id:
             if str(workforce_job_id).isdigit():
                 job = ServiceRequest.objects.filter(pk=int(workforce_job_id)).first()
             if not job:
                 job = ServiceRequest.objects.filter(request_id=str(workforce_job_id)).first()
-        elif booking_id:
+        if job is None and booking_id:
             job = ServiceRequest.objects.filter(request_id=str(booking_id)).first()
 
-        if not emp and job and job.assigned_employee:
+        if job is not None:
+            if not _may_rate_job(request, job):
+                return Response({"error": "You may not rate this job.", "code": "FEEDBACK_FORBIDDEN"},
+                                status=status.HTTP_403_FORBIDDEN)
+            if not _job_is_rateable(job):
+                return Response({"error": f"A job that is '{job.status}' cannot be rated yet.",
+                                 "code": "JOB_NOT_RATEABLE"}, status=status.HTTP_400_BAD_REQUEST)
+        elif not IsInternalWorkforceCaller().has_permission(request, None):
+            # Without a job there is nothing to prove the caller is the customer.
+            return Response({"error": "A booking or job reference is required.", "code": "JOB_REQUIRED"},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        emp = None
+        if job is not None and job.assigned_employee_id:
+            # The job is authoritative for who did the work. The Customer app
+            # historically sent the *job id* in the technician_id URL slot, and
+            # looking that number up as an Employee pk credited the rating to
+            # whichever unrelated employee happened to share it.
             emp = job.assigned_employee
+        elif tech_id:
+            if job is None and str(tech_id).isdigit():
+                emp = Employee.objects.filter(pk=int(tech_id)).first()
+            if not emp:
+                emp = Employee.objects.filter(employee_id__iexact=str(tech_id)).first()
 
         if not emp:
             return Response({"error": "Technician not found.", "code": "TECHNICIAN_NOT_FOUND"}, status=status.HTTP_404_NOT_FOUND)
@@ -9654,13 +9709,6 @@ class WorkforceJobVerifyOTPView(APIView):
                 "status": job.status,
             }, status=status.HTTP_200_OK)
 
-        # Max 5 attempts enforced
-        if verification.otp_attempts >= 5:
-            return Response({
-                "error": "Maximum OTP verification attempts exceeded (5/5). Please click 'Resend OTP' to generate a fresh code.",
-                "code": "MAX_OTP_ATTEMPTS_EXCEEDED",
-            }, status=status.HTTP_400_BAD_REQUEST)
-
         now = timezone.now()
         otp_expired = bool(verification.otp_expires_at and now > verification.otp_expires_at)
 
@@ -9672,6 +9720,22 @@ class WorkforceJobVerifyOTPView(APIView):
                 "error": "Customer OTP has expired. Please click 'Resend OTP' to generate a fresh code.",
                 "code": "OTP_EXPIRED",
             }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Max 5 attempts enforced. The attempt is claimed with a single atomic
+        # conditional UPDATE *before* the guess is compared. Reading the counter,
+        # comparing, and saving it afterwards let N parallel requests all read
+        # otp_attempts=0 and each get a free guess, so the 5-attempt cap could be
+        # bypassed by firing requests concurrently. A correct code resets the
+        # counter below.
+        claimed = PreServiceVerification.objects.filter(
+            pk=verification.pk, otp_attempts__lt=5,
+        ).update(otp_attempts=models.F("otp_attempts") + 1)
+        if not claimed:
+            return Response({
+                "error": "Maximum OTP verification attempts exceeded (5/5). Please click 'Resend OTP' to generate a fresh code.",
+                "code": "MAX_OTP_ATTEMPTS_EXCEEDED",
+            }, status=status.HTTP_400_BAD_REQUEST)
+        verification.refresh_from_db(fields=["otp_attempts"])
 
         # Match check against canonical code
         if canonical_otp == otp_input:
@@ -9704,14 +9768,20 @@ class WorkforceJobVerifyOTPView(APIView):
                 "requires_selfie": not bool(verification.presence_photo),
             }, status=status.HTTP_200_OK)
 
-        verification.otp_attempts += 1
-        verification.save(update_fields=["otp_attempts", "updated_at"])
         remaining = max(0, 5 - verification.otp_attempts)
         return Response({
             "error": f"Invalid Customer OTP code. {remaining} attempt(s) remaining. Ask customer for the 6-digit code displayed in their app.",
             "code": "INVALID_OTP",
             "attempts_remaining": remaining,
         }, status=status.HTTP_400_BAD_REQUEST)
+
+
+# Statuses at/after which a Work Start OTP can no longer be (re)issued.
+_OTP_RESEND_BLOCKED_STATUSES = frozenset({
+    "in_progress", "on_hold", "proof_submitted", "completed", "closed",
+    "verified", "feedback_pending", "feedback_received", "cancelled",
+    "rejected", "unable_to_complete",
+})
 
 
 class WorkforceJobResendOTPView(APIView):
@@ -9731,18 +9801,35 @@ class WorkforceJobResendOTPView(APIView):
         if not emp or job.assigned_employee != emp:
             return Response({"error": "Unauthorized: Job is not assigned to you."}, status=status.HTTP_403_FORBIDDEN)
 
-        verification, _ = PreServiceVerification.objects.get_or_create(
-            job=job,
-            defaults={"employee": emp}
-        )
+        # A start OTP only has meaning before work starts. Regenerating it on a
+        # finished/cancelled job spams the customer with a dead code, and on a
+        # started job it is pointless -- and every resend resets the attempt
+        # counter, so it must not be reachable outside the pre-start window.
+        if job.status in _OTP_RESEND_BLOCKED_STATUSES:
+            return Response({
+                "error": f"Cannot resend a Work Start OTP for a job that is '{job.status}'.",
+                "code": "OTP_RESEND_NOT_ALLOWED",
+            }, status=status.HTTP_400_BAD_REQUEST)
 
-        now = timezone.now()
-        new_otp = f"{secrets.randbelow(900000) + 100000}"
-        verification.otp_code = new_otp
-        verification.otp_generated_at = now
-        verification.otp_expires_at = now + datetime.timedelta(minutes=15)
-        verification.otp_attempts = 0
-        verification.save(update_fields=["otp_code", "otp_generated_at", "otp_expires_at", "otp_attempts", "updated_at"])
+        with transaction.atomic():
+            verification, _ = PreServiceVerification.objects.get_or_create(
+                job=job,
+                defaults={"employee": emp}
+            )
+            verification = PreServiceVerification.objects.select_for_update().get(pk=verification.pk)
+            if verification.otp_verified:
+                return Response({
+                    "error": "The Work Start OTP for this job has already been verified.",
+                    "code": "OTP_ALREADY_VERIFIED",
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            now = timezone.now()
+            new_otp = f"{secrets.randbelow(900000) + 100000}"
+            verification.otp_code = new_otp
+            verification.otp_generated_at = now
+            verification.otp_expires_at = now + datetime.timedelta(minutes=15)
+            verification.otp_attempts = 0
+            verification.save(update_fields=["otp_code", "otp_generated_at", "otp_expires_at", "otp_attempts", "updated_at"])
 
         # Keep ServiceRequest.start_otp in sync with the new active OTP
         if hasattr(job, "start_otp") and job.start_otp != new_otp:
@@ -10743,6 +10830,13 @@ class WorkforceJobFeedbackSubmitView(APIView):
         job = ServiceRequest.objects.filter(pk=target_job_id).first()
         if not job:
             return Response({"error": "ServiceRequest not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if not _may_rate_job(request, job):
+            return Response({"error": "You may not rate this job.", "code": "FEEDBACK_FORBIDDEN"},
+                            status=status.HTTP_403_FORBIDDEN)
+        if not _job_is_rateable(job):
+            return Response({"error": f"A job that is '{job.status}' cannot be rated yet.",
+                             "code": "JOB_NOT_RATEABLE"}, status=status.HTTP_400_BAD_REQUEST)
 
         if not job.assigned_employee:
             return Response({"error": "ServiceRequest has no assigned employee."}, status=status.HTTP_400_BAD_REQUEST)
@@ -12172,6 +12266,94 @@ class WorkforceJobLogisticsCheckpointView(APIView):
         body = self._payload(job)
         body.update(data)
         return Response(body, status=status.HTTP_200_OK)
+
+
+
+class WorkforceJobLogisticsExceptionView(WorkforceJobLogisticsCheckpointView):
+    """
+    Driver reports a trip exception on a logistics job.
+
+    POST {"exception_type": "RECEIVER_UNAVAILABLE", "notes": "Phone off, gate locked"}
+    Valid types and the trip stage each applies to: services/delivery_exceptions.EXCEPTION_TYPES.
+    The trip is NOT cancelled or repriced -- the customer is told and support decides.
+    """
+
+    def get(self, request, pk):
+        from workforce_api.services.delivery_exceptions import EXCEPTION_TYPES
+        job, emp, err = self._resolve(request, pk)
+        if err:
+            return err
+        return Response({"types": {k: v[0] for k, v in EXCEPTION_TYPES.items()}, "logistics_leg": job.logistics_leg})
+
+    def post(self, request, pk):
+        from workforce_api.services.delivery_exceptions import exception_error, report_delivery_exception
+        job, emp, err = self._resolve(request, pk)
+        if err:
+            return err
+        if job.status in self._TERMINAL_STATUSES:
+            return Response({"error": f"Job #{job.id} is already '{job.status}'."}, status=status.HTTP_400_BAD_REQUEST)
+        code = str(request.data.get("exception_type") or "").strip().upper()
+        notes = str(request.data.get("notes") or "")
+        bad = exception_error(code, str(job.logistics_leg or "").strip().upper(), notes)
+        if bad:
+            return Response({"error": bad, "code": "INVALID_EXCEPTION_REPORT"}, status=status.HTTP_400_BAD_REQUEST)
+        reported_at = report_delivery_exception(job, emp, code, notes, actor=request.user)
+        return Response({"reported": True, "exception_type": code, "reported_at": reported_at}, status=status.HTTP_200_OK)
+
+
+class WorkforceJobLogisticsExtraChargeView(WorkforceJobLogisticsCheckpointView):
+    """
+    Driver reports an actual toll / parking receipt on a logistics job.
+
+    GET  -> {"enabled", "types", "applied_total"}   (policy is the Customer GTExtraChargePolicy)
+    POST {"charge_type": "TOLL"|"PARKING", "amount": "85", "note": "", "receipt": "<url or ref>"}
+    Multipart is accepted with a `receipt_photo` image (validated like every other proof photo);
+    the Admin policy can require it. A photo or a typed reference is mandatory: pass-throughs are
+    evidenced, never estimated.
+    """
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def get(self, request, pk):
+        from workforce_api.services import extra_charges as ec
+        job, emp, err = self._resolve(request, pk)
+        if err:
+            return err
+        pol = ec.policy_for(job)
+        types = {k: v for k, v in ec.TYPES.items()
+                 if pol is not None and (pol.allow_toll if k == "TOLL" else pol.allow_parking)}
+        return Response({"enabled": pol is not None, "types": types,
+                         "require_receipt_photo": bool(pol and getattr(pol, "require_receipt_photo", False)), "applied_total": str(ec.applied_total(job)),
+                         "max_amount_per_item": str(pol.max_amount_per_item) if pol and pol.max_amount_per_item is not None else None})
+
+    def post(self, request, pk):
+        from workforce_api.services import extra_charges as ec
+        job, emp, err = self._resolve(request, pk)
+        if err:
+            return err
+        if job.status in self._TERMINAL_STATUSES:
+            return Response({"error": f"Job #{job.id} is already '{job.status}'."}, status=status.HTTP_400_BAD_REQUEST)
+        kind = str(request.data.get("charge_type") or "").strip().upper()
+        receipt = str(request.data.get("receipt") or "").strip()
+        pol = ec.policy_for(job)
+        photo = request.FILES.get("receipt_photo")
+        bad = ec.charge_error(pol, kind, request.data.get("amount"), ec.applied_total(job))
+        if not bad and photo:
+            bad = _validate_photo_upload(photo)
+        if not bad and not photo and pol is not None and getattr(pol, "require_receipt_photo", False):
+            bad = "Upload a photo of the receipt for this charge."
+        if not bad and not photo and not receipt:
+            bad = "Attach the receipt (photo or reference) for this charge."
+        if bad:
+            return Response({"error": bad, "code": "INVALID_EXTRA_CHARGE"}, status=status.HTTP_400_BAD_REQUEST)
+        photo_url = ""
+        if photo:
+            from django.core.files.storage import default_storage
+            saved = default_storage.save(f"logistics_receipts/{job.id}_{photo.name}", photo)
+            photo_url = default_storage.url(saved)
+        cid = ec.report_extra_charge(job, emp, kind, request.data.get("amount"),
+                                     str(request.data.get("note") or ""), receipt, request.data.get("charge_id"),
+                                     receipt_photo_url=photo_url)
+        return Response({"reported": True, "charge_id": cid}, status=status.HTTP_200_OK)
 
 
 class WorkforceJobTripStopsView(APIView):

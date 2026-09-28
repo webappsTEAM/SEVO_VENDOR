@@ -88,7 +88,7 @@ class Trip:
         from companies.models import Company
         from employees.models import Employee
         from service_requests.models import ServiceRequest
-        from workforce_api.models import Vehicle
+        from workforce_api.models import Vehicle, VendorTechnicianRelationship
 
         self.category = category
         self.company = Company.objects.create(company_name="Acme" + tag, slug="acme" + tag)
@@ -103,6 +103,11 @@ class Trip:
             is_online=True, current_availability="available",
             bank_details={"onboarding": {"status": "approved", "documents": {},
                                          "services": [{"status": "approved", "name": category, "category": category}]}},
+        )
+        # Dispatch Gate 11: a company-tied technician needs an ACTIVE vendor relationship.
+        VendorTechnicianRelationship.objects.create(
+            vendor=self.company, technician=self.emp,
+            status=VendorTechnicianRelationship.Status.ACTIVE,
         )
         soon = date.today() + timedelta(days=100)
         Vehicle.objects.create(employee=self.emp, company=self.company, vehicle_type=vehicle_type,
