@@ -6,6 +6,7 @@ import {
   apiCreateSellerHubCategory,
   apiUpdateSellerHubCategory,
   apiDeleteSellerHubCategory,
+  apiUploadSellerHubImage,
 } from '../../api/workforceService.js';
 import {
   Store,
@@ -34,6 +35,9 @@ import {
   Info,
   Maximize2,
   Minimize2,
+  Upload,
+  ImageIcon,
+  Link as LinkIcon,
 } from 'lucide-react';
 
 const AVAILABLE_ICONS = [
@@ -46,6 +50,32 @@ const AVAILABLE_ICONS = [
   { name: 'Tag', icon: Tag },
   { name: 'Layers', icon: Layers },
 ];
+
+function CategoryThumbnail({ imageUrl, icon: IconComp, hasChildren, isExpanded, alt, size = 'w-4 h-4' }) {
+  const [imgFailed, setImgFailed] = useState(false);
+
+  useEffect(() => {
+    setImgFailed(false);
+  }, [imageUrl]);
+
+  if (imageUrl && !imgFailed) {
+    return (
+      <img
+        src={imageUrl}
+        alt={alt || 'Category'}
+        onError={() => setImgFailed(true)}
+        className={`${size} rounded object-cover shrink-0`}
+      />
+    );
+  }
+
+  if (hasChildren) {
+    return isExpanded ? <FolderOpen className={size} /> : <Folder className={size} />;
+  }
+
+  const SafeIcon = IconComp || Store;
+  return <SafeIcon className={size} />;
+}
 
 export function AdminSellerCategoriesPage() {
   const { user, isPlatformAdmin } = useAuth();
@@ -69,11 +99,13 @@ export function AdminSellerCategoriesPage() {
     slug: '',
     description: '',
     icon: 'Store',
+    image_url: '',
     parent: null,
     sort_order: 0,
     is_active: true,
   });
   const [formSubmitting, setFormSubmitting] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const [formError, setFormError] = useState('');
 
   // Delete State
@@ -308,6 +340,7 @@ export function AdminSellerCategoriesPage() {
       slug: '',
       description: '',
       icon: 'Store',
+      image_url: '',
       parent: preselectedParentId,
       sort_order: allCategories.length > 0 ? Math.max(...allCategories.map((c) => c.sort_order || 0)) + 1 : 1,
       is_active: true,
@@ -324,12 +357,35 @@ export function AdminSellerCategoriesPage() {
       slug: cat.slug || '',
       description: cat.description || '',
       icon: cat.icon || 'Store',
+      image_url: cat.image_url || cat.image || '',
       parent: cat.parent_id || null,
       sort_order: cat.sort_order ?? 0,
       is_active: Boolean(cat.is_active),
     });
     setFormError('');
     setIsModalOpen(true);
+  };
+
+  const handleImageFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setUploadingImage(true);
+      setFormError('');
+      const res = await apiUploadSellerHubImage(file);
+      if (res && res.image_url) {
+        setModalForm((prev) => ({ ...prev, image_url: res.image_url }));
+      } else {
+        setFormError('Failed to get uploaded image URL from server.');
+      }
+    } catch (err) {
+      setFormError(err?.data?.error || err.message || 'Image upload failed. Please check file format.');
+    } finally {
+      setUploadingImage(false);
+      // Reset input value so same file can be re-selected if desired
+      if (e.target) e.target.value = '';
+    }
   };
 
   const handleNameChange = (e) => {
@@ -708,10 +764,10 @@ export function AdminSellerCategoriesPage() {
                                 </div>
                               )}
 
-                              {/* Category Icon / Folder Icon */}
+                              {/* Category Icon / Photo Thumbnail / Folder Icon */}
                               <div
                                 onClick={(e) => cat.hasChildren && handleToggleExpand(cat.id, e)}
-                                className={`p-1.5 rounded-lg border shrink-0 mr-2.5 transition-colors ${
+                                className={`p-1.5 rounded-lg border shrink-0 mr-2.5 transition-colors flex items-center justify-center ${
                                   cat.hasChildren
                                     ? cat.isExpanded
                                       ? 'bg-emerald-100 border-emerald-300 text-emerald-700'
@@ -720,17 +776,16 @@ export function AdminSellerCategoriesPage() {
                                     ? 'bg-emerald-50 border-emerald-200 text-emerald-600'
                                     : 'bg-slate-100 border-slate-200 text-slate-400'
                                 } ${cat.hasChildren ? 'cursor-pointer' : ''}`}
-                                title={cat.hasChildren ? (cat.isExpanded ? 'Collapse' : 'Expand') : cat.icon}
+                                title={cat.hasChildren ? (cat.isExpanded ? 'Collapse' : 'Expand') : (cat.image_url || cat.icon)}
                               >
-                                {cat.hasChildren ? (
-                                  cat.isExpanded ? (
-                                    <FolderOpen className="w-4 h-4" />
-                                  ) : (
-                                    <Folder className="w-4 h-4" />
-                                  )
-                                ) : (
-                                  <IconComp className="w-4 h-4" />
-                                )}
+                                <CategoryThumbnail
+                                  imageUrl={cat.image_url || cat.image}
+                                  icon={IconComp}
+                                  hasChildren={cat.hasChildren}
+                                  isExpanded={cat.isExpanded}
+                                  alt={cat.name}
+                                  size="w-4 h-4"
+                                />
                               </div>
 
                               {/* Name, Subcategory Count & Description */}
@@ -1007,11 +1062,100 @@ export function AdminSellerCategoriesPage() {
                 />
               </div>
 
-              {/* Icon Selector */}
+              {/* Category Image Section (Upload file or Paste Link) */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-800">
+                      Category Photo / Image
+                    </label>
+                    <p className="text-[11px] text-slate-500">
+                      Upload a photo or paste a URL. If omitted, the fallback icon below will be shown.
+                    </p>
+                  </div>
+                  {modalForm.image_url && (
+                    <button
+                      type="button"
+                      onClick={() => setModalForm((prev) => ({ ...prev, image_url: '' }))}
+                      className="text-[11px] font-semibold text-rose-600 hover:text-rose-700 flex items-center gap-1 hover:underline"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      <span>Remove</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Image Preview if set */}
+                {modalForm.image_url ? (
+                  <div className="flex items-center gap-3 p-2 bg-white border border-slate-200 rounded-lg shadow-2xs">
+                    <img
+                      src={modalForm.image_url}
+                      alt="Category preview"
+                      onError={(e) => {
+                        e.target.onerror = null;
+                        e.target.src = '';
+                      }}
+                      className="w-12 h-12 rounded-lg object-cover border border-slate-200 shrink-0 bg-slate-100"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-semibold text-slate-800 truncate">
+                        {modalForm.image_url.startsWith('data:') ? 'Embedded image data' : modalForm.image_url}
+                      </p>
+                      <p className="text-[10px] text-emerald-600 font-medium mt-0.5">
+                        ✓ Image active for this category
+                      </p>
+                    </div>
+                  </div>
+                ) : null}
+
+                {/* Upload or Paste Link controls */}
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <label className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-colors shadow-2xs ${
+                      uploadingImage
+                        ? 'bg-slate-200 text-slate-500 cursor-not-allowed'
+                        : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                    }`}>
+                      {uploadingImage ? (
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Upload className="w-3.5 h-3.5" />
+                      )}
+                      <span>{uploadingImage ? 'Uploading...' : 'Upload Image'}</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        disabled={uploadingImage}
+                        onChange={handleImageFileUpload}
+                        className="hidden"
+                      />
+                    </label>
+                    <span className="text-[11px] text-slate-400 font-medium">or paste a link:</span>
+                  </div>
+
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-slate-400">
+                      <LinkIcon className="w-3.5 h-3.5" />
+                    </div>
+                    <input
+                      type="url"
+                      placeholder="Paste image URL (e.g. https://... or /media/...)"
+                      value={modalForm.image_url}
+                      onChange={(e) => setModalForm((prev) => ({ ...prev, image_url: e.target.value }))}
+                      className="w-full pl-8 pr-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Fallback Icon Selector */}
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                  Category Icon
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Fallback Icon
                 </label>
+                <p className="text-[11px] text-slate-500 mb-2">
+                  Displayed whenever no image photo is provided or if an image fails to load.
+                </p>
                 <div className="grid grid-cols-4 gap-2">
                   {AVAILABLE_ICONS.map(({ name, icon: Icon }) => (
                     <button

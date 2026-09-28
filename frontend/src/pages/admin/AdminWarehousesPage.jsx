@@ -8,6 +8,9 @@ import {
   apiAdminCreateWarehouse,
   apiAdminUpdateWarehouse,
   apiAdminDeleteWarehouse,
+  apiAdminAssignMerchantToWarehouse,
+  apiAdminUnassignMerchantFromWarehouse,
+  apiAdminGetCompanies,
 } from '../../api/workforceService.js';
 import {
   Building2,
@@ -31,6 +34,7 @@ import {
   ChevronRight,
   ShieldCheck,
   Users,
+  Key,
 } from 'lucide-react';
 
 export function AdminWarehousesPage() {
@@ -65,6 +69,17 @@ export function AdminWarehousesPage() {
   const [selectedWarehouseId, setSelectedWarehouseId] = useState(null);
   const [warehouseDetail, setWarehouseDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
+
+  // Assign Merchant to Warehouse State
+  const [isAssigningMerchant, setIsAssigningMerchant] = useState(false);
+  const [companySearch, setCompanySearch] = useState('');
+  const [companyResults, setCompanyResults] = useState([]);
+  const [companiesLoading, setCompaniesLoading] = useState(false);
+  const [selectedCompany, setSelectedCompany] = useState(null);
+  const [assignmentNotes, setAssignmentNotes] = useState('');
+  const [assigningLoading, setAssigningLoading] = useState(false);
+  const [assignError, setAssignError] = useState(null);
+  const [unassigningId, setUnassigningId] = useState(null);
 
   // ── Fetch Warehouses ────────────────────────────────────────────────────────
   const fetchWarehouses = useCallback(async () => {
@@ -124,6 +139,9 @@ export function AdminWarehousesPage() {
       latitude: 12.9716,
       longitude: 77.5946,
       is_active: true,
+      username: '',
+      password: '',
+      email: '',
     });
     setFormErrors({});
     setModalOpen(true);
@@ -142,6 +160,9 @@ export function AdminWarehousesPage() {
       latitude: wh.latitude != null ? parseFloat(wh.latitude) : 12.9716,
       longitude: wh.longitude != null ? parseFloat(wh.longitude) : 77.5946,
       is_active: wh.is_active ?? true,
+      username: wh.staff_login?.username || '',
+      password: '',
+      email: wh.staff_login?.email || '',
     });
     setFormErrors({});
     setModalOpen(true);
@@ -150,6 +171,9 @@ export function AdminWarehousesPage() {
   // ── Open Warehouse Detail ───────────────────────────────────────────────────
   const handleOpenDetail = async (id) => {
     setSelectedWarehouseId(id);
+    setIsAssigningMerchant(false);
+    setSelectedCompany(null);
+    setAssignError(null);
     setDetailLoading(true);
     try {
       const data = await apiAdminGetWarehouseDetail(id);
@@ -161,6 +185,88 @@ export function AdminWarehousesPage() {
     }
   };
 
+  // ── Assign Merchant Handlers ────────────────────────────────────────────────
+  const handleOpenAssignMerchant = async () => {
+    setIsAssigningMerchant(true);
+    setCompanySearch('');
+    setSelectedCompany(null);
+    setAssignmentNotes('');
+    setAssignError(null);
+    setCompaniesLoading(true);
+    try {
+      const data = await apiAdminGetCompanies();
+      setCompanyResults(data || []);
+    } catch (err) {
+      console.error('Failed to load companies:', err);
+      setAssignError('Failed to load merchant companies.');
+    } finally {
+      setCompaniesLoading(false);
+    }
+  };
+
+  const handleSearchCompanies = async (query) => {
+    setCompanySearch(query);
+    setCompaniesLoading(true);
+    setAssignError(null);
+    try {
+      const data = await apiAdminGetCompanies({ search: query });
+      setCompanyResults(data || []);
+    } catch (err) {
+      console.error('Failed to search companies:', err);
+    } finally {
+      setCompaniesLoading(false);
+    }
+  };
+
+  const handleConfirmAssignMerchant = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (!selectedCompany || !warehouseDetail) return;
+    setAssigningLoading(true);
+    setAssignError(null);
+    try {
+      await apiAdminAssignMerchantToWarehouse(warehouseDetail.id, selectedCompany.id, assignmentNotes);
+      setIsAssigningMerchant(false);
+      setSelectedCompany(null);
+      setAssignmentNotes('');
+      // Refresh detail and warehouse list
+      const updated = await apiAdminGetWarehouseDetail(warehouseDetail.id);
+      setWarehouseDetail(updated);
+      fetchWarehouses();
+    } catch (err) {
+      console.error('Failed to assign merchant:', err);
+      let errorMsg = err.message || 'Failed to assign merchant to warehouse.';
+      try {
+        const parsed = JSON.parse(err.message);
+        if (typeof parsed === 'object') {
+          errorMsg = parsed.error || parsed.detail || JSON.stringify(parsed);
+        }
+      } catch {
+        // Keep string
+      }
+      setAssignError(errorMsg);
+    } finally {
+      setAssigningLoading(false);
+    }
+  };
+
+  const handleUnassignMerchant = async (companyId, companyName) => {
+    if (!warehouseDetail) return;
+    const confirmed = window.confirm(`Are you sure you want to remove merchant "${companyName}" from this warehouse?`);
+    if (!confirmed) return;
+    setUnassigningId(companyId);
+    try {
+      await apiAdminUnassignMerchantFromWarehouse(warehouseDetail.id, companyId);
+      const updated = await apiAdminGetWarehouseDetail(warehouseDetail.id);
+      setWarehouseDetail(updated);
+      fetchWarehouses();
+    } catch (err) {
+      console.error('Failed to unassign merchant:', err);
+      alert(err.message || 'Failed to unassign merchant.');
+    } finally {
+      setUnassigningId(null);
+    }
+  };
+
   // ── Save Warehouse (Create / Edit) ──────────────────────────────────────────
   const handleSaveWarehouse = async (e) => {
     e.preventDefault();
@@ -169,6 +275,21 @@ export function AdminWarehousesPage() {
     if (!formData.address.trim()) errors.address = 'Street address is required.';
     if (formData.latitude == null || formData.longitude == null) {
       errors.coordinates = 'GPS coordinates are required. Pin your warehouse location on the map.';
+    }
+
+    if (!editingWarehouse) {
+      if (!formData.username.trim()) {
+        errors.username = 'Warehouse operator login username is required.';
+      }
+      if (!formData.password) {
+        errors.password = 'Initial password is required for warehouse portal login.';
+      } else if (formData.password.length < 6) {
+        errors.password = 'Password must be at least 6 characters.';
+      }
+    } else {
+      if (formData.password && formData.password.length < 6) {
+        errors.password = 'Password must be at least 6 characters.';
+      }
     }
 
     if (Object.keys(errors).length > 0) {
@@ -189,6 +310,9 @@ export function AdminWarehousesPage() {
         latitude: parseFloat(Number(formData.latitude).toFixed(7)),
         longitude: parseFloat(Number(formData.longitude).toFixed(7)),
         is_active: formData.is_active,
+        username: formData.username.trim() || undefined,
+        password: formData.password || undefined,
+        email: formData.email.trim() || undefined,
       };
 
       if (editingWarehouse) {
@@ -426,10 +550,18 @@ export function AdminWarehousesPage() {
                               <WarehouseIcon className="w-4 h-4" />
                             </div>
                             <div className="min-w-0">
-                              <span className="font-bold text-slate-900 block truncate hover:text-indigo-600">
-                                {wh.name}
-                              </span>
-                              <div className="flex items-center gap-2 text-[11px] text-slate-400">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-bold text-slate-900 truncate hover:text-indigo-600">
+                                  {wh.name}
+                                </span>
+                                {wh.staff_login?.has_login && (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[10px] font-mono font-bold bg-indigo-50 text-indigo-700 border border-indigo-100" title={`Operator Login: ${wh.staff_login.username}`}>
+                                    <Key className="w-2.5 h-2.5 text-indigo-500" />
+                                    {wh.staff_login.username}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-0.5">
                                 {wh.code && (
                                   <span className="font-mono bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded text-[10px]">
                                     {wh.code}
@@ -664,7 +796,7 @@ export function AdminWarehousesPage() {
                     <LocationPickerMap
                       latitude={formData.latitude}
                       longitude={formData.longitude}
-                      height="240px"
+                      height="220px"
                       onPositionChange={(lat, lng) => {
                         setFormData((prev) => ({
                           ...prev,
@@ -677,6 +809,80 @@ export function AdminWarehousesPage() {
                   {formErrors.coordinates && (
                     <p className="text-[11px] text-rose-600 mt-1">{formErrors.coordinates}</p>
                   )}
+                </div>
+
+                {/* ── WAREHOUSE PORTAL CREDENTIALS ── */}
+                <div className="bg-indigo-50/50 border border-indigo-100 rounded-2xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 bg-indigo-600 text-white rounded-lg">
+                        <Key className="w-3.5 h-3.5" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-900">
+                          {editingWarehouse ? 'Warehouse Portal Login' : 'Set Up Warehouse Staff Login'}
+                        </h4>
+                        <p className="text-[11px] text-slate-500">
+                          Credentials used by warehouse staff to access their dedicated operations portal
+                        </p>
+                      </div>
+                    </div>
+                    {editingWarehouse && formData.username && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                        Login Configured
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        Operator Username <span className="text-rose-500">{editingWarehouse ? '' : '*'}</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.username}
+                        onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                        placeholder="e.g. wh_hosur_operator"
+                        className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+                      />
+                      {formErrors.username && (
+                        <p className="text-[11px] text-rose-600 mt-1">{formErrors.username}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        {editingWarehouse ? 'Update Password (leave blank to keep)' : 'Initial Password *'}
+                      </label>
+                      <input
+                        type="password"
+                        value={formData.password}
+                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                        placeholder={editingWarehouse ? '••••••••' : 'Minimum 6 characters'}
+                        className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+                      />
+                      {formErrors.password && (
+                        <p className="text-[11px] text-rose-600 mt-1">{formErrors.password}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Notification / Contact Email (Optional)
+                    </label>
+                    <input
+                      type="email"
+                      value={formData.email}
+                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                      placeholder="e.g. warehouse.hosur@sevo.com"
+                      className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                    {formErrors.email && (
+                      <p className="text-[11px] text-rose-600 mt-1">{formErrors.email}</p>
+                    )}
+                  </div>
                 </div>
 
                 <div className="flex items-center gap-2 pt-1">
@@ -790,6 +996,41 @@ export function AdminWarehousesPage() {
                       </div>
                     </div>
 
+                    {/* Portal Login Credentials Card */}
+                    <div className="bg-indigo-50/60 p-4 rounded-xl border border-indigo-100 space-y-2 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-indigo-900 uppercase flex items-center gap-1.5">
+                          <Key className="w-3.5 h-3.5 text-indigo-600" />
+                          <span>Warehouse Portal Login</span>
+                        </span>
+                        {warehouseDetail.staff_login?.has_login ? (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                            Active
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
+                            No Login Configured
+                          </span>
+                        )}
+                      </div>
+                      {warehouseDetail.staff_login?.has_login ? (
+                        <div className="grid grid-cols-2 gap-2 pt-1 font-mono text-[11px]">
+                          <div>
+                            <span className="text-[10px] text-slate-400 font-sans block">Username</span>
+                            <span className="font-bold text-slate-800">{warehouseDetail.staff_login.username}</span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-slate-400 font-sans block">Email</span>
+                            <span className="text-slate-600 truncate block">{warehouseDetail.staff_login.email || '—'}</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-[11px] text-slate-500">
+                          Click "Edit Warehouse" to create login credentials for this facility's operations team.
+                        </p>
+                      )}
+                    </div>
+
                     {/* Assigned Merchants List */}
                     <div className="space-y-3">
                       <div className="flex items-center justify-between">
@@ -797,7 +1038,174 @@ export function AdminWarehousesPage() {
                           <Store className="w-4 h-4 text-indigo-600" />
                           <span>Assigned Merchants ({warehouseDetail.sellers?.length || 0})</span>
                         </h4>
+                        {!isAssigningMerchant && (
+                          <button
+                            type="button"
+                            onClick={handleOpenAssignMerchant}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors cursor-pointer"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Add Merchant</span>
+                          </button>
+                        )}
                       </div>
+
+                      {/* Assign Merchant Form / Typeahead Dropdown */}
+                      {isAssigningMerchant && (
+                        <div className="p-3.5 bg-slate-50 border border-indigo-200 rounded-xl space-y-3 animate-in fade-in duration-150">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                              <Store className="w-3.5 h-3.5 text-indigo-600" />
+                              <span>Assign Merchant Store</span>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsAssigningMerchant(false);
+                                setSelectedCompany(null);
+                                setAssignError(null);
+                              }}
+                              className="p-1 text-slate-400 hover:text-slate-600 rounded-md cursor-pointer"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+
+                          {assignError && (
+                            <div className="p-2 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg text-[11px] flex items-center gap-1.5">
+                              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                              <span>{assignError}</span>
+                            </div>
+                          )}
+
+                          {/* Merchant Search & Selection */}
+                          <div className="space-y-1.5">
+                            <label className="block text-[11px] font-bold text-slate-700">Select Merchant</label>
+                            <div className="relative">
+                              <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-400" />
+                              <input
+                                type="text"
+                                value={companySearch}
+                                onChange={(e) => handleSearchCompanies(e.target.value)}
+                                placeholder="Search merchant by name or slug..."
+                                className="w-full pl-8 pr-3 py-1.5 text-xs bg-white rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                              />
+                            </div>
+
+                            {/* Results List */}
+                            <div className="max-h-40 overflow-y-auto border border-slate-200 rounded-lg bg-white divide-y divide-slate-100">
+                              {companiesLoading ? (
+                                <div className="p-3 text-center text-xs text-slate-400 flex items-center justify-center gap-1.5">
+                                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-600" />
+                                  <span>Loading merchants...</span>
+                                </div>
+                              ) : companyResults.length === 0 ? (
+                                <div className="p-3 text-center text-xs text-slate-400">
+                                  No merchant companies found.
+                                </div>
+                              ) : (
+                                companyResults.map((c) => {
+                                  const isAlreadyThis = c.is_assigned && c.assigned_warehouse_id === warehouseDetail.id;
+                                  const isSelected = selectedCompany?.id === c.id;
+
+                                  return (
+                                    <div
+                                      key={c.id}
+                                      onClick={() => {
+                                        if (isAlreadyThis) return;
+                                        setSelectedCompany(c);
+                                      }}
+                                      className={`p-2.5 text-xs flex items-center justify-between gap-2 transition-colors ${
+                                        isAlreadyThis
+                                          ? 'bg-slate-50 opacity-60 cursor-not-allowed'
+                                          : isSelected
+                                          ? 'bg-indigo-50 border-l-2 border-indigo-600 cursor-pointer'
+                                          : 'hover:bg-slate-50 cursor-pointer'
+                                      }`}
+                                    >
+                                      <div className="min-w-0">
+                                        <p className="font-bold text-slate-900 truncate">{c.company_name}</p>
+                                        <p className="text-[10px] text-slate-400 font-mono">{c.slug}</p>
+                                      </div>
+                                      <div className="text-right shrink-0">
+                                        {isAlreadyThis ? (
+                                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-200 text-slate-600">
+                                            Already Assigned
+                                          </span>
+                                        ) : c.is_assigned ? (
+                                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">
+                                            At: {c.assigned_warehouse_name}
+                                          </span>
+                                        ) : (
+                                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">
+                                            Unassigned
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })
+                              )}
+                            </div>
+                          </div>
+
+                          {selectedCompany && (
+                            <div className="p-2 bg-indigo-50/80 rounded-lg border border-indigo-100 text-[11px] text-indigo-900 flex items-center justify-between">
+                              <div>
+                                <span className="font-bold">Selected:</span> {selectedCompany.company_name}
+                              </div>
+                              {selectedCompany.is_assigned && selectedCompany.assigned_warehouse_id !== warehouseDetail.id && (
+                                <span className="text-[10px] text-amber-700 font-semibold">
+                                  Will reassign from {selectedCompany.assigned_warehouse_name}
+                                </span>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Notes Input */}
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-700 mb-1">Assignment Notes (Optional)</label>
+                            <input
+                              type="text"
+                              value={assignmentNotes}
+                              onChange={(e) => setAssignmentNotes(e.target.value)}
+                              placeholder="e.g. Primary hub for Hosur produce..."
+                              className="w-full px-2.5 py-1.5 text-xs bg-white rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            />
+                          </div>
+
+                          <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-200">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsAssigningMerchant(false);
+                                setSelectedCompany(null);
+                              }}
+                              className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              disabled={!selectedCompany || assigningLoading}
+                              onClick={handleConfirmAssignMerchant}
+                              className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-lg transition-colors shadow-xs cursor-pointer"
+                            >
+                              {assigningLoading ? (
+                                <>
+                                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                  <span>Assigning...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Check className="w-3.5 h-3.5" />
+                                  <span>Confirm Assignment</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      )}
 
                       {warehouseDetail.sellers?.length === 0 ? (
                         <div className="p-6 bg-slate-50 border border-slate-200 rounded-xl text-center text-slate-400 text-xs">
@@ -809,15 +1217,33 @@ export function AdminWarehousesPage() {
                           {warehouseDetail.sellers.map((s) => (
                             <div
                               key={s.id}
-                              className="p-3 bg-white border border-slate-200 rounded-xl shadow-2xs flex items-center justify-between gap-3 text-xs"
+                              className="p-3 bg-white border border-slate-200 rounded-xl shadow-2xs flex items-center justify-between gap-3 text-xs group hover:border-slate-300 transition-colors"
                             >
                               <div className="min-w-0">
                                 <p className="font-bold text-slate-900 truncate">{s.company_name}</p>
                                 <p className="text-[11px] text-slate-400 font-mono">{s.slug}</p>
+                                {s.notes && (
+                                  <p className="text-[10px] text-slate-500 italic mt-0.5 truncate">"{s.notes}"</p>
+                                )}
                               </div>
-                              <span className="text-[10px] text-slate-400 shrink-0">
-                                {s.assigned_at ? new Date(s.assigned_at).toLocaleDateString() : ''}
-                              </span>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className="text-[10px] text-slate-400">
+                                  {s.assigned_at ? new Date(s.assigned_at).toLocaleDateString() : ''}
+                                </span>
+                                <button
+                                  type="button"
+                                  disabled={unassigningId === s.company_id}
+                                  onClick={() => handleUnassignMerchant(s.company_id, s.company_name)}
+                                  title="Unassign merchant from this warehouse"
+                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                >
+                                  {unassigningId === s.company_id ? (
+                                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-rose-600" />
+                                  ) : (
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  )}
+                                </button>
+                              </div>
                             </div>
                           ))}
                         </div>

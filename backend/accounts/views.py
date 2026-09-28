@@ -256,11 +256,38 @@ class LoginView(APIView):
                 except Exception as _w_err:
                     logger.warning("Could not ensure individual wallet: %s", str(_w_err))
 
+            # Check warehouse staff profile
+            wh_staff = None
+            is_warehouse_staff = False
+            try:
+                from workforce_api.models import WarehouseStaff
+                wh_staff = WarehouseStaff.objects.filter(user=user).select_related("warehouse").first()
+                if wh_staff and wh_staff.warehouse and wh_staff.warehouse.is_active:
+                    is_warehouse_staff = True
+                    user_role = "warehouse"
+            except Exception as _wh_err:
+                wh_staff = None
+
             user_type = (
                 "platform_admin"
                 if is_platform_admin
-                else ("vendor_admin" if is_vendor_admin else "technician")
+                else ("warehouse_staff" if is_warehouse_staff else ("vendor_admin" if is_vendor_admin else "technician"))
             )
+
+            company_obj = (emp.company if (emp and emp.company) else (user.company if getattr(user, "company", None) else None))
+            if not company_obj and company_id:
+                from companies.models import Company
+                company_obj = Company.objects.filter(id=company_id).first()
+
+            btype = getattr(company_obj, "business_type", "") if company_obj else ""
+            is_grocery_supplier = bool(
+                company_obj and (
+                    btype in ("grocery_supplier", "hybrid")
+                    or any(m in (getattr(company_obj, "selected_modules", []) or []) for m in ("grocery_supplier", "grocery_inventory", "groceries"))
+                    or any(k in (getattr(company_obj, "industry", "") or "").lower() for k in ("grocery", "vegetable", "produce", "farm", "supermarket"))
+                )
+            )
+            is_seller = bool(is_grocery_supplier and not is_platform_admin and not is_warehouse_staff)
 
             from workforce_api.services.registration import get_employee_registration_status
             reg_status = get_employee_registration_status(user)
@@ -279,10 +306,17 @@ class LoginView(APIView):
                     "role": user_role,
                     "company": company_id,
                     "company_name": company_name,
+                    "business_type": btype,
+                    "is_grocery_supplier": is_grocery_supplier,
+                    "is_seller": is_seller,
+                    "is_warehouse_staff": is_warehouse_staff,
+                    "warehouse_id": wh_staff.warehouse_id if wh_staff else None,
+                    "warehouse_name": wh_staff.warehouse.name if (wh_staff and wh_staff.warehouse) else "",
+                    "warehouse_code": wh_staff.warehouse.code if (wh_staff and wh_staff.warehouse) else "",
                     "is_superuser": getattr(user, "is_superuser", False),
                     "is_platform_admin": is_platform_admin,
                     "is_vendor_admin": is_vendor_admin,
-                    "is_technician": is_technician,
+                    "is_technician": is_technician and not is_warehouse_staff,
                     "is_tied_worker": is_tied_worker,
                     "is_solo_worker": is_solo_worker,
                     "user_type": user_type,
@@ -482,10 +516,37 @@ class MeView(APIView):
                 except Exception as _w_err:
                     logger.warning("Could not ensure individual wallet: %s", str(_w_err))
 
+            company_obj = (emp.company if (emp and emp.company) else (user.company if getattr(user, "company", None) else None))
+            if not company_obj and company_id:
+                from companies.models import Company
+                company_obj = Company.objects.filter(id=company_id).first()
+
+            btype = getattr(company_obj, "business_type", "") if company_obj else ""
+            is_grocery_supplier = bool(
+                company_obj and (
+                    btype in ("grocery_supplier", "hybrid")
+                    or any(m in (getattr(company_obj, "selected_modules", []) or []) for m in ("grocery_supplier", "grocery_inventory", "groceries"))
+                    or any(k in (getattr(company_obj, "industry", "") or "").lower() for k in ("grocery", "vegetable", "produce", "farm", "supermarket"))
+                )
+            )
+            is_seller = bool(is_grocery_supplier and not is_platform_admin)
+
+            # Check warehouse staff profile
+            wh_staff = None
+            is_warehouse_staff = False
+            try:
+                from workforce_api.models import WarehouseStaff
+                wh_staff = WarehouseStaff.objects.filter(user=user).select_related("warehouse").first()
+                if wh_staff and wh_staff.warehouse and wh_staff.warehouse.is_active:
+                    is_warehouse_staff = True
+                    user_role = "warehouse"
+            except Exception as _wh_err:
+                wh_staff = None
+
             user_type = (
                 "platform_admin"
                 if is_platform_admin
-                else ("vendor_admin" if is_vendor_admin else "technician")
+                else ("warehouse_staff" if is_warehouse_staff else ("vendor_admin" if is_vendor_admin else "technician"))
             )
 
             from workforce_api.services.registration import get_employee_registration_status
@@ -500,10 +561,17 @@ class MeView(APIView):
                 "role": user_role,
                 "company": company_id,
                 "company_name": company_name,
+                "business_type": btype,
+                "is_grocery_supplier": is_grocery_supplier,
+                "is_seller": is_seller and not is_warehouse_staff,
+                "is_warehouse_staff": is_warehouse_staff,
+                "warehouse_id": wh_staff.warehouse_id if wh_staff else None,
+                "warehouse_name": wh_staff.warehouse.name if (wh_staff and wh_staff.warehouse) else "",
+                "warehouse_code": wh_staff.warehouse.code if (wh_staff and wh_staff.warehouse) else "",
                 "is_superuser": getattr(user, "is_superuser", False),
                 "is_platform_admin": is_platform_admin,
                 "is_vendor_admin": is_vendor_admin,
-                "is_technician": is_technician,
+                "is_technician": is_technician and not is_warehouse_staff,
                 "is_tied_worker": is_tied_worker,
                 "is_solo_worker": is_solo_worker,
                 "user_type": user_type,
