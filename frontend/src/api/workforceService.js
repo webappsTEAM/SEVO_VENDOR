@@ -1683,6 +1683,75 @@ export async function apiDeleteSellerHubCoupon(id) {
   });
 }
 
+// ── Seller Hub Basket Offers (Combo Bundles) ──────────────────────────────
+
+export async function apiGetSellerBaskets(params = {}) {
+  const query = new URLSearchParams();
+  if (params.search) query.append('search', params.search);
+  if (params.status) query.append('status', params.status);
+  const qStr = query.toString();
+  return await apiRequest(`/workforce/seller-hub/baskets/${qStr ? `?${qStr}` : ''}`);
+}
+
+export async function apiGetSellerBasketDetail(id) {
+  return await apiRequest(`/workforce/seller-hub/baskets/${id}/`);
+}
+
+export async function apiCalculateSellerBasket(data) {
+  return await apiRequest('/workforce/seller-hub/baskets/calculate/', {
+    method: 'POST',
+    json: data,
+  });
+}
+
+export async function apiCreateSellerBasket(data) {
+  return await apiRequest('/workforce/seller-hub/baskets/', {
+    method: 'POST',
+    json: data,
+  });
+}
+
+export async function apiUpdateSellerBasket(id, data) {
+  return await apiRequest(`/workforce/seller-hub/baskets/${id}/`, {
+    method: 'PUT',
+    json: data,
+  });
+}
+
+export async function apiActivateSellerBasket(id) {
+  return await apiRequest(`/workforce/seller-hub/baskets/${id}/activate/`, {
+    method: 'POST',
+    json: {},
+  });
+}
+
+export async function apiPauseSellerBasket(id) {
+  return await apiRequest(`/workforce/seller-hub/baskets/${id}/pause/`, {
+    method: 'POST',
+    json: {},
+  });
+}
+
+export async function apiDeleteSellerBasket(id) {
+  return await apiRequest(`/workforce/seller-hub/baskets/${id}/`, {
+    method: 'DELETE',
+  });
+}
+
+export async function apiGetMarketplaceBaskets(params = {}) {
+  const query = new URLSearchParams();
+  if (params.search) query.append('search', params.search);
+  if (params.company_id) query.append('company_id', params.company_id);
+  if (params.page) query.append('page', params.page);
+  if (params.page_size) query.append('page_size', params.page_size);
+  const qStr = query.toString();
+  return await apiRequest(`/workforce/marketplace/baskets/${qStr ? `?${qStr}` : ''}`);
+}
+
+export async function apiGetMarketplaceBasketDetail(id) {
+  return await apiRequest(`/workforce/marketplace/baskets/${id}/`);
+}
+
 export async function apiSellerOrderAdminOverride(orderId, action, reason) {
   return await apiRequest(`/workforce/seller-hub/orders/${orderId}/admin-override/`, {
     method: 'POST',

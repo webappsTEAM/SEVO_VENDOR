@@ -27,6 +27,8 @@ from workforce_api.models import (
     SellerOrderItem,
     SellerOrderAuditLog,
     SellerOrderStatusOutbox,
+    SellerProductBasket,
+    SellerProductBasketItem,
     get_seller_assigned_warehouse,
 )
 from workforce_api.permissions import IsMarketplaceIntegrationCaller
@@ -573,6 +575,224 @@ class MarketplaceProductDetailView(APIView):
         }, status=status.HTTP_200_OK)
 
 
+# ─── 1B. Public Customer Basket / Combo Offer Integration APIs ────────────────
+
+class MarketplaceBasketListView(APIView):
+    """
+    GET /api/workforce/marketplace/baskets/
+    Public/Marketplace feed for active basket combo offers.
+    Protected by IsMarketplaceIntegrationCaller.
+    Filters:
+      - company_id / seller_id
+      - search
+      - page, page_size
+    Only returns baskets that are ACTIVE and whose components are currently available in stock.
+    """
+    authentication_classes = []
+    permission_classes = [IsMarketplaceIntegrationCaller]
+
+    def get(self, request):
+        queryset = SellerProductBasket.objects.filter(
+            status__in=[SellerProductBasket.Status.ACTIVE, SellerProductBasket.Status.OUT_OF_STOCK],
+            company__is_active=True,
+        ).select_related("company").prefetch_related(
+            "items__product__inventory",
+            "items__product__images",
+            "items__product__category"
+        )
+
+        seller_id = request.query_params.get("company_id") or request.query_params.get("seller_id")
+        if seller_id:
+            try:
+                queryset = queryset.filter(company_id=int(seller_id))
+            except ValueError:
+                pass
+
+        search_query = request.query_params.get("search", "").strip()
+        if search_query:
+            queryset = queryset.filter(
+                models.Q(title__icontains=search_query)
+                | models.Q(description__icontains=search_query)
+            )
+
+        queryset = queryset.order_by("-id")
+
+        try:
+            page = max(1, int(request.query_params.get("page", 1)))
+            page_size = min(100, max(1, int(request.query_params.get("page_size", 20))))
+        except ValueError:
+            page, page_size = 1, 20
+
+        baskets_list = []
+        for basket in queryset:
+            is_avail, avail_units, _ = basket.check_availability()
+            if is_avail:
+                baskets_list.append((basket, avail_units))
+
+        total_count = len(baskets_list)
+        start_idx = (page - 1) * page_size
+        end_idx = start_idx + page_size
+        page_baskets = baskets_list[start_idx:end_idx]
+
+        results = []
+        for basket, avail_units in page_baskets:
+            wh = get_seller_assigned_warehouse(basket.company_id)
+            items_preview = []
+            for item in basket.items.all():
+                prod = item.product
+                primary_img = ""
+                for img in prod.images.all():
+                    if img.image_url:
+                        if img.is_primary or not primary_img:
+                            primary_img = img.image_url
+                items_preview.append({
+                    "id": prod.id,
+                    "title": prod.title,
+                    "sku": prod.sku,
+                    "unit": prod.unit or "",
+                    "pack_size": str(prod.pack_size or ""),
+                    "mrp": str(prod.mrp),
+                    "selling_price": str(prod.selling_price),
+                    "quantity": item.quantity,
+                    "primary_image": primary_img,
+                })
+
+            savings_amt = max(Decimal("0.00"), basket.total_mrp - basket.selling_price)
+            savings_pct = round((savings_amt / basket.total_mrp * 100), 1) if basket.total_mrp > 0 else Decimal("0.0")
+
+            results.append({
+                "id": basket.id,
+                "title": basket.title,
+                "description": basket.description or "",
+                "image_url": basket.image_url or "",
+                "status": basket.status,
+                "pricing_mode": basket.pricing_mode,
+                "margin_percent": str(basket.margin_percent) if basket.margin_percent is not None else None,
+                "selling_price": str(basket.selling_price),
+                "total_mrp": str(basket.total_mrp),
+                "total_procurement_price": str(basket.total_procurement_price),
+                "savings_vs_mrp": str(savings_amt),
+                "savings_percent": float(savings_pct),
+                "item_count": basket.items.count(),
+                "available_stock": avail_units,
+                "in_stock": avail_units > 0,
+                "seller_id": basket.company.id,
+                "seller_name": basket.company.company_name,
+                "warehouse_id": wh.id if wh else None,
+                "warehouse_name": wh.name if wh else "",
+                "warehouse": {
+                    "id": wh.id,
+                    "name": wh.name,
+                    "code": wh.code,
+                    "city": wh.city,
+                } if wh else None,
+                "items": items_preview,
+                "updated_at": basket.updated_at.isoformat() if basket.updated_at else "",
+            })
+
+        total_pages = (total_count + page_size - 1) // page_size if page_size else 1
+        return Response({
+            "count": total_count,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+            "results": results,
+        }, status=status.HTTP_200_OK)
+
+
+class MarketplaceBasketDetailView(APIView):
+    """
+    GET /api/workforce/marketplace/baskets/<int:pk>/
+    Fetch single basket details with full component item breakdowns.
+    """
+    authentication_classes = []
+    permission_classes = [IsMarketplaceIntegrationCaller]
+
+    def get(self, request, pk):
+        basket = SellerProductBasket.objects.filter(
+            pk=pk,
+            company__is_active=True,
+        ).select_related("company").prefetch_related(
+            "items__product__inventory",
+            "items__product__images",
+            "items__product__category"
+        ).first()
+
+        if not basket:
+            return Response({"error": "Basket offer not found.", "code": "BASKET_NOT_FOUND"}, status=status.HTTP_404_NOT_FOUND)
+
+        is_avail, avail_units, _ = basket.check_availability()
+        if not is_avail and basket.status != SellerProductBasket.Status.ACTIVE:
+            return Response({"error": "Basket offer is currently out of stock or unavailable.", "code": "BASKET_UNAVAILABLE"}, status=status.HTTP_404_NOT_FOUND)
+
+        wh = get_seller_assigned_warehouse(basket.company_id)
+        items_data = []
+        for item in basket.items.all():
+            prod = item.product
+            inv = getattr(prod, "inventory", None)
+            avail_prod_qty = max(Decimal("0.000"), (inv.on_hand_qty - inv.reserved_qty)) if inv else Decimal("0.000")
+            primary_img = ""
+            gallery = []
+            for img in prod.images.all():
+                if img.image_url:
+                    gallery.append(img.image_url)
+                    if img.is_primary and not primary_img:
+                        primary_img = img.image_url
+            if not primary_img and gallery:
+                primary_img = gallery[0]
+
+            items_data.append({
+                "id": prod.id,
+                "sku": prod.sku,
+                "title": prod.title,
+                "brand": prod.brand or "",
+                "unit": prod.unit or "",
+                "pack_size": str(prod.pack_size or ""),
+                "mrp": str(prod.mrp),
+                "selling_price": str(prod.selling_price),
+                "quantity": item.quantity,
+                "item_total_mrp": str(prod.mrp * item.quantity),
+                "item_total_selling_price": str(prod.selling_price * item.quantity),
+                "primary_image": primary_img,
+                "images": gallery,
+                "in_stock": avail_prod_qty >= item.quantity,
+                "available_quantity": float(round(avail_prod_qty, 3)) if (avail_prod_qty % 1) != 0 else int(avail_prod_qty),
+            })
+
+        savings_amt = max(Decimal("0.00"), basket.total_mrp - basket.selling_price)
+        savings_pct = round((savings_amt / basket.total_mrp * 100), 1) if basket.total_mrp > 0 else Decimal("0.0")
+
+        return Response({
+            "id": basket.id,
+            "title": basket.title,
+            "description": basket.description or "",
+            "image_url": basket.image_url or "",
+            "status": basket.status,
+            "pricing_mode": basket.pricing_mode,
+            "margin_percent": str(basket.margin_percent) if basket.margin_percent is not None else None,
+            "selling_price": str(basket.selling_price),
+            "total_mrp": str(basket.total_mrp),
+            "total_procurement_price": str(basket.total_procurement_price),
+            "savings_vs_mrp": str(savings_amt),
+            "savings_percent": float(savings_pct),
+            "item_count": len(items_data),
+            "available_stock": avail_units,
+            "in_stock": avail_units > 0,
+            "seller_id": basket.company.id,
+            "seller_name": basket.company.company_name,
+            "warehouse_id": wh.id if wh else None,
+            "warehouse_name": wh.name if wh else "",
+            "warehouse": {
+                "id": wh.id,
+                "name": wh.name,
+                "code": wh.code,
+                "city": wh.city,
+            } if wh else None,
+            "items": items_data,
+            "updated_at": basket.updated_at.isoformat() if basket.updated_at else "",
+        }, status=status.HTTP_200_OK)
+
+
 # ─── 2. Customer-Cart Validation API ──────────────────────────────────────────
 
 class MarketplaceCartValidateView(APIView):
@@ -600,16 +820,23 @@ class MarketplaceCartValidateView(APIView):
         subtotal = Decimal("0.00")
 
         product_ids = [item.get("product_id") for item in items_payload if isinstance(item, dict) and item.get("product_id")]
+        basket_ids = [item.get("basket_id") for item in items_payload if isinstance(item, dict) and item.get("basket_id")]
+
         products = {
             p.id: p
             for p in SellerProduct.objects.filter(id__in=product_ids).select_related("company", "category", "inventory")
+        }
+        baskets = {
+            b.id: b
+            for b in SellerProductBasket.objects.filter(id__in=basket_ids).select_related("company").prefetch_related("items__product__inventory", "items__product__category")
         }
 
         for idx, item in enumerate(items_payload):
             if not isinstance(item, dict):
                 continue
+
+            b_id = item.get("basket_id")
             p_id = item.get("product_id")
-            # Support quantity / requested_quantity
             qty_val = item.get("quantity") if item.get("quantity") is not None else item.get("requested_quantity", 1)
             try:
                 req_qty = Decimal(str(qty_val))
@@ -619,18 +846,146 @@ class MarketplaceCartValidateView(APIView):
             expected_price = item.get("expected_unit_price") or item.get("expected_price") or item.get("unit_price")
 
             if req_qty <= Decimal("0.000"):
+                err_id = b_id if b_id else p_id
+                key = "basket_id" if b_id else "product_id"
                 errors.append({
-                    "product_id": p_id,
+                    key: err_id,
                     "code": "INVALID_QUANTITY",
-                    "message": f"Requested quantity for product #{p_id} must be greater than zero.",
+                    "message": f"Requested quantity for {key} #{err_id} must be greater than zero.",
                 })
-                validated_items.append({
-                    "product_id": p_id,
+                val_entry = {
+                    key: err_id,
                     "status": "INVALID_QUANTITY",
                     "is_available": False,
                     "requested_quantity": str(round(req_qty, 3)),
                     "available_quantity": "0.000",
                     "error": "Quantity must be greater than zero.",
+                }
+                if b_id:
+                    val_entry["is_basket"] = True
+                validated_items.append(val_entry)
+                continue
+
+            if b_id:
+                basket = baskets.get(b_id)
+                if not basket:
+                    errors.append({
+                        "basket_id": b_id,
+                        "code": "BASKET_NOT_FOUND",
+                        "message": f"Basket offer #{b_id} not found in seller catalog.",
+                    })
+                    validated_items.append({
+                        "basket_id": b_id,
+                        "is_basket": True,
+                        "status": "UNAVAILABLE",
+                        "is_available": False,
+                        "requested_quantity": str(round(req_qty, 3)),
+                        "available_quantity": "0",
+                        "error": "Basket offer not found.",
+                    })
+                    continue
+
+                if not basket.company or not basket.company.is_active:
+                    errors.append({
+                        "basket_id": b_id,
+                        "title": basket.title,
+                        "code": "STORE_INACTIVE",
+                        "message": f"Merchant store '{getattr(basket.company, 'company_name', '')}' is currently inactive.",
+                    })
+                    validated_items.append({
+                        "basket_id": b_id,
+                        "is_basket": True,
+                        "title": basket.title,
+                        "status": "STORE_INACTIVE",
+                        "is_available": False,
+                        "requested_quantity": str(round(req_qty, 3)),
+                        "available_quantity": "0",
+                        "current_selling_price": str(basket.selling_price),
+                        "error": "Store is inactive.",
+                    })
+                    continue
+
+                is_avail, avail_units, _ = basket.check_availability()
+                if not is_avail and basket.status != SellerProductBasket.Status.ACTIVE:
+                    errors.append({
+                        "basket_id": b_id,
+                        "title": basket.title,
+                        "code": "BASKET_UNAVAILABLE",
+                        "message": f"Basket offer '{basket.title}' is not active or out of stock.",
+                    })
+                    validated_items.append({
+                        "basket_id": b_id,
+                        "is_basket": True,
+                        "title": basket.title,
+                        "status": "UNAVAILABLE",
+                        "is_available": False,
+                        "requested_quantity": str(round(req_qty, 3)),
+                        "available_quantity": str(avail_units),
+                        "current_selling_price": str(basket.selling_price),
+                        "error": "Basket offer is unavailable or out of stock.",
+                    })
+                    continue
+
+                if avail_units < int(req_qty):
+                    errors.append({
+                        "basket_id": b_id,
+                        "title": basket.title,
+                        "code": "INSUFFICIENT_STOCK",
+                        "available_quantity": avail_units,
+                        "requested_quantity": int(req_qty),
+                        "message": f"Only {avail_units} basket bundle(s) available for '{basket.title}' (Requested: {int(req_qty)}).",
+                    })
+                    validated_items.append({
+                        "basket_id": b_id,
+                        "is_basket": True,
+                        "title": basket.title,
+                        "status": "INSUFFICIENT_STOCK",
+                        "is_available": False,
+                        "requested_quantity": int(req_qty),
+                        "available_quantity": avail_units,
+                        "current_selling_price": str(basket.selling_price),
+                        "error": f"Only {avail_units} basket bundles available.",
+                    })
+                    continue
+
+                price_changed = False
+                if expected_price is not None:
+                    try:
+                        if Decimal(str(expected_price)) != basket.selling_price:
+                            price_changed = True
+                            errors.append({
+                                "basket_id": b_id,
+                                "code": "PRICE_CHANGED",
+                                "expected_price": str(expected_price),
+                                "current_price": str(basket.selling_price),
+                                "message": f"Price for basket '{basket.title}' updated from {expected_price} to {basket.selling_price}.",
+                            })
+                    except Exception:
+                        pass
+
+                line_total = basket.selling_price * req_qty
+                subtotal += line_total
+                wh = get_seller_assigned_warehouse(basket.company_id)
+
+                validated_items.append({
+                    "basket_id": basket.id,
+                    "is_basket": True,
+                    "title": basket.title,
+                    "company_id": basket.company.id,
+                    "seller_name": basket.company.company_name,
+                    "warehouse_id": wh.id if wh else None,
+                    "warehouse_name": wh.name if wh else "",
+                    "requested_quantity": int(req_qty),
+                    "available_quantity": avail_units,
+                    "mrp": str(basket.total_mrp),
+                    "selling_price": str(basket.selling_price),
+                    "current_selling_price": str(basket.selling_price),
+                    "unit_price": str(basket.selling_price),
+                    "line_total": str(round(line_total, 2)),
+                    "status": "AVAILABLE",
+                    "is_available": True,
+                    "price_changed": price_changed,
+                    "item_count": basket.items.count(),
                 })
                 continue
 
@@ -853,6 +1208,7 @@ class MarketplaceOrderIntakeView(APIView):
 
         # ── Payload Validation: Duplicate Lines & Positive Quantities ─────────
         seen_product_ids = set()
+        seen_basket_ids = set()
         for idx, item in enumerate(items_payload):
             if not isinstance(item, dict):
                 return Response(
@@ -860,36 +1216,68 @@ class MarketplaceOrderIntakeView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             p_id = item.get("product_id")
-            if not p_id or not isinstance(p_id, int):
+            b_id = item.get("basket_id")
+            if not p_id and not b_id:
                 return Response(
-                    {"error": f"Missing or invalid product_id at index {idx}.", "code": "INVALID_PRODUCT_ID"},
+                    {"error": f"Missing product_id or basket_id at index {idx}.", "code": "INVALID_PRODUCT_ID"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            if p_id in seen_product_ids:
+            if p_id and b_id:
                 return Response(
-                    {"error": f"Duplicate product_id #{p_id} in intake items payload.", "code": "DUPLICATE_PRODUCT_LINE"},
+                    {"error": f"Item at index {idx} cannot specify both product_id and basket_id.", "code": "AMBIGUOUS_ITEM"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            seen_product_ids.add(p_id)
+
+            if p_id:
+                if p_id in seen_product_ids:
+                    return Response(
+                        {"error": f"Duplicate product_id #{p_id} in intake items payload.", "code": "DUPLICATE_PRODUCT_LINE"},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                seen_product_ids.add(p_id)
+            else:
+                if b_id in seen_basket_ids:
+                    return Response(
+                        {"error": f"Duplicate basket_id #{b_id} in intake items payload.", "code": "DUPLICATE_BASKET_LINE"},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                seen_basket_ids.add(b_id)
 
             raw_qty = item.get("quantity") if item.get("quantity") is not None else item.get("requested_quantity")
             if raw_qty is None:
+                err_id = p_id if p_id else b_id
                 return Response(
-                    {"error": f"Missing quantity for product #{p_id}.", "code": "INVALID_QUANTITY"},
+                    {"error": f"Missing quantity for item #{err_id}.", "code": "INVALID_QUANTITY"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             try:
                 qty = Decimal(str(raw_qty))
             except Exception:
+                err_id = p_id if p_id else b_id
                 return Response(
-                    {"error": f"Non-numeric quantity for product #{p_id}.", "code": "INVALID_QUANTITY"},
+                    {"error": f"Non-numeric quantity for item #{err_id}.", "code": "INVALID_QUANTITY"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             if qty <= Decimal("0.000"):
+                err_id = p_id if p_id else b_id
                 return Response(
-                    {"error": f"Quantity for product #{p_id} must be greater than zero.", "code": "INVALID_QUANTITY"},
+                    {"error": f"Quantity for item #{err_id} must be greater than zero.", "code": "INVALID_QUANTITY"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+
+        # Pre-fetch baskets
+        baskets = {}
+        if seen_basket_ids:
+            baskets = {
+                b.id: b
+                for b in SellerProductBasket.objects.filter(id__in=seen_basket_ids).prefetch_related("items__product")
+            }
+            for b_id in seen_basket_ids:
+                if b_id not in baskets:
+                    return Response(
+                        {"error": f"Basket offer #{b_id} not found.", "code": "BASKET_NOT_FOUND"},
+                        status=status.HTTP_404_NOT_FOUND,
+                    )
 
         # Customer & Delivery Snapshots
         customer_name = str(request.data.get("customer_name") or "Valued Customer").strip()
@@ -920,7 +1308,11 @@ class MarketplaceOrderIntakeView(APIView):
         req_wh_name = str(request.data.get("warehouse_name") or "").strip()
 
         # ── Atomic Stock Reservation, Validation & Order Creation ─────────────
-        product_ids = list(seen_product_ids)
+        all_product_ids = set(seen_product_ids)
+        for basket in baskets.values():
+            for b_item in basket.items.all():
+                all_product_ids.add(b_item.product_id)
+
         active_cat_ids = get_active_seller_category_ids()
 
         with transaction.atomic():
@@ -941,109 +1333,223 @@ class MarketplaceOrderIntakeView(APIView):
                 inv.product_id: inv
                 for inv in SellerInventory.objects.select_for_update().filter(
                     company=company,
-                    product_id__in=product_ids,
+                    product_id__in=list(all_product_ids),
                 ).select_related("product")
             }
 
             total_amount = Decimal("0.00")
             parsed_items = []
+            parsed_basket_components = []
 
             for item in items_payload:
-                p_id = item["product_id"]
+                p_id = item.get("product_id")
+                b_id = item.get("basket_id")
                 raw_qty = item.get("quantity") if item.get("quantity") is not None else item.get("requested_quantity")
                 qty = Decimal(str(raw_qty))
 
-                inv = inventories.get(p_id)
-                if not inv:
-                    return Response(
-                        {
-                            "error": f"Inventory record not found for product #{p_id} in seller store.",
-                            "code": "INVENTORY_NOT_FOUND",
-                            "product_id": p_id,
-                        },
-                        status=status.HTTP_404_NOT_FOUND,
-                    )
+                if p_id:
+                    inv = inventories.get(p_id)
+                    if not inv:
+                        return Response(
+                            {
+                                "error": f"Inventory record not found for product #{p_id} in seller store.",
+                                "code": "INVENTORY_NOT_FOUND",
+                                "product_id": p_id,
+                            },
+                            status=status.HTTP_404_NOT_FOUND,
+                        )
 
-                product = inv.product
-                if product.company_id != company.id:
-                    return Response(
-                        {
-                            "error": f"Product #{p_id} does not belong to seller store #{company.id}.",
-                            "code": "STORE_MISMATCH",
-                            "product_id": p_id,
-                        },
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
+                    product = inv.product
+                    if product.company_id != company.id:
+                        return Response(
+                            {
+                                "error": f"Product #{p_id} does not belong to seller store #{company.id}.",
+                                "code": "STORE_MISMATCH",
+                                "product_id": p_id,
+                            },
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
 
-                if product.status != SellerProduct.Status.APPROVED:
-                    return Response(
-                        {
-                            "error": f"Product '{product.title}' is not approved for sale (Status: {product.status}).",
-                            "code": "PRODUCT_NOT_APPROVED",
-                            "product_id": p_id,
-                        },
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
+                    if product.status != SellerProduct.Status.APPROVED:
+                        return Response(
+                            {
+                                "error": f"Product '{product.title}' is not approved for sale (Status: {product.status}).",
+                                "code": "PRODUCT_NOT_APPROVED",
+                                "product_id": p_id,
+                            },
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
 
-                if product.category_id not in active_cat_ids:
-                    return Response(
-                        {
-                            "error": f"Category for product '{product.title}' is currently inactive.",
-                            "code": "CATEGORY_DISABLED",
-                            "product_id": p_id,
-                        },
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
+                    if product.category_id not in active_cat_ids:
+                        return Response(
+                            {
+                                "error": f"Category for product '{product.title}' is currently inactive.",
+                                "code": "CATEGORY_DISABLED",
+                                "product_id": p_id,
+                            },
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
 
-                avail_qty = max(Decimal("0.000"), inv.on_hand_qty - inv.reserved_qty)
-                if avail_qty < qty:
-                    avail_disp = float(round(avail_qty, 3)) if (avail_qty % 1) != 0 else int(avail_qty)
-                    req_disp = float(round(qty, 3)) if (qty % 1) != 0 else int(qty)
-                    return Response(
-                        {
-                            "error": f"Insufficient stock for '{product.title}'. Only {avail_disp} available, requested {req_disp}.",
-                            "code": "INSUFFICIENT_STOCK",
-                            "error_code": "INSUFFICIENT_STOCK",
-                            "product_id": p_id,
-                            "available_quantity": str(round(avail_qty, 3)),
-                            "requested_quantity": str(round(qty, 3)),
-                        },
-                        status=status.HTTP_409_CONFLICT,
-                    )
+                    avail_qty = max(Decimal("0.000"), inv.on_hand_qty - inv.reserved_qty)
+                    if avail_qty < qty:
+                        avail_disp = float(round(avail_qty, 3)) if (avail_qty % 1) != 0 else int(avail_qty)
+                        req_disp = float(round(qty, 3)) if (qty % 1) != 0 else int(qty)
+                        return Response(
+                            {
+                                "error": f"Insufficient stock for '{product.title}'. Only {avail_disp} available, requested {req_disp}.",
+                                "code": "INSUFFICIENT_STOCK",
+                                "error_code": "INSUFFICIENT_STOCK",
+                                "product_id": p_id,
+                                "available_quantity": str(round(avail_qty, 3)),
+                                "requested_quantity": str(round(qty, 3)),
+                            },
+                            status=status.HTTP_409_CONFLICT,
+                        )
 
-                # Authoritative Price Verification
-                caller_price = item.get("expected_unit_price") if item.get("expected_unit_price") is not None else (item.get("expected_price") if item.get("expected_price") is not None else item.get("unit_price"))
-                if caller_price is not None:
-                    try:
-                        passed_dec = Decimal(str(caller_price))
-                        if passed_dec != product.selling_price:
+                    # Authoritative Price Verification
+                    caller_price = item.get("expected_unit_price") if item.get("expected_unit_price") is not None else (item.get("expected_price") if item.get("expected_price") is not None else item.get("unit_price"))
+                    if caller_price is not None:
+                        try:
+                            passed_dec = Decimal(str(caller_price))
+                            if passed_dec != product.selling_price:
+                                return Response(
+                                    {
+                                        "error": f"Price for product '{product.title}' has changed. Current selling price is {product.selling_price}, but order specified {passed_dec}.",
+                                        "code": "PRICE_CHANGED",
+                                        "error_code": "PRICE_CHANGED",
+                                        "product_id": p_id,
+                                        "expected_price": str(passed_dec),
+                                        "current_price": str(product.selling_price),
+                                        "error_price": str(product.selling_price),
+                                    },
+                                    status=status.HTTP_409_CONFLICT,
+                                )
+                        except Exception:
+                            pass
+
+                    unit_price = product.selling_price
+                    line_total = unit_price * qty
+                    total_amount += line_total
+
+                    parsed_items.append({
+                        "product": product,
+                        "inventory": inv,
+                        "quantity": qty,
+                        "unit_price": unit_price,
+                        "mrp": product.mrp,
+                        "line_total": line_total,
+                    })
+
+                elif b_id:
+                    basket = baskets.get(b_id)
+                    if basket.company_id != company.id:
+                        return Response(
+                            {
+                                "error": f"Basket offer #{b_id} does not belong to seller store #{company.id}.",
+                                "code": "STORE_MISMATCH",
+                                "basket_id": b_id,
+                            },
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+
+                    if basket.status not in (SellerProductBasket.Status.ACTIVE, SellerProductBasket.Status.OUT_OF_STOCK):
+                        return Response(
+                            {
+                                "error": f"Basket offer '{basket.title}' is not active for sale (Status: {basket.status}).",
+                                "code": "BASKET_NOT_APPROVED",
+                                "basket_id": b_id,
+                            },
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+
+                    caller_price = item.get("expected_unit_price") if item.get("expected_unit_price") is not None else (item.get("expected_price") if item.get("expected_price") is not None else item.get("unit_price"))
+                    if caller_price is not None:
+                        try:
+                            passed_dec = Decimal(str(caller_price))
+                            if passed_dec != basket.selling_price:
+                                return Response(
+                                    {
+                                        "error": f"Price for basket '{basket.title}' has changed. Current price is {basket.selling_price}, but order specified {passed_dec}.",
+                                        "code": "PRICE_CHANGED",
+                                        "error_code": "PRICE_CHANGED",
+                                        "basket_id": b_id,
+                                        "expected_price": str(passed_dec),
+                                        "current_price": str(basket.selling_price),
+                                        "error_price": str(basket.selling_price),
+                                    },
+                                    status=status.HTTP_409_CONFLICT,
+                                )
+                        except Exception:
+                            pass
+
+                    basket_line_total = basket.selling_price * qty
+                    total_amount += basket_line_total
+
+                    for b_item in basket.items.all():
+                        comp_p = b_item.product
+                        comp_inv = inventories.get(comp_p.id)
+                        if not comp_inv:
                             return Response(
                                 {
-                                    "error": f"Price for product '{product.title}' has changed. Current selling price is {product.selling_price}, but order specified {passed_dec}.",
-                                    "code": "PRICE_CHANGED",
-                                    "error_code": "PRICE_CHANGED",
-                                    "product_id": p_id,
-                                    "expected_price": str(passed_dec),
-                                    "current_price": str(product.selling_price),
-                                    "error_price": str(product.selling_price),
+                                    "error": f"Inventory record not found for component '{comp_p.title}' in basket '{basket.title}'.",
+                                    "code": "INVENTORY_NOT_FOUND",
+                                    "product_id": comp_p.id,
+                                },
+                                status=status.HTTP_404_NOT_FOUND,
+                            )
+
+                        if comp_p.status != SellerProduct.Status.APPROVED:
+                            return Response(
+                                {
+                                    "error": f"Component '{comp_p.title}' in basket '{basket.title}' is not approved for sale (Status: {comp_p.status}).",
+                                    "code": "PRODUCT_NOT_APPROVED",
+                                    "product_id": comp_p.id,
+                                },
+                                status=status.HTTP_400_BAD_REQUEST,
+                            )
+
+                        if comp_p.category_id not in active_cat_ids:
+                            return Response(
+                                {
+                                    "error": f"Category for component '{comp_p.title}' in basket '{basket.title}' is currently inactive.",
+                                    "code": "CATEGORY_DISABLED",
+                                    "product_id": comp_p.id,
+                                },
+                                status=status.HTTP_400_BAD_REQUEST,
+                            )
+
+                        needed_qty = Decimal(str(b_item.quantity)) * qty
+                        comp_avail = max(Decimal("0.000"), comp_inv.on_hand_qty - comp_inv.reserved_qty)
+                        if comp_avail < needed_qty:
+                            avail_disp = float(round(comp_avail, 3)) if (comp_avail % 1) != 0 else int(comp_avail)
+                            req_disp = float(round(needed_qty, 3)) if (needed_qty % 1) != 0 else int(needed_qty)
+                            return Response(
+                                {
+                                    "error": f"Insufficient stock for component '{comp_p.title}' in basket '{basket.title}'. Only {avail_disp} available, requested {req_disp}.",
+                                    "code": "INSUFFICIENT_STOCK",
+                                    "error_code": "INSUFFICIENT_STOCK",
+                                    "product_id": comp_p.id,
+                                    "basket_id": basket.id,
+                                    "available_quantity": str(round(comp_avail, 3)),
+                                    "requested_quantity": str(round(needed_qty, 3)),
                                 },
                                 status=status.HTTP_409_CONFLICT,
                             )
-                    except Exception:
-                        pass
 
-                unit_price = product.selling_price
-                line_total = unit_price * qty
-                total_amount += line_total
+                        prop_line_total = round(
+                            basket.selling_price * (comp_p.selling_price * b_item.quantity / basket.total_mrp) * qty, 2
+                        ) if basket.total_mrp > Decimal("0.00") else Decimal("0.00")
 
-                parsed_items.append({
-                    "product": product,
-                    "inventory": inv,
-                    "quantity": qty,
-                    "unit_price": unit_price,
-                    "mrp": product.mrp,
-                    "line_total": line_total,
-                })
+                        parsed_basket_components.append({
+                            "b_item": b_item,
+                            "product": comp_p,
+                            "inventory": comp_inv,
+                            "quantity": needed_qty,
+                            "unit_price": comp_p.selling_price,
+                            "mrp": comp_p.mrp,
+                            "line_total": prop_line_total,
+                            "basket": basket,
+                        })
 
             # Generate Order Number
             now = timezone.now()
@@ -1084,7 +1590,7 @@ class MarketplaceOrderIntakeView(APIView):
                     )
                 raise exc
 
-            # Reserve Inventory & Create Order Items
+            # Reserve Inventory & Create Order Items for Regular Products
             for p_item in parsed_items:
                 product = p_item["product"]
                 inv = p_item["inventory"]
@@ -1115,6 +1621,42 @@ class MarketplaceOrderIntakeView(APIView):
                     unit_price=p_item["unit_price"],
                     line_total=p_item["line_total"],
                     procurement_price_snapshot=getattr(product, "procurement_price", None),
+                )
+
+            # Reserve Inventory & Create Order Items for Basket Components
+            for b_comp in parsed_basket_components:
+                product = b_comp["product"]
+                inv = b_comp["inventory"]
+                qty = b_comp["quantity"]
+                basket = b_comp["basket"]
+
+                inv.reserved_qty += qty
+                inv.save(update_fields=["reserved_qty", "updated_at"])
+
+                SellerInventoryMovement.objects.create(
+                    inventory=inv,
+                    movement_type=SellerInventoryMovement.MovementType.RESERVED,
+                    quantity_change=Decimal("0.000"),
+                    balance_before=inv.on_hand_qty,
+                    balance_after=inv.on_hand_qty,
+                    reason=f"Stock reserved for combo basket '{basket.title}' in customer order #{order.order_number} (source: {source_order_id})",
+                    reference_id=source_order_id,
+                    actor=None,
+                )
+
+                SellerOrderItem.objects.create(
+                    order=order,
+                    product=product,
+                    product_title=product.title,
+                    sku=product.sku,
+                    unit=product.unit or "",
+                    pack_size=str(product.pack_size or ""),
+                    ordered_quantity=qty,
+                    unit_price=b_comp["unit_price"],
+                    line_total=b_comp["line_total"],
+                    procurement_price_snapshot=getattr(product, "procurement_price", None),
+                    basket=basket,
+                    basket_title=basket.title,
                 )
 
             # Audit Log

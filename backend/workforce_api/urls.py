@@ -275,13 +275,21 @@ from workforce_api.views_seller_hub import (
 )
 from workforce_api.views_marketplace_integration import (
     MarketplaceCategoryFeedView,
-    MarketplaceCategoryListView,
     MarketplaceProductListView,
     MarketplaceProductDetailView,
+    MarketplaceBasketListView,
+    MarketplaceBasketDetailView,
     MarketplaceCartValidateView,
     MarketplaceOrderIntakeView,
     MarketplaceOrderCancelReleaseView,
     MarketplaceOrderStatusView,
+)
+from workforce_api.views_seller_basket import (
+    SellerProductBasketListView,
+    SellerProductBasketDetailView,
+    SellerProductBasketActivateView,
+    SellerProductBasketPauseView,
+    SellerProductBasketCalculatePreviewView,
 )
 from workforce_api.views_warehouse_portal import (
     WarehousePortalProfileView,
@@ -734,6 +742,13 @@ urlpatterns = [
     path("seller-hub/reports/quality-audit/", SellerReportsQualityAuditView.as_view(), name="seller-hub-reports-quality-audit"),
     path("seller-hub/reports/export-csv/", SellerReportsExportCSVView.as_view(), name="seller-hub-reports-export-csv"),
 
+    # Seller Hub Basket Offers (Combo Bundles)
+    path("seller-hub/baskets/", SellerProductBasketListView.as_view(), name="seller-hub-baskets-list"),
+    path("seller-hub/baskets/calculate/", SellerProductBasketCalculatePreviewView.as_view(), name="seller-hub-baskets-calculate-preview"),
+    path("seller-hub/baskets/<int:pk>/", SellerProductBasketDetailView.as_view(), name="seller-hub-baskets-detail"),
+    path("seller-hub/baskets/<int:pk>/activate/", SellerProductBasketActivateView.as_view(), name="seller-hub-baskets-activate"),
+    path("seller-hub/baskets/<int:pk>/pause/", SellerProductBasketPauseView.as_view(), name="seller-hub-baskets-pause"),
+
     # ── Public Customer Marketplace Cart, Checkout & Order Tracking ────────────
     path("public/cart/", PublicGroceryCartView.as_view(), name="workforce-public-cart"),
     path("public/cart/clear/", PublicGroceryCartClearView.as_view(), name="workforce-public-cart-clear"),
@@ -745,6 +760,8 @@ urlpatterns = [
     path("marketplace/categories/", MarketplaceCategoryFeedView.as_view(), name="marketplace-categories-feed"),
     path("marketplace/products/", MarketplaceProductListView.as_view(), name="marketplace-products-list"),
     path("marketplace/products/<int:pk>/", MarketplaceProductDetailView.as_view(), name="marketplace-product-detail"),
+    path("marketplace/baskets/", MarketplaceBasketListView.as_view(), name="marketplace-baskets-list"),
+    path("marketplace/baskets/<int:pk>/", MarketplaceBasketDetailView.as_view(), name="marketplace-baskets-detail"),
     path("marketplace/cart/validate/", MarketplaceCartValidateView.as_view(), name="marketplace-cart-validate"),
     path("marketplace/orders/intake/", MarketplaceOrderIntakeView.as_view(), name="marketplace-order-intake"),
     path("marketplace/orders/<str:source_order_id>/cancel/", MarketplaceOrderCancelReleaseView.as_view(), name="marketplace-order-cancel-release"),

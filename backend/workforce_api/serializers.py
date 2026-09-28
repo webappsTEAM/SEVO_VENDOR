@@ -4208,6 +4208,134 @@ class WarehouseInboundRequestCreateSerializer(serializers.Serializer):
     seller_note = serializers.CharField(required=False, allow_blank=True, default="", max_length=1000)
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# BASKET OFFERS (MULTI-PRODUCT COMBO BUNDLES) SERIALIZERS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class SellerProductBasketItemSerializer(serializers.ModelSerializer):
+    product_id = serializers.IntegerField(source="product.id")
+    product_title = serializers.CharField(source="product.title", read_only=True)
+    product_sku = serializers.CharField(source="product.sku", read_only=True)
+    product_unit = serializers.CharField(source="product.unit", read_only=True)
+    product_mrp = serializers.DecimalField(source="product.mrp", max_digits=10, decimal_places=2, read_only=True)
+    product_selling_price = serializers.DecimalField(source="product.selling_price", max_digits=10, decimal_places=2, read_only=True)
+    product_procurement_price = serializers.DecimalField(source="product.procurement_price", max_digits=10, decimal_places=2, read_only=True)
+    product_image = serializers.SerializerMethodField()
+    available_qty = serializers.SerializerMethodField()
+    on_hand_qty = serializers.SerializerMethodField()
+    is_approved = serializers.BooleanField(source="product.status == 'APPROVED'", read_only=True)
+
+    class Meta:
+        from .models import SellerProductBasketItem
+        model = SellerProductBasketItem
+        fields = [
+            "id",
+            "product_id",
+            "product_title",
+            "product_sku",
+            "product_unit",
+            "product_mrp",
+            "product_selling_price",
+            "product_procurement_price",
+            "product_image",
+            "quantity",
+            "on_hand_qty",
+            "available_qty",
+            "is_approved",
+        ]
+        read_only_fields = ["id"]
+
+    def get_product_image(self, obj):
+        img = obj.product.images.filter(is_primary=True).first() or obj.product.images.first()
+        return img.image_url if img else ""
+
+    def get_available_qty(self, obj):
+        inv = getattr(obj.product, "inventory", None)
+        if not inv:
+            return 0
+        avail = inv.on_hand_qty - inv.reserved_qty
+        return max(0, int(avail) if (avail % 1) == 0 else float(avail))
+
+    def get_on_hand_qty(self, obj):
+        inv = getattr(obj.product, "inventory", None)
+        if not inv:
+            return 0
+        return int(inv.on_hand_qty) if (inv.on_hand_qty % 1) == 0 else float(inv.on_hand_qty)
+
+
+class SellerProductBasketSerializer(serializers.ModelSerializer):
+    company_name = serializers.CharField(source="company.company_name", read_only=True)
+    items = SellerProductBasketItemSerializer(many=True, read_only=True)
+    item_count = serializers.SerializerMethodField()
+    profit_amount = serializers.SerializerMethodField()
+    savings_vs_mrp = serializers.SerializerMethodField()
+    is_available = serializers.SerializerMethodField()
+    availability_issues = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models import SellerProductBasket
+        model = SellerProductBasket
+        fields = [
+            "id",
+            "company",
+            "company_name",
+            "title",
+            "description",
+            "image_url",
+            "status",
+            "pricing_mode",
+            "margin_percent",
+            "selling_price",
+            "total_mrp",
+            "total_procurement_price",
+            "item_count",
+            "profit_amount",
+            "savings_vs_mrp",
+            "is_available",
+            "availability_issues",
+            "items",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "company",
+            "company_name",
+            "total_mrp",
+            "total_procurement_price",
+            "item_count",
+            "profit_amount",
+            "savings_vs_mrp",
+            "is_available",
+            "availability_issues",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_item_count(self, obj):
+        return obj.items.count()
+
+    def get_profit_amount(self, obj):
+        if obj.selling_price is not None and obj.total_procurement_price is not None:
+            return str(round(obj.selling_price - obj.total_procurement_price, 2))
+        return "0.00"
+
+    def get_savings_vs_mrp(self, obj):
+        if obj.total_mrp is not None and obj.selling_price is not None:
+            savings = obj.total_mrp - obj.selling_price
+            return str(round(max(Decimal("0.00"), savings), 2))
+        return "0.00"
+
+    def get_is_available(self, obj):
+        is_avail, _, _ = obj.check_availability()
+        return is_avail
+
+    def get_availability_issues(self, obj):
+        _, _, reasons = obj.check_availability()
+        return reasons
+
+
+
 
 
 
