@@ -25,9 +25,10 @@ ACTIVE_QUEUE_STATUSES: List[str] = [
     "on_the_way",
     "en_route",
     "arrived",
+    "inspection_in_progress",
     "in_progress",
-    "in_service",
-    "inspection",
+    "quotation_sent",
+    "on_hold",
     "proof_submitted",
     "quotation_created",
     "quotation_pending_approval",
@@ -43,9 +44,10 @@ ACTIVE_WORKLOAD_STATUSES: List[str] = [
     "on_the_way",
     "en_route",
     "arrived",
+    "inspection_in_progress",
     "in_progress",
-    "in_service",
-    "inspection",
+    "quotation_sent",
+    "on_hold",
     "proof_submitted",
     "quotation_created",
     "quotation_pending_approval",
@@ -62,9 +64,10 @@ WORKLOAD_OCCUPIED_STATUSES: List[str] = [
     "on_the_way",
     "en_route",
     "arrived",
+    "inspection_in_progress",
     "in_progress",
-    "in_service",
-    "inspection",
+    "quotation_sent",
+    "on_hold",
     "proof_submitted",
     "quotation_created",
     "quotation_pending_approval",
@@ -122,7 +125,7 @@ def get_employee_active_job(employee_or_id, for_update: bool = False, statuses: 
             from service_requests.models import EmployeeJob
             emp_job_qs = EmployeeJob.objects.filter(
                 employee_id=emp_id,
-                status__in=["ASSIGNED", "ACCEPTED", "ON_THE_WAY", "EN_ROUTE", "ARRIVED", "IN_PROGRESS", "PROOF_SUBMITTED"],
+                status__in=["ASSIGNED", "ACCEPTED", "ON_THE_WAY", "EN_ROUTE", "ARRIVED", "INSPECTION_IN_PROGRESS", "IN_PROGRESS", "QUOTATION_SENT", "ON_HOLD", "PROOF_SUBMITTED"],
             )
             if for_update:
                 emp_job_qs = emp_job_qs.select_for_update()

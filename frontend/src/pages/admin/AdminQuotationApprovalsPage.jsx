@@ -116,8 +116,8 @@ export function AdminQuotationApprovalsPage() {
     }
   }, []);
 
-  const load = useCallback(async () => {
-    setIsLoading(true);
+  const load = useCallback(async (isSilent = false) => {
+    if (!isSilent) setIsLoading(true);
     try {
       const data = await apiRequest(active.endpoint);
       const rowList = Array.isArray(data) ? data : [];
@@ -125,17 +125,35 @@ export function AdminQuotationApprovalsPage() {
       setCounts((prev) => ({ ...prev, [active.key]: rowList.length }));
       setError(null);
     } catch (err) {
-      setError(err?.message || 'Could not load the approval queue.');
-      setRows([]);
+      if (!isSilent) {
+        setError(err?.message || 'Could not load the approval queue.');
+        setRows([]);
+      }
     } finally {
-      setIsLoading(false);
+      if (!isSilent) setIsLoading(false);
       loadCounts();
     }
   }, [active, loadCounts]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load(false);
 
-  async function decide(quote, approve, forcedTab = null) {
+    // Active auto-refresh: sync approval queue every 5s and on window focus
+    const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      load(true);
+    }, 5000);
+
+    const onFocus = () => load(true);
+    window.addEventListener('focus', onFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [load]);
+
+  async function decide(quote, approve, forcedTab = null, autoConvert = false) {
     const activeTab = forcedTab || (quote.status === 'PENDING_REVIEW' ? 'presend' : tab);
     const verb = activeTab === 'presend'
       ? (approve ? 'release and send to customer' : 'reject')
@@ -147,14 +165,14 @@ export function AdminQuotationApprovalsPage() {
 
     let notes = '';
     if (!approve) {
-      const notes = window.prompt('Reason for rejection (shown in audit trail):') || '';
+      notes = window.prompt('Reason for rejection (shown in audit trail):') || '';
       if (!notes.trim()) return;
-      return submitDecision(quote, false, false, notes);
+      return submitDecision(quote, false, false, notes, activeTab);
     }
 
     const actionText = autoConvert
       ? `Approve & Convert ${quote.quote_number} directly to an active service booking?`
-      : tab === 'presend'
+      : activeTab === 'presend'
       ? `Release ${quote.quote_number} and send to customer for approval?`
       : `Approve ${quote.quote_number} and issue invoice?`;
 
@@ -162,13 +180,13 @@ export function AdminQuotationApprovalsPage() {
       return;
     }
 
-    return submitDecision(quote, true, autoConvert, '');
+    return submitDecision(quote, true, autoConvert, '', activeTab);
   }
 
-  async function submitDecision(quote, approve, autoConvert, notes) {
+  async function submitDecision(quote, approve, autoConvert, notes, targetTab = 'presend') {
     setBusyId(quote.id);
     try {
-      const path = activeTab === 'presend'
+      const path = targetTab === 'presend'
         ? `/workforce/quotes/${quote.id}/pre-send-review/`
         : `/workforce/quotes/${quote.id}/admin-review/`;
       const result = await apiRequest(path, {
@@ -187,7 +205,7 @@ export function AdminQuotationApprovalsPage() {
 
       if (result.invoice) {
         setFlash(`${quote.quote_number} approved. Invoice ${result.invoice.invoice_number} issued for ${money(result.invoice.total_amount)}.`);
-      } else if (activeTab === 'presend' && approve) {
+      } else if (targetTab === 'presend' && approve) {
         setFlash(`${quote.quote_number} released and delivered to the customer for approval.`);
       } else {
         setFlash(`${quote.quote_number} ${approve ? 'approved' : 'rejected'}.`);
