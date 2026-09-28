@@ -3,6 +3,14 @@
 # ==========================================
 .env
 .env.*
+<<<<<<< HEAD
+!.env.example
+backend/.env
+frontend/.env
+*.pem
+*.key
+*.crt
+=======
 .env*.local
 *.env.bak
 !.env.example
@@ -15,18 +23,25 @@ frontend/.env.*
 *.key
 *.crt
 *.cert
+>>>>>>> origin/gokulakrishnan
 
 # ==========================================
 # Python / Django Backend
 # ==========================================
 __pycache__/
+<<<<<<< HEAD
+=======
 **/__pycache__/
+>>>>>>> origin/gokulakrishnan
 *.py[cod]
 *$py.class
 *.so
 .Python
+<<<<<<< HEAD
+=======
 .venv/
 **/.venv/
+>>>>>>> origin/gokulakrishnan
 backend/venv/
 backend/env/
 venv/
@@ -37,6 +52,13 @@ venv.bak/
 
 # Django media & database
 backend/media/
+<<<<<<< HEAD
+*.sqlite3
+*.sqlite3-journal
+.pytest_cache/
+.coverage
+htmlcov/
+=======
 media/
 *.sqlite3
 *.sqlite3-journal
@@ -48,16 +70,28 @@ media/
 htmlcov/
 **/.mypy_cache/
 **/.ruff_cache/
+>>>>>>> origin/gokulakrishnan
 
 # ==========================================
 # Node.js / React Frontend
 # ==========================================
 node_modules/
+<<<<<<< HEAD
+=======
 **/node_modules/
+>>>>>>> origin/gokulakrishnan
 frontend/node_modules/
 frontend/dist/
 frontend/build/
 dist/
+<<<<<<< HEAD
+build/
+.next/
+.out/
+
+# Logs
+logs
+=======
 **/dist/
 build/
 **/build/
@@ -69,6 +103,7 @@ frontend/.vite/
 
 # Logs
 logs/
+>>>>>>> origin/gokulakrishnan
 *.log
 npm-debug.log*
 yarn-debug.log*
@@ -84,12 +119,22 @@ pnpm-debug.log*
 *.swo
 .DS_Store
 Thumbs.db
+<<<<<<< HEAD
+=======
 desktop.ini
+>>>>>>> origin/gokulakrishnan
 
 # Archives & Temp Files
 *.zip
 *.tar.gz
 *.rar
+<<<<<<< HEAD
+
+*.apk
+
+
+# Temporary / scratch scripts
+=======
 *.apk
 *.ipa
 *.bak
@@ -102,11 +147,24 @@ Claude outputs/
 _to_delete/
 scratch/
 **/scratch/
+>>>>>>> origin/gokulakrishnan
 tunnel_daemon.py
 check_job_otp.py
 caltrack_runbook_test_results.json
 runbook_full.txt
 
+<<<<<<< HEAD
+# Landing site bundle and temporary extractions
+Sevo landing/
+
+# Temporary diagnostic and scratch scripts
+scratch_*.py
+**/scratch_*.py
+_scratch_*.py
+**/_scratch_*.py
+
+=======
+>>>>>>> origin/gokulakrishnan
 /id
 id
 *.key
