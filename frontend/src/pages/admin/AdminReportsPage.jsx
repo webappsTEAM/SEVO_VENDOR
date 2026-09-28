@@ -149,10 +149,10 @@ export function AdminReportsPage() {
           <div className="overflow-x-auto max-h-[500px]">
             {reportData.rows && reportData.rows.length > 0 ? (
               <table className="w-full text-left text-xs">
-                <thead className="bg-zinc-50/60 text-zinc-500 uppercase text-[11px] font-bold border-b border-zinc-200 sticky top-0">
+                <thead className="bg-zinc-100 text-zinc-600 uppercase text-[11px] font-bold border-b border-zinc-200 sticky top-0 z-10 shadow-xs">
                   <tr>
                     {Object.keys(reportData.rows[0]).map((h) => (
-                      <th key={h} className="px-4 py-3 tracking-wider">{h.replace(/_/g, ' ')}</th>
+                      <th key={h} className="px-4 py-3 tracking-wider bg-zinc-100 whitespace-nowrap">{h.replace(/_/g, ' ')}</th>
                     ))}
                   </tr>
                 </thead>

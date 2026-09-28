@@ -1301,6 +1301,10 @@ class WorkforceOnboardingDocumentUploadView(APIView):
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request):
+        from workforce_api.services.registration import (
+            get_or_create_employee_profile,
+            REGISTRATION_STATUS_APPROVED,
+        )
         from workforce_api.services.onboarding import (
             CANONICAL_DOCUMENT_CATEGORIES,
             REQUIRED_DOCUMENT_CATEGORIES,
@@ -1313,13 +1317,24 @@ class WorkforceOnboardingDocumentUploadView(APIView):
         user = request.user
         emp = getattr(user, "employee_profile", None)
         if not emp:
+            emp = get_or_create_employee_profile(user)
+        if not emp:
             return Response({"error": "Employee record not found."}, status=status.HTTP_404_NOT_FOUND)
 
         bank_details = emp.bank_details or {}
         onboarding = bank_details.get("onboarding", {})
         current_status = str(onboarding.get("status", "not_started")).strip().lower()
 
-        if current_status not in CANDIDATE_EDITABLE_STATUSES:
+        # Operational/approved workers can upload/update documents in the portal,
+        # as well as candidates in active editable onboarding statuses.
+        # Only candidates in locked 'submitted' or 'under_review' statuses cannot edit.
+        allowed_upload_statuses = CANDIDATE_EDITABLE_STATUSES | {
+            REGISTRATION_STATUS_APPROVED,
+            "approved",
+            "active",
+        }
+
+        if current_status not in allowed_upload_statuses and getattr(emp, "status", "").lower() != "active":
             return Response({
                 "error": "LIFECYCLE_CONFLICT",
                 "message": f"Cannot upload documents while application is '{current_status}'.",
