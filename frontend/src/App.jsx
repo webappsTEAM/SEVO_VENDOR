@@ -859,6 +859,27 @@ export function App() {
             <Route path="rack-view" element={<WarehouseRackViewPage />} />
           </Route>
 
+          {/* ═══════════════════════════════════════════════════════════════════════ */}
+          {/* WAREHOUSE OPERATIONS PORTAL ROUTES (Phase V)                       */}
+          {/* ═══════════════════════════════════════════════════════════════════════ */}
+          <Route
+            path="/workforce/warehouse"
+            element={
+              <WarehouseRoute>
+                <WarehouseLayout />
+              </WarehouseRoute>
+            }
+          >
+            <Route index element={<Navigate to="/workforce/warehouse/home" replace />} />
+            <Route path="home" element={<WarehouseHomePage />} />
+            <Route path="orders" element={<WarehouseOrdersPage />} />
+            <Route path="returns" element={<WarehouseReturnsPage />} />
+            <Route path="inventory" element={<WarehouseInventoryPage />} />
+            <Route path="reports" element={<WarehouseReportsPage />} />
+            <Route path="profile" element={<WarehouseProfilePage />} />
+            <Route path="rack-view" element={<WarehouseRackViewPage />} />
+          </Route>
+
           {/* Customer Live Tracking Routes */}
           <Route path="/track/:jobId" element={<CustomerTrackingPage />} />
           <Route path="/customer/track/:jobId" element={<CustomerTrackingPage />} />
