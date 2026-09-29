@@ -1692,6 +1692,75 @@ export async function apiDeleteSellerHubCoupon(id) {
   });
 }
 
+// ── Seller Hub Basket Offers (Combo Bundles) ──────────────────────────────
+
+export async function apiGetSellerBaskets(params = {}) {
+  const query = new URLSearchParams();
+  if (params.search) query.append('search', params.search);
+  if (params.status) query.append('status', params.status);
+  const qStr = query.toString();
+  return await apiRequest(`/workforce/seller-hub/baskets/${qStr ? `?${qStr}` : ''}`);
+}
+
+export async function apiGetSellerBasketDetail(id) {
+  return await apiRequest(`/workforce/seller-hub/baskets/${id}/`);
+}
+
+export async function apiCalculateSellerBasket(data) {
+  return await apiRequest('/workforce/seller-hub/baskets/calculate/', {
+    method: 'POST',
+    json: data,
+  });
+}
+
+export async function apiCreateSellerBasket(data) {
+  return await apiRequest('/workforce/seller-hub/baskets/', {
+    method: 'POST',
+    json: data,
+  });
+}
+
+export async function apiUpdateSellerBasket(id, data) {
+  return await apiRequest(`/workforce/seller-hub/baskets/${id}/`, {
+    method: 'PUT',
+    json: data,
+  });
+}
+
+export async function apiActivateSellerBasket(id) {
+  return await apiRequest(`/workforce/seller-hub/baskets/${id}/activate/`, {
+    method: 'POST',
+    json: {},
+  });
+}
+
+export async function apiPauseSellerBasket(id) {
+  return await apiRequest(`/workforce/seller-hub/baskets/${id}/pause/`, {
+    method: 'POST',
+    json: {},
+  });
+}
+
+export async function apiDeleteSellerBasket(id) {
+  return await apiRequest(`/workforce/seller-hub/baskets/${id}/`, {
+    method: 'DELETE',
+  });
+}
+
+export async function apiGetMarketplaceBaskets(params = {}) {
+  const query = new URLSearchParams();
+  if (params.search) query.append('search', params.search);
+  if (params.company_id) query.append('company_id', params.company_id);
+  if (params.page) query.append('page', params.page);
+  if (params.page_size) query.append('page_size', params.page_size);
+  const qStr = query.toString();
+  return await apiRequest(`/workforce/marketplace/baskets/${qStr ? `?${qStr}` : ''}`);
+}
+
+export async function apiGetMarketplaceBasketDetail(id) {
+  return await apiRequest(`/workforce/marketplace/baskets/${id}/`);
+}
+
 export async function apiSellerOrderAdminOverride(orderId, action, reason) {
   return await apiRequest(`/workforce/seller-hub/orders/${orderId}/admin-override/`, {
     method: 'POST',
@@ -2014,7 +2083,76 @@ export const workforceService = {
   reviewScopeReduction: apiReviewScopeReduction,
   submitQuoteToCRM: apiSubmitQuoteToCRM,
   approveQuoteCRM: apiApproveQuoteCRM,
+  reportLogisticsException: apiReportLogisticsException,
+  getLogisticsExtraChargeOptions: apiGetLogisticsExtraChargeOptions,
+  reportLogisticsExtraCharge: apiReportLogisticsExtraCharge,
+  getDeliverySlots: apiAdminGetDeliverySlots,
+  getDeliverySlotDetail: apiAdminGetDeliverySlotDetail,
+  createDeliverySlot: apiAdminCreateDeliverySlot,
+  updateDeliverySlot: apiAdminUpdateDeliverySlot,
+  deleteDeliverySlot: apiAdminDeleteDeliverySlot,
+  getSellerBaskets: apiGetSellerBaskets,
+  getSellerBasketDetail: apiGetSellerBasketDetail,
+  createSellerBasket: apiCreateSellerBasket,
+  updateSellerBasket: apiUpdateSellerBasket,
+  activateSellerBasket: apiActivateSellerBasket,
+  pauseSellerBasket: apiPauseSellerBasket,
+  deleteSellerBasket: apiDeleteSellerBasket,
 };
+
+// Toll / parking pass-through (policy = Customer GTExtraChargePolicy; see WorkforceJobLogisticsExtraChargeView).
+export async function apiGetLogisticsExtraChargeOptions(jobId) {
+  return await apiRequest(`/workforce/jobs/${jobId}/logistics-extra-charge/`);
+}
+
+export async function apiReportLogisticsExtraCharge(jobId, { chargeType, amount, receipt, note, photo }) {
+  const formData = new FormData();
+  formData.append('charge_type', chargeType);
+  formData.append('amount', amount);
+  if (receipt) formData.append('receipt', receipt);
+  if (note) formData.append('note', note);
+  if (photo) formData.append('receipt_photo', photo);
+  return await apiRequest(`/workforce/jobs/${jobId}/logistics-extra-charge/`, {
+    method: 'POST',
+    body: formData,
+    isFormData: true,
+  });
+}
+
+// ── Delivery Slots & Capacity Scheduling (Phase 1) ───────────────────────────
+export async function apiAdminGetDeliverySlots(params = {}) {
+  const qs = new URLSearchParams();
+  if (params.warehouse_id) qs.set('warehouse_id', String(params.warehouse_id));
+  if (params.is_active != null) qs.set('is_active', String(params.is_active));
+  if (params.slot_type) qs.set('slot_type', params.slot_type);
+  if (params.search) qs.set('search', params.search);
+  const queryStr = qs.toString();
+  return await apiRequest(`/workforce/admin/delivery-slots/${queryStr ? `?${queryStr}` : ''}`);
+}
+
+export async function apiAdminGetDeliverySlotDetail(id) {
+  return await apiRequest(`/workforce/admin/delivery-slots/${id}/`);
+}
+
+export async function apiAdminCreateDeliverySlot(payload) {
+  return await apiRequest('/workforce/admin/delivery-slots/', {
+    method: 'POST',
+    json: payload,
+  });
+}
+
+export async function apiAdminUpdateDeliverySlot(id, payload) {
+  return await apiRequest(`/workforce/admin/delivery-slots/${id}/`, {
+    method: 'PATCH',
+    json: payload,
+  });
+}
+
+export async function apiAdminDeleteDeliverySlot(id) {
+  return await apiRequest(`/workforce/admin/delivery-slots/${id}/`, {
+    method: 'DELETE',
+  });
+}
 
 
 

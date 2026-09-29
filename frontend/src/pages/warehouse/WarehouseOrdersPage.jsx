@@ -216,6 +216,11 @@ export function WarehouseOrdersPage() {
                     <td className="p-3.5">
                       <div className="font-medium text-slate-800">{ord.customer_name || 'Customer'}</div>
                       <div className="text-[10px] text-slate-500 font-mono">{ord.customer_phone || ''}</div>
+                      {ord.delivery_slot && (
+                        <div className="text-[10px] text-emerald-700 font-bold bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded w-fit mt-1">
+                          Slot: {ord.delivery_slot}
+                        </div>
+                      )}
                     </td>
 
                     <td className="p-3.5 font-mono text-[11px]">
@@ -302,8 +307,8 @@ export function WarehouseOrdersPage() {
               </div>
             ) : orderDetail ? (
               <div className="space-y-4 text-xs">
-                {/* Status & Delivery Group */}
-                <div className="grid grid-cols-2 gap-3 p-3.5 bg-slate-50 rounded-xl border border-slate-200">
+                {/* Status, Delivery Group & Slot */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3.5 bg-slate-50 rounded-xl border border-slate-200">
                   <div>
                     <span className="text-[10px] uppercase font-bold text-slate-500">Fulfilment Status</span>
                     <p className="font-bold text-indigo-700 mt-0.5">{orderDetail.status}</p>
@@ -311,6 +316,10 @@ export function WarehouseOrdersPage() {
                   <div>
                     <span className="text-[10px] uppercase font-bold text-slate-500">Consolidated Batch</span>
                     <p className="font-mono text-slate-700 mt-0.5">{orderDetail.delivery_group_id || 'Single Shipment'}</p>
+                  </div>
+                  <div>
+                    <span className="text-[10px] uppercase font-bold text-slate-500">Delivery Window / Slot</span>
+                    <p className="font-bold text-emerald-700 mt-0.5">{orderDetail.delivery_slot || 'Standard / None'}</p>
                   </div>
                 </div>
 

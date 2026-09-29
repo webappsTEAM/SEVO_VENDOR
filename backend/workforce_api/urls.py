@@ -274,15 +274,29 @@ from workforce_api.views_seller_hub import (
     SellerEligibleWarehousesView,
     SellerInventoryBalanceView,
 )
+from workforce_api.views_delivery_slots import (
+    AdminDeliverySlotListCreateView,
+    AdminDeliverySlotDetailView,
+)
 from workforce_api.views_marketplace_integration import (
     MarketplaceCategoryFeedView,
     MarketplaceCategoryListView,
     MarketplaceProductListView,
     MarketplaceProductDetailView,
+    MarketplaceBasketListView,
+    MarketplaceBasketDetailView,
     MarketplaceCartValidateView,
     MarketplaceOrderIntakeView,
     MarketplaceOrderCancelReleaseView,
     MarketplaceOrderStatusView,
+    PublicDeliverySlotsView,
+)
+from workforce_api.views_seller_basket import (
+    SellerProductBasketListView,
+    SellerProductBasketDetailView,
+    SellerProductBasketActivateView,
+    SellerProductBasketPauseView,
+    SellerProductBasketCalculatePreviewView,
 )
 from workforce_api.views_warehouse_portal import (
     WarehousePortalProfileView,
@@ -663,6 +677,8 @@ urlpatterns = [
     path("admin/warehouses/<int:pk>/", AdminWarehouseDetailView.as_view(), name="admin-warehouse-detail"),
     path("admin/warehouses/<int:pk>/assign-merchant/", AdminWarehouseAssignMerchantView.as_view(), name="admin-warehouse-assign-merchant"),
     path("admin/warehouses/<int:pk>/assign-merchant/<int:company_id>/", AdminWarehouseAssignMerchantView.as_view(), name="admin-warehouse-unassign-merchant"),
+    path("admin/delivery-slots/", AdminDeliverySlotListCreateView.as_view(), name="admin-delivery-slots-list-create"),
+    path("admin/delivery-slots/<int:pk>/", AdminDeliverySlotDetailView.as_view(), name="admin-delivery-slot-detail"),
     path("admin/companies/", AdminCompaniesLookupView.as_view(), name="admin-companies-lookup"),
     path("admin/sellers/<int:seller_id>/warehouse/", AdminSellerWarehouseAssignView.as_view(), name="admin-seller-warehouse-assign"),
     path("seller-hub/metrics/", SellerHubMetricsView.as_view(), name="seller-hub-metrics"),
@@ -737,6 +753,13 @@ urlpatterns = [
     path("seller-hub/reports/quality-audit/", SellerReportsQualityAuditView.as_view(), name="seller-hub-reports-quality-audit"),
     path("seller-hub/reports/export-csv/", SellerReportsExportCSVView.as_view(), name="seller-hub-reports-export-csv"),
 
+    # Seller Hub Basket Offers (Combo Bundles)
+    path("seller-hub/baskets/", SellerProductBasketListView.as_view(), name="seller-hub-baskets-list"),
+    path("seller-hub/baskets/calculate/", SellerProductBasketCalculatePreviewView.as_view(), name="seller-hub-baskets-calculate-preview"),
+    path("seller-hub/baskets/<int:pk>/", SellerProductBasketDetailView.as_view(), name="seller-hub-baskets-detail"),
+    path("seller-hub/baskets/<int:pk>/activate/", SellerProductBasketActivateView.as_view(), name="seller-hub-baskets-activate"),
+    path("seller-hub/baskets/<int:pk>/pause/", SellerProductBasketPauseView.as_view(), name="seller-hub-baskets-pause"),
+
     # ── Public Customer Marketplace Cart, Checkout & Order Tracking ────────────
     path("public/cart/", PublicGroceryCartView.as_view(), name="workforce-public-cart"),
     path("public/cart/clear/", PublicGroceryCartClearView.as_view(), name="workforce-public-cart-clear"),
@@ -748,6 +771,9 @@ urlpatterns = [
     path("marketplace/categories/", MarketplaceCategoryFeedView.as_view(), name="marketplace-categories-feed"),
     path("marketplace/products/", MarketplaceProductListView.as_view(), name="marketplace-products-list"),
     path("marketplace/products/<int:pk>/", MarketplaceProductDetailView.as_view(), name="marketplace-product-detail"),
+    path("marketplace/baskets/", MarketplaceBasketListView.as_view(), name="marketplace-baskets-list"),
+    path("marketplace/baskets/<int:pk>/", MarketplaceBasketDetailView.as_view(), name="marketplace-baskets-detail"),
+    path("marketplace/delivery-slots/", PublicDeliverySlotsView.as_view(), name="marketplace-delivery-slots"),
     path("marketplace/cart/validate/", MarketplaceCartValidateView.as_view(), name="marketplace-cart-validate"),
     path("marketplace/orders/intake/", MarketplaceOrderIntakeView.as_view(), name="marketplace-order-intake"),
     path("marketplace/orders/<str:source_order_id>/cancel/", MarketplaceOrderCancelReleaseView.as_view(), name="marketplace-order-cancel-release"),

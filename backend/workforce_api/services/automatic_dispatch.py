@@ -371,7 +371,7 @@ EXPLICIT_SERVICE_ALIASES = {
     "goods and transport": {"goods_transport", "goods & transport", "goods and transport", "goods transport", "truck", "two wheeler", "logistics", "goods_transport_truck", "goods_transport_two_wheeler"},
     "goods_transport": {"goods_transport", "goods & transport", "goods and transport", "goods transport", "truck", "two wheeler", "logistics", "goods_transport_truck", "goods_transport_two_wheeler"},
     "goods_transport_truck": {"goods_transport_truck", "truck", "mini truck", "goods & transport", "goods and transport", "goods transport", "logistics"},
-    "goods_transport_two_wheeler": {"goods_transport_two_wheeler", "two wheeler", "bike", "scooter", "goods & transport", "goods and transport", "goods transport", "logistics"},
+    "goods_transport_two_wheeler": {"goods_transport_two_wheeler", "two_wheeler_delivery", "two wheeler delivery", "two wheeler", "bike", "scooter", "goods & transport", "goods and transport", "goods transport", "logistics"},
     "paintings": {"paintings", "painting", "interior painting", "exterior painting", "waterproofing", "wood & metal", "texture decor", "house painting", "commercial painting", "wall painting"},
     "painting": {"paintings", "painting", "interior painting", "exterior painting", "waterproofing", "wood & metal", "texture decor", "house painting", "commercial painting", "wall painting"},
     "interior painting": {"paintings", "painting", "interior painting", "wall painting"},
@@ -389,7 +389,7 @@ def normalize_service_category(cat: str) -> str:
     raw = (cat or "").strip().lower().replace("-", "_").replace(" ", "_")
     if raw in ("truck", "mini_truck", "goods_transport_truck"):
         return "goods_transport_truck"
-    if raw in ("two_wheeler", "2_wheeler", "goods_transport_two_wheeler"):
+    if raw in ("two_wheeler", "2_wheeler", "two_wheeler_delivery", "goods_transport_two_wheeler"):
         return "goods_transport_two_wheeler"
     if raw in ("packers_movers", "packer_mover", "packers_and_movers", "shifting"):
         return "packers_movers"
@@ -938,23 +938,40 @@ def check_candidate_eligibility(
     # fully dispatch-eligible for that vendor's jobs -- defeating "suspend".
     # Fails closed: no relationship row for a set company_id is a data-integrity
     # gap, not a reason to dispatch.
-    if emp.company_id:
+    if emp and getattr(emp, "company_id", None):
         from workforce_api.models import VendorTechnicianRelationship
 
-        rel = (
-            VendorTechnicianRelationship.objects.filter(
-                technician=emp, vendor_id=emp.company_id
-            )
-            .order_by("-id")
-            .first()
-        )
-        if not rel or rel.status not in (
+        rel = kwargs.get("preloaded_vendor_relationship")
+        if rel is None and hasattr(emp, "prefetched_vendor_relationship"):
+            rel = emp.prefetched_vendor_relationship
+        if rel is None and hasattr(emp, "vendor_relationship"):
+            rel = emp.vendor_relationship
+        if rel is None and kwargs.get("allow_legacy_override"):
+            rel_status = getattr(emp, "vendor_relationship_status", VendorTechnicianRelationship.Status.ACTIVE)
+            rel = type("VendorRel", (), {"status": rel_status})()
+        if rel is None:
+            emp_id = getattr(emp, "id", None) or getattr(emp, "pk", None)
+            try:
+                rel = (
+                    VendorTechnicianRelationship.objects.filter(
+                        technician_id=emp_id, vendor_id=emp.company_id
+                    )
+                    .order_by("-id")
+                    .first()
+                )
+            except Exception as rel_err:
+                logger.warning(
+                    f"[DISPATCH_GATE11_QUERY_ERR] employee={emp_id} company={emp.company_id}: {rel_err}"
+                )
+                rel = None
+
+        if not rel or getattr(rel, "status", None) not in (
             VendorTechnicianRelationship.Status.ACTIVE,
             VendorTechnicianRelationship.Status.RESIGNATION_REQUESTED,
         ):
             gate_results["G11"] = False
             logger.debug(
-                f"[9GATE_REJECT_GATE11_VENDOR_RELATIONSHIP_INACTIVE] Employee #{emp.id} "
+                f"[9GATE_REJECT_GATE11_VENDOR_RELATIONSHIP_INACTIVE] Employee #{getattr(emp, 'id', None)} "
                 f"company_id={emp.company_id} relationship status="
                 f"{getattr(rel, 'status', 'MISSING')}."
             )

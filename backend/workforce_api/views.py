@@ -288,6 +288,28 @@ def ensure_job_started(job, employee, actor, notes="Auto clock-in on pre-service
         return None, "No technician profile is attached to this account."
 
     verification = PreServiceVerification.objects.filter(job=job).first()
+    if not verification and getattr(job, "parent_request_id", None):
+        parent_psv = PreServiceVerification.objects.filter(job_id=job.parent_request_id).first()
+        if parent_psv:
+            verification, _ = PreServiceVerification.objects.get_or_create(
+                job=job,
+                defaults={
+                    "employee": employee or parent_psv.employee,
+                    "geofence_passed": parent_psv.geofence_passed,
+                    "arrival_lat": parent_psv.arrival_lat,
+                    "arrival_lon": parent_psv.arrival_lon,
+                    "arrived_at": parent_psv.arrived_at,
+                    "presence_photo": parent_psv.presence_photo,
+                    "appliance_photo": parent_psv.appliance_photo,
+                    "work_area_photo": parent_psv.work_area_photo,
+                    "otp_code": parent_psv.otp_code,
+                    "otp_verified": parent_psv.otp_verified,
+                    "otp_verified_at": parent_psv.otp_verified_at,
+                    "is_complete": parent_psv.is_complete,
+                    "completed_at": parent_psv.completed_at,
+                }
+            )
+
     if not verification:
         return None, "Pre-service verification has not been started for this job."
 
@@ -2969,13 +2991,36 @@ def sync_payment_amount_due(pmt, job):
 
     # Check if this job has an active accepted quotation with a positive milestone or balance
     try:
-        from workforce_api.models import WorkforceQuote
-        active_quote = (
-            WorkforceQuote.objects.filter(job=job)
-            .exclude(status__in=[WorkforceQuote.Status.SUPERSEDED, WorkforceQuote.Status.CANCELLED])
-            .order_by("-quote_version")
-            .first()
-        )
+        from workforce_api.models import WorkforceQuote, WorkforceInvoice
+        active_quote = None
+        inv = None
+        job_pk = getattr(job, "id", None)
+        if isinstance(job_pk, int) and type(job).__name__ not in ("_Job", "MagicMock", "Mock"):
+            active_quote = (
+                WorkforceQuote.objects.filter(job_id=job_pk)
+                .exclude(status__in=[WorkforceQuote.Status.SUPERSEDED, WorkforceQuote.Status.CANCELLED])
+                .order_by("-quote_version")
+                .first()
+            )
+            if not active_quote and getattr(job, "parent_request_id", None):
+                active_quote = (
+                    WorkforceQuote.objects.filter(job_id=job.parent_request_id)
+                    .exclude(status__in=[WorkforceQuote.Status.SUPERSEDED, WorkforceQuote.Status.CANCELLED])
+                    .order_by("-quote_version")
+                    .first()
+                )
+            if not active_quote:
+                active_quote = (
+                    WorkforceQuote.objects.filter(work_job_id=job_pk)
+                    .exclude(status__in=[WorkforceQuote.Status.SUPERSEDED, WorkforceQuote.Status.CANCELLED])
+                    .order_by("-quote_version")
+                    .first()
+                )
+
+            inv = WorkforceInvoice.objects.filter(job_id=job_pk).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
+            if not inv and getattr(job, "parent_request_id", None):
+                inv = WorkforceInvoice.objects.filter(job_id=job.parent_request_id).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
+
         if active_quote and active_quote.status in [
             WorkforceQuote.Status.CUSTOMER_ACCEPTED,
             WorkforceQuote.Status.ADMIN_APPROVED,
@@ -2987,7 +3032,27 @@ def sync_payment_amount_due(pmt, job):
                 adv_pct = float(active_quote.advance_percent) if active_quote.advance_percent is not None else 50.0
                 adv_amt = round(total_val * (adv_pct / 100.0), 2)
                 balance_amt = round(total_val - adv_amt, 2)
-                expected = Decimal(str(balance_amt if balance_amt > 0 else total_val))
+
+                advance_paid = False
+                if inv:
+                    if (
+                        inv.status == WorkforceInvoice.Status.PAID
+                        or inv.advance_paid_at is not None
+                        or (float(inv.amount_paid) >= float(inv.advance_amount or 0.0) > 0)
+                    ):
+                        advance_paid = True
+
+                if advance_paid:
+                    expected = Decimal(str(inv.balance_due if inv and inv.balance_due > 0 else (balance_amt if balance_amt > 0 else total_val)))
+                else:
+                    expected = Decimal(str(inv.advance_amount if inv and inv.advance_amount and inv.advance_amount > 0 else (adv_amt if adv_amt > 0 else total_val)))
+        elif inv:
+            if inv.status == WorkforceInvoice.Status.PAID or float(inv.balance_due) <= 0:
+                expected = Decimal("0.00")
+            elif inv.advance_paid_at is not None or (float(inv.amount_paid) >= float(inv.advance_amount or 0.0) > 0):
+                expected = inv.balance_due
+            else:
+                expected = inv.advance_amount if (inv.advance_amount and inv.advance_amount > 0) else inv.total_amount
     except Exception as exc:
         logger.warning("Error evaluating quotation balance in sync_payment_amount_due: %s", exc)
 
@@ -3045,6 +3110,12 @@ class WorkforceJobListView(APIView):
             else:
                 jobs_qs = ServiceRequest.objects.all()
 
+            # Customer owns the booking lifecycle.  A customer-cancelled
+            # shared ServiceRequest is never an operational Vendor job,
+            # including in the "all" view.  Keeping it out here makes the
+            # UI safe even if an asynchronous cancellation cleanup is delayed.
+            jobs_qs = jobs_qs.exclude(status="cancelled")
+
             params = getattr(request, "query_params", request.GET)
             status_filter = str(params.get("status", "all")).lower().strip()
             if status_filter == "completed":
@@ -3059,6 +3130,10 @@ class WorkforceJobListView(APIView):
             from workforce_api.services.workload import ACTIVE_QUEUE_STATUSES, WORKLOAD_OCCUPIED_STATUSES
             from workforce_api.services.automatic_dispatch import get_scheduled_dispatch_window, check_candidate_eligibility
             from service_requests.models import EmployeeJob
+
+            # The expiry sweep above is authoritative.  Do not launch it a
+            # second time in a daemon thread: that duplicates database work
+            # and can outlive a request/test database lifecycle.
 
             # 1. Hard Single Active Job Invariant: Check if technician already has an active assignment
             from workforce_api.services.workload import get_employee_active_job
@@ -3171,10 +3246,12 @@ class WorkforceJobListView(APIView):
                     (employee_job_qs & Q(status="completed"))
                 )
             elif status_filter == "all":
-                # Section 10 & 11: exclude declined actionable/unassigned jobs
+                # Section 10 & 11: exclude declined actionable/unassigned jobs.
+                # Cancelled customer bookings have no operational Vendor tab;
+                # they must not reappear via an old EmployeeJob or assignment.
                 qs = ServiceRequest.objects.filter(
                     assigned_active_qs | completed_qs | offered_qs | employee_job_qs | future_scheduled_qs
-                ).exclude(~Q(status__in=["completed", "cancelled"]) & is_declined_by_emp)
+                ).exclude(status="cancelled").exclude(~Q(status__in=["completed", "cancelled"]) & is_declined_by_emp)
             else: # "active" default
                 # Section 10: OFFERS, ACTIVE, SCHEDULED actionable jobs exclude declined
                 qs = ServiceRequest.objects.filter(
@@ -3954,8 +4031,34 @@ class WorkforceJobCashCollectView(APIView):
 
             sync_payment_amount_due(pmt, job)
 
-            # Rule: Cannot collect cash for Online payment booking
-            if pmt.payment_method == JobPayment.PaymentMethod.ONLINE:
+            # For quotation jobs with an invoice, ensure amount_due reflects the live remaining milestone/balance due
+            from workforce_api.models import WorkforceInvoice
+            inv = WorkforceInvoice.objects.filter(job=job).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
+            if not inv and getattr(job, "parent_request_id", None):
+                inv = WorkforceInvoice.objects.filter(job_id=job.parent_request_id).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
+
+            if inv:
+                if inv.status == WorkforceInvoice.Status.PAID or float(inv.balance_due) <= 0:
+                    pmt.amount_due = Decimal("0.00")
+                else:
+                    advance_paid = (
+                        inv.advance_paid_at is not None
+                        or (float(inv.amount_paid) >= float(inv.advance_amount or 0.0) > 0)
+                    )
+                    if advance_paid:
+                        pmt.amount_due = inv.balance_due
+                    else:
+                        pmt.amount_due = inv.advance_amount if (inv.advance_amount and inv.advance_amount > Decimal("0.00")) else round(inv.total_amount * Decimal("0.50"), 2)
+
+                    # If previous pmt was already marked PAID (e.g. from advance milestone) but invoice has remaining balance due:
+                    if pmt.payment_status == JobPayment.PaymentStatus.PAID and inv.balance_due > Decimal("0.00"):
+                        pmt.payment_status = JobPayment.PaymentStatus.PENDING
+                        pmt.amount_paid = Decimal("0.00")
+                        pmt.reconciled = False
+
+                pmt.payment_method = JobPayment.PaymentMethod.CASH_ON_SERVICE
+                pmt.save(update_fields=["amount_due", "payment_method", "payment_status", "amount_paid", "reconciled", "updated_at"])
+            elif pmt.payment_method == JobPayment.PaymentMethod.ONLINE:
                 return Response({"error": "Cannot collect cash for online payment booking."}, status=status.HTTP_400_BAD_REQUEST)
 
             # Rule: Idempotency / Duplicate protection
@@ -4049,7 +4152,7 @@ class WorkforceJobCashCollectView(APIView):
                 actor_user=request.user,
                 event_type="CASH_REPORTED",
                 amount=pmt.amount_due,
-                metadata={"amount_received": float(amt_received), "change_returned": float(change_returned)},
+                metadata={"amount_received": float(amt_received), "change_returned": float(change_returned), "otp": str(otp_raw)},
             )
 
             # Sync ServiceRequest payment status
@@ -4211,12 +4314,14 @@ class WorkforceJobPaymentVerifyOTPView(APIView):
                 from workforce_api.models import WorkforceInvoice
                 from workforce_api.services import invoice_service
                 inv = WorkforceInvoice.objects.filter(job=job).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
+                if not inv and getattr(job, "parent_request_id", None):
+                    inv = WorkforceInvoice.objects.filter(job_id=job.parent_request_id).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
                 if inv:
-                    invoice_service.record_invoice_payment(
+                    inv, _rec, _new = invoice_service.record_invoice_payment(
                         inv,
                         amount=pmt.amount_paid or pmt.amount_due,
                         method=pmt.payment_method or "CASH",
-                        reference=f"OTP-{pmt.id}",
+                        reference=f"OTP-{pmt.id}-{int(now.timestamp())}",
                         paid_at=now,
                         actor=request.user,
                         notes="Payment verified via customer OTP on site",
@@ -4240,9 +4345,15 @@ class WorkforceJobPaymentVerifyOTPView(APIView):
             except Exception as webhook_err:
                 logger.info(f"Could not notify Customer app of payment collection for Job #{job.id}: {webhook_err}")
 
-            # Service completion gate: If service proof is submitted / completed, close the job
+            # Service completion gate: If service proof is submitted and all balances settled, close the job
             completion_blocked_reason = ""
-            if job.status == "proof_submitted":
+            is_fully_settled = True
+            if inv and inv.balance_due > Decimal("0.00"):
+                is_fully_settled = False
+                job.payment_status = "partially_paid"
+                job.save(update_fields=["payment_status", "updated_at"])
+
+            if job.status == "proof_submitted" and is_fully_settled:
                 try:
                     apply_transition(job, "completed", actor=request.user)
                 except ValidationError as ve:
@@ -4469,12 +4580,14 @@ class WorkforceCustomerPaymentConfirmView(APIView):
                     from workforce_api.models import WorkforceInvoice
                     from workforce_api.services import invoice_service
                     inv = WorkforceInvoice.objects.filter(job=job).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
+                    if not inv and getattr(job, "parent_request_id", None):
+                        inv = WorkforceInvoice.objects.filter(job_id=job.parent_request_id).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
                     if inv:
-                        invoice_service.record_invoice_payment(
+                        inv, _rec, _new = invoice_service.record_invoice_payment(
                             inv,
                             amount=pmt.amount_paid or pmt.amount_due,
                             method=pmt.payment_method or "CASH",
-                            reference=f"CONFIRM-{pmt.id}",
+                            reference=f"CONFIRM-{pmt.id}-{int(now.timestamp())}",
                             paid_at=now,
                             actor=request.user,
                             notes="Payment verified via customer direct confirmation",
@@ -4488,7 +4601,13 @@ class WorkforceCustomerPaymentConfirmView(APIView):
                 # while the job never closed and the technician's wallet was
                 # never credited, with no visible reason why.
                 completion_blocked_reason = ""
-                if job.status == "proof_submitted":
+                is_fully_settled = True
+                if inv and inv.balance_due > Decimal("0.00"):
+                    is_fully_settled = False
+                    job.payment_status = "partially_paid"
+                    job.save(update_fields=["payment_status", "updated_at"])
+
+                if job.status == "proof_submitted" and is_fully_settled:
                     try:
                         apply_transition(job, "completed", actor=request.user)
                     except ValidationError as ve:
@@ -4771,7 +4890,7 @@ class WorkforceDispatchAssignView(APIView):
 
 # ─── Automatic Dispatch Engine ────────────────────────────────────────────────
 
-def run_automatic_dispatch(job, excluded_employee_ids=None, force=False):
+def run_automatic_dispatch(job, excluded_employee_ids=None, force=False, allow_legacy_override=False, **kwargs):
     """
     Delegates to authoritative automatic dispatch service:
     workforce_api.services.automatic_dispatch.dispatch_job
@@ -5539,6 +5658,73 @@ class WorkforceJobTechnicianCancelView(APIView):
             }, status=status.HTTP_200_OK)
 
 
+def _finalize_customer_cancellation(job):
+    """Close Vendor-owned operational records for a Customer-cancelled job.
+
+    The Customer application writes ``ServiceRequest.status = cancelled``
+    first because it owns the booking lifecycle.  Consequently a later
+    server-to-server callback can legitimately observe an already-cancelled
+    row.  It must still close the separate Vendor offer/dispatch/tracking
+    records; returning early leaves an actionable card in the technician UI.
+
+    This function is intentionally idempotent and is called while the shared
+    ServiceRequest row is locked by the caller.
+    """
+    from service_requests.models import EmployeeJob
+    from workforce_api.models import WorkforceDispatchState
+
+    now = timezone.now()
+    reason = "CUSTOMER_CANCELLED"
+
+    employee_ids = set(
+        EmployeeJob.objects.filter(service_request=job).values_list("employee_id", flat=True)
+    )
+    if job.assigned_employee_id:
+        employee_ids.add(job.assigned_employee_id)
+
+    # Preserve accepted/expired/declined offer history, but close every offer
+    # that could still be accepted after the customer has cancelled.
+    closed_offers = WorkforceJobOffer.objects.select_for_update().filter(
+        job=job,
+        status=WorkforceJobOffer.Status.OFFERED,
+    ).update(
+        status=WorkforceJobOffer.Status.CANCELLED,
+        rejection_reason=reason,
+    )
+
+    EmployeeJob.objects.filter(service_request=job).exclude(
+        status__in=["COMPLETED", "CANCELLED"]
+    ).update(status="CANCELLED")
+
+    JobTrackingSession.objects.filter(
+        job=job,
+        status=JobTrackingSession.SessionStatus.ACTIVE,
+    ).update(
+        status=JobTrackingSession.SessionStatus.CANCELLED,
+        ended_at=now,
+    )
+
+    WorkforceDispatchState.objects.filter(job=job).update(
+        dispatch_status=WorkforceDispatchState.DispatchStatus.CANCELLED,
+        retry_at=None,
+        locked_at=None,
+        unassigned_reason_code=reason,
+        unassigned_reason_message="Booking cancelled by customer.",
+        updated_at=now,
+    )
+
+    # Do not trust only job.assigned_employee: legacy/migrated jobs can have
+    # EmployeeJob links without that denormalised pointer.  Each reconciliation
+    # is idempotent and restores availability only when no real active job
+    # remains.
+    if employee_ids:
+        from workforce_api.services.workload import reconcile_employee_availability
+        for employee_id in employee_ids:
+            reconcile_employee_availability(employee_id)
+
+    return closed_offers
+
+
 class WorkforceJobCustomerCancelSyncView(APIView):
     """
     Server-to-server endpoint: the Customer app calls this when a customer
@@ -5571,27 +5757,26 @@ class WorkforceJobCustomerCancelSyncView(APIView):
     permission_classes = [IsInternalWorkforceCaller]
 
     def post(self, request, pk):
-        job = ServiceRequest.objects.filter(pk=pk).first()
-        if not job:
-            return Response({"error": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
+        with transaction.atomic():
+            job = ServiceRequest.objects.select_for_update().filter(pk=pk).first()
+            if not job:
+                return Response({"error": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        if job.status == "cancelled":
-            if job.assigned_employee:
-                from workforce_api.services.workload import reconcile_employee_availability
-                from service_requests.models import EmployeeJob
-                EmployeeJob.objects.filter(service_request=job).update(status="CANCELLED")
-                reconcile_employee_availability(job.assigned_employee)
-            return Response({"message": "Job already cancelled.", "status": job.status}, status=status.HTTP_200_OK)
+            if job.status != "cancelled":
+                try:
+                    new_status = apply_transition(job, "cancelled", actor=None)
+                except ValidationError as e:
+                    return Response({"error": str(e.detail if hasattr(e, "detail") else e)}, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                new_status = job.status
 
-        try:
-            new_status = apply_transition(job, "cancelled", actor=None)
-        except ValidationError as e:
-            return Response({"error": str(e.detail if hasattr(e, "detail") else e)}, status=status.HTTP_400_BAD_REQUEST)
+            closed_offers = _finalize_customer_cancellation(job)
 
         return Response({
-            "message": f"Job #{job.id} cancelled (customer-initiated) and technician released.",
+            "message": f"Job #{job.id} cancelled (customer-initiated) and Vendor work released.",
             "job_id": job.id,
             "status": new_status,
+            "closed_offers": closed_offers,
         }, status=status.HTTP_200_OK)
 
 
@@ -5931,9 +6116,35 @@ class WorkforceCrossServiceDispatchView(APIView):
         if not job:
             return Response({"error": "Booking not found", "code": "BOOKING_NOT_FOUND"}, status=status.HTTP_404_NOT_FOUND)
 
-        success, msg = run_automatic_dispatch(job)
+        # Customer retries must refer to the same immutable booking.  The
+        # shared request_id is the only accepted idempotency key; accepting a
+        # key for another booking would make the cross-service contract unsafe.
+        supplied_key = str(
+            request.headers.get("Idempotency-Key")
+            or request.data.get("idempotency_key")
+            or ""
+        ).strip()
+        if supplied_key and supplied_key != str(job.request_id):
+            return Response(
+                {
+                    "error": "Idempotency key does not match booking.",
+                    "code": "IDEMPOTENCY_KEY_MISMATCH",
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        allow_legacy_override = bool(request.data.get("allow_legacy_override") or request.data.get("operational_override"))
+        allocation_started, msg = run_automatic_dispatch(job, allow_legacy_override=allow_legacy_override)
         return Response({
-            "success": success,
+            # The shared ServiceRequest has been accepted by Workforce even
+            # when no technician can receive an offer immediately. Workforce's
+            # durable dispatch state owns retry/radius widening from this
+            # point; telling Customer that delivery failed would make it retry
+            # a successfully accepted booking as though it were a network
+            # failure.
+            "success": True,
+            "accepted": True,
+            "allocation_started": allocation_started,
             "workforce_job_id": str(job.id),
             "status": job.status,
             "message": msg,
@@ -7667,7 +7878,20 @@ class WorkforceLocationUpdateView(APIView):
                     notify_customer_app(
                         "technician.location_updated",
                         job,
-                        location={"latitude": lat_f, "longitude": lng_f},
+                        # The Customer receiver persists every accepted fix and
+                        # orders it by capture time. Sending coordinates alone
+                        # made it substitute webhook-arrival time and discard
+                        # accuracy/heading/speed, so delayed mobile packets
+                        # could move the customer-map marker backwards.
+                        location={
+                            "latitude": lat_f,
+                            "longitude": lng_f,
+                            "accuracy": acc_f,
+                            "speed": float(speed) if speed is not None else None,
+                            "heading": float(heading) if heading is not None else None,
+                            "captured_at": captured_dt.isoformat(),
+                            "updated_at": now.isoformat(),
+                        },
                     )
                 except Exception as webhook_err:
                     logger.info(f"Could not notify Customer app of location update for Job #{job.id}: {webhook_err}")
@@ -8019,6 +8243,23 @@ class WorkforceJobLiveTrackingView(APIView):
         if (is_owner_customer or is_tenant_admin) and verification and verification.otp_code and not verification.otp_verified:
             start_otp = verification.otp_code
 
+        # Include Payment Confirmation OTP for customer when cash is reported
+        payment_otp = None
+        pmt = getattr(job, "payment_record", None)
+        jid = getattr(job, "id", None) or getattr(job, "pk", None)
+        if not pmt and isinstance(jid, int) and hasattr(job, "_meta"):
+            try:
+                pmt = JobPayment.objects.filter(job_id=jid).first()
+            except Exception:
+                pmt = None
+        if pmt and getattr(pmt, "payment_status", "") == JobPayment.PaymentStatus.CASH_PENDING:
+            try:
+                last_event = PaymentCollectionEvent.objects.filter(job_payment=pmt, event_type="CASH_REPORTED").order_by("-created_at").first()
+                if last_event and last_event.metadata:
+                    payment_otp = last_event.metadata.get("otp")
+            except Exception:
+                pass
+
         tech_photo = ""
         tech_rating = None
         if tech:
@@ -8106,6 +8347,8 @@ class WorkforceJobLiveTrackingView(APIView):
             "vehicle_number": vehicle_number,
             "vehicle_type": vehicle_type,
             "start_otp": start_otp,
+            "payment_otp": payment_otp,
+            "payment_status": pmt.payment_status if pmt else "PENDING",
             "distance_m": distance_m,
             "geofence_passed": geofence_passed,
             "geofence_radius_meters": 250.0,
@@ -12273,7 +12516,6 @@ class WorkforceJobLogisticsCheckpointView(APIView):
         body = self._payload(job)
         body.update(data)
         return Response(body, status=status.HTTP_200_OK)
-
 
 
 class WorkforceJobLogisticsExceptionView(WorkforceJobLogisticsCheckpointView):

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Boxes,
   Clock,
@@ -74,6 +74,7 @@ export function WarehouseInventoryPage() {
   const [scanSuccess, setScanSuccess] = useState(null);
   const [scanningInProgress, setScanningInProgress] = useState(false);
   const [cameraModalOpen, setCameraModalOpen] = useState(false);
+  const barcodeInputRef = useRef(null);
 
   // Phase Z: Shortfall Reporting Modal State
   const [shortfallModalOpen, setShortfallModalOpen] = useState(false);
@@ -115,6 +116,40 @@ export function WarehouseInventoryPage() {
     setLoading(true);
     fetchRequests();
   }, [fetchRequests]);
+
+  // Maintain focus on the physical barcode input whenever the scan modal is active
+  useEffect(() => {
+    if (scanModalOpen && !cameraModalOpen && !scanningInProgress) {
+      const timer = setTimeout(() => {
+        barcodeInputRef.current?.focus();
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [scanModalOpen, cameraModalOpen, scanningInProgress]);
+
+  // Global key listener fallback: if modal is open and user scans without clicking the field first,
+  // ensure the keystrokes are routed to the barcode input rather than lost to the document body.
+  useEffect(() => {
+    if (!scanModalOpen || cameraModalOpen) return;
+
+    const handleGlobalKeyDown = (e) => {
+      // If the user is currently typing in an input or textarea, don't intervene
+      if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) {
+        return;
+      }
+      // If it's a hotkey or navigation key (Escape, Ctrl+C, etc.), let normal handling proceed
+      if (e.ctrlKey || e.altKey || e.metaKey || e.key === 'Escape' || e.key === 'Tab') {
+        return;
+      }
+      // If printable character, redirect focus to the input so scanner doesn't drop keystrokes
+      if (e.key.length === 1) {
+        barcodeInputRef.current?.focus();
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [scanModalOpen, cameraModalOpen]);
 
   const handleManualRefresh = () => {
     setRefreshing(true);
@@ -197,7 +232,7 @@ export function WarehouseInventoryPage() {
   // Phase Y: Process a Scanned Barcode (from Camera, File, or Manual Input)
   const handleProcessScan = async (scannedCode) => {
     if (!scanModalRequest || !scannedCode) return;
-    const cleanCode = scannedCode.trim();
+    const cleanCode = String(scannedCode).replace(/[\r\n\t]/g, '').trim();
     if (!cleanCode) return;
 
     setScanningInProgress(true);
@@ -238,6 +273,10 @@ export function WarehouseInventoryPage() {
       setScanError(err.message || 'Scan verification failed.');
     } finally {
       setScanningInProgress(false);
+      // Re-focus the barcode input immediately so consecutive physical scans work without mouse clicks
+      setTimeout(() => {
+        barcodeInputRef.current?.focus();
+      }, 50);
     }
   };
 
@@ -1007,16 +1046,30 @@ export function WarehouseInventoryPage() {
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
-                    handleProcessScan(manualBarcodeInput);
+                    if (manualBarcodeInput.trim() && !scanningInProgress) {
+                      handleProcessScan(manualBarcodeInput);
+                    }
                   }}
                   className="flex gap-2"
                 >
                   <input
+                    ref={barcodeInputRef}
                     type="text"
                     value={manualBarcodeInput}
                     onChange={(e) => setManualBarcodeInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === 'Tab') {
+                        e.preventDefault();
+                        if (manualBarcodeInput.trim() && !scanningInProgress) {
+                          handleProcessScan(manualBarcodeInput);
+                        }
+                      }
+                    }}
                     placeholder="Scan or type unit barcode (e.g. SEVO-INB-0001-001-A1B2C3)..."
-                    disabled={scanningInProgress}
+                    readOnly={scanningInProgress}
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck={false}
                     autoFocus
                     className="flex-1 px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 font-mono placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
                   />
