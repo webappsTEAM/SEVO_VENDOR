@@ -38,12 +38,12 @@ class LegViewAuthTests(SimpleTestCase):
         force_authenticate(req, user=user)
         qs = SimpleNamespace(first=lambda: job)
         policy = SimpleNamespace(
-            waiting_free_loading_minutes=30, waiting_free_unloading_minutes=None,
-            waiting_charge_per_minute=Decimal("2.00"), waiting_charge_cap=None,
+            is_enabled=True, is_active=True, free_minutes_per_stop=30,
+            rate_per_minute=Decimal("2.00"), max_charge_per_booking=None,
         )
         with patch.object(views.WorkforceJobLogisticsLegView, "permission_classes", []), \
              patch.object(views.ServiceRequest.objects, "filter", return_value=qs), \
-             patch("workforce_api.services.pricing_policy.policy_for", return_value=policy):
+             patch("workforce_api.services.waiting_charges.customer_policy_for", return_value=policy):
             return views.WorkforceJobLogisticsLegView.as_view()(req, pk=5)
 
     def test_other_technician_is_forbidden(self):

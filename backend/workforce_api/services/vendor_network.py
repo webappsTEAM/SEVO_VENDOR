@@ -482,6 +482,17 @@ class VendorInvitationService:
 
                 relationship = rel
 
+                # Keep the technician's company FK in sync with the relationship that was just
+                # granted. Without this, company-scoped dispatch/roster/report queries (which filter
+                # on Employee.company_id / User.company_id directly, not on this relationship table)
+                # never see a technician who is genuinely ACTIVE-tied via VendorTechnicianRelationship.
+                if employee.company_id != invitation.vendor_id:
+                    employee.company = invitation.vendor
+                    employee.save(update_fields=["company"])
+                if getattr(employee, "user_id", None) and employee.user.company_id != invitation.vendor_id:
+                    employee.user.company = invitation.vendor
+                    employee.user.save(update_fields=["company"])
+
             elif decision_upper == "REJECT":
                 invitation.status = VendorInvitation.Status.REJECTED
                 invitation.responded_at = now

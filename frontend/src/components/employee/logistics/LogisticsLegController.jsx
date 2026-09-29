@@ -13,6 +13,8 @@ import {
 } from 'lucide-react';
 import { apiGetLogisticsLeg, apiSetLogisticsLeg, apiGetLogisticsCheckpoints } from '../../../api/workforceService.js';
 import { LogisticsCheckpointGate } from './LogisticsCheckpointGate.jsx';
+import { TripExceptionReporter } from './TripExceptionReporter.jsx';
+import { TripExtraChargeReporter } from './TripExtraChargeReporter.jsx';
 
 export const GT_LEG_SEQUENCE = [
   'EN_ROUTE_PICKUP',
@@ -372,6 +374,14 @@ export function LogisticsLegController({ job, onLegUpdated, className = '' }) {
           missing={nextMissing}
           onVerified={() => setGateTick((t) => t + 1)}
         />
+      )}
+
+      {/* Trip problem report (goods transport only; stage-specific options) */}
+      {!isFinalLeg && sequence === GT_LEG_SEQUENCE && (
+        <>
+          <TripExceptionReporter jobId={job.id} currentLeg={currentLeg} />
+          <TripExtraChargeReporter jobId={job.id} />
+        </>
       )}
 
       {/* Action Controls */}
