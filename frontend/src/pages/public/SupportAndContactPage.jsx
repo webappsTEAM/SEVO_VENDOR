@@ -116,7 +116,7 @@ export function SupportAndContactPage() {
   return (
     <LegalLayout
       title="Support, Help Desk & Contact Operations"
-      subtitle="Direct access to CalServices technical operations, emergency dispatch desk, technician onboarding support, and dispute resolution."
+      subtitle="Direct access to SEVO technical operations, emergency dispatch desk, technician onboarding support, and dispute resolution."
       activeTab="support"
     >
       <div className="space-y-10">

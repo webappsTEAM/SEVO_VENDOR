@@ -142,7 +142,7 @@ export default function EstimationInvoiceModal({ isOpen, onClose, estimationId }
                     <Building2 className="w-3.5 h-3.5" />
                     <span>Issued By</span>
                   </div>
-                  <div className="font-bold text-zinc-900">{invoice.company?.name || 'CalServices Network'}</div>
+                  <div className="font-bold text-zinc-900">{invoice.company?.name || 'SEVO Network'}</div>
                   <div className="text-zinc-600">{invoice.company?.address || 'Chennai, Tamil Nadu'}</div>
                   <div className="text-[11px] text-zinc-500">GSTIN: {invoice.company?.gstin || '33AABCC1234D1Z5'}</div>
                   <div className="text-[11px] text-zinc-500">Phone: {invoice.company?.phone || '+91 98765 43210'}</div>

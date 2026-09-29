@@ -31,7 +31,7 @@ export function TermsAndConditionsPage() {
   return (
     <LegalLayout
       title="Terms of Service & Operational Agreement"
-      subtitle="Standard operational rules, technician responsibilities, service fulfillment terms, and platform agreements for CalServices Workforce & Field Operations."
+      subtitle="Standard operational rules, technician responsibilities, service fulfillment terms, and platform agreements for SEVO Workforce & Field Operations."
       activeTab="terms"
     >
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
@@ -79,13 +79,13 @@ export function TermsAndConditionsPage() {
               <span>1.0 Overview & Platform Scope</span>
             </h2>
             <p className="text-justify leading-relaxed">
-              Welcome to <strong>CalServices</strong> (“Platform”, “we”, “us”, or “our”), owned and operated by <strong>CALDIM ENGINEERING PRIVATE LIMITED</strong> (CIN: U72900KA2026PTC123456, GSTIN: 33AAGCC4916J1ZP), having its registered office at Minmac center #118, First Floor, Arcot Road, Valasaravalakkam, Chennai - 600087, Tamil Nadu, India.
+              Welcome to <strong>SEVO</strong> (“Platform”, “we”, “us”, or “our”), owned and operated by <strong>CALDIM ENGINEERING PRIVATE LIMITED</strong> (CIN: U72900KA2026PTC123456, GSTIN: 33AAGCC4916J1ZP), having its registered office at Minmac center #118, First Floor, Arcot Road, Valasaravalakkam, Chennai - 600087, Tamil Nadu, India.
             </p>
             <p className="text-justify leading-relaxed">
-              CalServices provides a synchronized digital infrastructure connecting certified field service engineers, diagnostic technicians, and maintenance contractors (“Technicians” or “Service Providers”) with commercial, industrial, and residential customers (“Customers”).
+              SEVO provides a synchronized digital infrastructure connecting certified field service engineers, diagnostic technicians, and maintenance contractors (“Technicians” or “Service Providers”) with commercial, industrial, and residential customers (“Customers”).
             </p>
             <p className="text-justify leading-relaxed">
-              By accessing, creating an account, onboarding as a field technician, or fulfilling service requests through the CalServices Workforce platform, you expressly agree to be bound by these Terms of Service, along with our <a href="/privacy" className="text-blue-600 font-semibold hover:underline">Privacy Policy</a>, <a href="/cancellation-refunds" className="text-blue-600 font-semibold hover:underline">Cancellation & Refund Policy</a>, and <a href="/shipping-policy" className="text-blue-600 font-semibold hover:underline">Service Delivery Policy</a>. Contact us at <a href="mailto:support@caldimengg.in" className="text-blue-600 font-bold hover:underline">support@caldimengg.in</a>.
+              By accessing, creating an account, onboarding as a field technician, or fulfilling service requests through the SEVO Workforce platform, you expressly agree to be bound by these Terms of Service, along with our <a href="/privacy" className="text-blue-600 font-semibold hover:underline">Privacy Policy</a>, <a href="/cancellation-refunds" className="text-blue-600 font-semibold hover:underline">Cancellation & Refund Policy</a>, and <a href="/shipping-policy" className="text-blue-600 font-semibold hover:underline">Service Delivery Policy</a>. Contact us at <a href="mailto:support@caldimengg.in" className="text-blue-600 font-bold hover:underline">support@caldimengg.in</a>.
             </p>
           </section>
 
@@ -121,7 +121,7 @@ export function TermsAndConditionsPage() {
               <span>3. Dispatch, Real-Time Tracking & OTP Verification</span>
             </h2>
             <p>
-              The CalServices platform relies on deterministic operational workflows:
+              The SEVO platform relies on deterministic operational workflows:
             </p>
             <div className="bg-slate-50 border border-slate-200 rounded p-3.5 space-y-2">
               <div className="font-semibold text-slate-900">Mandatory 4-Stage Service Lifecycle:</div>
@@ -206,7 +206,7 @@ export function TermsAndConditionsPage() {
             <ul className="list-disc pl-5 space-y-1.5 text-slate-700">
               <li>Zero tolerance for harassment, discrimination, intoxication, or unsafe equipment handling.</li>
               <li>Technicians must wear standard personal protective equipment (PPE) where required.</li>
-              <li>Direct off-platform solicitation of CalServices customers is a material breach resulting in immediate termination and financial forfeiture.</li>
+              <li>Direct off-platform solicitation of SEVO customers is a material breach resulting in immediate termination and financial forfeiture.</li>
             </ul>
           </section>
 
@@ -217,7 +217,7 @@ export function TermsAndConditionsPage() {
               <span>8. Limitation of Liability & Indemnity</span>
             </h2>
             <p>
-              To the maximum extent permitted by applicable law, CalServices shall not be liable for indirect, incidental, punitive, or consequential damages resulting from unauthorized equipment tampering, preexisting property defects, or force majeure events. Technicians operate as verified independent service partners or affiliated company personnel.
+              To the maximum extent permitted by applicable law, SEVO shall not be liable for indirect, incidental, punitive, or consequential damages resulting from unauthorized equipment tampering, preexisting property defects, or force majeure events. Technicians operate as verified independent service partners or affiliated company personnel.
             </p>
           </section>
 
@@ -228,10 +228,10 @@ export function TermsAndConditionsPage() {
               <span>9. Suspension, Account Termination & Dispute Resolution</span>
             </h2>
             <p>
-              CalServices reserves the right to temporarily suspend or permanently deactivate accounts for policy violations, repeated job cancellations, unverified document submission, or safety infractions.
+              SEVO reserves the right to temporarily suspend or permanently deactivate accounts for policy violations, repeated job cancellations, unverified document submission, or safety infractions.
             </p>
             <p>
-              Any disputes arising under these terms shall be subject to amicable conciliation through the CalServices Operations Dispute Desk before seeking binding arbitration in accordance with regional jurisdiction laws.
+              Any disputes arising under these terms shall be subject to amicable conciliation through the SEVO Operations Dispute Desk before seeking binding arbitration in accordance with regional jurisdiction laws.
             </p>
           </section>
         </div>

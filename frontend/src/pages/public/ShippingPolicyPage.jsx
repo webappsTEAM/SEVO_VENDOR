@@ -26,7 +26,7 @@ export function ShippingPolicyPage() {
             <span>On-Demand Field Service Fulfillment Model</span>
           </div>
           <p className="text-blue-900 text-[11px] leading-relaxed">
-            CalServices provides precision on-site technical diagnostics, calibration, electrical engineering, and appliance repair services. As a field service platform, <strong>“Delivery”</strong> refers to the dispatch and physical arrival of certified technicians at the customer’s specified premises, along with on-site delivery and installation of verified replacement parts and hardware.
+            SEVO provides precision on-site technical diagnostics, calibration, electrical engineering, and appliance repair services. As a field service platform, <strong>“Delivery”</strong> refers to the dispatch and physical arrival of certified technicians at the customer’s specified premises, along with on-site delivery and installation of verified replacement parts and hardware.
           </p>
         </div>
 
@@ -37,7 +37,7 @@ export function ShippingPolicyPage() {
             <span>1. Operational Coverage & Service Geofencing</span>
           </h2>
           <p>
-            CalServices operates across designated municipal and metropolitan service zones:
+            SEVO operates across designated municipal and metropolitan service zones:
           </p>
           <ul className="list-disc pl-5 space-y-1.5 text-slate-700">
             <li>
@@ -98,7 +98,7 @@ export function ShippingPolicyPage() {
             Where replacement components or calibration hardware are required:
           </p>
           <ul className="list-disc pl-5 space-y-1.5 text-slate-700">
-            <li><strong>Direct Technician Hand-Delivery:</strong> Genuine OEM replacement parts are carried in the technician's mobile inventory van or collected from regional CalServices micro-warehouses.</li>
+            <li><strong>Direct Technician Hand-Delivery:</strong> Genuine OEM replacement parts are carried in the technician's mobile inventory van or collected from regional SEVO micro-warehouses.</li>
             <li><strong>Serialized Tracking:</strong> Every installed spare part is scanned and logged in the digital job record with its unique serial code, manufacturer warranty duration, and invoice line item.</li>
             <li><strong>Customer Pre-Approval:</strong> No part is installed without prior digital authorization and price agreement from the customer.</li>
           </ul>

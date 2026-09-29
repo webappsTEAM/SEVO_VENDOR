@@ -1,7 +1,7 @@
 /**
  * TechnicianArrivalView.jsx
  *
- * Contextual Arrival & Site Location View for CalTrack Field Technicians.
+ * Contextual Arrival & Site Location View for SEVO Field Technicians.
  * Renders when job status is 'arrived' (or arrival geofence is verified).
  *
  *  - Clean 2D contextual map centered on customer destination

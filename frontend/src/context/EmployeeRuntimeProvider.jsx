@@ -1,7 +1,7 @@
 /**
  * EmployeeRuntimeProvider.jsx
  *
- * Single persistent session runtime for the CalTrack Workforce employee application.
+ * Single persistent session runtime for the SEVO Workforce employee application.
  * Incorporates all Six Architecture Corrections:
  * 1. ONE Authoritative GPS Implementation (session-level useLocationTracker)
  * 2. Separate Presence State from GPS State (OFFLINE -> CONNECTING -> ONLINE_LOCATION_PENDING -> ONLINE_GPS_LIVE)

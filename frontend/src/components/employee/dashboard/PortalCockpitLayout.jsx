@@ -228,12 +228,14 @@ export function PortalCockpitLayout({
   const activeQuoteId = job?.active_quote_id || activeJob?.active_quote_id;
   const activeQuoteStatus = job?.active_quote_status || activeJob?.active_quote_status;
   const activeQuoteVersion = job?.active_quote_version || activeJob?.active_quote_version || 1;
-  const activeQuoteTotal = Number(job?.active_quote_net_payable ?? job?.active_quote_total_amount ?? activeJob?.active_quote_net_payable ?? activeJob?.active_quote_total_amount ?? 0);
-  const activeQuoteAdvance = Number(job?.active_quote_advance_amount ?? activeJob?.active_quote_advance_amount ?? (activeQuoteTotal ? activeQuoteTotal * 0.5 : 0));
-  const activeQuoteBalance = Number(job?.active_quote_balance_amount ?? activeJob?.active_quote_balance_amount ?? (activeQuoteTotal ? activeQuoteTotal - activeQuoteAdvance : 0));
-  const activeQuoteAdvancePaid = Boolean(job?.active_quote_advance_paid ?? activeJob?.active_quote_advance_paid);
-  const activeQuoteAdvanceDue = Number(job?.active_quote_advance_due ?? activeJob?.active_quote_advance_due ?? (activeQuoteAdvancePaid ? 0 : activeQuoteAdvance));
-  const activeMilestoneDue = !activeQuoteAdvancePaid && activeQuoteAdvanceDue > 0 ? activeQuoteAdvanceDue : activeQuoteBalance;
+  const isQuoteAccepted = activeQuoteStatus === 'CUSTOMER_ACCEPTED' || activeQuoteStatus === 'CONVERTED' || activeQuoteStatus === 'ADMIN_APPROVED';
+  const rawQuoteTotal = Number(job?.active_quote_net_payable ?? job?.active_quote_total_amount ?? activeJob?.active_quote_net_payable ?? activeJob?.active_quote_total_amount ?? 0);
+  const activeQuoteTotal = isQuoteAccepted ? rawQuoteTotal : 0;
+  const activeQuoteAdvance = isQuoteAccepted ? Number(job?.active_quote_advance_amount ?? activeJob?.active_quote_advance_amount ?? (activeQuoteTotal ? activeQuoteTotal * 0.5 : 0)) : 0;
+  const activeQuoteBalance = isQuoteAccepted ? Number(job?.active_quote_balance_amount ?? activeJob?.active_quote_balance_amount ?? (activeQuoteTotal ? activeQuoteTotal - activeQuoteAdvance : 0)) : 0;
+  const activeQuoteAdvancePaid = isQuoteAccepted && Boolean(job?.active_quote_advance_paid ?? activeJob?.active_quote_advance_paid);
+  const activeQuoteAdvanceDue = isQuoteAccepted ? Number(job?.active_quote_advance_due ?? activeJob?.active_quote_advance_due ?? (activeQuoteAdvancePaid ? 0 : activeQuoteAdvance)) : 0;
+  const activeMilestoneDue = isQuoteAccepted ? (!activeQuoteAdvancePaid && activeQuoteAdvanceDue > 0 ? activeQuoteAdvanceDue : activeQuoteBalance) : 0;
   const activeQuoteCustomerNotes = job?.active_quote_customer_notes || activeJob?.active_quote_customer_notes || '';
   const activeQuoteCustomerDeclineReason = job?.active_quote_customer_decline_reason || activeJob?.active_quote_customer_decline_reason || '';
   const activeQuoteAdminRejectionReason = job?.active_quote_admin_rejection_reason || activeJob?.active_quote_admin_rejection_reason || '';
@@ -249,11 +251,11 @@ export function PortalCockpitLayout({
     activeJob?.payment_method === 'CASH_ON_SERVICE' ||
     activeJob?.payment_method === 'CASH_ON_DELIVERY' ||
     activeJob?.payment?.payment_method === 'CASH_ON_SERVICE' ||
-    Boolean(activeQuoteNumber)
+    (Boolean(activeQuoteNumber) && isQuoteAccepted)
   );
   const activeQuoteIsFullyPaid = Boolean(activeJob?.active_quote_is_fully_paid ?? job?.active_quote_is_fully_paid);
   const isFullyPaid = Boolean(
-    activeQuoteTotal > 0
+    isQuoteAccepted && activeQuoteTotal > 0
       ? (activeQuoteIsFullyPaid || (activeMilestoneDue <= 0 && activeQuoteAdvancePaid))
       : (
           job?.payment_status === 'paid' ||
@@ -344,7 +346,15 @@ export function PortalCockpitLayout({
   // undefined, so this always rendered a flat ₹0 "EST. PAYOUT" on the
   // technician's home cockpit. Matches the correct pattern already used in
   // EmployeeDashboardPage.jsx and EmployeeJobsPage.jsx.
-  const payoutAmount = job?.payment?.amount_due ?? job?.total_amount ?? offer?.payment?.amount_due ?? offer?.total_amount ?? 0;
+  const payoutAmount = isEstimationJob && !isQuoteAccepted
+    ? Number(job?.consultation_fee ?? job?.base_price ?? 0)
+    : Number(job?.payment?.amount_due ?? job?.total_amount ?? offer?.payment?.amount_due ?? offer?.total_amount ?? 0);
+  const payableCashDue = isQuoteAccepted
+    ? activeMilestoneDue
+    : (isEstimationJob
+        ? (job?.payment_status === 'paid' || job?.payment_status === 'collected' ? 0 : Number(job?.consultation_fee ?? job?.base_price ?? 0))
+        : Number(job?.payment?.amount_due ?? (job?.payment_status === 'paid' || job?.payment_status === 'collected' ? 0 : (job?.total_amount ?? 0)))
+      );
   const distanceKm = job?.distance_km ?? offer?.distance_km ?? null;
 
   const formatMoney = (val) => {
@@ -625,7 +635,7 @@ export function PortalCockpitLayout({
                         {distanceKm != null ? `${parseFloat(distanceKm).toFixed(1)} km away` : 'Nearby'}
                       </span>
                     </div>
-                    {isEstimationJob && (activeQuoteTotal > 0 || activeQuoteNumber) ? (
+                    {isEstimationJob && isQuoteAccepted && activeQuoteTotal > 0 ? (
                       <>
                         <div>
                           <span className="text-[10px] font-mono font-bold uppercase text-slate-400 block tracking-wider">
@@ -966,11 +976,11 @@ export function PortalCockpitLayout({
                 {isActiveAssignment && (isEstimationJob || isWorkExecutionJob || activeQuoteNumber || job?.can_create_quote || activeJob?.can_create_quote) && !isCompleted && (
                   <div className="p-4 bg-indigo-50/70 border border-indigo-200 rounded-xl space-y-3 shadow-xs">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      <div className="flex items-start gap-2.5">
+                      <div className="flex items-start gap-2.5 flex-1 min-w-0">
                         <div className="p-2 rounded-lg bg-indigo-600 text-white shrink-0 mt-0.5 shadow-sm">
                           <Calculator className="w-4 h-4" />
                         </div>
-                        <div>
+                        <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <h4 className="text-xs font-bold text-indigo-950">
                               Commercial Quotation Workflow
@@ -1052,9 +1062,9 @@ export function PortalCockpitLayout({
                         type="button"
                         onClick={() => onOpenQuotationModal && onOpenQuotationModal(job || activeJob)}
                         disabled={!isAllPrerequisitesDone && !job?.can_create_quote && !activeQuoteNumber}
-                        className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm shrink-0 cursor-pointer ${
+                        className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm shrink-0 cursor-pointer self-start sm:self-auto ${
                           isAllPrerequisitesDone || job?.can_create_quote || activeQuoteNumber
-                            ? activeQuoteStatus === 'ADMIN_REJECTED' || activeQuoteStatus === 'CHANGES_REQUESTED' || activeQuoteStatus === 'DECLINED'
+                            ? activeQuoteStatus === 'ADMIN_REJECTED' || activeQuoteStatus === 'CHANGES_REQUESTED' || activeQuoteStatus === 'DECLINED' || activeQuoteStatus === 'CUSTOMER_DECLINED'
                               ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-amber-500/20'
                               : activeQuoteStatus === 'CUSTOMER_ACCEPTED' || activeQuoteStatus === 'CONVERTED'
                               ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-500/20'
@@ -1065,15 +1075,15 @@ export function PortalCockpitLayout({
                         <Calculator className="w-3.5 h-3.5" />
                         <span>
                           {activeQuoteStatus === 'PENDING_REVIEW'
-                            ? `View Submitted Quote (v${activeQuoteVersion})`
-                            : activeQuoteStatus === 'ADMIN_REJECTED'
-                            ? `Re-Draft Revision (v${activeQuoteVersion + 1})`
+                            ? `View Submitted (v${activeQuoteVersion})`
+                            : activeQuoteStatus === 'ADMIN_REJECTED' || activeQuoteStatus === 'DECLINED' || activeQuoteStatus === 'CUSTOMER_DECLINED'
+                            ? `Draft Revision (v${activeQuoteVersion + 1})`
                             : activeQuoteStatus === 'CUSTOMER_ACCEPTED' || activeQuoteStatus === 'CONVERTED'
-                            ? `View Accepted Quote (v${activeQuoteVersion})`
+                            ? `View Accepted (v${activeQuoteVersion})`
                             : activeQuoteStatus === 'CHANGES_REQUESTED'
-                            ? `Draft Revised Quote (v${activeQuoteVersion + 1})`
+                            ? `Draft Revision (v${activeQuoteVersion + 1})`
                             : activeQuoteStatus === 'SENT_TO_CUSTOMER'
-                            ? `View Sent Quote (v${activeQuoteVersion})`
+                            ? `View Sent (v${activeQuoteVersion})`
                             : activeQuoteNumber
                             ? `Continue Draft (v${activeQuoteVersion})`
                             : 'Draft Quotation'}
@@ -1095,7 +1105,7 @@ export function PortalCockpitLayout({
                   <span>Job Completed &amp; Settled</span>
                 </div>
               ) : isProofSubmitted ? (
-                isCashPending ? (
+                isCashPending && payableCashDue > 0 ? (
                   <button
                     type="button"
                     onClick={() => {
@@ -1108,16 +1118,16 @@ export function PortalCockpitLayout({
                     className="w-full py-3.5 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white shadow-md cursor-pointer"
                   >
                     <ShieldCheck className="w-4 h-4" />
-                    <span>Confirm Customer Cash Payment (₹{formatMoney(activeQuoteTotal > 0 ? activeMilestoneDue : payoutAmount)})</span>
+                    <span>Confirm Customer Cash Payment (₹{formatMoney(payableCashDue)})</span>
                   </button>
-                ) : !isFullyPaid ? (
+                ) : (!isFullyPaid && payableCashDue > 0) ? (
                   <button
                     type="button"
                     onClick={() => onOpenCashModal && onOpenCashModal(activeJob)}
                     className="w-full py-3.5 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 bg-emerald-700 hover:bg-emerald-800 active:bg-emerald-900 text-white shadow-md cursor-pointer"
                   >
                     <Banknote className="w-4 h-4" />
-                    <span>Collect Cash Payment (₹{formatMoney(activeQuoteTotal > 0 ? activeMilestoneDue : payoutAmount)})</span>
+                    <span>Collect Cash Payment (₹{formatMoney(payableCashDue)})</span>
                   </button>
                 ) : (
                   <button
@@ -1130,51 +1140,72 @@ export function PortalCockpitLayout({
                     <span>{actionLoading ? 'COMPLETING JOB...' : 'FINALIZE & COMPLETE JOB'}</span>
                   </button>
                 )
-              ) : isInProgress && isEstimationJob && activeQuoteStatus !== 'CUSTOMER_ACCEPTED' && activeQuoteStatus !== 'CONVERTED' ? (
-                // Estimation job in IN_PROGRESS without an accepted quote:
-                // show Quotation Builder — technician must draft & send quote before service execution
-                <button
-                  type="button"
-                  onClick={() => onOpenQuotationModal && onOpenQuotationModal(activeJob)}
-                  disabled={actionLoading || (!isAllPrerequisitesDone && !activeJob?.can_create_quote && !activeQuoteNumber)}
-                  className={`w-full py-3.5 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 ${
-                    isAllPrerequisitesDone || activeJob?.can_create_quote || activeQuoteNumber
-                      ? activeQuoteStatus === 'CHANGES_REQUESTED'
-                        ? 'bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white shadow-md cursor-pointer'
-                        : 'bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white shadow-md cursor-pointer'
-                      : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                  }`}
-                >
-                  <Calculator className="w-3.5 h-3.5 fill-current" />
-                  <span>
-                    {activeQuoteStatus === 'CHANGES_REQUESTED'
-                      ? `Draft Revised Quote (v${activeQuoteVersion})`
-                      : activeQuoteStatus === 'SENT_TO_CUSTOMER'
-                      ? `View Sent Quotation (v${activeQuoteVersion})`
-                      : activeQuoteNumber
-                      ? `Open Quotation Builder (v${activeQuoteVersion})`
-                      : 'Draft Quotation'}
-                  </span>
-                </button>
-              ) : isEstimationJob && (activeQuoteStatus === 'CUSTOMER_ACCEPTED' || activeQuoteStatus === 'CONVERTED') ? (
-                <button
-                  type="button"
-                  onClick={() => onOpenQuotationModal && onOpenQuotationModal(activeJob)}
-                  className="w-full py-3.5 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-md cursor-pointer"
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Quotation Accepted (v{activeQuoteVersion}) — View Scope &amp; Quote</span>
-                </button>
               ) : isInProgress ? (
-                <button
-                  type="button"
-                  onClick={() => onOpenProofModal && onOpenProofModal(activeJob)}
-                  disabled={actionLoading}
-                  className="w-full py-3.5 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 bg-[#2d6a4f] hover:bg-[#1b4332] active:bg-[#153427] text-white shadow-md cursor-pointer"
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Complete Service &amp; Submit Proof</span>
-                </button>
+                // ── ALWAYS VISIBLE COMPLETION BUTTON WHEN WORK IS STARTED / IN PROGRESS ──
+                <div className="flex flex-col sm:flex-row items-center gap-2.5 w-full">
+                  <button
+                    type="button"
+                    onClick={() => onOpenProofModal && onOpenProofModal(activeJob || job)}
+                    disabled={actionLoading}
+                    className="w-full sm:flex-1 py-3.5 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 bg-[#2d6a4f] hover:bg-[#1b4332] active:bg-[#153427] text-white shadow-md cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>{isEstimationJob ? 'Complete Consultation & Submit Proof' : 'Complete Service & Submit Proof'}</span>
+                  </button>
+                  {(isEstimationJob || activeQuoteNumber || activeJob?.can_create_quote || job?.can_create_quote) && (
+                    <button
+                      type="button"
+                      onClick={() => onOpenQuotationModal && onOpenQuotationModal(activeJob || job)}
+                      disabled={actionLoading}
+                      className={`w-full sm:w-auto py-3.5 px-5 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 text-white shadow-md cursor-pointer shrink-0 ${
+                        activeQuoteStatus === 'DECLINED' || activeQuoteStatus === 'CUSTOMER_DECLINED' || activeQuoteStatus === 'ADMIN_REJECTED' || activeQuoteStatus === 'CHANGES_REQUESTED'
+                          ? 'bg-amber-600 hover:bg-amber-700 active:bg-amber-800'
+                          : activeQuoteStatus === 'CUSTOMER_ACCEPTED' || activeQuoteStatus === 'CONVERTED'
+                          ? 'bg-emerald-700 hover:bg-emerald-800 active:bg-emerald-900'
+                          : 'bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800'
+                      }`}
+                    >
+                      <Calculator className="w-3.5 h-3.5 fill-current" />
+                      <span>
+                        {activeQuoteStatus === 'DECLINED' || activeQuoteStatus === 'CUSTOMER_DECLINED'
+                          ? `Draft Revision (v${activeQuoteVersion + 1})`
+                          : activeQuoteStatus === 'ADMIN_REJECTED'
+                          ? `Re-Draft Revision (v${activeQuoteVersion + 1})`
+                          : activeQuoteStatus === 'CHANGES_REQUESTED'
+                          ? `Draft Revised Quote (v${activeQuoteVersion + 1})`
+                          : activeQuoteStatus === 'CUSTOMER_ACCEPTED' || activeQuoteStatus === 'CONVERTED'
+                          ? `View Accepted Quote (v${activeQuoteVersion})`
+                          : activeQuoteStatus === 'SENT_TO_CUSTOMER'
+                          ? `View Sent Quote (v${activeQuoteVersion})`
+                          : activeQuoteNumber
+                          ? `Quotation Builder (v${activeQuoteVersion})`
+                          : 'Draft Quotation'}
+                      </span>
+                    </button>
+                  )}
+                </div>
+              ) : (activeQuoteStatus === 'DECLINED' || activeQuoteStatus === 'CUSTOMER_DECLINED') ? (
+                // When quotation is declined by customer before explicitly marking in progress
+                <div className="flex flex-col sm:flex-row items-center gap-2.5 w-full">
+                  <button
+                    type="button"
+                    onClick={() => onOpenProofModal && onOpenProofModal(activeJob || job)}
+                    disabled={actionLoading}
+                    className="w-full sm:flex-1 py-3.5 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 bg-[#2d6a4f] hover:bg-[#1b4332] active:bg-[#153427] text-white shadow-md cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Complete Consultation &amp; Submit Proof</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onOpenQuotationModal && onOpenQuotationModal(activeJob || job)}
+                    disabled={actionLoading}
+                    className="w-full sm:w-auto py-3.5 px-5 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white shadow-md cursor-pointer shrink-0"
+                  >
+                    <Calculator className="w-3.5 h-3.5 fill-current" />
+                    <span>Draft Revision (v{activeQuoteVersion + 1})</span>
+                  </button>
+                </div>
               ) : (isEstimationJob || isCustomerApproved || activeQuoteStatus === 'CUSTOMER_ACCEPTED' || activeQuoteStatus === 'CONVERTED') ? (
                 (activeQuoteStatus === 'CUSTOMER_ACCEPTED' || activeQuoteStatus === 'CONVERTED' || isCustomerApproved) ? (
                   // Quote accepted: show "Start Execution" so the job moves to IN_PROGRESS,

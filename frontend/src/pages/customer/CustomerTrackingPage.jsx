@@ -1,7 +1,7 @@
 /**
  * CustomerTrackingPage.jsx
  *
- * Standalone, Responsive Full-Page Customer Live Tracking Interface for CalTrack.
+ * Standalone, Responsive Full-Page Customer Live Tracking Interface for SEVO.
  * Mounted at `/track/:jobId` and `/customer/track/:jobId`.
  * Enables real-time tracking, ETA calculation, OTP display, and status updates.
  */
@@ -74,7 +74,7 @@ export function CustomerTrackingPage() {
       <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center text-white font-sans p-4">
         <div className="flex flex-col items-center gap-4">
           <div className="w-10 h-10 border-4 border-zinc-100 border-t-transparent rounded-full animate-spin" />
-          <div className="text-sm font-bold tracking-wide text-zinc-300">Connecting to CalTrack Live GPS Stream...</div>
+          <div className="text-sm font-bold tracking-wide text-zinc-300">Connecting to SEVO Live GPS Stream...</div>
         </div>
       </div>
     );
@@ -104,11 +104,11 @@ export function CustomerTrackingPage() {
       <div className="min-h-screen bg-zinc-950 flex flex-col font-sans">
         <header className="bg-zinc-900 border-b border-zinc-800 px-6 py-3.5 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center font-black text-white text-sm shadow-xs">
-              CT
+            <div className="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center font-black text-white text-xs shadow-xs">
+              SEVO
             </div>
             <div>
-              <h1 className="text-sm font-bold text-white">CalTrack Service</h1>
+              <h1 className="text-sm font-bold text-white">SEVO Service</h1>
               <p className="text-[10px] text-zinc-400 font-mono">Job #{jobId} • Completed</p>
             </div>
           </div>
@@ -143,11 +143,11 @@ export function CustomerTrackingPage() {
       <div className="min-h-screen bg-zinc-950 flex flex-col font-sans">
         <header className="bg-zinc-900 border-b border-zinc-800 px-6 py-3.5 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-rose-600 flex items-center justify-center font-black text-white text-sm shadow-xs">
-              CT
+            <div className="w-8 h-8 rounded-lg bg-rose-600 flex items-center justify-center font-black text-white text-xs shadow-xs">
+              SEVO
             </div>
             <div>
-              <h1 className="text-sm font-bold text-white">CalTrack Service</h1>
+              <h1 className="text-sm font-bold text-white">SEVO Service</h1>
               <p className="text-[10px] text-zinc-400 font-mono">Job #{jobId} • Cancelled</p>
             </div>
           </div>
@@ -175,11 +175,11 @@ export function CustomerTrackingPage() {
       {/* Top Navbar */}
       <header className="bg-zinc-900 border-b border-zinc-800 px-6 py-3.5 flex items-center justify-between z-20">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-zinc-100 text-zinc-950 flex items-center justify-center font-black text-sm tracking-tighter shadow-xs">
-            CT
+          <div className="w-8 h-8 rounded-lg bg-zinc-100 text-zinc-950 flex items-center justify-center font-black text-xs tracking-tighter shadow-xs">
+            SEVO
           </div>
           <div>
-            <h1 className="text-sm font-bold text-white leading-tight">CalTrack Live Tracking</h1>
+            <h1 className="text-sm font-bold text-white leading-tight">SEVO Live Tracking</h1>
             <p className="text-[10px] text-zinc-400 font-mono">Job #{jobId} • Real-time GPS</p>
           </div>
         </div>

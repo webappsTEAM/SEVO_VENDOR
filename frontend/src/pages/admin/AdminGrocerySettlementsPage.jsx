@@ -68,7 +68,7 @@ export default function AdminGrocerySettlementsPage() {
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
           <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1">Commission Rate</span>
           <span className="text-2xl font-black text-blue-600">5.0%</span>
-          <p className="text-xs text-slate-500 mt-1">Standard CalServices grocery category commission.</p>
+          <p className="text-xs text-slate-500 mt-1">Standard SEVO grocery category commission.</p>
         </div>
       </div>
 

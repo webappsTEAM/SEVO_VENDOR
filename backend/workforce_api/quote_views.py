@@ -199,6 +199,42 @@ def _serialize(q, full=False):
             }
             for m in q.measurements.all()
         ]
+        if q.quote_version > 1:
+            try:
+                prev_q = WorkforceQuote.objects.filter(
+                    quote_number=q.quote_number,
+                    quote_version=q.quote_version - 1
+                ).prefetch_related("items", "measurements").first()
+                if prev_q:
+                    data["previous_version"] = {
+                        "id": prev_q.id,
+                        "quote_version": prev_q.quote_version,
+                        "total_amount": _money(prev_q.total_amount),
+                        "subtotal_amount": _money(prev_q.subtotal_amount),
+                        "tax_amount": _money(prev_q.tax_amount),
+                        "net_payable": _money(prev_q.net_payable),
+                        "status": prev_q.status,
+                        "customer_notes": prev_q.customer_notes or prev_q.customer_decline_reason,
+                        "admin_rejection_reason": prev_q.admin_rejection_reason,
+                        "items": [
+                            {
+                                "id": i.id, "name": i.name, "quantity": _money(i.quantity),
+                                "unit": i.unit, "unit_price": _money(i.unit_price),
+                                "total_amount": _money(i.total_amount), "section": i.section,
+                            }
+                            for i in prev_q.items.all().order_by("sort_order", "id")
+                        ],
+                        "measurements": [
+                            {
+                                "id": m.id, "name": m.name, "length": _money(m.length),
+                                "width": _money(m.width), "height": _money(m.height),
+                                "area": _money(m.area), "unit": m.unit,
+                            }
+                            for m in prev_q.measurements.all()
+                        ],
+                    }
+            except Exception:
+                pass
         if q.job_id:
             try:
                 from service_requests.models import Estimation, CustomerInspection

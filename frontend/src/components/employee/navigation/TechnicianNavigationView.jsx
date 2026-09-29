@@ -1,7 +1,7 @@
 /**
  * TechnicianNavigationView.jsx
  *
- * Authoritative Field Technician Navigation State Router for CalTrack.
+ * Authoritative Field Technician Navigation State Router for SEVO.
  *
  * Explicit Job Status Mapping:
  *  - 'accepted'    -> TechnicianFirstPersonNavView (Pre-travel / First-Person Turn-by-Turn Navigation)
@@ -34,16 +34,23 @@ function TechnicianExecutionStateView({ job, status, technicianLocation }) {
   const paymentMethod = (job?.payment_method || 'COD').toUpperCase();
   const paymentStatus = (job?.payment_status || 'PENDING').toUpperCase();
 
-  // Determine active payable balance (accounting for 50% advance / quote milestone payments)
-  const activeQuoteTotal = Number(job?.active_quote_net_payable ?? job?.active_quote_total_amount ?? job?.total_amount ?? 0);
-  const activeQuoteAdvance = Number(job?.active_quote_advance_amount ?? (activeQuoteTotal ? activeQuoteTotal * 0.5 : 0));
-  const activeQuoteAdvancePaid = Boolean(job?.active_quote_advance_paid || paymentStatus === 'PARTIALLY_PAID');
-  const balanceDue = Number(
-    job?.active_quote_balance_amount ??
-    job?.balance_due ??
-    job?.amount_due ??
-    (activeQuoteAdvancePaid ? Math.max(0, activeQuoteTotal - activeQuoteAdvance) : activeQuoteTotal)
+  const isEstimationJob = Boolean(
+    job?.is_estimation ||
+    job?.pricing_mode === 'QUOTATION' ||
+    job?.request_kind === 'ESTIMATION'
   );
+  const isQuoteAccepted = job?.active_quote_status === 'CUSTOMER_ACCEPTED' || job?.active_quote_status === 'CONVERTED' || job?.active_quote_status === 'ADMIN_APPROVED';
+
+  // Determine active payable balance dynamically (accounting for 50% advance / quote milestone payments)
+  const activeQuoteTotal = isQuoteAccepted ? Number(job?.active_quote_net_payable ?? job?.active_quote_total_amount ?? 0) : 0;
+  const activeQuoteAdvance = isQuoteAccepted ? Number(job?.active_quote_advance_amount ?? (activeQuoteTotal ? activeQuoteTotal * 0.5 : 0)) : 0;
+  const activeQuoteAdvancePaid = isQuoteAccepted && Boolean(job?.active_quote_advance_paid || paymentStatus === 'PARTIALLY_PAID');
+  const balanceDue = isQuoteAccepted
+    ? Number(job?.active_quote_balance_amount ?? (activeQuoteAdvancePaid ? Math.max(0, activeQuoteTotal - activeQuoteAdvance) : activeQuoteTotal))
+    : (isEstimationJob
+        ? (paymentStatus === 'PAID' || paymentStatus === 'COLLECTED' ? 0 : Number(job?.consultation_fee ?? job?.base_price ?? 0))
+        : Number(job?.payment?.amount_due ?? (paymentStatus === 'PAID' || paymentStatus === 'COLLECTED' ? 0 : (job?.total_amount ?? 0)))
+      );
 
   const amount = `₹${balanceDue.toLocaleString('en-IN')}`;
   const isCod = paymentMethod === 'COD' || paymentMethod === 'CASH_ON_SERVICE';

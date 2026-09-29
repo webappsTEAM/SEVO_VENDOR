@@ -173,7 +173,7 @@ export function CustomerTrackingPage() {
   // Customer-friendly Headline Status Message
   const statusHeadline = useMemo(() => {
     if (rawStatus === 'completed') {
-      return { title: 'Service Completed', subtitle: 'Thank you for choosing CalServices!', tone: 'emerald' };
+      return { title: 'Service Completed', subtitle: 'Thank you for choosing SEVO!', tone: 'emerald' };
     }
     if (rawStatus === 'cancelled') {
       return { title: 'Booking Cancelled', subtitle: 'This service request was cancelled.', tone: 'rose' };

@@ -17,6 +17,8 @@ import {
   ShieldCheck,
   ChevronRight,
   ChevronLeft,
+  User,
+  MessageSquareText,
 } from 'lucide-react';
 import PaintingInspectionForm from './PaintingInspectionForm.jsx';
 import MasonInspectionForm from './MasonInspectionForm.jsx';
@@ -31,6 +33,7 @@ import {
   apiSaveQuoteInspection,
   apiSendQuoteToCustomer,
   apiSubmitQuoteToCRM,
+  apiReviseQuote,
 } from '../../api/workforceService.js';
 
 /**
@@ -76,6 +79,7 @@ export default function QuotationBuilderModal({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
+  const [revising, setRevising] = useState(false);
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
 
@@ -83,6 +87,8 @@ export default function QuotationBuilderModal({
   const [quoteNumber, setQuoteNumber] = useState('');
   const [quoteVersion, setQuoteVersion] = useState(1);
   const [quoteStatus, setQuoteStatus] = useState('DRAFT');
+  const [adminRejectionReason, setAdminRejectionReason] = useState('');
+  const [customerNotes, setCustomerNotes] = useState('');
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -167,6 +173,8 @@ export default function QuotationBuilderModal({
           setQuoteNumber(detail.quote_number || '');
           setQuoteVersion(detail.quote_version || 1);
           setQuoteStatus(detail.status || 'DRAFT');
+          setAdminRejectionReason(detail.admin_rejection_reason || '');
+          setCustomerNotes(detail.customer_notes || detail.customer_decline_reason || '');
           setTitle(detail.title || '');
           setDescription(detail.description || '');
           setInspectionFeeAdjusted(detail.inspection_fee_adjusted || 0);
@@ -182,6 +190,8 @@ export default function QuotationBuilderModal({
           setTitle(`Quotation for ${job.issue_title || job.service_category}`);
           setDescription(`Site inspection and estimation for ${job.customer_name || 'Customer'}.`);
           setItems([]);
+          setAdminRejectionReason('');
+          setCustomerNotes('');
         }
       } catch (err) {
         console.error('Failed to load quotation builder data:', err);
@@ -241,6 +251,16 @@ export default function QuotationBuilderModal({
 
   const totals = calculateTotals();
 
+  const totalMeasuredArea = measurements.reduce(
+    (sum, m) => sum + (parseFloat(m.area) || 0),
+    0
+  );
+
+  const isAreaUnit = (unit) => {
+    const u = String(unit || '').toLowerCase().trim();
+    return ['sqft', 'sq.ft', 'sq ft', 'sq_ft', 'square feet', 'sqm', 'sq.m', 'sqmtr'].includes(u);
+  };
+
   const displayedRateCards = (rateCards || []).filter((rc) => {
     if (rc.is_snapshot) return true;
     const cat = String(rc.service_category || '').toLowerCase();
@@ -255,6 +275,8 @@ export default function QuotationBuilderModal({
 
   // Add line item
   const handleAddItem = (section = 'MATERIAL') => {
+    const defaultUnit = 'sqft';
+    const initialQty = isAreaUnit(defaultUnit) && totalMeasuredArea > 0 ? totalMeasuredArea : 1;
     setItems([
       ...items,
       {
@@ -262,12 +284,12 @@ export default function QuotationBuilderModal({
         section,
         name: '',
         description: '',
-        quantity: 1,
-        unit: isPainting ? 'sqft' : 'sqft',
+        quantity: initialQty,
+        unit: defaultUnit,
         unit_price: 0,
         tax_rate: 18,
         discount_amount: 0,
-        material_source: 'CALTRACK',
+        material_source: 'SEVO',
       },
     ]);
   };
@@ -282,6 +304,7 @@ export default function QuotationBuilderModal({
     // For AC inspection snapshots the price is already locked at booking time.
     // Use it directly — no server re-price call needed.
     const snapshotPrice = isSnapshot ? parseFloat(rc.default_rate) || 0 : 0;
+    const initialQty = isAreaUnit(rc.unit) && totalMeasuredArea > 0 ? totalMeasuredArea : 1;
 
     const next = {
       id: `temp_${Date.now()}`,
@@ -297,15 +320,15 @@ export default function QuotationBuilderModal({
       section: rc.section,
       name: rc.item_name,
       description: rc.description || '',
-      quantity: 1,
+      quantity: initialQty,
       unit: rc.unit,
       // For snapshots: use the frozen agreed price directly.
       // For generic rate cards: left at zero until the server prices it.
       unit_price: snapshotPrice,
-      total_amount: snapshotPrice,
+      total_amount: snapshotPrice * initialQty,
       tax_rate: parseFloat(rc.tax_rate) || 18,
       discount_amount: 0,
-      material_source: 'CALTRACK',
+      material_source: 'SEVO',
       warranty_tier: rc.warranty_tier || 'NONE',
       advance_percent: rc.advance_percent,
     };
@@ -631,6 +654,42 @@ export default function QuotationBuilderModal({
     }
   };
 
+  // Create new draft revision when quote is rejected or revised
+  const handleReviseQuote = async () => {
+    if (!activeQuoteId) return;
+    setRevising(true);
+    setError(null);
+    try {
+      const revised = await apiReviseQuote(activeQuoteId, 'Technician initiated revision');
+      if (revised && revised.id) {
+        setActiveQuoteId(revised.id);
+        setQuoteNumber(revised.quote_number);
+        setQuoteVersion(revised.quote_version);
+        setQuoteStatus(revised.status || 'DRAFT');
+        setTitle(revised.title || '');
+        setDescription(revised.description || '');
+        setInspectionFeeAdjusted(revised.inspection_fee_adjusted || 0);
+        setItems(revised.items || []);
+        setMeasurements(revised.measurements || []);
+        if (revised.painting_details) {
+          setInspectionData(revised.painting_details);
+        } else if (revised.mason_details) {
+          setInspectionData(revised.mason_details);
+        }
+        setAdminRejectionReason('');
+        setCustomerNotes('');
+        setSuccessMsg(`Draft Revision (v${revised.quote_version}) created! You can now adjust items and submit for approval.`);
+        if (onQuoteSaved) onQuoteSaved(revised.id);
+        setTimeout(() => setSuccessMsg(null), 4000);
+      }
+    } catch (err) {
+      console.error('Failed to revise quotation:', err);
+      setError(err.message || 'Failed to create revision.');
+    } finally {
+      setRevising(false);
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -711,8 +770,113 @@ export default function QuotationBuilderModal({
           })}
         </div>
 
-        {/* Read-Only Status Banner */}
-        {isReadOnly && (
+        {/* Active Revision Guidance Banners for Draft / In-Progress Revisions */}
+        {!isReadOnly && (quoteVersion > 1 || customerNotes || adminRejectionReason) && (
+          <div className="mx-6 mt-4 space-y-2.5">
+            {/* Version Header Indicator */}
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300">
+              <Sparkles className="w-4 h-4 text-indigo-600" />
+              <span>Editing Revision v{quoteVersion}</span>
+            </div>
+
+            {/* 1. Customer Re-Quote Request Reason (Purple / Indigo Theme) */}
+            {customerNotes && (
+              <div className="p-3.5 rounded-xl bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800/70 flex items-start gap-3 text-xs shadow-2xs">
+                <div className="w-7 h-7 rounded-lg bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 flex items-center justify-center shrink-0 mt-0.5">
+                  <User className="w-4 h-4" />
+                </div>
+                <div className="flex-1">
+                  <span className="font-extrabold uppercase text-[10px] tracking-wider text-purple-800 dark:text-purple-300 block mb-0.5">
+                    Customer Re-Quote / Change Request Reason
+                  </span>
+                  <p className="text-purple-950 dark:text-purple-100 font-medium leading-relaxed bg-white/80 dark:bg-purple-900/30 p-2 rounded-lg border border-purple-100 dark:border-purple-800/40 mt-1">
+                    &ldquo;{customerNotes}&rdquo;
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* 2. Admin Rejection Feedback (Amber / Orange Theme) */}
+            {adminRejectionReason && (
+              <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/70 flex items-start gap-3 text-xs shadow-2xs">
+                <div className="w-7 h-7 rounded-lg bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300 flex items-center justify-center shrink-0 mt-0.5">
+                  <AlertTriangle className="w-4 h-4" />
+                </div>
+                <div className="flex-1">
+                  <span className="font-extrabold uppercase text-[10px] tracking-wider text-amber-800 dark:text-amber-300 block mb-0.5">
+                    Admin Rejection Feedback (From Prior Review)
+                  </span>
+                  <p className="text-amber-950 dark:text-amber-100 font-medium leading-relaxed bg-white/80 dark:bg-amber-900/30 p-2 rounded-lg border border-amber-100 dark:border-amber-800/40 mt-1">
+                    &ldquo;{adminRejectionReason}&rdquo;
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Read-Only Status Banners */}
+        {quoteStatus === 'ADMIN_REJECTED' && (
+          <div className="mx-6 mt-4 p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-900 dark:text-amber-200">
+            <div className="flex items-start gap-2.5">
+              <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+              <div>
+                <span className="font-bold block text-sm">
+                  SEVO CRM Rejected Quote (v{quoteVersion})
+                </span>
+                {adminRejectionReason && (
+                  <p className="text-xs text-amber-800 dark:text-amber-300 mt-1">
+                    <strong>Rejection Reason:</strong> "{adminRejectionReason}"
+                  </p>
+                )}
+                <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-0.5">
+                  This version is read-only. Click <strong>Draft Revision (v{quoteVersion + 1})</strong> to adjust quantities/rates and resubmit.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleReviseQuote}
+              disabled={revising}
+              className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl shadow-sm text-xs shrink-0 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+            >
+              <Calculator className="w-3.5 h-3.5" />
+              {revising ? 'Creating Revision...' : `Draft Revision (v${quoteVersion + 1})`}
+            </button>
+          </div>
+        )}
+
+        {quoteStatus === 'DECLINED' && (
+          <div className="mx-6 mt-4 p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-rose-900 dark:text-rose-200">
+            <div className="flex items-start gap-2.5">
+              <AlertTriangle className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+              <div>
+                <span className="font-bold block text-sm">
+                  Customer Declined Quote (v{quoteVersion})
+                </span>
+                {customerNotes && (
+                  <p className="text-xs text-rose-800 dark:text-rose-300 mt-1">
+                    <strong>Decline Reason:</strong> "{customerNotes}"
+                  </p>
+                )}
+                <p className="text-[11px] text-rose-700 dark:text-rose-400 mt-0.5">
+                  Click below to create <strong>Revision v{quoteVersion + 1}</strong> and prepare a revised quote.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleReviseQuote}
+              disabled={revising}
+              className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl shadow-sm text-xs shrink-0 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+            >
+              <Calculator className="w-3.5 h-3.5" />
+              {revising ? 'Creating Revision...' : `Draft Revision (v${quoteVersion + 1})`}
+            </button>
+          </div>
+        )}
+
+        {isReadOnly && quoteStatus !== 'ADMIN_REJECTED' && quoteStatus !== 'DECLINED' && (
           <div className="mx-6 mt-4 p-3 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/60 flex items-center justify-between gap-3 text-xs text-blue-900 dark:text-blue-300">
             <div className="flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0" />
@@ -1016,6 +1180,11 @@ export default function QuotationBuilderModal({
                         {isEstimation
                           ? 'Pre-agreed rates for this AC inspection booking (Spare Parts, Labour, Gas Charge…)'
                           : 'Select pre-approved standard rates for material, labour, and logistics.'}
+                        {totalMeasuredArea > 0 && (
+                          <span className="block mt-1 font-semibold text-blue-800 dark:text-blue-200">
+                            📐 Total Measured Area: {totalMeasuredArea} sqft ({measurements.length} area{measurements.length > 1 ? 's' : ''})
+                          </span>
+                        )}
                       </p>
                     </div>
 
@@ -1136,6 +1305,45 @@ export default function QuotationBuilderModal({
                           </div>
                         </div>
 
+                        {measurements.length > 0 && isAreaUnit(item.unit) && (
+                          <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                            <span className="text-[10px] text-gray-400 font-medium">Use area:</span>
+                            {measurements.length > 1 && totalMeasuredArea > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => handlePricedFieldChange(idx, 'quantity', totalMeasuredArea)}
+                                className={`px-2 py-0.5 text-[10px] font-semibold rounded transition-colors cursor-pointer ${
+                                  Number(item.quantity) === totalMeasuredArea
+                                    ? 'bg-blue-600 text-white'
+                                    : 'bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300 hover:bg-blue-100'
+                                }`}
+                                title={`Set quantity to total measured area (${totalMeasuredArea})`}
+                              >
+                                Total ({totalMeasuredArea} {item.unit || 'sqft'})
+                              </button>
+                            )}
+                            {measurements.map((m, mIdx) => {
+                              const areaVal = parseFloat(m.area) || 0;
+                              if (!areaVal) return null;
+                              return (
+                                <button
+                                  key={m.id || mIdx}
+                                  type="button"
+                                  onClick={() => handlePricedFieldChange(idx, 'quantity', areaVal)}
+                                  className={`px-2 py-0.5 text-[10px] font-semibold rounded transition-colors cursor-pointer ${
+                                    Number(item.quantity) === areaVal
+                                      ? 'bg-blue-600 text-white'
+                                      : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200'
+                                  }`}
+                                  title={`Set quantity to ${m.name || `Area #${mIdx + 1}`} (${areaVal})`}
+                                >
+                                  {m.name || `Area #${mIdx + 1}`} ({areaVal})
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+
                         <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-center pt-1 border-t border-gray-100 dark:border-gray-700/60">
                           <div className="sm:col-span-3">
                             <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">
@@ -1189,20 +1397,29 @@ export default function QuotationBuilderModal({
 
                           <div className="sm:col-span-2 text-right">
                             <span className="block text-[10px] font-bold text-gray-400 uppercase mb-1">
-                              Net Total
+                              Line Total
                             </span>
-                            <span className="text-xs font-extrabold text-gray-900 dark:text-gray-100">
-                              {pricingIndexes.includes(idx) ? (
-                                <span className="text-gray-400 font-medium">pricing…</span>
-                              ) : (
-                                <>
-                                  ₹
-                                  {formatCurrency(
-                                    Math.max(0, (item.quantity || 1) * (item.unit_price || 0) - (item.discount_amount || 0))
-                                  )}
-                                </>
-                              )}
-                            </span>
+                            {pricingIndexes.includes(idx) ? (
+                              <span className="text-gray-400 font-medium text-xs">pricing…</span>
+                            ) : (() => {
+                              const qty = parseFloat(item.quantity) || 0;
+                              const price = parseFloat(item.unit_price) || 0;
+                              const disc = parseFloat(item.discount_amount) || 0;
+                              const taxRate = parseFloat(item.tax_rate) || 0;
+                              const net = Math.max(0, qty * price - disc);
+                              const taxAmt = net * (taxRate / 100);
+                              const gross = net + taxAmt;
+                              return (
+                                <div className="space-y-0.5">
+                                  <div className="text-xs font-black text-gray-900 dark:text-gray-100">
+                                    ₹{formatCurrency(gross)}
+                                  </div>
+                                  <div className="text-[10px] text-gray-500 dark:text-gray-400 font-medium whitespace-nowrap">
+                                    (₹{formatCurrency(net)}{taxRate > 0 ? ` + ₹${formatCurrency(taxAmt)} GST` : ''})
+                                  </div>
+                                </div>
+                              );
+                            })()}
                           </div>
 
                           <div className="sm:col-span-1 flex justify-end">
@@ -1415,13 +1632,26 @@ export default function QuotationBuilderModal({
                 <ChevronRight className="w-4 h-4" />
               </button>
             ) : isReadOnly ? (
-              <button
-                type="button"
-                onClick={onClose}
-                className="inline-flex items-center gap-1.5 text-xs font-bold px-5 py-2 rounded-xl bg-slate-700 text-white hover:bg-slate-800 shadow-md cursor-pointer"
-              >
-                Close View
-              </button>
+              <div className="flex items-center gap-2">
+                {(quoteStatus === 'ADMIN_REJECTED' || quoteStatus === 'DECLINED' || quoteStatus === 'CHANGES_REQUESTED') && (
+                  <button
+                    type="button"
+                    onClick={handleReviseQuote}
+                    disabled={revising}
+                    className="inline-flex items-center gap-1.5 text-xs font-bold px-4 py-2 rounded-xl bg-amber-600 text-white hover:bg-amber-700 shadow-md cursor-pointer disabled:opacity-50"
+                  >
+                    <Calculator className="w-3.5 h-3.5" />
+                    <span>{revising ? 'Creating Revision...' : `Draft Revision (v${quoteVersion + 1})`}</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="inline-flex items-center gap-1.5 text-xs font-bold px-5 py-2 rounded-xl bg-slate-700 text-white hover:bg-slate-800 shadow-md cursor-pointer"
+                >
+                  Close View
+                </button>
+              </div>
             ) : (
               <button
                 type="button"

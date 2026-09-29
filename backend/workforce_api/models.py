@@ -2631,7 +2631,7 @@ class WorkforceQuoteItem(models.Model):
     tax_rate = models.DecimalField(max_digits=5, decimal_places=2, default=18.00)
     discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     total_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
-    material_source = models.CharField(max_length=50, default="CALTRACK")
+    material_source = models.CharField(max_length=50, default="SEVO")
     is_customer_supplied = models.BooleanField(default=False)
     # Legacy boolean, kept so existing readers do not break. warranty_tier is
     # the field that carries meaning now: the business offers exactly two

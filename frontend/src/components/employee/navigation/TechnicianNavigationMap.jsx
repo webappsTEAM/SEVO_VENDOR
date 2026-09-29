@@ -1,7 +1,7 @@
 /**
  * TechnicianNavigationMap.jsx
  *
- * Dedicated Google-Maps-Style Live Navigation Map for CalTrack Field Technicians.
+ * Dedicated Google-Maps-Style Live Navigation Map for SEVO Field Technicians.
  *
  * Features:
  *  - 60fps requestAnimationFrame motorcycle position & heading interpolation.

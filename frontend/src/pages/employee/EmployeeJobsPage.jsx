@@ -95,7 +95,7 @@ function formatCategoryLabel(raw) {
 }
 
 /**
- * Service Category Styling (Dynamic Urban Company / CalTrack Style)
+ * Service Category Styling (Dynamic Urban Company / SEVO Style)
  */
 function getServiceCategoryMeta(categoryName = '', title = '') {
   const cat = (categoryName || '').trim().toLowerCase();
@@ -122,8 +122,8 @@ function getServiceCategoryMeta(categoryName = '', title = '') {
       id: 'painting',
       icon: Paintbrush,
       label: 'Painting & Wall Care',
-      tagColor: 'bg-rose-500/10 text-rose-800 border-rose-200',
-      iconBg: 'bg-rose-100 text-rose-700',
+      tagColor: 'bg-teal-500/10 text-teal-800 border-teal-200',
+      iconBg: 'bg-teal-100 text-teal-700',
     };
   }
 

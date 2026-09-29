@@ -391,6 +391,7 @@ def create_revised_quote_version(quote, notes=""):
         quote.save(update_fields=["status", "updated_at"])
 
         # Create new Quote Header
+        carried_customer_notes = notes or quote.customer_notes or quote.customer_decline_reason or ""
         new_quote = WorkforceQuote.objects.create(
             quote_number=quote.quote_number,
             quote_version=new_version_number,
@@ -399,7 +400,7 @@ def create_revised_quote_version(quote, notes=""):
             company=quote.company,
             customer=quote.customer,
             title=quote.title,
-            description=f"Revision v{new_version_number}: {notes}".strip(),
+            description=quote.description or f"Revision v{new_version_number}: {notes}".strip(),
             service_category=quote.service_category,
             service_name=quote.service_name,
             estimated_labor_cost=quote.estimated_labor_cost,
@@ -413,6 +414,9 @@ def create_revised_quote_version(quote, notes=""):
             net_payable=quote.net_payable,
             status=WorkforceQuote.Status.DRAFT,
             structural_impact=quote.structural_impact,
+            customer_notes=carried_customer_notes,
+            customer_decline_reason=quote.customer_decline_reason,
+            admin_rejection_reason=quote.admin_rejection_reason,
         )
 
         # Clone line items

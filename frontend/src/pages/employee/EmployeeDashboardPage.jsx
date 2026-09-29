@@ -1010,7 +1010,12 @@ export function EmployeeDashboardPage() {
         const isPaid = isCompleted || res?.payment_status === 'PAID' || targetJob.payment?.payment_status === 'PAID' || targetJob.payment_status === 'paid';
         if (!isPaid) {
           setCashModalJob(targetJob);
-          const initialDue = targetJob.active_quote_balance_amount ?? targetJob.payment?.amount_due ?? targetJob.total_amount ?? '';
+          const isQuoteAccepted = targetJob.active_quote_status === 'CUSTOMER_ACCEPTED' || targetJob.active_quote_status === 'CONVERTED' || targetJob.active_quote_status === 'ADMIN_APPROVED';
+          const initialDue = isQuoteAccepted
+            ? (!targetJob.active_quote_advance_paid && (targetJob.active_quote_advance_due > 0 || targetJob.active_quote_advance_amount > 0)
+                ? (targetJob.active_quote_advance_due || targetJob.active_quote_advance_amount)
+                : (targetJob.active_quote_balance_amount ?? targetJob.active_quote_net_payable ?? targetJob.payment?.amount_due ?? targetJob.total_amount ?? 0))
+            : (targetJob.payment?.amount_due ?? targetJob.total_amount ?? 0);
           setCashAmountReceived(String(initialDue));
           setSuccessMsg('After-service proof submitted! Please collect customer payment.');
         } else {
@@ -1044,11 +1049,14 @@ export function EmployeeDashboardPage() {
       if (!candidateJob) return;
 
       const targetJob = (activeJobs && activeJobs.find(j => j.id === candidateJob.id)) || candidateJob;
+      const isQuoteAccepted = targetJob.active_quote_status === 'CUSTOMER_ACCEPTED' || targetJob.active_quote_status === 'CONVERTED' || targetJob.active_quote_status === 'ADMIN_APPROVED';
       const isAdvancePaid = Boolean(targetJob.active_quote_advance_paid);
       const advDue = targetJob.active_quote_advance_due !== undefined && targetJob.active_quote_advance_due !== null ? parseFloat(targetJob.active_quote_advance_due) : null;
-      const quoteAmt = (!isAdvancePaid && advDue !== null && advDue > 0)
-        ? advDue
-        : (targetJob.active_quote_balance_amount ?? targetJob.active_quote_advance_amount ?? targetJob.active_quote_net_payable ?? targetJob.active_quote_total_amount);
+      const quoteAmt = isQuoteAccepted
+        ? ((!isAdvancePaid && advDue !== null && advDue > 0)
+            ? advDue
+            : (targetJob.active_quote_balance_amount ?? targetJob.active_quote_advance_amount ?? targetJob.active_quote_net_payable ?? targetJob.active_quote_total_amount))
+        : null;
       const amtDue = (customAmount !== null && customAmount !== undefined && !isNaN(customAmount) && parseFloat(customAmount) >= 0)
         ? parseFloat(customAmount)
         : (quoteAmt !== undefined && quoteAmt !== null && parseFloat(quoteAmt) > 0)
@@ -1823,20 +1831,30 @@ export function EmployeeDashboardPage() {
                     <span className="font-bold text-amber-950">{cashModalJob.service_title || cashModalJob.issue_title || 'Service'}</span>
                   </div>
                   <div className="flex justify-between items-center text-xs">
-                    <span className="text-amber-800 font-semibold">
-                      {!cashModalJob.active_quote_advance_paid && (cashModalJob.active_quote_advance_due > 0 || cashModalJob.active_quote_advance_amount > 0)
+                    {(() => {
+                      const isQuoteAccepted = cashModalJob.active_quote_status === 'CUSTOMER_ACCEPTED' || cashModalJob.active_quote_status === 'CONVERTED' || cashModalJob.active_quote_status === 'ADMIN_APPROVED';
+                      const hasQuoteAdvance = isQuoteAccepted && !cashModalJob.active_quote_advance_paid && (cashModalJob.active_quote_advance_due > 0 || cashModalJob.active_quote_advance_amount > 0);
+                      const hasQuoteBalance = isQuoteAccepted && cashModalJob.active_quote_advance_paid && cashModalJob.active_quote_balance_amount > 0;
+
+                      const label = hasQuoteAdvance
                         ? '50% Advance Milestone Due:'
-                        : (cashModalJob.active_quote_advance_paid && cashModalJob.active_quote_balance_amount > 0)
-                        ? '50% Balance Amount Due:'
-                        : 'Authoritative Amount Due:'}
-                    </span>
-                    <span className="font-mono font-bold text-base text-amber-950">
-                      ₹{
-                        (!cashModalJob.active_quote_advance_paid && (cashModalJob.active_quote_advance_due > 0 || cashModalJob.active_quote_advance_amount > 0))
-                          ? (cashModalJob.active_quote_advance_due || cashModalJob.active_quote_advance_amount)
-                          : (cashModalJob.active_quote_balance_amount ?? cashModalJob.active_quote_net_payable ?? cashModalJob.payment?.amount_due ?? cashModalJob.total_amount ?? 0)
-                      }
-                    </span>
+                        : hasQuoteBalance
+                        ? 'Final Balance Due:'
+                        : 'Consultation / Service Fee Due:';
+
+                      const amount = hasQuoteAdvance
+                        ? (cashModalJob.active_quote_advance_due || cashModalJob.active_quote_advance_amount)
+                        : hasQuoteBalance
+                        ? cashModalJob.active_quote_balance_amount
+                        : (cashModalJob.payment?.amount_due ?? cashModalJob.total_amount ?? 0);
+
+                      return (
+                        <>
+                          <span className="text-amber-800 font-semibold">{label}</span>
+                          <span className="font-mono font-bold text-base text-amber-950">₹{amount}</span>
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
 
@@ -3559,6 +3577,8 @@ export function EmployeeDashboardPage() {
                                         ? 'Vendor Admin requested changes. Please open Quotation Builder to revise and resubmit.'
                                         : selectedJob.active_quote_status === 'SENT_TO_CUSTOMER'
                                         ? 'Quotation released to customer. Awaiting customer review and authorization.'
+                                        : selectedJob.active_quote_status === 'DECLINED' || selectedJob.active_quote_status === 'CUSTOMER_DECLINED'
+                                        ? 'Customer declined the quotation. You can complete the consultation or draft a revised quotation.'
                                         : (preServiceState.is_complete || selectedJob.can_create_quote)
                                         ? 'Site inspection unlocked. Record dimensions, select rate-card items, and submit quote for Vendor Admin approval.'
                                         : 'Complete Step 1 Arrival and Step 2 OTP/Selfie verification above to unlock Quotation Builder.'}
@@ -3566,19 +3586,40 @@ export function EmployeeDashboardPage() {
                                   </div>
                                 </div>
 
-                                <button
-                                  type="button"
-                                  onClick={() => setIsQuotationModalOpen(true)}
-                                  disabled={!preServiceState.is_complete && !selectedJob.can_create_quote}
-                                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm shrink-0 ${
-                                    preServiceState.is_complete || selectedJob.can_create_quote
-                                      ? 'bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer hover:shadow-indigo-500/20'
-                                      : 'bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
-                                  }`}
-                                >
-                                  <Calculator className="w-3.5 h-3.5" />
-                                  <span>{selectedJob.active_quote_number ? 'Open Quotation Builder' : 'Draft Quotation'}</span>
-                                </button>
+                                {selectedJob.active_quote_status === 'DECLINED' || selectedJob.active_quote_status === 'CUSTOMER_DECLINED' ? (
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    <button
+                                      type="button"
+                                      onClick={() => setProofModalJob(selectedJob)}
+                                      className="px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer hover:shadow-emerald-500/20"
+                                    >
+                                      <CheckCircle2 className="w-3.5 h-3.5" />
+                                      <span>Complete Consultation</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setIsQuotationModalOpen(true)}
+                                      className="px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm bg-amber-600 hover:bg-amber-700 text-white cursor-pointer hover:shadow-amber-500/20"
+                                    >
+                                      <Calculator className="w-3.5 h-3.5" />
+                                      <span>Draft Revision</span>
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => setIsQuotationModalOpen(true)}
+                                    disabled={!preServiceState.is_complete && !selectedJob.can_create_quote}
+                                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm shrink-0 ${
+                                      preServiceState.is_complete || selectedJob.can_create_quote
+                                        ? 'bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer hover:shadow-indigo-500/20'
+                                        : 'bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
+                                    }`}
+                                  >
+                                    <Calculator className="w-3.5 h-3.5" />
+                                    <span>{selectedJob.active_quote_number ? 'Open Quotation Builder' : 'Draft Quotation'}</span>
+                                  </button>
+                                )}
                               </div>
                             </div>
                           )}
