@@ -3045,6 +3045,12 @@ class WorkforceJobListView(APIView):
             else:
                 jobs_qs = ServiceRequest.objects.all()
 
+            # Customer owns the booking lifecycle.  A customer-cancelled
+            # shared ServiceRequest is never an operational Vendor job,
+            # including in the "all" view.  Keeping it out here makes the
+            # UI safe even if an asynchronous cancellation cleanup is delayed.
+            jobs_qs = jobs_qs.exclude(status="cancelled")
+
             params = getattr(request, "query_params", request.GET)
             status_filter = str(params.get("status", "all")).lower().strip()
             if status_filter == "completed":
@@ -3059,6 +3065,10 @@ class WorkforceJobListView(APIView):
             from workforce_api.services.workload import ACTIVE_QUEUE_STATUSES, WORKLOAD_OCCUPIED_STATUSES
             from workforce_api.services.automatic_dispatch import get_scheduled_dispatch_window, check_candidate_eligibility
             from service_requests.models import EmployeeJob
+
+            # The expiry sweep above is authoritative.  Do not launch it a
+            # second time in a daemon thread: that duplicates database work
+            # and can outlive a request/test database lifecycle.
 
             # 1. Hard Single Active Job Invariant: Check if technician already has an active assignment
             from workforce_api.services.workload import get_employee_active_job
@@ -3171,10 +3181,12 @@ class WorkforceJobListView(APIView):
                     (employee_job_qs & Q(status="completed"))
                 )
             elif status_filter == "all":
-                # Section 10 & 11: exclude declined actionable/unassigned jobs
+                # Section 10 & 11: exclude declined actionable/unassigned jobs.
+                # Cancelled customer bookings have no operational Vendor tab;
+                # they must not reappear via an old EmployeeJob or assignment.
                 qs = ServiceRequest.objects.filter(
                     assigned_active_qs | completed_qs | offered_qs | employee_job_qs | future_scheduled_qs
-                ).exclude(~Q(status__in=["completed", "cancelled"]) & is_declined_by_emp)
+                ).exclude(status="cancelled").exclude(~Q(status__in=["completed", "cancelled"]) & is_declined_by_emp)
             else: # "active" default
                 # Section 10: OFFERS, ACTIVE, SCHEDULED actionable jobs exclude declined
                 qs = ServiceRequest.objects.filter(
@@ -4748,7 +4760,7 @@ class WorkforceDispatchAssignView(APIView):
 
 # ─── Automatic Dispatch Engine ────────────────────────────────────────────────
 
-def run_automatic_dispatch(job, excluded_employee_ids=None, force=False):
+def run_automatic_dispatch(job, excluded_employee_ids=None, force=False, allow_legacy_override=False, **kwargs):
     """
     Delegates to authoritative automatic dispatch service:
     workforce_api.services.automatic_dispatch.dispatch_job
@@ -5497,6 +5509,73 @@ class WorkforceJobTechnicianCancelView(APIView):
             }, status=status.HTTP_200_OK)
 
 
+def _finalize_customer_cancellation(job):
+    """Close Vendor-owned operational records for a Customer-cancelled job.
+
+    The Customer application writes ``ServiceRequest.status = cancelled``
+    first because it owns the booking lifecycle.  Consequently a later
+    server-to-server callback can legitimately observe an already-cancelled
+    row.  It must still close the separate Vendor offer/dispatch/tracking
+    records; returning early leaves an actionable card in the technician UI.
+
+    This function is intentionally idempotent and is called while the shared
+    ServiceRequest row is locked by the caller.
+    """
+    from service_requests.models import EmployeeJob
+    from workforce_api.models import WorkforceDispatchState
+
+    now = timezone.now()
+    reason = "CUSTOMER_CANCELLED"
+
+    employee_ids = set(
+        EmployeeJob.objects.filter(service_request=job).values_list("employee_id", flat=True)
+    )
+    if job.assigned_employee_id:
+        employee_ids.add(job.assigned_employee_id)
+
+    # Preserve accepted/expired/declined offer history, but close every offer
+    # that could still be accepted after the customer has cancelled.
+    closed_offers = WorkforceJobOffer.objects.select_for_update().filter(
+        job=job,
+        status=WorkforceJobOffer.Status.OFFERED,
+    ).update(
+        status=WorkforceJobOffer.Status.CANCELLED,
+        rejection_reason=reason,
+    )
+
+    EmployeeJob.objects.filter(service_request=job).exclude(
+        status__in=["COMPLETED", "CANCELLED"]
+    ).update(status="CANCELLED")
+
+    JobTrackingSession.objects.filter(
+        job=job,
+        status=JobTrackingSession.SessionStatus.ACTIVE,
+    ).update(
+        status=JobTrackingSession.SessionStatus.CANCELLED,
+        ended_at=now,
+    )
+
+    WorkforceDispatchState.objects.filter(job=job).update(
+        dispatch_status=WorkforceDispatchState.DispatchStatus.CANCELLED,
+        retry_at=None,
+        locked_at=None,
+        unassigned_reason_code=reason,
+        unassigned_reason_message="Booking cancelled by customer.",
+        updated_at=now,
+    )
+
+    # Do not trust only job.assigned_employee: legacy/migrated jobs can have
+    # EmployeeJob links without that denormalised pointer.  Each reconciliation
+    # is idempotent and restores availability only when no real active job
+    # remains.
+    if employee_ids:
+        from workforce_api.services.workload import reconcile_employee_availability
+        for employee_id in employee_ids:
+            reconcile_employee_availability(employee_id)
+
+    return closed_offers
+
+
 class WorkforceJobCustomerCancelSyncView(APIView):
     """
     Server-to-server endpoint: the Customer app calls this when a customer
@@ -5529,27 +5608,26 @@ class WorkforceJobCustomerCancelSyncView(APIView):
     permission_classes = [IsInternalWorkforceCaller]
 
     def post(self, request, pk):
-        job = ServiceRequest.objects.filter(pk=pk).first()
-        if not job:
-            return Response({"error": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
+        with transaction.atomic():
+            job = ServiceRequest.objects.select_for_update().filter(pk=pk).first()
+            if not job:
+                return Response({"error": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        if job.status == "cancelled":
-            if job.assigned_employee:
-                from workforce_api.services.workload import reconcile_employee_availability
-                from service_requests.models import EmployeeJob
-                EmployeeJob.objects.filter(service_request=job).update(status="CANCELLED")
-                reconcile_employee_availability(job.assigned_employee)
-            return Response({"message": "Job already cancelled.", "status": job.status}, status=status.HTTP_200_OK)
+            if job.status != "cancelled":
+                try:
+                    new_status = apply_transition(job, "cancelled", actor=None)
+                except ValidationError as e:
+                    return Response({"error": str(e.detail if hasattr(e, "detail") else e)}, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                new_status = job.status
 
-        try:
-            new_status = apply_transition(job, "cancelled", actor=None)
-        except ValidationError as e:
-            return Response({"error": str(e.detail if hasattr(e, "detail") else e)}, status=status.HTTP_400_BAD_REQUEST)
+            closed_offers = _finalize_customer_cancellation(job)
 
         return Response({
-            "message": f"Job #{job.id} cancelled (customer-initiated) and technician released.",
+            "message": f"Job #{job.id} cancelled (customer-initiated) and Vendor work released.",
             "job_id": job.id,
             "status": new_status,
+            "closed_offers": closed_offers,
         }, status=status.HTTP_200_OK)
 
 
@@ -5889,9 +5967,35 @@ class WorkforceCrossServiceDispatchView(APIView):
         if not job:
             return Response({"error": "Booking not found", "code": "BOOKING_NOT_FOUND"}, status=status.HTTP_404_NOT_FOUND)
 
-        success, msg = run_automatic_dispatch(job)
+        # Customer retries must refer to the same immutable booking.  The
+        # shared request_id is the only accepted idempotency key; accepting a
+        # key for another booking would make the cross-service contract unsafe.
+        supplied_key = str(
+            request.headers.get("Idempotency-Key")
+            or request.data.get("idempotency_key")
+            or ""
+        ).strip()
+        if supplied_key and supplied_key != str(job.request_id):
+            return Response(
+                {
+                    "error": "Idempotency key does not match booking.",
+                    "code": "IDEMPOTENCY_KEY_MISMATCH",
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        allow_legacy_override = bool(request.data.get("allow_legacy_override") or request.data.get("operational_override"))
+        allocation_started, msg = run_automatic_dispatch(job, allow_legacy_override=allow_legacy_override)
         return Response({
-            "success": success,
+            # The shared ServiceRequest has been accepted by Workforce even
+            # when no technician can receive an offer immediately. Workforce's
+            # durable dispatch state owns retry/radius widening from this
+            # point; telling Customer that delivery failed would make it retry
+            # a successfully accepted booking as though it were a network
+            # failure.
+            "success": True,
+            "accepted": True,
+            "allocation_started": allocation_started,
             "workforce_job_id": str(job.id),
             "status": job.status,
             "message": msg,
@@ -7625,7 +7729,20 @@ class WorkforceLocationUpdateView(APIView):
                     notify_customer_app(
                         "technician.location_updated",
                         job,
-                        location={"latitude": lat_f, "longitude": lng_f},
+                        # The Customer receiver persists every accepted fix and
+                        # orders it by capture time. Sending coordinates alone
+                        # made it substitute webhook-arrival time and discard
+                        # accuracy/heading/speed, so delayed mobile packets
+                        # could move the customer-map marker backwards.
+                        location={
+                            "latitude": lat_f,
+                            "longitude": lng_f,
+                            "accuracy": acc_f,
+                            "speed": float(speed) if speed is not None else None,
+                            "heading": float(heading) if heading is not None else None,
+                            "captured_at": captured_dt.isoformat(),
+                            "updated_at": now.isoformat(),
+                        },
                     )
                 except Exception as webhook_err:
                     logger.info(f"Could not notify Customer app of location update for Job #{job.id}: {webhook_err}")
