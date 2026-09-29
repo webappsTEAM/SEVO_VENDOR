@@ -19,6 +19,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { MapPin, Navigation } from 'lucide-react';
 import { loadMapsApi } from '../../../utils/loadGoogleMaps.js';
 import { apiGetJobLiveTracking } from '../../../api/customerTrackingApi.js';
+import { apiGetJobStops } from '../../../api/workforceService.js';
+import { nextTargetStop, navUrl, routeUrl, remainingPoints, sortStops, stopPoint } from './logisticsNav.js';
 import { isLogisticsJob } from './LogisticsLegController.jsx';
 
 const POLL_MS = 10000;
@@ -48,9 +50,12 @@ export function LogisticsRouteMap({ job, className = '' }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const markersRef = useRef({ pickup: null, drop: null, vehicle: null });
+  const stopMarkersRef = useRef([]);
+  const routeLineRef = useRef(null);
   const fittedRef = useRef(false);
 
   const [tracking, setTracking] = useState(null);
+  const [stops, setStops] = useState([]);
   const [mapError, setMapError] = useState('');
 
   // Reset when switching jobs.
@@ -58,8 +63,12 @@ export function LogisticsRouteMap({ job, className = '' }) {
     fittedRef.current = false;
     Object.values(markersRef.current).forEach((m) => m && m.setMap(null));
     markersRef.current = { pickup: null, drop: null, vehicle: null };
+    stopMarkersRef.current.forEach((m) => m && m.setMap(null));
+    stopMarkersRef.current = [];
+    if (routeLineRef.current) { routeLineRef.current.setMap(null); routeLineRef.current = null; }
     mapRef.current = null;
     setTracking(null);
+    setStops([]);
   }, [jobId]);
 
   // Poll the existing live-tracking endpoint.
@@ -75,6 +84,13 @@ export function LogisticsRouteMap({ job, className = '' }) {
       apiGetJobLiveTracking(jobId)
         .then((res) => { if (!cancelled && res) setTracking(res); })
         .catch(() => { /* keep last known data */ });
+      // The ordered trip stops (pickup, waypoints, drop) with exact coordinates and progress.
+      apiGetJobStops(jobId)
+        .then((res) => {
+          const list = Array.isArray(res?.results) ? res.results : (Array.isArray(res) ? res : null);
+          if (!cancelled && list) setStops(sortStops(list));
+        })
+        .catch(() => { /* single pickup/drop trips, or a transient error: keep last known stops */ });
     };
     load();
     const t = setInterval(load, POLL_MS);
@@ -89,6 +105,10 @@ export function LogisticsRouteMap({ job, className = '' }) {
   const drop = toPoint(tracking?.drop_location)
     || toPoint({ latitude: job?.drop_latitude, longitude: job?.drop_longitude });
   const vehicle = toPoint(tracking?.assigned_technician?.location);
+  const waypointStops = stops.filter((s) => String(s.stop_type || '').toUpperCase() === 'WAYPOINT' && stopPoint(s));
+  const waypointKey = waypointStops.map((s) => `${s.id}:${s.latitude},${s.longitude}:${s.completed_at ? 1 : 0}`).join('|');
+  const legKey = job?.logistics_leg || tracking?.logistics_leg || '';
+  const target = nextTargetStop(stops, legKey);
 
   const pickupAddress = tracking?.pickup_location?.address || job?.address || '';
   const dropAddress = tracking?.drop_location?.address || job?.drop_address || '';
@@ -131,8 +151,24 @@ export function LogisticsRouteMap({ job, className = '' }) {
         upsert('drop', drop, '#dc2626', 'Drop', 'D');
         upsert('vehicle', vehicle, '#2563eb', 'Your live location', null);
 
+        // Intermediate stops, numbered in trip order, and a dashed line Pickup -> Stops -> Drop.
+        stopMarkersRef.current.forEach((m) => m && m.setMap(null));
+        stopMarkersRef.current = waypointStops.map((s, i) => new maps.Marker({
+          position: stopPoint(s), map, title: `Stop ${i + 1}: ${s.address || ''}`.trim(),
+          icon: dotIcon(maps, s.completed_at ? '#94a3b8' : '#4f46e5'),
+          label: { text: String(i + 1), color: '#ffffff', fontSize: '10px', fontWeight: '700' },
+          zIndex: 25,
+        }));
+        if (routeLineRef.current) { routeLineRef.current.setMap(null); routeLineRef.current = null; }
+        const line = [pickup, ...waypointStops.map(stopPoint), drop].filter(Boolean);
+        if (line.length > 2 && maps.Polyline) {
+          routeLineRef.current = new maps.Polyline({
+            path: line, map, strokeColor: '#4f46e5', strokeOpacity: 0.55, strokeWeight: 3, geodesic: true,
+          });
+        }
+
         if (!fittedRef.current) {
-          const pts = [pickup, drop, vehicle].filter(Boolean);
+          const pts = [pickup, drop, vehicle, ...waypointStops.map(stopPoint)].filter(Boolean);
           if (pts.length > 1) {
             const b = new maps.LatLngBounds();
             pts.forEach((p) => b.extend(p));
@@ -148,12 +184,14 @@ export function LogisticsRouteMap({ job, className = '' }) {
     return () => { cancelled = true; };
   }, [
     isLogistics, backendSaysNotLogistics,
-    pickup?.lat, pickup?.lng, drop?.lat, drop?.lng, vehicle?.lat, vehicle?.lng,
+    pickup?.lat, pickup?.lng, drop?.lat, drop?.lng, vehicle?.lat, vehicle?.lng, waypointKey,
   ]);
 
   if (!isLogistics || backendSaysNotLogistics) return null;
 
-  const navLink = (p) => (p ? `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}` : null);
+  const navLink = navUrl;
+  const targetPoint = target ? stopPoint(target) : null;
+  const fullRouteLink = waypointStops.length ? routeUrl(remainingPoints(stops, legKey)) : null;
 
   return (
     <div className={`p-4 bg-white border border-slate-200 rounded-xl space-y-3 ${className}`}>
@@ -172,12 +210,34 @@ export function LogisticsRouteMap({ job, className = '' }) {
 
       <div className="flex flex-wrap gap-3 text-[11px] font-semibold text-slate-600">
         <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-emerald-600" />Pickup</span>
+        {waypointStops.length > 0 && (
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-indigo-600" />Stops (in order)</span>
+        )}
         <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-red-600" />Drop</span>
         <span className="flex items-center gap-1">
           <span className="w-2.5 h-2.5 rounded-full bg-blue-600" />
           {vehicle ? 'You (live)' : 'You (no live GPS yet)'}
         </span>
       </div>
+
+      {waypointStops.length > 0 && targetPoint && (
+        <div className="flex flex-wrap items-center justify-between gap-2 p-2 rounded-lg bg-indigo-50 border border-indigo-200 text-xs" data-testid="next-stop-bar">
+          <span className="text-indigo-900 font-semibold">
+            Next: {String(target.stop_type || '').toUpperCase() === 'WAYPOINT' ? `Stop ${waypointStops.findIndex((w) => w.id === target.id) + 1}` : (String(target.stop_type || '').toUpperCase() === 'DROP' ? 'Drop' : 'Pickup')}
+            {target.address ? ` — ${target.address}` : ''}
+          </span>
+          <span className="flex items-center gap-3">
+            <a href={navLink(targetPoint)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sky-700 font-bold hover:underline" data-testid="nav-next">
+              <Navigation className="w-3 h-3" />Navigate to next
+            </a>
+            {fullRouteLink && (
+              <a href={fullRouteLink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sky-700 font-bold hover:underline" data-testid="nav-route">
+                <MapPin className="w-3 h-3" />Whole route
+              </a>
+            )}
+          </span>
+        </div>
+      )}
 
       <div className="space-y-2 text-xs">
         <div className="flex items-start justify-between gap-2">
@@ -188,6 +248,16 @@ export function LogisticsRouteMap({ job, className = '' }) {
             </a>
           )}
         </div>
+        {waypointStops.map((s, i) => (
+          <div key={s.id || i} className="flex items-start justify-between gap-2" data-testid="stop-row">
+            <p className={s.completed_at ? 'text-slate-400 line-through' : 'text-slate-700'}>
+              <strong className="text-indigo-700">Stop {i + 1}:</strong> {s.address || 'Address not specified'}
+            </p>
+            <a href={navLink(stopPoint(s))} target="_blank" rel="noopener noreferrer" className="shrink-0 inline-flex items-center gap-1 text-sky-700 font-bold hover:underline">
+              <Navigation className="w-3 h-3" />Navigate
+            </a>
+          </div>
+        ))}
         <div className="flex items-start justify-between gap-2">
           <p className="text-slate-700"><strong className="text-red-700">Drop:</strong> {dropAddress || 'Not provided'}</p>
           {navLink(drop) && (

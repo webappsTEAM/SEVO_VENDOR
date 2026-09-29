@@ -209,5 +209,10 @@ class HardenedDispatchPipelineUnitTests(SimpleTestCase):
             service_name="hvac",
             job=SimpleNamespace(id=4001, service_category="hvac", latitude=12.9716, longitude=77.5946, company_id=None),
             purpose="offer_reception",
+            # This test isolates GPS freshness.  Its lightweight legacy job
+            # fixture intentionally has no canonical catalog/package IDs, so
+            # exercise the explicit operational-exception path rather than
+            # weakening the production AC canonical-ID gate.
+            allow_legacy_override=True,
         )
         self.assertTrue(ok, f"Candidate eligibility failed: {reason}")

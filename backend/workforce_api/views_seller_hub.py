@@ -3588,7 +3588,7 @@ class SellerOrderStatusTransitionView(APIView):
 
                             sr = ServiceRequest.objects.create(
                                 company=order.company,
-                                service_category="two_wheeler_delivery",
+                                service_category="goods_transport_two_wheeler",
                                 job_type="DELIVERY",
                                 request_kind=ServiceRequest.RequestKind.DIRECT,
                                 customer_name=order.customer_name,
@@ -3623,7 +3623,7 @@ class SellerOrderStatusTransitionView(APIView):
 
                         sr = ServiceRequest.objects.create(
                             company=order.company,
-                            service_category="two_wheeler_delivery",
+                            service_category="goods_transport_two_wheeler",
                             job_type="DELIVERY",
                             request_kind=ServiceRequest.RequestKind.DIRECT,
                             customer_name=order.customer_name,
@@ -3695,7 +3695,7 @@ class SellerOrderStatusTransitionView(APIView):
 
                                 sr = ServiceRequest.objects.create(
                                     company=first_rem.company,
-                                    service_category="two_wheeler_delivery",
+                                    service_category="goods_transport_two_wheeler",
                                     job_type="DELIVERY",
                                     request_kind=ServiceRequest.RequestKind.DIRECT,
                                     customer_name=first_rem.customer_name,
@@ -4523,7 +4523,7 @@ class SellerOrderRetryDispatchView(APIView):
         if not order.dispatch_job:
             sr = ServiceRequest.objects.create(
                 company=order.company,
-                service_category="two_wheeler_delivery",
+                service_category="goods_transport_two_wheeler",
                 job_type="DELIVERY",
                 request_kind=ServiceRequest.RequestKind.DIRECT,
                 customer_name=order.customer_name,
