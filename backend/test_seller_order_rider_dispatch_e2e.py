@@ -236,7 +236,7 @@ def run_e2e_verification():
     order.refresh_from_db()
     assert order.status == SellerOrder.Status.READY_FOR_PICKUP
     assert order.dispatch_job is not None, "Dispatch job ServiceRequest was not created!"
-    assert order.dispatch_job.service_category == "two_wheeler_delivery"
+    assert order.dispatch_job.service_category == "goods_transport_two_wheeler"
     print(f"✅ Order #{order.order_number} transitioned to READY_FOR_PICKUP -> Dispatch Job #{order.dispatch_job.id} created!")
 
     # 4. Verify Job Offer Created & Rider Accepts
