@@ -473,7 +473,7 @@ class ServiceRequest(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.request_id:
-            self.request_id = _generate_request_id()
+            setattr(self, "request_id", _generate_request_id())
         super().save(*args, **kwargs)
 
         if self.status in ["cancelled", "completed", "unable_to_complete"]:
@@ -563,7 +563,8 @@ class ServiceRequest(models.Model):
             )
 
         # 3. Check specialist secondary jobs linked via cart_data or extension foreign keys
-        cart_data = self.cart_data or []
+        raw_cart = getattr(self, "cart_data", None)
+        cart_data = raw_cart if isinstance(raw_cart, list) else []
         for item in cart_data:
             if item.get("type") == "specialist_job" and item.get("job_id"):
                 s_job = ServiceRequest.objects.filter(pk=item["job_id"]).first()
@@ -688,7 +689,8 @@ class BookingMessage(models.Model):
         ordering = ["created_at"]
 
     def __str__(self):
-        return f"{self.sender_persona}: {self.body[:40]}"
+        body_text = str(self.body or "")
+        return f"{self.sender_persona}: {body_text[:40]}"
 
 
 class TripStop(models.Model):

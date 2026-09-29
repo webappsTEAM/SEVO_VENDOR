@@ -4152,7 +4152,7 @@ class WorkforceJobCashCollectView(APIView):
                 actor_user=request.user,
                 event_type="CASH_REPORTED",
                 amount=pmt.amount_due,
-                metadata={"amount_received": float(amt_received), "change_returned": float(change_returned), "otp": str(otp_raw)},
+                metadata={"amount_received": float(amt_received), "change_returned": float(change_returned), "otp": otp_raw},
             )
 
             # Sync ServiceRequest payment status
@@ -4310,6 +4310,7 @@ class WorkforceJobPaymentVerifyOTPView(APIView):
             job.save(update_fields=["payment_status", "updated_at"])
 
             # Auto-sync to workforce invoice if one exists
+            inv = None
             try:
                 from workforce_api.models import WorkforceInvoice
                 from workforce_api.services import invoice_service
@@ -4576,6 +4577,7 @@ class WorkforceCustomerPaymentConfirmView(APIView):
                 job.save(update_fields=["payment_status", "updated_at"])
 
                 # Auto-sync to workforce invoice if one exists
+                inv = None
                 try:
                     from workforce_api.models import WorkforceInvoice
                     from workforce_api.services import invoice_service
