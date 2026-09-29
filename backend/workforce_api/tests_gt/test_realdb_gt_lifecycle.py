@@ -62,9 +62,47 @@ def create_mirror_tables():
     return created
 
 
+def relax_unmirrored_not_null():
+    """PostgreSQL only, test database only. When the mirror tables are the
+    real Customer-owned tables (a DB built from both apps' migrations), they
+    carry NOT NULL columns the Vendor mirror model does not declare (e.g.
+    service_requests_servicerequest.dispatch_attempts). The Vendor app never
+    INSERTs those rows in production -- the Customer app does -- but these
+    tests must, so let such columns accept NULL here."""
+    if connection.vendor != "postgresql":
+        return
+    existing = set(connection.introspection.table_names())
+    with connection.cursor() as cursor:
+        for model in _mirror_models():
+            table = model._meta.db_table
+            if table not in existing:
+                continue
+            known = {f.column for f in model._meta.concrete_fields}
+            cursor.execute(
+                "SELECT column_name FROM information_schema.columns WHERE table_name = %s "
+                "AND is_nullable = 'NO' AND column_default IS NULL", [table])
+            for (col,) in cursor.fetchall():
+                if col not in known:
+                    cursor.execute(f'ALTER TABLE "{table}" ALTER COLUMN "{col}" DROP NOT NULL')
+
+
 def clear_mirror_tables():
     """TransactionTestCase only flushes managed tables, so mirror rows would
-    otherwise leak from one test into the next."""
+    otherwise leak from one test into the next.
+
+    On PostgreSQL constraint_checks_disabled() is a no-op, so row-by-row
+    DELETEs hit FK violations between mirror tables (e.g. accounts_user rows
+    still referenced by managed rows), abort, and leave rows behind -- which
+    then broke the next test (duplicate e-mail) and Django's own post-test
+    flush (companies_company still referenced by accounts_user). One
+    TRUNCATE ... CASCADE clears every mirror table atomically instead."""
+    if connection.vendor == "postgresql":
+        existing = set(connection.introspection.table_names())
+        tables = [m._meta.db_table for m in _mirror_models() if m._meta.db_table in existing]
+        if tables:
+            with connection.cursor() as cursor:
+                cursor.execute("TRUNCATE " + ", ".join(f'"{t}"' for t in sorted(set(tables))) + " CASCADE")
+        return
     with connection.constraint_checks_disabled():
         with connection.cursor() as cursor:
             for model in _mirror_models():
@@ -92,9 +130,12 @@ class Trip:
 
         self.category = category
         self.company = Company.objects.create(company_name="Acme" + tag, slug="acme" + tag)
-        self.customer = User.objects.create(username="cust" + tag, role="customer", company=self.company, password="x")
+        # accounts_user.email is UNIQUE in the real (Customer-owned) schema: two
+        # users with the default blank e-mail collide on PostgreSQL.
+        self.customer = User.objects.create(username="cust" + tag, email=f"cust{tag}@realdb.test",
+                                            role="customer", company=self.company, password="x")
         self.tech_user = User.objects.create(
-            username="tech" + tag, role="employee", company=self.company, password="x",
+            username="tech" + tag, email=f"tech{tag}@realdb.test", role="employee", company=self.company, password="x",
             last_known_location={"latitude": PICK[0] + 0.001, "longitude": PICK[1],
                                  "updated_at": timezone.now().isoformat()},
         )
@@ -197,6 +238,7 @@ class RealDbBase(TransactionTestCase):
     def setUpClass(cls):
         super().setUpClass()
         cls._created_mirror_models = create_mirror_tables()
+        relax_unmirrored_not_null()
 
     @classmethod
     def tearDownClass(cls):

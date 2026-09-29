@@ -273,3 +273,31 @@ class PackersMoversCancellationLockTests(TestCase):
 
         self.assertEqual(resp.status_code, 409)
         self.assertEqual(resp.data["code"], "TRIP_PROGRESS_CANCELLATION_LOCKED")
+
+
+class PMAddOnVendorVisibilityTests(SimpleTestCase):
+    """Round N: crew must see server-priced P&M add-ons booked by the customer."""
+
+    def _job(self, fb, cart=None):
+        return SimpleNamespace(service_category="packers_movers", service_title="House Shifting",
+                               fare_breakdown=fb, cart_data=cart or [])
+
+    def test_addons_surface_from_fare_breakdown_without_amounts(self):
+        fb = {"pm_addons": [
+            {"code": "CARPENTER", "name": "Carpenter assembly", "quantity": 1, "unit_price": "499.00",
+             "amount": "499.00", "is_labour_only": False},
+            {"code": "APPL_INSTALL", "name": "Appliance install", "quantity": 2, "amount": "600.00"},
+        ]}
+        _, _, reloc = extract_pm_job_details(self._job(fb))
+        self.assertEqual([a["code"] for a in reloc["pm_addons"]], ["CARPENTER", "APPL_INSTALL"])
+        self.assertEqual(reloc["pm_addons"][1]["quantity"], 2)
+        self.assertNotIn("amount", reloc["pm_addons"][0])
+
+    def test_nested_pricing_addons_and_bad_rows(self):
+        fb = {"pricing": {"pm_addons": [{"code": "HELPER", "quantity": "x", "is_labour_only": True}, "junk"]}}
+        _, _, reloc = extract_pm_job_details(self._job(fb))
+        self.assertEqual(reloc["pm_addons"], [{"code": "HELPER", "name": "HELPER", "quantity": 1, "is_labour_only": True}])
+
+    def test_unpriced_cart_addons_are_ignored(self):
+        _, _, reloc = extract_pm_job_details(self._job({}, [{"pm_addons": [{"code": "CARPENTER", "quantity": 9}]}]))
+        self.assertEqual(reloc["pm_addons"], [])

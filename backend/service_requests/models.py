@@ -1419,3 +1419,16 @@ def get_gt_extra_charge_policy(category):
     cat = str(category or "").strip().lower()
     qs = GTExtraChargePolicy.objects.filter(is_active=True, is_enabled=True)
     return qs.filter(service_category__iexact=cat).first() or qs.filter(service_category="").first()
+
+
+class GTOperationsConfig(models.Model):
+    """Unmanaged mirror of the Customer app's GTOperationsConfig (Admin-editable GT limits)."""
+    checkpoint_radius_meters = models.PositiveIntegerField(default=250)
+    delivery_otp_ttl_minutes = models.PositiveIntegerField(default=30)
+    max_otp_attempts = models.PositiveIntegerField(default=5)
+    delivery_otp_required = models.BooleanField(default=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        managed = False
+        db_table = "service_requests_gtoperationsconfig"

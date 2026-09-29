@@ -1,4 +1,14 @@
-/**
+import React from 'react';
+  
+  const ApiErrors = () =>  {
+	return (
+	  <div>
+	  </div>
+	);
+  }
+  
+  export default ApiErrors;
+  /**
  * apiErrors.js
  * Centralized API error classification and human-readable formatting.
  */

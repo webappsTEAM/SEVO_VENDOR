@@ -1,4 +1,14 @@
-/**
+import React from 'react';
+  
+  const UseGPSPosition = () =>  {
+	return (
+	  <div>
+	  </div>
+	);
+  }
+  
+  export default UseGPSPosition;
+  /**
  * useGPSPosition.js
  *
  * Ported and adapted from location_service_share/frontend/useLocation.js.

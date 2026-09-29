@@ -12355,8 +12355,15 @@ class WorkforceJobLogisticsExtraChargeView(WorkforceJobLogisticsCheckpointView):
         photo_url = ""
         if photo:
             from django.core.files.storage import default_storage
-            saved = default_storage.save(f"logistics_receipts/{job.id}_{photo.name}", photo)
+            import os as _os, uuid as _uuid
+            from django.utils.text import get_valid_filename
+            _safe = get_valid_filename(_os.path.basename(photo.name or "receipt.jpg")) or "receipt.jpg"
+            saved = default_storage.save(f"logistics_receipts/{job.id}_{_uuid.uuid4().hex[:8]}_{_safe}", photo)
             photo_url = default_storage.url(saved)
+            if photo_url.startswith("/"):
+                # The Customer app lives on another origin: a root-relative /media/... link would
+                # resolve against the Customer host and 404, so publish the absolute Vendor URL.
+                photo_url = request.build_absolute_uri(photo_url)
         cid = ec.report_extra_charge(job, emp, kind, request.data.get("amount"),
                                      str(request.data.get("note") or ""), receipt, request.data.get("charge_id"),
                                      receipt_photo_url=photo_url)

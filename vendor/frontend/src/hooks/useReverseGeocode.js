@@ -1,4 +1,14 @@
-/**
+import React from 'react';
+  
+  const UseReverseGeocode = () =>  {
+	return (
+	  <div>
+	  </div>
+	);
+  }
+  
+  export default UseReverseGeocode;
+  /**
  * useReverseGeocode.js
  *
  * Ported and adapted from location_service_share/frontend/useReverseGeocode.js.

@@ -1,4 +1,14 @@
-/**
+import React from 'react';
+  
+  const NavigationPuckMarker = () =>  {
+	return (
+	  <div>
+	  </div>
+	);
+  }
+  
+  export default NavigationPuckMarker;
+  /**
  * navigationPuckMarker.js
  *
  * Generates the Google-Maps-style Navigation Chevron / Puck Marker.

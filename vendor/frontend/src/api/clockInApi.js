@@ -1,4 +1,14 @@
-/**
+import React from 'react';
+  
+  const ClockInApi = () =>  {
+	return (
+	  <div>
+	  </div>
+	);
+  }
+  
+  export default ClockInApi;
+  /**
  * Production API Client for Geofenced Clock-In & Time Tracking
  */
 import { apiRequest } from './client.js';

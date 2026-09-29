@@ -59,6 +59,8 @@ export function PackersMoversManifestCard({ job, className = '' }) {
   const relocationType = relocation.relocation_type || c0.relocation_type || 'Within City';
   const volumeCft = relocation.volume_cft || c0.volume_cft || 0;
   const vehicleName = relocation.vehicle_name || c0.package || '';
+  // Server-priced add-ons only (relocation_details.pm_addons); raw cart selections are not trusted.
+  const bookedAddons = Array.isArray(relocation.pm_addons) ? relocation.pm_addons : [];
 
   return (
     <div className={`p-4 rounded-xl border border-purple-200 bg-linear-to-b from-purple-50/50 to-white shadow-xs space-y-3.5 ${className}`}>
@@ -202,6 +204,26 @@ export function PackersMoversManifestCard({ job, className = '' }) {
             )}
           </div>
         </div>
+
+        {bookedAddons.length > 0 && (
+          <div className="pt-1 border-t border-slate-100 text-[11px] space-y-1" data-testid="pm-booked-addons">
+            <div className="flex items-center gap-1.5">
+              <Wrench className="w-3.5 h-3.5 text-slate-500" />
+              <span className="font-bold text-slate-800">Booked Add-on Services</span>
+            </div>
+            {bookedAddons.map((addon, idx) => (
+              <div key={addon.code || idx} className="flex items-center justify-between">
+                <span className="text-slate-700">
+                  {addon.name}
+                  {addon.is_labour_only && (
+                    <span className="ml-1.5 text-[9px] font-bold text-amber-700 bg-amber-50 px-1.5 rounded">Labour only</span>
+                  )}
+                </span>
+                <span className="font-mono font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded">x{addon.quantity}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Itemized Moving Manifest List */}

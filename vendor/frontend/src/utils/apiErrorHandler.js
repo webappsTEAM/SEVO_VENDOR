@@ -1,4 +1,14 @@
-/**
+import React from 'react';
+  
+  const ApiErrorHandler = () =>  {
+	return (
+	  <div>
+	  </div>
+	);
+  }
+  
+  export default ApiErrorHandler;
+  /**
  * apiErrorHandler.js
  *
  * Centralized API Error Classification & Ergonomics Utility for Workforce.

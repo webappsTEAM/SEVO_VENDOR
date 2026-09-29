@@ -1,4 +1,14 @@
-/**
+import React from 'react';
+  
+  const BikeMarker = () =>  {
+	return (
+	  <div>
+	  </div>
+	);
+  }
+  
+  export default BikeMarker;
+  /**
  * bikeMarker.js
  *
  * Professional Service Motorcycle / Bike Marker for CalTrack Technician Navigation.

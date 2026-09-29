@@ -1,4 +1,14 @@
-/**
+import React from 'react';
+  
+  const VendorEstimationService = () =>  {
+	return (
+	  <div>
+	  </div>
+	);
+  }
+  
+  export default VendorEstimationService;
+  /**
  * workforce-app/frontend/src/api/vendorEstimationService.js
  * Frontend API client for AC Inspection & Estimation (Vendor Workflow & Quotation Builder).
  */

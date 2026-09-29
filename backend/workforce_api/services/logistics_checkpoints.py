@@ -50,9 +50,35 @@ from workforce_api.services.logistics_events import (
 
 logger = logging.getLogger(__name__)
 
+# Defaults only: the Admin-editable GTOperationsConfig (Customer-owned, mirrored) overrides them.
 CHECKPOINT_RADIUS_METERS = 250.0
 DELIVERY_OTP_TTL_MINUTES = 30
 MAX_OTP_ATTEMPTS = 5
+
+
+def _ops_row():
+    """The active Admin GT operations row, or None (defaults apply). Never raises."""
+    try:
+        from service_requests.models import GTOperationsConfig
+        with transaction.atomic():
+            return GTOperationsConfig.objects.filter(is_active=True).order_by("-id").first()
+    except Exception:
+        return None
+
+
+def checkpoint_radius_meters():
+    row = _ops_row()
+    return float(row.checkpoint_radius_meters) if row and row.checkpoint_radius_meters else CHECKPOINT_RADIUS_METERS
+
+
+def delivery_otp_ttl_minutes():
+    row = _ops_row()
+    return int(row.delivery_otp_ttl_minutes) if row and row.delivery_otp_ttl_minutes else DELIVERY_OTP_TTL_MINUTES
+
+
+def max_otp_attempts():
+    row = _ops_row()
+    return int(row.max_otp_attempts) if row and row.max_otp_attempts else MAX_OTP_ATTEMPTS
 
 PICKUP = "PICKUP"
 DROP = "DROP"
@@ -92,6 +118,9 @@ def drop_otp_required(job):
     to (same channel as the Work Start OTP). Settings kill-switch:
     LOGISTICS_DROP_OTP_REQUIRED = False."""
     if not getattr(settings, "LOGISTICS_DROP_OTP_REQUIRED", True):
+        return False
+    row = _ops_row()
+    if row is not None and not row.delivery_otp_required:
         return False
     return bool(getattr(job, "customer_id", None))
 
@@ -234,15 +263,15 @@ def verify_checkpoint_gps(job, emp, user, checkpoint, lat, lon):
     distance = None
     if target_lat is not None:
         distance = haversine_distance(float(lat), float(lon), target_lat, target_lon)
-        if distance > CHECKPOINT_RADIUS_METERS and not override:
+        if distance > checkpoint_radius_meters() and not override:
             return False, {
                 "error": (f"{checkpoint.title()} check-in failed: you are {int(distance)}m away from the "
-                          f"{checkpoint.lower()} location. You must be within {int(CHECKPOINT_RADIUS_METERS)}m."),
+                          f"{checkpoint.lower()} location. You must be within {int(checkpoint_radius_meters())}m."),
                 "code": "OUTSIDE_GEOFENCE",
                 "geofence_passed": False,
-                "details": {"distance_m": round(distance, 1), "threshold_m": CHECKPOINT_RADIUS_METERS},
+                "details": {"distance_m": round(distance, 1), "threshold_m": checkpoint_radius_meters()},
             }
-        if distance > CHECKPOINT_RADIUS_METERS:
+        if distance > checkpoint_radius_meters():
             note = "override"
     else:
         # The booking carries no coordinates for this point, so a geofence
@@ -341,7 +370,7 @@ def issue_delivery_otp(job, rec=None, force=True):
     code = f"{secrets.randbelow(900000) + 100000}"
     rec.otp_code = code
     rec.otp_generated_at = now
-    rec.otp_expires_at = now + timedelta(minutes=DELIVERY_OTP_TTL_MINUTES)
+    rec.otp_expires_at = now + timedelta(minutes=delivery_otp_ttl_minutes())
     rec.otp_attempts = 0
     rec.otp_verified = False
     rec.otp_verified_at = None
@@ -395,7 +424,7 @@ def verify_delivery_otp(job, emp, otp_input):
             return False, {"error": "Verify GPS at the drop location first.", "code": "GPS_REQUIRED_FIRST"}
         if not rec.otp_code:
             return False, {"error": "No delivery OTP issued yet. Use 'Resend OTP'.", "code": "OTP_NOT_ISSUED"}
-        if rec.otp_attempts >= MAX_OTP_ATTEMPTS:
+        if rec.otp_attempts >= max_otp_attempts():
             return False, {"error": "Maximum delivery OTP attempts exceeded (5/5). Use 'Resend OTP' for a fresh code.",
                            "code": "MAX_OTP_ATTEMPTS_EXCEEDED"}
         now = timezone.now()
@@ -404,7 +433,7 @@ def verify_delivery_otp(job, emp, otp_input):
         if not secrets.compare_digest(str(rec.otp_code).encode("utf-8"), str(otp_input or "").strip().encode("utf-8")):
             rec.otp_attempts += 1
             rec.save(update_fields=["otp_attempts", "updated_at"])
-            remaining = max(0, MAX_OTP_ATTEMPTS - rec.otp_attempts)
+            remaining = max(0, max_otp_attempts() - rec.otp_attempts)
             return False, {"error": f"Invalid delivery OTP. {remaining} attempt(s) remaining.",
                            "code": "INVALID_OTP", "attempts_remaining": remaining}
         rec.otp_verified = True

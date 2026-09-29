@@ -572,8 +572,51 @@ def extract_pm_job_details(job):
         "relocation_type": relocation_type,
         "volume_cft": volume_cft,
         "vehicle_name": vehicle_name,
+        "pm_addons": _extract_pm_addons(fb),
     }
 
     return crew_size, inventory_items, relocation_details
 
 
+def _extract_pm_addons(fb):
+    """Booked P&M add-on services (carpenter, appliance install, rope pulling, labour-only
+    helpers...). Read ONLY from the server-priced fare_breakdown written by the Customer
+    pricing engine (_apply_pm_addons), never from the raw client cart, so the crew sees
+    exactly what the customer was charged for. Amounts are deliberately omitted."""
+    raw = fb.get("pm_addons") or (fb.get("pricing") or {}).get("pm_addons") or []
+    out = []
+    if isinstance(raw, list):
+        for it in raw:
+            if not isinstance(it, dict):
+                continue
+            try:
+                qty = max(1, int(it.get("quantity") or 1))
+            except (TypeError, ValueError):
+                qty = 1
+            out.append({
+                "code": str(it.get("code") or ""),
+                "name": str(it.get("name") or it.get("code") or "Add-on service"),
+                "quantity": qty,
+                "is_labour_only": bool(it.get("is_labour_only")),
+            })
+    return out
+
+
+def extract_ptl_job_details(job):
+    """Light PTL (Part Truck Load) info for the driver, read-only from the server-priced
+    fare_breakdown the Customer engine wrote (booking_mode="ptl" / pricing_basis="ptl_per_kg").
+    The Vendor mirror has no logistics_booking_mode column, so fare_breakdown is the source.
+    Returns None for non-PTL jobs. Amounts are deliberately omitted. Load Assist execution
+    is not implemented on the driver side; the flag is surfaced as-is."""
+    fb = getattr(job, "fare_breakdown", None) or {}
+    if not isinstance(fb, dict):
+        return None
+    if str(fb.get("booking_mode") or "").lower() != "ptl" and fb.get("pricing_basis") != "ptl_per_kg":
+        return None
+    return {
+        "is_ptl": True,
+        "loading_responsibility": str(fb.get("loading_responsibility") or "customer"),
+        "declared_weight_kg": str(fb["declared_weight_kg"]) if fb.get("declared_weight_kg") not in (None, "") else None,
+        "load_assist": bool(fb.get("load_assist")),
+        "load_assist_execution": fb.get("load_assist_execution"),
+    }

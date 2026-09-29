@@ -95,7 +95,7 @@ class ReceiptPhotoTests(ViewTests):
     def test_photo_is_stored_and_url_sent_to_customer_app(self):
         resp, hook = self._post_mp(_job(), {"charge_type": "TOLL", "amount": "40", "receipt_photo": self._photo()}, POL)
         self.assertEqual(resp.status_code, 200, resp.data)
-        self.assertEqual(hook.call_args.kwargs["receipt_photo_url"], "/media/logistics_receipts/5_r.png")
+        self.assertEqual(hook.call_args.kwargs["receipt_photo_url"], "http://testserver/media/logistics_receipts/5_r.png")   # absolute: Customer is another origin
 
     def test_policy_can_require_photo(self):
         pol = SimpleNamespace(**{**POL.__dict__, "require_receipt_photo": True})

@@ -72,6 +72,10 @@ class User(AbstractBaseUser):
     phone_otp = models.CharField(max_length=6, blank=True, null=True)
     otp_created_at = models.DateTimeField(blank=True, null=True)
 
+    # Customer-owned NOT NULL column (no DB default): the mirror must supply it or every
+    # Vendor-side user insert fails on the shared PostgreSQL schema.
+    custom_permissions = models.JSONField(default=dict, blank=True)
+
     objects = UserManager()
 
     USERNAME_FIELD = "username"
