@@ -29,6 +29,9 @@ from workforce_api.models import (
     SellerOrderStatusOutbox,
     SellerProductBasket,
     SellerProductBasketItem,
+    Warehouse,
+    DeliverySlot,
+    DeliverySlotBooking,
     get_seller_assigned_warehouse,
 )
 from workforce_api.permissions import IsMarketplaceIntegrationCaller
@@ -1293,6 +1296,39 @@ class MarketplaceOrderIntakeView(APIView):
             delivery_address = ""
 
         delivery_slot = str(request.data.get("delivery_slot") or "").strip()
+        delivery_slot_id = request.data.get("delivery_slot_id")
+        delivery_date_raw = request.data.get("delivery_date")
+        delivery_date = None
+
+        if delivery_date_raw:
+            from datetime import datetime
+            try:
+                delivery_date = datetime.strptime(str(delivery_date_raw).strip(), "%Y-%m-%d").date()
+            except (ValueError, TypeError):
+                return Response(
+                    {"error": "Invalid delivery_date format. Expected YYYY-MM-DD.", "code": "INVALID_DELIVERY_DATE"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        selected_slot = None
+        if delivery_slot_id:
+            try:
+                selected_slot = DeliverySlot.objects.select_related("warehouse").filter(pk=int(delivery_slot_id)).first()
+            except (ValueError, TypeError):
+                return Response(
+                    {"error": "Invalid delivery_slot_id.", "code": "INVALID_DELIVERY_SLOT_ID"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if not selected_slot or not selected_slot.is_active:
+                return Response(
+                    {"error": f"Delivery slot #{delivery_slot_id} is inactive or not found.", "code": "SLOT_NOT_FOUND"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if not delivery_slot:
+                delivery_slot = selected_slot.label
+
         delivery_notes = str(request.data.get("delivery_notes") or "").strip()
 
         pay_snapshot = request.data.get("payment_snapshot")
@@ -1327,6 +1363,31 @@ class MarketplaceOrderIntakeView(APIView):
             wh = get_seller_assigned_warehouse(company.id)
             final_wh_id = req_wh_id or (wh.id if wh else None)
             final_wh_name = req_wh_name or (wh.name if wh else "")
+
+            # Validate slot warehouse match and capacity under lock
+            if selected_slot:
+                if final_wh_id and selected_slot.warehouse_id != final_wh_id:
+                    return Response(
+                        {
+                            "error": f"Delivery slot #{selected_slot.id} belongs to warehouse #{selected_slot.warehouse_id}, but order warehouse is #{final_wh_id}.",
+                            "code": "SLOT_WAREHOUSE_MISMATCH",
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                if delivery_date and selected_slot.max_orders_per_slot is not None:
+                    current_bookings = DeliverySlotBooking.objects.filter(
+                        slot=selected_slot,
+                        delivery_date=delivery_date,
+                    ).count()
+                    if current_bookings >= selected_slot.max_orders_per_slot:
+                        return Response(
+                            {
+                                "error": f"Delivery slot '{selected_slot.label}' on {delivery_date} is fully booked.",
+                                "code": "SLOT_CAPACITY_EXCEEDED",
+                            },
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
 
             # 2. Lock inventories for update
             inventories = {
@@ -1589,6 +1650,14 @@ class MarketplaceOrderIntakeView(APIView):
                         status=status.HTTP_200_OK,
                     )
                 raise exc
+
+            # Create slot booking link if slot and date were provided
+            if selected_slot and delivery_date:
+                DeliverySlotBooking.objects.create(
+                    slot=selected_slot,
+                    delivery_date=delivery_date,
+                    seller_order=order,
+                )
 
             # Reserve Inventory & Create Order Items for Regular Products
             for p_item in parsed_items:
@@ -1867,3 +1936,119 @@ class MarketplaceOrderStatusView(APIView):
             "cancellation_reason": order.cancellation_reason if order.status == SellerOrder.Status.CANCELLED else None,
             "cancelled_by": cancelled_by_str,
         }, status=status.HTTP_200_OK)
+
+
+# ─── Public Delivery Slot Availability ────────────────────────────────────────
+
+class PublicDeliverySlotsView(APIView):
+    """
+    GET /api/workforce/marketplace/delivery-slots/
+    Returns active delivery slots for a warehouse and target calendar date with real-time
+    capacity and same-day cutoff validation for Sevo-customer checkout.
+    """
+    permission_classes = [IsMarketplaceIntegrationCaller]
+
+    def get(self, request):
+        warehouse_id = request.query_params.get("warehouse_id", "").strip()
+        date_str = request.query_params.get("date", "").strip()
+
+        if not warehouse_id:
+            return Response(
+                {"error": "Query parameter 'warehouse_id' is required.", "code": "WAREHOUSE_ID_REQUIRED"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not date_str:
+            return Response(
+                {"error": "Query parameter 'date' (YYYY-MM-DD) is required.", "code": "DATE_REQUIRED"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            wh_id_int = int(warehouse_id)
+        except ValueError:
+            return Response(
+                {"error": "Invalid warehouse_id. Must be an integer.", "code": "INVALID_WAREHOUSE_ID"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        from datetime import datetime
+        try:
+            target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+        except ValueError:
+            return Response(
+                {"error": "Invalid date format. Expected YYYY-MM-DD.", "code": "INVALID_DATE_FORMAT"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        warehouse = Warehouse.objects.filter(pk=wh_id_int, is_active=True).first()
+        if not warehouse:
+            return Response(
+                {"error": f"Active warehouse #{wh_id_int} not found.", "code": "WAREHOUSE_NOT_FOUND"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Current local date & time
+        now_local = timezone.localtime(timezone.now())
+        today_date = now_local.date()
+        current_time = now_local.time()
+
+        # Day of week for target_date: 0 = Mon .. 6 = Sun
+        target_weekday = target_date.weekday()
+
+        slots = DeliverySlot.objects.filter(
+            warehouse=warehouse,
+            is_active=True,
+        ).order_by("start_time")
+
+        results = []
+        for slot in slots:
+            # Check applicable days
+            if slot.applicable_days and slot.applicable_days.strip():
+                try:
+                    slot_days = {int(d.strip()) for d in slot.applicable_days.split(",") if d.strip().isdigit()}
+                    if target_weekday not in slot_days:
+                        continue
+                except Exception:
+                    pass
+
+            booked_count = DeliverySlotBooking.objects.filter(
+                slot=slot,
+                delivery_date=target_date,
+            ).count()
+
+            is_capacity_available = (
+                slot.max_orders_per_slot is None or booked_count < slot.max_orders_per_slot
+            )
+
+            # Check if past date or today's cutoff has passed
+            if target_date < today_date:
+                available = False
+            elif target_date == today_date:
+                if slot.end_time <= current_time:
+                    available = False
+                else:
+                    available = is_capacity_available
+            else:
+                available = is_capacity_available
+
+            results.append({
+                "id": slot.id,
+                "label": slot.label,
+                "start_time": slot.start_time.strftime("%H:%M"),
+                "end_time": slot.end_time.strftime("%H:%M"),
+                "slot_type": slot.slot_type,
+                "slot_type_display": slot.get_slot_type_display(),
+                "max_orders_per_slot": slot.max_orders_per_slot,
+                "booked_count": booked_count,
+                "available": available,
+            })
+
+        return Response({
+            "warehouse_id": warehouse.id,
+            "warehouse_name": warehouse.name,
+            "date": str(target_date),
+            "slots": results,
+            "results": results,
+        }, status=status.HTTP_200_OK)
+

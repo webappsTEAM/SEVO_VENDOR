@@ -2074,7 +2074,48 @@ export const workforceService = {
   reviewScopeReduction: apiReviewScopeReduction,
   submitQuoteToCRM: apiSubmitQuoteToCRM,
   approveQuoteCRM: apiApproveQuoteCRM,
+  getDeliverySlots: apiAdminGetDeliverySlots,
+  getDeliverySlotDetail: apiAdminGetDeliverySlotDetail,
+  createDeliverySlot: apiAdminCreateDeliverySlot,
+  updateDeliverySlot: apiAdminUpdateDeliverySlot,
+  deleteDeliverySlot: apiAdminDeleteDeliverySlot,
 };
+
+// ── Delivery Slots & Capacity Scheduling (Phase 1) ───────────────────────────
+export async function apiAdminGetDeliverySlots(params = {}) {
+  const qs = new URLSearchParams();
+  if (params.warehouse_id) qs.set('warehouse_id', String(params.warehouse_id));
+  if (params.is_active != null) qs.set('is_active', String(params.is_active));
+  if (params.slot_type) qs.set('slot_type', params.slot_type);
+  if (params.search) qs.set('search', params.search);
+  const queryStr = qs.toString();
+  return await apiRequest(`/workforce/admin/delivery-slots/${queryStr ? `?${queryStr}` : ''}`);
+}
+
+export async function apiAdminGetDeliverySlotDetail(id) {
+  return await apiRequest(`/workforce/admin/delivery-slots/${id}/`);
+}
+
+export async function apiAdminCreateDeliverySlot(payload) {
+  return await apiRequest('/workforce/admin/delivery-slots/', {
+    method: 'POST',
+    json: payload,
+  });
+}
+
+export async function apiAdminUpdateDeliverySlot(id, payload) {
+  return await apiRequest(`/workforce/admin/delivery-slots/${id}/`, {
+    method: 'PATCH',
+    json: payload,
+  });
+}
+
+export async function apiAdminDeleteDeliverySlot(id) {
+  return await apiRequest(`/workforce/admin/delivery-slots/${id}/`, {
+    method: 'DELETE',
+  });
+}
+
 
 
 

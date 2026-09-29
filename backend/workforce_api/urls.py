@@ -273,6 +273,10 @@ from workforce_api.views_seller_hub import (
     SellerEligibleWarehousesView,
     SellerInventoryBalanceView,
 )
+from workforce_api.views_delivery_slots import (
+    AdminDeliverySlotListCreateView,
+    AdminDeliverySlotDetailView,
+)
 from workforce_api.views_marketplace_integration import (
     MarketplaceCategoryFeedView,
     MarketplaceProductListView,
@@ -283,6 +287,7 @@ from workforce_api.views_marketplace_integration import (
     MarketplaceOrderIntakeView,
     MarketplaceOrderCancelReleaseView,
     MarketplaceOrderStatusView,
+    PublicDeliverySlotsView,
 )
 from workforce_api.views_seller_basket import (
     SellerProductBasketListView,
@@ -668,6 +673,8 @@ urlpatterns = [
     path("admin/warehouses/<int:pk>/", AdminWarehouseDetailView.as_view(), name="admin-warehouse-detail"),
     path("admin/warehouses/<int:pk>/assign-merchant/", AdminWarehouseAssignMerchantView.as_view(), name="admin-warehouse-assign-merchant"),
     path("admin/warehouses/<int:pk>/assign-merchant/<int:company_id>/", AdminWarehouseAssignMerchantView.as_view(), name="admin-warehouse-unassign-merchant"),
+    path("admin/delivery-slots/", AdminDeliverySlotListCreateView.as_view(), name="admin-delivery-slots-list-create"),
+    path("admin/delivery-slots/<int:pk>/", AdminDeliverySlotDetailView.as_view(), name="admin-delivery-slot-detail"),
     path("admin/companies/", AdminCompaniesLookupView.as_view(), name="admin-companies-lookup"),
     path("admin/sellers/<int:seller_id>/warehouse/", AdminSellerWarehouseAssignView.as_view(), name="admin-seller-warehouse-assign"),
     path("seller-hub/metrics/", SellerHubMetricsView.as_view(), name="seller-hub-metrics"),
@@ -762,6 +769,7 @@ urlpatterns = [
     path("marketplace/products/<int:pk>/", MarketplaceProductDetailView.as_view(), name="marketplace-product-detail"),
     path("marketplace/baskets/", MarketplaceBasketListView.as_view(), name="marketplace-baskets-list"),
     path("marketplace/baskets/<int:pk>/", MarketplaceBasketDetailView.as_view(), name="marketplace-baskets-detail"),
+    path("marketplace/delivery-slots/", PublicDeliverySlotsView.as_view(), name="marketplace-delivery-slots"),
     path("marketplace/cart/validate/", MarketplaceCartValidateView.as_view(), name="marketplace-cart-validate"),
     path("marketplace/orders/intake/", MarketplaceOrderIntakeView.as_view(), name="marketplace-order-intake"),
     path("marketplace/orders/<str:source_order_id>/cancel/", MarketplaceOrderCancelReleaseView.as_view(), name="marketplace-order-cancel-release"),

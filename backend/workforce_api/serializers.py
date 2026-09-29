@@ -4335,6 +4335,52 @@ class SellerProductBasketSerializer(serializers.ModelSerializer):
         return reasons
 
 
+class DeliverySlotSerializer(serializers.ModelSerializer):
+    warehouse_id = serializers.IntegerField(write_only=True, required=False)
+    warehouse_name = serializers.CharField(source="warehouse.name", read_only=True)
+    slot_type_display = serializers.CharField(source="get_slot_type_display", read_only=True)
+
+    class Meta:
+        from .models import DeliverySlot
+        model = DeliverySlot
+        fields = [
+            "id",
+            "warehouse",
+            "warehouse_id",
+            "warehouse_name",
+            "label",
+            "start_time",
+            "end_time",
+            "slot_type",
+            "slot_type_display",
+            "max_orders_per_slot",
+            "is_active",
+            "applicable_days",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at", "warehouse", "warehouse_name", "slot_type_display"]
+
+    def validate(self, attrs):
+        start_time = attrs.get("start_time") or (self.instance.start_time if self.instance else None)
+        end_time = attrs.get("end_time") or (self.instance.end_time if self.instance else None)
+
+        if start_time and end_time and start_time >= end_time:
+            raise serializers.ValidationError({"end_time": "End time must be strictly after start time."})
+
+        applicable_days = attrs.get("applicable_days")
+        if applicable_days is not None and applicable_days.strip():
+            days = [d.strip() for d in applicable_days.split(",") if d.strip()]
+            for d in days:
+                if not d.isdigit() or int(d) < 0 or int(d) > 6:
+                    raise serializers.ValidationError({
+                        "applicable_days": "Applicable days must be comma-separated integers between 0 (Mon) and 6 (Sun)."
+                    })
+
+        return attrs
+
+
+
 
 
 
