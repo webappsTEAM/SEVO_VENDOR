@@ -401,7 +401,7 @@ def verify_delivery_otp(job, emp, otp_input):
         now = timezone.now()
         if rec.otp_expires_at and now > rec.otp_expires_at:
             return False, {"error": "Delivery OTP has expired. Use 'Resend OTP' for a fresh code.", "code": "OTP_EXPIRED"}
-        if not secrets.compare_digest(str(rec.otp_code), str(otp_input or "").strip()):
+        if not secrets.compare_digest(str(rec.otp_code).encode("utf-8"), str(otp_input or "").strip().encode("utf-8")):
             rec.otp_attempts += 1
             rec.save(update_fields=["otp_attempts", "updated_at"])
             remaining = max(0, MAX_OTP_ATTEMPTS - rec.otp_attempts)

@@ -13,7 +13,7 @@
  *  - other         -> null (No fallback assumptions)
  */
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   CheckCircle2,
   Clock,
@@ -26,11 +26,36 @@ import {
 import { TechnicianFirstPersonNavView } from './TechnicianFirstPersonNavView.jsx';
 import { TechnicianArrivalView } from './TechnicianArrivalView.jsx';
 import { TechnicianStandbyMapView } from './TechnicianStandbyMapView.jsx';
+import { apiGetJobStops } from '../../../api/workforceService.js';
+import { isLogisticsJob } from '../logistics/LogisticsLegController.jsx';
+import { nextTargetStop } from '../logistics/logisticsNav.js';
 
 function TechnicianExecutionStateView({ job, status, technicianLocation }) {
   const customerName = job?.customer_name || 'Customer';
   const customerPhone = job?.phone || job?.customer_phone;
-  const customerAddress = job?.address || job?.customer_address || 'Authorized Site Address';
+  const pickupAddress = job?.address || job?.customer_address || 'Authorized Site Address';
+
+  // Goods & Transport / Packers & Movers: while the trip is in progress the driver's destination is
+  // the NEXT stop (Pickup -> Stop 1..n -> Drop), not always the pickup address the booking started with.
+  const logistics = isLogisticsJob(job);
+  const [tripStops, setTripStops] = useState([]);
+  useEffect(() => {
+    if (!logistics || !job?.id) return undefined;
+    let live = true;
+    const load = () => apiGetJobStops(job.id)
+      .then((res) => { if (live) setTripStops(Array.isArray(res?.results) ? res.results : []); })
+      .catch(() => { /* single pickup/drop trip or a transient error: keep the last known stops */ });
+    load();
+    const timer = setInterval(load, 10000);
+    return () => { live = false; clearInterval(timer); };
+  }, [logistics, job?.id, job?.logistics_leg]);
+  const nextStop = logistics ? nextTargetStop(tripStops, job?.logistics_leg) : null;
+  const customerAddress = nextStop?.address || pickupAddress;
+  const destinationKind = nextStop
+    ? String(nextStop.stop_type || '').toUpperCase() === 'DROP' ? 'Drop'
+      : String(nextStop.stop_type || '').toUpperCase() === 'WAYPOINT' ? `Stop ${Math.max(1, (nextStop.sequence || 2) - 1)}`
+        : 'Pickup'
+    : '';
   const paymentMethod = (job?.payment_method || 'COD').toUpperCase();
   const paymentStatus = (job?.payment_status || 'PENDING').toUpperCase();
 
@@ -178,7 +203,7 @@ function TechnicianExecutionStateView({ job, status, technicianLocation }) {
             <div className="flex items-start gap-3">
               <MapPin className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
               <div>
-                <p className="text-xs font-bold text-slate-300 uppercase tracking-wider">Destination</p>
+                <p className="text-xs font-bold text-slate-300 uppercase tracking-wider">Destination{destinationKind ? ` · ${destinationKind}` : ''}</p>
                 <p className="text-sm text-white font-medium mt-0.5 leading-snug">{customerAddress}</p>
               </div>
             </div>

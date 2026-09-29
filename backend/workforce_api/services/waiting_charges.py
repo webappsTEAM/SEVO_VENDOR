@@ -103,11 +103,79 @@ def compute_waiting_charge(history, policy):
     return result
 
 
-def waiting_charge_for_booking(booking):
-    """Convenience wrapper: resolves the booking's category policy."""
-    from workforce_api.services.pricing_policy import policy_for
+def customer_policy_for(category):
+    """The Customer app's GTWaitingChargePolicy for `category` (category row
+    first, then the platform-wide blank row), or None. Never raises."""
+    try:
+        from service_requests.models import GTWaitingChargePolicy
 
-    return compute_waiting_charge(
-        getattr(booking, "logistics_leg_history", None) or [],
-        policy_for(getattr(booking, "service_category", "")),
+        cat = str(category or "").strip().lower()
+        qs = GTWaitingChargePolicy.objects.filter(is_active=True)
+        return (
+            qs.filter(service_category__iexact=cat).first()
+            or qs.filter(service_category="").first()
+        )
+    except Exception:
+        return None
+
+
+_HISTORY_CATEGORIES = ("goods_transport_truck", "goods_transport_two_wheeler")
+
+
+def waiting_charge_for_booking(booking):
+    """
+    Waiting charge shown to the driver. Single source of truth is the
+    Customer GTWaitingChargePolicy (free_minutes_per_stop, rate_per_minute,
+    max_charge_per_booking, is_enabled) -- identical semantics to its
+    charge_for(): per-TripStop dwell when stops exist, otherwise the
+    leg-history loading/unloading windows for the distance-priced GT
+    categories. Disabled / missing policy => enabled False, amount 0.
+    """
+    category = str(getattr(booking, "service_category", "") or "").strip().lower()
+    history = getattr(booking, "logistics_leg_history", None) or []
+    loading = _dwell_minutes(history, LOADING_START, LOADING_END)
+    unloading = _dwell_minutes(history, UNLOADING_START, UNLOADING_END)
+    result = {
+        "loading_minutes": loading,
+        "unloading_minutes": unloading,
+        "billable_minutes": 0,
+        "rate_per_minute": ZERO,
+        "cap": None,
+        "amount": ZERO,
+        "enabled": False,
+    }
+    policy = customer_policy_for(category)
+    if policy is None or not policy.is_enabled or not policy.is_active:
+        return result
+    rate = Decimal(str(policy.rate_per_minute or 0))
+    free = int(policy.free_minutes_per_stop or 0)
+
+    stops = []
+    try:
+        stops = list(booking.trip_stops.all())
+    except Exception:
+        stops = []
+    billable = 0
+    if stops:
+        for stop in stops:
+            if not stop.arrived_at or not stop.completed_at:
+                continue
+            secs = (stop.completed_at - stop.arrived_at).total_seconds()
+            if secs <= 0:
+                continue
+            billable += max(0, int(secs // 60) - free)
+    elif category in _HISTORY_CATEGORIES:
+        billable = max(0, loading - free) + max(0, unloading - free)
+
+    amount = (rate * billable).quantize(CENT, rounding=ROUND_HALF_UP)
+    cap = policy.max_charge_per_booking
+    if cap is not None:
+        amount = min(amount, Decimal(str(cap)).quantize(CENT))
+    result.update(
+        billable_minutes=billable,
+        rate_per_minute=rate,
+        cap=Decimal(str(cap)) if cap is not None else None,
+        amount=amount,
+        enabled=True,
     )
+    return result

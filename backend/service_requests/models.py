@@ -362,6 +362,8 @@ class ServiceRequest(models.Model):
     insurance_opted_in = models.BooleanField(default=False)
     insurance_premium = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     insurance_liability_cap = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    # Mirror of the Customer column: toll/parking receipts recorded by the Customer app.
+    extra_charges = models.JSONField(default=list, blank=True)
     logistics_leg = models.CharField(max_length=20, choices=LogisticsLeg.choices, blank=True, default="")
     logistics_leg_updated_at = models.DateTimeField(null=True, blank=True)
     logistics_leg_history = models.JSONField(default=list, blank=True)
@@ -1376,3 +1378,44 @@ class Package(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class GTWaitingChargePolicy(models.Model):
+    """
+    Unmanaged mirror of the Customer app's service_requests.GTWaitingChargePolicy
+    (same shared table). The Customer policy is the ONLY source of truth for GT
+    waiting charges; the driver app reads it here so the amount it shows
+    matches the amount the Customer fare engine bills.
+    """
+    service_category = models.CharField(max_length=100, blank=True, default="")
+    is_enabled = models.BooleanField(default=False)
+    free_minutes_per_stop = models.PositiveIntegerField(default=0)
+    rate_per_minute = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    max_charge_per_booking = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        managed = False
+        db_table = "service_requests_gtwaitingchargepolicy"
+
+
+class GTExtraChargePolicy(models.Model):
+    """Unmanaged mirror of the Customer app's GTExtraChargePolicy (single source of truth)."""
+    service_category = models.CharField(max_length=100, blank=True, default="")
+    is_enabled = models.BooleanField(default=False)
+    allow_toll = models.BooleanField(default=True)
+    allow_parking = models.BooleanField(default=True)
+    max_amount_per_item = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    max_total_per_booking = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    require_receipt_photo = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        managed = False
+        db_table = "service_requests_gtextrachargepolicy"
+
+
+def get_gt_extra_charge_policy(category):
+    cat = str(category or "").strip().lower()
+    qs = GTExtraChargePolicy.objects.filter(is_active=True, is_enabled=True)
+    return qs.filter(service_category__iexact=cat).first() or qs.filter(service_category="").first()

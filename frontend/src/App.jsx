@@ -78,6 +78,7 @@ import AdminGrocerySettlementsPage from './pages/admin/AdminGrocerySettlementsPa
 import { AdminSellerCategoriesPage } from './pages/admin/AdminSellerCategoriesPage.jsx';
 import { AdminCategoriesApprovalPage } from './pages/admin/AdminCategoriesApprovalPage.jsx';
 import { AdminWarehousesPage } from './pages/admin/AdminWarehousesPage.jsx';
+import { AdminDeliverySlotsPage } from './pages/admin/AdminDeliverySlotsPage.jsx';
 import { AdminSellerCouponsPage } from './pages/admin/AdminSellerCouponsPage.jsx';
 import { SellerDashboardPage } from './pages/seller/SellerDashboardPage.jsx';
 import { SellerOrdersPage } from './pages/seller/SellerOrdersPage.jsx';
@@ -751,6 +752,20 @@ export function App() {
           <Route
             path="/workforce/admin/warehouses"
             element={<Navigate to="/workforce/admin/seller-hub/warehouses" replace />}
+          />
+
+          {/* 7d. Delivery Slots Management (Platform Admin Only - Phase 1) */}
+          <Route
+            path="/workforce/admin/seller-hub/delivery-slots"
+            element={
+              <PlatformAdminRoute>
+                <AdminDeliverySlotsPage />
+              </PlatformAdminRoute>
+            }
+          />
+          <Route
+            path="/workforce/admin/delivery-slots"
+            element={<Navigate to="/workforce/admin/seller-hub/delivery-slots" replace />}
           />
 
           {/* 8. Coupons */}

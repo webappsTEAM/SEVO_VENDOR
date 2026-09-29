@@ -88,6 +88,8 @@ class SellerProcurementPriceTestCase(unittest.TestCase):
             slug="procurement-test-cat",
             defaults={"name": "Procurement Test Category", "is_active": True}
         )
+        cls.category.is_active = True
+        cls.category.save()
 
         # Cleanup prior test data
         SellerOrderItem.objects.filter(product__company__in=[cls.company_a, cls.company_b]).delete()

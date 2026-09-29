@@ -568,6 +568,17 @@ def convert_accepted_quote_to_work_booking(quote, actor=None):
                 if insp_updates:
                     insp_job.save(update_fields=insp_updates)
 
+            if insp_job:
+                insp_updates = []
+                if insp_job.quote_number == quote.quote_number:
+                    insp_job.quote_number = f"{quote.quote_number}-INSP"
+                    insp_updates.append("quote_number")
+                if insp_job.status in ["quotation_sent", "in_progress", "inspection_in_progress", "arrived", "accepted", "en_route", "standard"]:
+                    insp_job.status = "completed"
+                    insp_updates.append("status")
+                if insp_updates:
+                    insp_job.save(update_fields=insp_updates)
+
             work_sr = ServiceRequest.objects.create(
                 request_kind="WORK",
                 parent_request_id=insp_job.id if insp_job else None,

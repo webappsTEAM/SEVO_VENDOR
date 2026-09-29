@@ -34,6 +34,7 @@ ACTIVE_QUEUE_STATUSES: List[str] = [
     "quotation_pending_approval",
     "quotation_sent",
     "inspection_completed",
+    "on_hold",
 ]
 
 # Authoritative definition of all statuses where an employee is actively executing work
@@ -53,6 +54,7 @@ ACTIVE_WORKLOAD_STATUSES: List[str] = [
     "quotation_pending_approval",
     "quotation_sent",
     "inspection_completed",
+    "on_hold",
 ]
 
 # Workload blocking statuses that prevent new exclusive offers (ONE EMPLOYEE = ONE ACTIVE JOB)
@@ -73,6 +75,7 @@ WORKLOAD_OCCUPIED_STATUSES: List[str] = [
     "quotation_pending_approval",
     "quotation_sent",
     "inspection_completed",
+    "on_hold",
 ]
 
 # Terminal statuses where an assignment has fully ended

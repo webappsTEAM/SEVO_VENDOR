@@ -1,0 +1,34 @@
+# Vendor (workforce) dispatch worker -- systemd unit TEMPLATE.
+#
+# This process is what actually dispatches Goods & Transport jobs to drivers and delivers
+# the durable outbound webhooks (leg changes, proof of delivery, live GPS, final-fare
+# reconciliation, payment) to the Customer app. It is NOT started by the Django server:
+# without it running, bookings stay "pending" and the customer's tracking never moves.
+# start_dev.ps1 / start_vendor.bat start it for local development only.
+#
+# Adjust the three paths / the user below to match the vendor host, then:
+#   sudo cp sevo-vendor-dispatch.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now sevo-vendor-dispatch
+#   journalctl -u sevo-vendor-dispatch -f
+# Health: the worker writes a dispatch_engine_heartbeat row; the vendor API's dispatch
+# health endpoint reports it as stale if this service stops.
+[Unit]
+Description=SEVO Vendor dispatch worker (GT dispatch + customer webhook outbox)
+After=network.target
+# If PostgreSQL / Redis run on this host as services, add them here (e.g. postgresql.service).
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/var/www/sevo-vendor/backend
+# Same .env as the vendor API (DB credentials, WORKFORCE_WEBHOOK_SECRET, CUSTOMER_APP_BASE_URL).
+EnvironmentFile=/var/www/sevo-vendor/backend/.env
+ExecStart=/var/www/sevo-vendor/backend/.venv/bin/python manage.py dispatch_pending_workforce_jobs --loop --interval 3
+Restart=always
+RestartSec=5
+# The command traps SIGTERM/SIGINT and finishes the current pass before exiting.
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
