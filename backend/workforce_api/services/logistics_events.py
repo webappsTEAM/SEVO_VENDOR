@@ -358,6 +358,141 @@ def emit_completion_proof(job, *, notes="", photo_url="", signature_url="",
         logger.info("Could not emit job.completion_proof_submitted for job %s: %s", job.id, exc)
 
 
+def _is_logistics_job(job):
+    """True for the Goods & Transport / Packers & Movers categories."""
+    from workforce_api.services.automatic_dispatch import LOGISTICS_SERVICE_CATEGORIES
+    return (getattr(job, "service_category", "") or "").strip().lower() in LOGISTICS_SERVICE_CATEGORIES
+
+
+def _technician_identity(emp):
+    """(display name, employee id) of a technician, tolerant of missing profile data."""
+    if emp is None:
+        return "", ""
+    name = ""
+    try:
+        user = getattr(emp, "user", None)
+        name = (user.get_full_name() or user.username) if user else ""
+    except Exception:
+        name = ""
+    return name or "", str(getattr(emp, "id", "") or "")
+
+
+def emit_delivery_proof_for_job(job, emp, proof=None, notes=""):
+    """
+    Send the proof of delivery the driver just submitted to the Customer app.
+
+    WorkforceJobProofView records the evidence vendor-side (PostServiceProof
+    and the DROP LogisticsCheckpointVerification row) and flips the job to
+    proof_submitted, but nothing ever told the Customer app -- so the
+    `job.completion_proof_submitted` handler there (which is what writes the
+    DeliveryProof rows a customer sees as proof of delivery) never ran for a
+    real trip. emit_completion_proof() existed for exactly this and was only
+    ever called from tests. Logistics jobs only; fire-and-forget like every
+    other emission in this module.
+
+    The photo reference is the DROP checkpoint photo when one was recorded
+    (that is the unloading proof), else the best photo on the PostServiceProof.
+    Nothing is invented: recipient name/phone are not captured by the driver
+    flow, so they are not sent.
+    """
+    if not _is_logistics_job(job):
+        return False
+    try:
+        from workforce_api.models import LogisticsCheckpointVerification
+
+        drop = LogisticsCheckpointVerification.objects.filter(job=job, checkpoint="DROP").first()
+
+        photo_url = ""
+        try:
+            if drop is not None and drop.proof_photo:
+                photo_url = drop.proof_photo.url
+        except Exception:
+            photo_url = ""
+        if not photo_url and proof is not None:
+            for field in ("after_work_area_photo", "after_appliance_photo", "after_presence_photo"):
+                try:
+                    f = getattr(proof, field, None)
+                    if f:
+                        photo_url = f.url
+                        break
+                except Exception:
+                    continue
+
+        location = None
+        if drop is not None and drop.gps_lat is not None and drop.gps_lon is not None:
+            location = {"latitude": str(drop.gps_lat), "longitude": str(drop.gps_lon)}
+
+        tech_name, tech_id = _technician_identity(emp or getattr(job, "assigned_employee", None))
+        emit_completion_proof(
+            job,
+            notes=notes or "",
+            photo_url=photo_url,
+            otp_verified=bool(drop is not None and drop.otp_verified),
+            technician_name=tech_name,
+            workforce_employee_id=tech_id,
+            location=location,
+        )
+        return True
+    except Exception as exc:
+        logger.info("Could not emit delivery proof for job %s: %s", getattr(job, "id", None), exc)
+        return False
+
+
+def emit_technician_arrived(job, emp, lat=None, lon=None):
+    """
+    Tell the Customer app the assigned technician has reached the job.
+
+    WorkforceJobArriveView moves the shared row to `arrived` directly (the
+    geofence + start-OTP work it does is not an apply_transition), so it never
+    reached state_machine's status -> webhook map and the Customer app was
+    never sent `employee_arrived` -- no live-tracking broadcast for it.
+    Logistics jobs only.
+    """
+    if not _is_logistics_job(job):
+        return False
+    try:
+        from workforce_api.services.customer_webhook import notify_customer_app
+
+        name, tech_id = _technician_identity(emp)
+        extra = {"technician": {"id": tech_id, "name": name, "phone": getattr(emp, "phone", "") or ""}}
+        if lat is not None and lon is not None:
+            extra["location"] = {"latitude": lat, "longitude": lon}
+        notify_customer_app("employee_arrived", job, **extra)
+        return True
+    except Exception as exc:
+        logger.info("Could not emit employee_arrived for job %s: %s", getattr(job, "id", None), exc)
+        return False
+
+
+def emit_technician_withdrew(job, emp, reason=""):
+    """
+    Tell the Customer app the assigned technician withdrew from the job (a
+    technician cancellation inside the free-cancel window) and that the
+    booking is being re-dispatched, not cancelled.
+
+    The Customer app already has the handler for this -- `employee_rejected`
+    clears the technician snapshot, marks the BookingAssignment and returns
+    the booking to `confirmed` -- but nothing on this side sent it. It must
+    NOT be `technician.cancelled`, which the Customer app treats as the whole
+    booking being cancelled. Logistics jobs only.
+    """
+    if not _is_logistics_job(job):
+        return False
+    try:
+        from workforce_api.services.customer_webhook import notify_customer_app
+
+        name, tech_id = _technician_identity(emp)
+        notify_customer_app(
+            "employee_rejected", job,
+            reason=reason or "Technician withdrew from the job.",
+            technician={"id": tech_id, "name": name},
+        )
+        return True
+    except Exception as exc:
+        logger.info("Could not emit employee_rejected for job %s: %s", getattr(job, "id", None), exc)
+        return False
+
+
 def extract_pm_job_details(job):
     """
     Extracts Packers & Movers relocation details, crew size, item inventory,

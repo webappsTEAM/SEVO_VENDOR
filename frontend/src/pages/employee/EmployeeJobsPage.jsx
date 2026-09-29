@@ -51,6 +51,8 @@ import {
   Copy,
   Lock,
   Camera,
+  Paintbrush,
+  Hammer,
 } from 'lucide-react';
 
 /**
@@ -84,11 +86,69 @@ function cleanErrorMessage(error) {
   return msg || 'Action could not be completed.';
 }
 
+function formatCategoryLabel(raw) {
+  if (!raw) return 'Home Service';
+  return String(raw)
+    .replace(/[_\-]+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, c => c.toUpperCase());
+}
+
 /**
- * Service Category Styling (Swiggy / Urban Company clean style)
+ * Service Category Styling (Dynamic Urban Company / CalTrack Style)
  */
 function getServiceCategoryMeta(categoryName = '', title = '') {
   const cat = (categoryName || '').trim().toLowerCase();
+  const t = (title || '').trim().toLowerCase();
+  const text = `${cat} ${t}`.toLowerCase();
+
+  // 1. Painting, Waterproofing & Wall Care
+  if (
+    cat.includes('paint') ||
+    cat.includes('waterproof') ||
+    text.includes('paint') ||
+    text.includes('waterproof') ||
+    text.includes('wall') ||
+    text.includes('ceiling') ||
+    text.includes('emulsion') ||
+    text.includes('stencil') ||
+    text.includes('texture') ||
+    text.includes('tar sheet') ||
+    text.includes('epoxy') ||
+    text.includes('pu coat') ||
+    text.includes('primer')
+  ) {
+    return {
+      id: 'painting',
+      icon: Paintbrush,
+      label: 'Painting & Wall Care',
+      tagColor: 'bg-rose-500/10 text-rose-800 border-rose-200',
+      iconBg: 'bg-rose-100 text-rose-700',
+    };
+  }
+
+  // 2. Masonry & Civil Construction
+  if (
+    cat.includes('mason') ||
+    cat.includes('civil') ||
+    cat.includes('construction') ||
+    text.includes('mason') ||
+    text.includes('brick') ||
+    text.includes('tile') ||
+    text.includes('civil') ||
+    text.includes('construction') ||
+    text.includes('grouting') ||
+    text.includes('plaster') ||
+    text.includes('concrete')
+  ) {
+    return {
+      id: 'masonry',
+      icon: Hammer,
+      label: 'Masonry & Civil',
+      tagColor: 'bg-amber-600/10 text-amber-900 border-amber-300',
+      iconBg: 'bg-amber-100 text-amber-800',
+    };
+  }
 
   // Canonical category match first (robust against service title renames)
   if (cat === 'goods_transport_truck' || cat === 'truck' || cat === 'mini_truck') {
@@ -120,8 +180,6 @@ function getServiceCategoryMeta(categoryName = '', title = '') {
       iconBg: 'bg-purple-100 text-purple-700',
     };
   }
-
-  const text = `${categoryName} ${title}`.toLowerCase();
 
   // 1. Mini Truck Delivery / Heavy Goods Transport
   if (
@@ -290,7 +348,18 @@ function getServiceCategoryMeta(categoryName = '', title = '') {
     };
   }
 
-  // Fallback
+  // 12. Dynamic Fallback from categoryName
+  if (categoryName && categoryName.trim()) {
+    return {
+      id: cat || 'custom',
+      icon: Wrench,
+      label: formatCategoryLabel(categoryName),
+      tagColor: 'bg-slate-100 text-slate-800 border-slate-200',
+      iconBg: 'bg-slate-100 text-slate-700',
+    };
+  }
+
+  // General Fallback
   return {
     id: 'general',
     icon: Wrench,
@@ -524,21 +593,41 @@ export function EmployeeJobsPage() {
     }
   }, [refreshActiveJobs, refreshCompletedJobs, activeTab]);
 
-  // Combined jobs according to active tab
+  // Combined jobs according to active tab with dynamic consultation/work deduplication
   const jobs = useMemo(() => {
-    if (activeTab === 'COMPLETED') return completedJobs;
-    if (activeTab === 'OFFERS') return incomingOffers;
-    if (activeTab === 'SCHEDULED') return activeJobs.filter((j) => j.is_scheduled_future);
-    if (activeTab === 'ACTIVE') {
-      return activeJobs.filter((j) => !isOfferJob(j) && !j.is_scheduled_future);
+    let rawList = [];
+    if (activeTab === 'COMPLETED') {
+      rawList = completedJobs;
+    } else if (activeTab === 'OFFERS') {
+      rawList = incomingOffers;
+    } else if (activeTab === 'SCHEDULED') {
+      rawList = activeJobs.filter((j) => j.is_scheduled_future);
+    } else if (activeTab === 'ACTIVE') {
+      rawList = activeJobs.filter((j) => !isOfferJob(j) && !j.is_scheduled_future);
+    } else {
+      // 'ALL' tab: combines activeJobs and completedJobs
+      const map = new Map();
+      activeJobs.forEach(j => map.set(j.id, j));
+      completedJobs.forEach(j => {
+        if (!map.has(j.id)) map.set(j.id, j);
+      });
+      rawList = Array.from(map.values());
     }
-    // 'ALL' tab: combines activeJobs and completedJobs
-    const map = new Map();
-    activeJobs.forEach(j => map.set(j.id, j));
-    completedJobs.forEach(j => {
-      if (!map.has(j.id)) map.set(j.id, j);
+
+    // Dynamic Deduplication: When an execution WORK job exists alongside its parent consultation job,
+    // suppress the redundant parent consultation card so only 1 unified card is shown per customer service.
+    const parentIdsWithCompletedWork = new Set();
+    rawList.forEach(j => {
+      if (j.parent_request_id) {
+        parentIdsWithCompletedWork.add(Number(j.parent_request_id));
+      }
     });
-    return Array.from(map.values());
+
+    if (parentIdsWithCompletedWork.size > 0) {
+      return rawList.filter(j => !parentIdsWithCompletedWork.has(Number(j.id)));
+    }
+
+    return rawList;
   }, [activeTab, activeJobs, completedJobs, incomingOffers]);
 
   const handleCopyId = (id, e) => {
@@ -763,7 +852,10 @@ export function EmployeeJobsPage() {
       }
 
       countsMap.ALL = (countsMap.ALL || 0) + 1;
-      const meta = getServiceCategoryMeta(job.service_category, job.service_title);
+      const meta = getServiceCategoryMeta(
+        job.service_category || job.category_name || job.category,
+        job.service_title || job.issue_title || job.title
+      );
       const catId = meta.id;
       countsMap[catId] = (countsMap[catId] || 0) + 1;
       if (catId === 'goods_transport') {
@@ -1046,7 +1138,10 @@ export function EmployeeJobsPage() {
               const isInProgress = !isOffer && (status === 'IN_PROGRESS' || status === 'IN_SERVICE' || status === 'INSPECTION' || status === 'PROOF_SUBMITTED' || status === 'QUOTATION_SENT' || status === 'QUOTATION_PENDING_APPROVAL' || status === 'QUOTATION_CREATED' || status === 'INSPECTION_COMPLETED' || isCustomerApproved);
               const isCompleted = !isOffer && (status === 'COMPLETED' || status === 'WORK_COMPLETED' || status === 'WAITING_FOR_PAYMENT');
 
-              const catMeta = getServiceCategoryMeta(job.service_category, job.service_title);
+              const catMeta = getServiceCategoryMeta(
+                job.service_category || job.category_name || job.category,
+                job.service_title || job.issue_title || job.title
+              );
               const statusTag = getStatusTag(job);
               const CategoryIcon = catMeta.icon;
 

@@ -935,6 +935,28 @@ export function EmployeeDashboardPage() {
           return resumeRes;
         }
 
+        if (String(targetStatus).toUpperCase() === 'COMPLETED') {
+          const targetJob = (activeJobs && activeJobs.find(j => j.id === jobId)) || activeAssignedJob;
+          const quoteTotal = Number(targetJob?.active_quote_net_payable ?? targetJob?.active_quote_total_amount ?? 0);
+          const isFullyPaid = quoteTotal > 0
+            ? Boolean(targetJob?.active_quote_is_fully_paid)
+            : (targetJob?.payment_status === 'paid' || targetJob?.payment?.payment_status === 'PAID');
+
+          if (!isFullyPaid) {
+            setCashModalJob(targetJob);
+            const isAdvPaid = Boolean(targetJob?.active_quote_advance_paid);
+            const advDue = targetJob?.active_quote_advance_due !== undefined && targetJob?.active_quote_advance_due !== null ? parseFloat(targetJob.active_quote_advance_due) : null;
+            const milestoneDue = !isAdvPaid && advDue !== null && advDue > 0
+              ? advDue
+              : (targetJob?.active_quote_balance_amount ?? targetJob?.active_quote_advance_amount ?? targetJob?.active_quote_net_payable ?? targetJob?.active_quote_total_amount);
+            const due = (milestoneDue !== undefined && milestoneDue !== null && parseFloat(milestoneDue) > 0)
+              ? parseFloat(milestoneDue)
+              : (targetJob?.payment?.amount_due ?? targetJob?.total_amount ?? '');
+            setCashAmountReceived(due ? String(due) : '');
+            return;
+          }
+        }
+
         const res = await apiTransitionJob(jobId, targetStatus);
         // Starting a job also clocks the technician in server-side, so pull the
         // authoritative TimeLog immediately: the shift timer derives its start
@@ -988,7 +1010,8 @@ export function EmployeeDashboardPage() {
         const isPaid = isCompleted || res?.payment_status === 'PAID' || targetJob.payment?.payment_status === 'PAID' || targetJob.payment_status === 'paid';
         if (!isPaid) {
           setCashModalJob(targetJob);
-          setCashAmountReceived(String(targetJob.payment?.amount_due || targetJob.total_amount || ''));
+          const initialDue = targetJob.active_quote_balance_amount ?? targetJob.payment?.amount_due ?? targetJob.total_amount ?? '';
+          setCashAmountReceived(String(initialDue));
           setSuccessMsg('After-service proof submitted! Please collect customer payment.');
         } else {
           if (typeof reconcileJobCompleted === 'function') {
@@ -1021,7 +1044,11 @@ export function EmployeeDashboardPage() {
       if (!candidateJob) return;
 
       const targetJob = (activeJobs && activeJobs.find(j => j.id === candidateJob.id)) || candidateJob;
-      const quoteAmt = targetJob.active_quote_balance_amount ?? targetJob.active_quote_net_payable ?? targetJob.active_quote_total_amount;
+      const isAdvancePaid = Boolean(targetJob.active_quote_advance_paid);
+      const advDue = targetJob.active_quote_advance_due !== undefined && targetJob.active_quote_advance_due !== null ? parseFloat(targetJob.active_quote_advance_due) : null;
+      const quoteAmt = (!isAdvancePaid && advDue !== null && advDue > 0)
+        ? advDue
+        : (targetJob.active_quote_balance_amount ?? targetJob.active_quote_advance_amount ?? targetJob.active_quote_net_payable ?? targetJob.active_quote_total_amount);
       const amtDue = (customAmount !== null && customAmount !== undefined && !isNaN(customAmount) && parseFloat(customAmount) >= 0)
         ? parseFloat(customAmount)
         : (quoteAmt !== undefined && quoteAmt !== null && parseFloat(quoteAmt) > 0)
@@ -1381,9 +1408,13 @@ export function EmployeeDashboardPage() {
             onOpenCashModal={(j) => {
               const target = j || activeAssignedJob;
               setCashModalJob(target);
-              const quoteAmt = target?.active_quote_balance_amount ?? target?.active_quote_net_payable ?? target?.active_quote_total_amount;
-              const due = (quoteAmt !== undefined && quoteAmt !== null && parseFloat(quoteAmt) > 0)
-                ? parseFloat(quoteAmt)
+              const isAdvancePaid = Boolean(target?.active_quote_advance_paid);
+              const advanceDue = target?.active_quote_advance_due !== undefined && target?.active_quote_advance_due !== null ? parseFloat(target.active_quote_advance_due) : null;
+              const milestoneDue = !isAdvancePaid && advanceDue !== null && advanceDue > 0
+                ? advanceDue
+                : (target?.active_quote_balance_amount ?? target?.active_quote_advance_amount ?? target?.active_quote_net_payable ?? target?.active_quote_total_amount);
+              const due = (milestoneDue !== undefined && milestoneDue !== null && parseFloat(milestoneDue) > 0)
+                ? parseFloat(milestoneDue)
                 : (target?.payment?.amount_due ?? target?.total_amount ?? '');
               setCashAmountReceived(due ? String(due) : '');
             }}
@@ -1407,6 +1438,10 @@ export function EmployeeDashboardPage() {
               setSelectedJob(jobToQuote || activeAssignedJob);
               setIsQuotationModalOpen(true);
             }}
+            error={error}
+            setError={setError}
+            successMsg={successMsg}
+            setSuccessMsg={setSuccessMsg}
           />
 
           {/* Real-Time Live Camera Viewfinder & Snapshot Modal */}
@@ -1775,15 +1810,32 @@ export function EmployeeDashboardPage() {
               title={`Collect Cash — Job #${cashModalJob.request_id || cashModalJob.id}`}
             >
               <form onSubmit={handleCashCollectSubmit} className="space-y-4 text-xs font-sans">
+                {error && (
+                  <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-lg text-rose-700 text-xs font-semibold flex items-center gap-1.5">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{error}</span>
+                  </div>
+                )}
+
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-1">
                   <div className="flex justify-between items-center text-xs">
                     <span className="text-amber-800 font-semibold">Service:</span>
                     <span className="font-bold text-amber-950">{cashModalJob.service_title || cashModalJob.issue_title || 'Service'}</span>
                   </div>
                   <div className="flex justify-between items-center text-xs">
-                    <span className="text-amber-800 font-semibold">Authoritative Amount Due:</span>
+                    <span className="text-amber-800 font-semibold">
+                      {!cashModalJob.active_quote_advance_paid && (cashModalJob.active_quote_advance_due > 0 || cashModalJob.active_quote_advance_amount > 0)
+                        ? '50% Advance Milestone Due:'
+                        : (cashModalJob.active_quote_advance_paid && cashModalJob.active_quote_balance_amount > 0)
+                        ? '50% Balance Amount Due:'
+                        : 'Authoritative Amount Due:'}
+                    </span>
                     <span className="font-mono font-bold text-base text-amber-950">
-                      ₹{cashModalJob.active_quote_balance_amount || cashModalJob.active_quote_net_payable || cashModalJob.payment?.amount_due || cashModalJob.total_amount || 0}
+                      ₹{
+                        (!cashModalJob.active_quote_advance_paid && (cashModalJob.active_quote_advance_due > 0 || cashModalJob.active_quote_advance_amount > 0))
+                          ? (cashModalJob.active_quote_advance_due || cashModalJob.active_quote_advance_amount)
+                          : (cashModalJob.active_quote_balance_amount ?? cashModalJob.active_quote_net_payable ?? cashModalJob.payment?.amount_due ?? cashModalJob.total_amount ?? 0)
+                      }
                     </span>
                   </div>
                 </div>
@@ -1863,9 +1915,16 @@ export function EmployeeDashboardPage() {
                       <button
                         type="submit"
                         disabled={isCollectingCash || cashAmountReceived === '' || cashAmountReceived === null || cashAmountReceived === undefined || isNaN(Number(cashAmountReceived))}
-                        className="px-5 py-2 rounded-lg bg-emerald-600 disabled:opacity-50 text-white font-bold hover:bg-emerald-700 shadow-sm cursor-pointer"
+                        className="px-5 py-2 rounded-lg bg-emerald-600 disabled:opacity-50 text-white font-bold hover:bg-emerald-700 shadow-sm cursor-pointer flex items-center gap-1.5"
                       >
-                        {isCollectingCash ? 'Confirming...' : 'Confirm Cash Received'}
+                        {isCollectingCash ? (
+                          <>
+                            <RotateCw className="w-3.5 h-3.5 animate-spin" />
+                            <span>Confirming...</span>
+                          </>
+                        ) : (
+                          'Confirm Cash Received'
+                        )}
                       </button>
                     </div>
                   </>
@@ -4340,130 +4399,7 @@ export function EmployeeDashboardPage() {
           </form>
         </Modal>
 
-        {/* Cash Collection Modal */}
-        <Modal
-          isOpen={Boolean(cashModalJob)}
-          onClose={() => setCashModalJob(null)}
-          title={`Collect Cash — Job #${cashModalJob?.request_id || cashModalJob?.id || ''}`}
-        >
-          {cashModalJob && (
-            <form onSubmit={handleCashCollectSubmit} className="space-y-4">
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-1">
-                <div className="flex justify-between items-center text-xs">
-                  <span className="text-amber-800 font-semibold">Service:</span>
-                  <span className="font-bold text-amber-950">{cashModalJob.service_title || cashModalJob.issue_title || 'Service'}</span>
-                </div>
-                <div className="flex justify-between items-center text-xs">
-                  <span className="text-amber-800 font-semibold">Authoritative Amount Due:</span>
-                  <span className="font-mono font-bold text-base text-amber-950">
-                    ₹{cashModalJob.active_quote_balance_amount || cashModalJob.active_quote_net_payable || cashModalJob.payment?.amount_due || cashModalJob.total_amount || 0}
-                  </span>
-                </div>
-              </div>
 
-              {(cashModalJob.payment?.payment_status === 'CASH_PENDING' || cashModalJob.payment_status === 'cash_pending') ? (
-                <div className="space-y-3">
-                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-900 text-xs space-y-1">
-                    <p className="font-bold flex items-center gap-1.5">
-                      <ShieldCheck className="w-4 h-4 text-blue-700" />
-                      <span>Customer Confirmation Code Required</span>
-                    </p>
-                    <p className="text-[11px] text-blue-800 leading-relaxed">
-                      Cash collection was recorded. Ask customer for the <strong>6-digit Cash Payment Confirmation OTP</strong> displayed in their app to verify payment and complete the job.
-                    </p>
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-700 font-bold mb-1">
-                      Customer Cash OTP (6-digits) <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      maxLength={6}
-                      required
-                      value={paymentOtpInput}
-                      onChange={(e) => setPaymentOtpInput(e.target.value)}
-                      placeholder="• • • • • •"
-                      className="w-full border border-slate-300 rounded-lg p-2.5 font-mono text-base font-bold text-slate-900 tracking-[0.3em] text-center outline-none focus:border-slate-800"
-                    />
-                  </div>
-
-                  <div className="flex justify-end gap-2 pt-2 border-t border-slate-200">
-                    <button
-                      type="button"
-                      onClick={() => setCashModalJob(null)}
-                      className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 font-bold hover:bg-slate-50 cursor-pointer"
-                    >
-                      Close
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleVerifyPaymentOtpSubmit(cashModalJob.id, paymentOtpInput)}
-                      disabled={isVerifyingPaymentOtp || !paymentOtpInput || paymentOtpInput.trim().length !== 6}
-                      className="px-5 py-2 rounded-lg bg-emerald-600 disabled:opacity-50 text-white font-bold hover:bg-emerald-700 shadow-sm cursor-pointer flex items-center gap-1.5"
-                    >
-                      {isVerifyingPaymentOtp ? <RotateCw className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-                      <span>Verify OTP &amp; Complete</span>
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      Cash Amount Received from Customer (₹)
-                    </label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-sm">₹</span>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min={parseFloat(cashModalJob.payment?.amount_due || cashModalJob.total_amount || 0)}
-                        required
-                        value={cashAmountReceived}
-                        onChange={(e) => setCashAmountReceived(e.target.value)}
-                        placeholder={String(cashModalJob.payment?.amount_due || cashModalJob.total_amount || '')}
-                        className="w-full pl-7 pr-3 py-2 border border-slate-300 rounded-lg text-sm font-mono font-bold text-slate-800 focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Calculated Change Returned */}
-                  {parseFloat(cashAmountReceived || 0) > parseFloat(cashModalJob.payment?.amount_due || cashModalJob.total_amount || 0) && (
-                    <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 flex justify-between items-center">
-                      <span className="text-xs font-semibold text-emerald-800">Change to Return Customer:</span>
-                      <span className="font-mono font-bold text-sm text-emerald-950">
-                        ₹{(parseFloat(cashAmountReceived || 0) - parseFloat(cashModalJob.payment?.amount_due || cashModalJob.total_amount || 0)).toFixed(2)}
-                      </span>
-                    </div>
-                  )}
-
-                  <p className="text-[11px] text-slate-500">
-                    Submitting records the cash received and requests customer confirmation OTP to verify payment and complete the job.
-                  </p>
-
-                  <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
-                    <button
-                      type="button"
-                      onClick={() => setCashModalJob(null)}
-                      className="px-3.5 py-1.5 rounded border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-50 cursor-pointer"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={isCollectingCash || !cashAmountReceived || parseFloat(cashAmountReceived) < parseFloat(cashModalJob.payment?.amount_due || cashModalJob.total_amount || 0)}
-                      className="px-4 py-2 rounded bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-bold text-xs shadow-sm flex items-center gap-1.5 transition-colors cursor-pointer"
-                    >
-                      <DollarSign className="w-4 h-4" />
-                      <span>{isCollectingCash ? 'Recording...' : 'Confirm Cash Received'}</span>
-                    </button>
-                  </div>
-                </>
-              )}
-            </form>
-          )}
-        </Modal>
 
         {/* Modal: Job No Longer Available / Race Condition Notification */}
         <Modal

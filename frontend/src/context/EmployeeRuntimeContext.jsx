@@ -8,6 +8,7 @@ export const ACTIVE_QUEUE_STATUSES = [
   'on_the_way',
   'en_route',
   'arrived',
+  'inspection_in_progress',
   'in_progress',
   'in_service',
   'inspection',
@@ -16,6 +17,7 @@ export const ACTIVE_QUEUE_STATUSES = [
   'quotation_pending_approval',
   'quotation_sent',
   'inspection_completed',
+  'on_hold',
 ];
 
 export const EmployeeRuntimeContext = createContext(null);

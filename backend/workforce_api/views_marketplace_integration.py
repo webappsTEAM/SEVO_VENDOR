@@ -2051,4 +2051,3 @@ class PublicDeliverySlotsView(APIView):
             "slots": results,
             "results": results,
         }, status=status.HTTP_200_OK)
-

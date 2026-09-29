@@ -86,8 +86,8 @@ export default function VendorEstimationsPage() {
   const [feeModalOpen, setFeeModalOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
 
-  const fetchLeads = useCallback(async () => {
-    setLoading(true);
+  const fetchLeads = useCallback(async (isSilent = false) => {
+    if (!isSilent) setLoading(true);
     setError(null);
     try {
       const res = await apiGetVendorEstimations({
@@ -101,19 +101,36 @@ export default function VendorEstimationsPage() {
         setMetrics(res.metrics || null);
       } else if (Array.isArray(res)) {
         setLeads(res);
+        setMetrics(null);
       } else {
         setLeads([]);
       }
     } catch (err) {
-      console.error('Failed to load estimation leads:', err);
-      setError(err.message || 'Failed to load estimation leads.');
+      if (!isSilent) {
+        console.error('Failed to load estimation leads:', err);
+        setError(err.message || 'Failed to load estimation leads.');
+      }
     } finally {
-      setLoading(false);
+      if (!isSilent) setLoading(false);
     }
   }, [activeTab, dateFilter, searchQuery]);
 
   useEffect(() => {
-    fetchLeads();
+    fetchLeads(false);
+
+    // Active auto-refresh: sync leads every 5s and on window focus
+    const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      fetchLeads(true);
+    }, 5000);
+
+    const onFocus = () => fetchLeads(true);
+    window.addEventListener('focus', onFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+    };
   }, [fetchLeads]);
 
   const handleOpenDetail = async (lead) => {

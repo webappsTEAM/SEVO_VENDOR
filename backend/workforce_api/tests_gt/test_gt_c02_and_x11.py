@@ -162,7 +162,7 @@ class EligibilitySignatureTests(SimpleTestCase):
         self.assertFalse(ok)
         self.assertIn("Gate 1", reason)
 
-    def test_gate_results_dict_from_the_real_function_has_ten_gates(self):
+    def test_gate_results_dict_from_the_real_function_has_eleven_gates(self):
         _ok, _reason, gates = ad.check_candidate_eligibility(None, "goods_transport_truck")
-        self.assertEqual(sorted(gates.keys(), key=lambda k: int(k[1:]))[-1], "G10")
-        self.assertEqual(len(gates), 10)
+        self.assertEqual(sorted(gates.keys(), key=lambda k: int(k[1:]))[-1], "G11")
+        self.assertEqual(len(gates), 11)

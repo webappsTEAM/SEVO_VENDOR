@@ -136,7 +136,15 @@ class WorkforceRequiredDocument(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     # GT-A-02: which job service categories this requirement applies to (e.g.
-    # ["mini_truck", "two_wheeler_delivery", "packers_movers"]). Empty list
+    # ["goods_transport_truck", "goods_transport_two_wheeler", "packers_movers"]
+    # -- the actual ServiceRequest.service_category slugs Gate 3 compares
+    # against in automatic_dispatch.check_candidate_eligibility(); the
+    # previous example here ("mini_truck", "two_wheeler_delivery") used
+    # values that don't match any real service_category or Vehicle.
+    # VehicleType member anywhere in this codebase, so an admin who copied
+    # it verbatim into applies_to_categories would configure a requirement
+    # that silently never applies to any GT job. Comment-only fix -- the
+    # field and its matching logic were already correct). Empty list
     # (the default) preserves the original behaviour -- applies to every job,
     # exactly as every existing row already does. Only non-empty lists scope
     # a requirement (e.g. Driving Licence / RC / Insurance / Permit) to
@@ -4188,6 +4196,9 @@ class SellerProductAuditLog(models.Model):
     def __str__(self):
         return f"Audit #{self.id} for Product #{self.product_id}: {self.action} ({self.from_status} -> {self.to_status})"
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# SELLER HUB BASKET / COMBO OFFERS (Phase 3 Bundle Extensions)
+# ═══════════════════════════════════════════════════════════════════════════════
 
 class SellerProductBasket(models.Model):
     """
@@ -4375,9 +4386,9 @@ class SellerProductBasketItem(models.Model):
         return f"{self.quantity}x {self.product.title} in Basket #{self.basket_id}"
 
 
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+# ═══════════════════════════════════════════════════════════════════════════════
 # SELLER HUB INVENTORY MANAGEMENT (Phase 3)
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+# ═══════════════════════════════════════════════════════════════════════════════
 
 class SellerInventory(models.Model):
     """
@@ -5991,6 +6002,95 @@ class WarehouseReturn(models.Model):
 
     def __str__(self):
         return f"Return {self.return_number} | {self.product.title} x {self.returned_quantity} -> {self.company.company_name}"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# DELIVERY SLOTS & CAPACITY SCHEDULING (PHASE 1)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class DeliverySlot(models.Model):
+    """
+    Delivery window slot scoped to a physical fulfillment Warehouse.
+    Defines timing, standard vs express delivery types, optional capacity caps per slot,
+    and applicable days of the week.
+    """
+    class SlotType(models.TextChoices):
+        STANDARD = "STANDARD", "Standard Delivery"
+        EXPRESS = "EXPRESS", "Fast Delivery"
+
+    warehouse = models.ForeignKey(
+        Warehouse,
+        on_delete=models.CASCADE,
+        related_name="delivery_slots",
+        db_index=True,
+    )
+    label = models.CharField(
+        max_length=100,
+        help_text="Customer-facing slot label (e.g. '9:00 AM - 11:00 AM')",
+    )
+    start_time = models.TimeField(help_text="Slot window start time")
+    end_time = models.TimeField(help_text="Slot window end time")
+    slot_type = models.CharField(
+        max_length=20,
+        choices=SlotType.choices,
+        default=SlotType.STANDARD,
+        db_index=True,
+    )
+    max_orders_per_slot = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Optional maximum capacity cap per calendar date. Null = unlimited capacity.",
+    )
+    is_active = models.BooleanField(default=True, db_index=True)
+    applicable_days = models.CharField(
+        max_length=20,
+        blank=True,
+        default="",
+        help_text="Comma-separated day-of-week ints (0=Mon .. 6=Sun), empty = every day",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "workforce_delivery_slot"
+        ordering = ["warehouse", "start_time"]
+        indexes = [
+            models.Index(fields=["warehouse", "is_active"], name="wf_dslot_wh_active_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.warehouse.name} - {self.label} ({self.get_slot_type_display()})"
+
+
+class DeliverySlotBooking(models.Model):
+    """
+    Capacity booking ledger entry linking a DeliverySlot to a calendar delivery_date and SellerOrder.
+    """
+    slot = models.ForeignKey(
+        DeliverySlot,
+        on_delete=models.CASCADE,
+        related_name="bookings",
+        db_index=True,
+    )
+    delivery_date = models.DateField(db_index=True)
+    seller_order = models.OneToOneField(
+        "workforce_api.SellerOrder",
+        on_delete=models.CASCADE,
+        related_name="slot_booking",
+        null=True,
+        blank=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "workforce_delivery_slot_booking"
+        indexes = [
+            models.Index(fields=["slot", "delivery_date"], name="wf_dslot_bkg_slot_date_idx"),
+        ]
+
+    def __str__(self):
+        return f"Booking for Slot #{self.slot_id} on {self.delivery_date} (Order #{self.seller_order_id or 'N/A'})"
+
 
 
 class WorkforceScopeReduction(models.Model):

@@ -123,8 +123,8 @@ export function AdminDeliverySlotsPage() {
   // ── Modal Handlers ──────────────────────────────────────────────────────────
   const openCreateModal = () => {
     setEditingSlot(null);
-    const defaultWhId = (selectedWarehouseId !== 'all' && selectedWarehouseId) 
-      ? selectedWarehouseId 
+    const defaultWhId = (selectedWarehouseId !== 'all' && selectedWarehouseId)
+      ? selectedWarehouseId
       : (warehouses[0]?.id || '');
     setFormData({
       warehouse_id: defaultWhId,
@@ -213,8 +213,8 @@ export function AdminDeliverySlotsPage() {
     setSaving(true);
     setFormErrors({});
     try {
-      const daysStr = formData.applicable_days.length === 7 
-        ? '' 
+      const daysStr = formData.applicable_days.length === 7
+        ? ''
         : formData.applicable_days.join(',');
 
       const payload = {
@@ -456,13 +456,12 @@ export function AdminDeliverySlotsPage() {
                       const isExpress = slot.slot_type === 'EXPRESS';
                       return (
                         <tr key={slot.id} className="hover:bg-slate-50/60 transition-colors">
-                          
                           {/* Slot Window & Label */}
                           <td className="py-4 px-6">
                             <div className="flex items-center gap-3">
                               <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs ${
-                                isExpress 
-                                  ? 'bg-amber-50 text-amber-600 border border-amber-200' 
+                                isExpress
+                                  ? 'bg-amber-50 text-amber-600 border border-amber-200'
                                   : 'bg-blue-50 text-blue-600 border border-blue-200'
                               }`}>
                                 {isExpress ? <Zap className="w-4 h-4" /> : <Clock className="w-4 h-4" />}
@@ -583,7 +582,6 @@ export function AdminDeliverySlotsPage() {
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150">
           <div className="bg-white rounded-2xl max-w-xl w-full max-h-[90vh] flex flex-col border border-slate-200 shadow-2xl overflow-hidden">
-            
             {/* Modal Header */}
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
               <div className="flex items-center gap-2.5">
@@ -607,7 +605,6 @@ export function AdminDeliverySlotsPage() {
 
             {/* Modal Form */}
             <form onSubmit={handleSaveSlot} className="flex-1 overflow-y-auto p-6 space-y-4">
-              
               {formErrors.general && (
                 <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs font-semibold flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 flex-shrink-0" />
