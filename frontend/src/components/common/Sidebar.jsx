@@ -45,6 +45,7 @@ import {
   ShieldAlert,
   UploadCloud,
   Warehouse as WarehouseIcon,
+  Clock,
 } from 'lucide-react';
 
 export function Sidebar({ onCloseMobile = () => {} }) {
@@ -255,6 +256,7 @@ export function Sidebar({ onCloseMobile = () => {} }) {
                 {renderNavLink('/workforce/admin/seller-hub/categories', Layers, 'Categories')}
                 {renderNavLink('/workforce/admin/seller-hub/categories-approval', ShieldCheck, 'Categories Approval')}
                 {renderNavLink('/workforce/admin/seller-hub/warehouses', WarehouseIcon, 'Warehouses')}
+                {renderNavLink('/workforce/admin/seller-hub/delivery-slots', Clock, 'Delivery Slots')}
                 {renderNavLink('/workforce/admin/seller-hub/coupons', Tag, 'Coupons')}
                 {renderNavLink('/workforce/seller-hub/reports', BarChart3, 'Reports & Quality')}
                 {renderNavLink('/workforce/seller-hub/store-profile', Store, 'Store Profile')}

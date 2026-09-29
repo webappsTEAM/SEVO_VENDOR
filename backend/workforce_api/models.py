@@ -4196,10 +4196,199 @@ class SellerProductAuditLog(models.Model):
     def __str__(self):
         return f"Audit #{self.id} for Product #{self.product_id}: {self.action} ({self.from_status} -> {self.to_status})"
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# SELLER HUB BASKET / COMBO OFFERS (Phase 3 Bundle Extensions)
+# ═══════════════════════════════════════════════════════════════════════════════
 
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+class SellerProductBasket(models.Model):
+    """
+    Multi-product combo bundle ("Basket Offer") created by a Seller Hub merchant.
+    Bundles 3 or more approved products with margin-driven or fixed-price deal pricing.
+    """
+    class Status(models.TextChoices):
+        DRAFT = "DRAFT", "Draft"
+        ACTIVE = "ACTIVE", "Active"
+        PAUSED = "PAUSED", "Paused"
+        OUT_OF_STOCK = "OUT_OF_STOCK", "Out of Stock"
+
+    class PricingMode(models.TextChoices):
+        MARGIN = "MARGIN", "Margin Percentage"
+        FIXED_PRICE = "FIXED_PRICE", "Fixed Basket Price"
+
+    company = models.ForeignKey(
+        "companies.Company",
+        on_delete=models.CASCADE,
+        related_name="seller_product_baskets",
+        db_index=True,
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_seller_baskets",
+    )
+    title = models.CharField(max_length=255, db_index=True)
+    description = models.TextField(blank=True, default="")
+    image_url = models.CharField(max_length=1000, blank=True, default="")
+    status = models.CharField(
+        max_length=30,
+        choices=Status.choices,
+        default=Status.DRAFT,
+        db_index=True,
+    )
+    pricing_mode = models.CharField(
+        max_length=30,
+        choices=PricingMode.choices,
+        default=PricingMode.MARGIN,
+    )
+    margin_percent = models.DecimalField(
+        max_digits=8,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Seller margin percentage on total procurement cost",
+    )
+    selling_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        help_text="Final customer-facing selling price for the combo basket",
+    )
+    total_mrp = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        help_text="Sum of component MRPs * quantities at last calculation",
+    )
+    total_procurement_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        help_text="Sum of component procurement prices * quantities at last calculation",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "workforce_seller_product_basket"
+        ordering = ["-updated_at", "-created_at"]
+        indexes = [
+            models.Index(fields=["company", "status"], name="wf_basket_comp_stat_idx"),
+            models.Index(fields=["status", "updated_at"], name="wf_basket_stat_upd_idx"),
+        ]
+
+    def __str__(self):
+        return f"Basket Offer: {self.title} ({self.company.company_name}) - ₹{self.selling_price} [{self.status}]"
+
+    def recalculate_totals(self, save=False):
+        """Authoritative server-side calculation of total_mrp, total_procurement_price, selling_price/margin."""
+        items = list(self.items.select_related("product").all())
+        mrp_sum = Decimal("0.00")
+        proc_sum = Decimal("0.00")
+        missing_proc = []
+
+        for item in items:
+            prod = item.product
+            qty = Decimal(str(item.quantity))
+            mrp_sum += (prod.mrp or Decimal("0.00")) * qty
+            if prod.procurement_price is None:
+                missing_proc.append(prod.title or f"Product #{prod.id}")
+            else:
+                proc_sum += prod.procurement_price * qty
+
+        self.total_mrp = mrp_sum
+        self.total_procurement_price = proc_sum
+
+        if self.pricing_mode == self.PricingMode.MARGIN and self.margin_percent is not None:
+            mult = Decimal("1.00") + (self.margin_percent / Decimal("100.00"))
+            self.selling_price = (proc_sum * mult).quantize(Decimal("0.01"))
+        elif self.pricing_mode == self.PricingMode.FIXED_PRICE and self.selling_price is not None:
+            if proc_sum > Decimal("0.00"):
+                self.margin_percent = (((self.selling_price - proc_sum) / proc_sum) * Decimal("100.00")).quantize(Decimal("0.01"))
+            else:
+                self.margin_percent = Decimal("0.00")
+
+        if save:
+            self.save(update_fields=["total_mrp", "total_procurement_price", "selling_price", "margin_percent", "updated_at"])
+
+        return {
+            "total_mrp": self.total_mrp,
+            "total_procurement_price": self.total_procurement_price,
+            "selling_price": self.selling_price,
+            "margin_percent": self.margin_percent,
+            "missing_procurement_products": missing_proc,
+        }
+
+    def check_availability(self):
+        """
+        Validates if all component products are APPROVED, company active, and available stock >= required qty.
+        Returns (is_available: bool, available_units: int, reasons: list[str])
+        """
+        if not self.company or not self.company.is_active:
+            return False, 0, ["Merchant store is inactive."]
+
+        items = list(self.items.select_related("product", "product__inventory", "product__company").all())
+        if len(items) < 3:
+            return False, 0, ["Basket must contain at least 3 distinct products."]
+
+        reasons = []
+        max_possible_units = []
+        for it in items:
+            p = it.product
+            if p.status != SellerProduct.Status.APPROVED:
+                reasons.append(f"Product '{p.title}' is not approved (Status: {p.status}).")
+            if p.procurement_price is None:
+                reasons.append(f"Product '{p.title}' is missing a procurement price.")
+            inv = getattr(p, "inventory", None)
+            avail_qty = max(Decimal("0.000"), (inv.on_hand_qty - inv.reserved_qty)) if inv else Decimal("0.000")
+            req_qty = Decimal(str(it.quantity))
+            if req_qty > Decimal("0.000"):
+                max_possible_units.append(int(avail_qty // req_qty))
+            else:
+                max_possible_units.append(0)
+            if avail_qty < req_qty:
+                reasons.append(f"Product '{p.title}' has insufficient stock ({avail_qty} available, {it.quantity} required).")
+
+        available_units = min(max_possible_units) if max_possible_units else 0
+        is_avail = len(reasons) == 0 and available_units > 0
+        return is_avail, available_units, reasons
+
+
+class SellerProductBasketItem(models.Model):
+    """
+    Component product row in a combo basket offer.
+    """
+    basket = models.ForeignKey(
+        SellerProductBasket,
+        on_delete=models.CASCADE,
+        related_name="items",
+        db_index=True,
+    )
+    product = models.ForeignKey(
+        SellerProduct,
+        on_delete=models.CASCADE,
+        related_name="basket_items",
+        db_index=True,
+    )
+    quantity = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        db_table = "workforce_seller_product_basket_item"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["basket", "product"],
+                name="unique_seller_product_basket_item",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.quantity}x {self.product.title} in Basket #{self.basket_id}"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # SELLER HUB INVENTORY MANAGEMENT (Phase 3)
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+# ═══════════════════════════════════════════════════════════════════════════════
 
 class SellerInventory(models.Model):
     """
@@ -4680,6 +4869,14 @@ class SellerOrderItem(models.Model):
         blank=True,
         related_name="order_items",
     )
+    basket = models.ForeignKey(
+        SellerProductBasket,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="order_items",
+    )
+    basket_title = models.CharField(max_length=255, blank=True, default="")
     is_picked = models.BooleanField(default=False)
     is_packed = models.BooleanField(default=False)
     notes = models.TextField(blank=True, default="")
@@ -5717,6 +5914,97 @@ class WarehouseReturn(models.Model):
 
     def __str__(self):
         return f"Return {self.return_number} | {self.product.title} x {self.returned_quantity} -> {self.company.company_name}"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# DELIVERY SLOTS & CAPACITY SCHEDULING (PHASE 1)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class DeliverySlot(models.Model):
+    """
+    Delivery window slot scoped to a physical fulfillment Warehouse.
+    Defines timing, standard vs express delivery types, optional capacity caps per slot,
+    and applicable days of the week.
+    """
+    class SlotType(models.TextChoices):
+        STANDARD = "STANDARD", "Standard Delivery"
+        EXPRESS = "EXPRESS", "Fast Delivery"
+
+    warehouse = models.ForeignKey(
+        Warehouse,
+        on_delete=models.CASCADE,
+        related_name="delivery_slots",
+        db_index=True,
+    )
+    label = models.CharField(
+        max_length=100,
+        help_text="Customer-facing slot label (e.g. '9:00 AM - 11:00 AM')",
+    )
+    start_time = models.TimeField(help_text="Slot window start time")
+    end_time = models.TimeField(help_text="Slot window end time")
+    slot_type = models.CharField(
+        max_length=20,
+        choices=SlotType.choices,
+        default=SlotType.STANDARD,
+        db_index=True,
+    )
+    max_orders_per_slot = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Optional maximum capacity cap per calendar date. Null = unlimited capacity.",
+    )
+    is_active = models.BooleanField(default=True, db_index=True)
+    applicable_days = models.CharField(
+        max_length=20,
+        blank=True,
+        default="",
+        help_text="Comma-separated day-of-week ints (0=Mon .. 6=Sun), empty = every day",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "workforce_delivery_slot"
+        ordering = ["warehouse", "start_time"]
+        indexes = [
+            models.Index(fields=["warehouse", "is_active"], name="wf_dslot_wh_active_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.warehouse.name} - {self.label} ({self.get_slot_type_display()})"
+
+
+class DeliverySlotBooking(models.Model):
+    """
+    Capacity booking ledger entry linking a DeliverySlot to a calendar delivery_date and SellerOrder.
+    """
+    slot = models.ForeignKey(
+        DeliverySlot,
+        on_delete=models.CASCADE,
+        related_name="bookings",
+        db_index=True,
+    )
+    delivery_date = models.DateField(db_index=True)
+    seller_order = models.OneToOneField(
+        "workforce_api.SellerOrder",
+        on_delete=models.CASCADE,
+        related_name="slot_booking",
+        null=True,
+        blank=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "workforce_delivery_slot_booking"
+        indexes = [
+            models.Index(fields=["slot", "delivery_date"], name="wf_dslot_bkg_slot_date_idx"),
+        ]
+
+    def __str__(self):
+        return f"Booking for Slot #{self.slot_id} on {self.delivery_date} (Order #{self.seller_order_id or 'N/A'})"
+
+
+
 
 
 
