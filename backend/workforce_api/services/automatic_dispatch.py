@@ -371,7 +371,7 @@ EXPLICIT_SERVICE_ALIASES = {
     "goods and transport": {"goods_transport", "goods & transport", "goods and transport", "goods transport", "truck", "two wheeler", "logistics", "goods_transport_truck", "goods_transport_two_wheeler"},
     "goods_transport": {"goods_transport", "goods & transport", "goods and transport", "goods transport", "truck", "two wheeler", "logistics", "goods_transport_truck", "goods_transport_two_wheeler"},
     "goods_transport_truck": {"goods_transport_truck", "truck", "mini truck", "goods & transport", "goods and transport", "goods transport", "logistics"},
-    "goods_transport_two_wheeler": {"goods_transport_two_wheeler", "two wheeler", "bike", "scooter", "goods & transport", "goods and transport", "goods transport", "logistics"},
+    "goods_transport_two_wheeler": {"goods_transport_two_wheeler", "two_wheeler_delivery", "two wheeler delivery", "two wheeler", "bike", "scooter", "goods & transport", "goods and transport", "goods transport", "logistics"},
     "paintings": {"paintings", "painting", "interior painting", "exterior painting", "waterproofing", "wood & metal", "texture decor", "house painting", "commercial painting", "wall painting"},
     "painting": {"paintings", "painting", "interior painting", "exterior painting", "waterproofing", "wood & metal", "texture decor", "house painting", "commercial painting", "wall painting"},
     "interior painting": {"paintings", "painting", "interior painting", "wall painting"},
@@ -389,7 +389,7 @@ def normalize_service_category(cat: str) -> str:
     raw = (cat or "").strip().lower().replace("-", "_").replace(" ", "_")
     if raw in ("truck", "mini_truck", "goods_transport_truck"):
         return "goods_transport_truck"
-    if raw in ("two_wheeler", "2_wheeler", "goods_transport_two_wheeler"):
+    if raw in ("two_wheeler", "2_wheeler", "two_wheeler_delivery", "goods_transport_two_wheeler"):
         return "goods_transport_two_wheeler"
     if raw in ("packers_movers", "packer_mover", "packers_and_movers", "shifting"):
         return "packers_movers"
