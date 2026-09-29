@@ -24,6 +24,7 @@ _raw_secret = os.getenv("SECRET_KEY") or os.getenv("DJANGO_SECRET_KEY")
 # mock (fabricated) payouts from running against real money. Local development
 # opts IN explicitly via DJANGO_DEBUG=1 in backend/.env.
 DEBUG = (os.getenv("DEBUG") or os.getenv("DJANGO_DEBUG") or "False").strip().lower() in ("true", "1", "t", "yes")
+IS_TESTING = "test" in sys.argv or os.getenv("DJANGO_TEST_SQLITE") == "1"
 
 if not _raw_secret:
     if DEBUG:
@@ -41,9 +42,12 @@ else:
 _allowed_hosts_env = os.getenv("ALLOWED_HOSTS") or os.getenv("DJANGO_ALLOWED_HOSTS")
 if _allowed_hosts_env:
     ALLOWED_HOSTS = [h.strip() for h in _allowed_hosts_env.split(",") if h.strip()]
+elif DEBUG:
+    ALLOWED_HOSTS = ["*"]
 else:
-    ALLOWED_HOSTS = ["*"] if DEBUG else ["localhost", "127.0.0.1", "testserver"]
-if "testserver" not in ALLOWED_HOSTS:
+    # Production fallback without localhost or 127.0.0.1
+    ALLOWED_HOSTS = ["vendor.sevo.co.in", "sevo.co.in"]
+if IS_TESTING and "testserver" not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append("testserver")
 
 # Application definition
@@ -106,7 +110,6 @@ ASGI_APPLICATION = "workforce_core.asgi.application"
 
 # ─── Database Configuration (Shared Supabase PostgreSQL) ──────────────────────
 
-IS_TESTING = "test" in sys.argv or os.getenv("DJANGO_TEST_SQLITE") == "1"
 USE_POSTGRES = bool(os.getenv("DB_NAME") or os.getenv("DB_HOST"))
 
 if IS_TESTING:
@@ -248,7 +251,7 @@ SIMPLE_JWT = {
 AUTH_COOKIE = "qt_access"
 AUTH_COOKIE_REFRESH = "qt_refresh"
 AUTH_COOKIE_SECURE = not DEBUG
-AUTH_COOKIE_SAMESITE = os.getenv("AUTH_COOKIE_SAMESITE", "Lax" if DEBUG else "Strict")
+AUTH_COOKIE_SAMESITE = os.getenv("AUTH_COOKIE_SAMESITE", "Lax")
 AUTH_COOKIE_DOMAIN = os.getenv("AUTH_COOKIE_DOMAIN", None)
 
 # ─── CORS ─────────────────────────────────────────────────────────────────────
@@ -257,7 +260,7 @@ CORS_ALLOW_ALL_ORIGINS = DEBUG
 _cors_env = os.getenv("CORS_ALLOWED_ORIGINS")
 if _cors_env:
     CORS_ALLOWED_ORIGINS = [origin.strip() for origin in _cors_env.split(",") if origin.strip()]
-else:
+elif DEBUG:
     CORS_ALLOWED_ORIGINS = [
         # Workforce Frontend
         "http://localhost:5176",
@@ -270,6 +273,12 @@ else:
         # Platform Admin Frontend
         "http://localhost:5174",
         "http://127.0.0.1:5174",
+    ]
+else:
+    # Production fallback without local origins
+    CORS_ALLOWED_ORIGINS = [
+        "https://vendor.sevo.co.in",
+        "https://sevo.co.in",
     ]
 
 CORS_ALLOW_CREDENTIALS = True
@@ -296,13 +305,33 @@ CORS_ALLOW_HEADERS = [
 _csrf_env = os.getenv("CSRF_TRUSTED_ORIGINS")
 if _csrf_env:
     CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in _csrf_env.split(",") if origin.strip()]
-else:
+elif DEBUG:
     CSRF_TRUSTED_ORIGINS = [
         "http://localhost:5176",
         "http://127.0.0.1:5176",
         "http://localhost:8001",
         "http://127.0.0.1:8001",
     ]
+else:
+    # Production fallback without local origins
+    CSRF_TRUSTED_ORIGINS = [
+        "https://vendor.sevo.co.in",
+        "https://sevo.co.in",
+    ]
+
+# ── HTTPS & Security Headers (Active when DEBUG=False) ────────────────────────
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SECURE_SSL_REDIRECT = os.getenv("SECURE_SSL_REDIRECT", "1") == "1"
+    SECURE_HSTS_SECONDS = int(os.getenv("SECURE_HSTS_SECONDS", "31536000"))  # 1 year
+    # Enable only after every present and future subdomain is HTTPS-ready.
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = os.getenv("SECURE_HSTS_INCLUDE_SUBDOMAINS", "0") == "1"
+    SECURE_HSTS_PRELOAD = False  # Enabled only after all subdomains are verified HTTPS-ready
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_BROWSER_XSS_FILTER = True
+    X_FRAME_OPTIONS = "SAMEORIGIN"  # Safe default preserving payment/OAuth UI
 
 # ── Customer-app webhook integration (fixes X-01) ─────────────────────────────
 # This app previously never notified the Customer app of technician
@@ -310,16 +339,22 @@ else:
 # even though the Customer app has a fully-built idempotent webhook receiver
 # (workforce_integration/views.py) waiting for exactly this. See
 # workforce_api/services/customer_webhook.py for the sender.
-CUSTOMER_APP_BASE_URL = os.getenv("CUSTOMER_APP_BASE_URL", "http://localhost:8000").rstrip("/")
-# Must match the Customer app's WORKFORCE_WEBHOOK_SECRET env var exactly.
-# NOTE: the Customer app's receiver (workforce_integration/views.py,
-# _verify_webhook_signature) currently accepts the literal string
-# "wf_webhook_secret_default" as a valid secret unconditionally, regardless
-# of what WORKFORCE_WEBHOOK_SECRET is actually configured to on that side --
-# that is a bug on the receiving end (flagged separately, not fixed here)
-# and means a real secret should be set on BOTH apps before relying on this
-# for anything sensitive.
-WORKFORCE_WEBHOOK_SECRET = os.getenv("WORKFORCE_WEBHOOK_SECRET", "wf_webhook_secret_default")
+CUSTOMER_APP_BASE_URL = (os.getenv("CUSTOMER_APP_BASE_URL") or "http://localhost:8000").rstrip("/")
+if not DEBUG and CUSTOMER_APP_BASE_URL.startswith(("http://localhost", "http://127.0.0.1")):
+    raise ValueError(
+        "CRITICAL CONFIG ERROR: CUSTOMER_APP_BASE_URL must be a non-local Customer URL in production."
+    )
+# Must match the Customer app's WORKFORCE_WEBHOOK_SECRET exactly.  A known
+# fallback would authenticate any caller that knows the source code, so it is
+# available only for explicit local DEBUG use and production fails closed.
+_raw_workforce_webhook_secret = os.getenv("WORKFORCE_WEBHOOK_SECRET", "").strip()
+if not _raw_workforce_webhook_secret:
+    if DEBUG:
+        WORKFORCE_WEBHOOK_SECRET = "dev-insecure-workforce-webhook-secret-local-testing-only"
+    else:
+        raise ValueError("CRITICAL SECURITY ERROR: WORKFORCE_WEBHOOK_SECRET environment variable is mandatory in production (DEBUG=False).")
+else:
+    WORKFORCE_WEBHOOK_SECRET = _raw_workforce_webhook_secret
 
 # ----------------------------------------------------------------------------
 # SEVO business plan (Section 1): RazorpayX Payouts for wallet withdrawals.

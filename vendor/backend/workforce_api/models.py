@@ -136,7 +136,7 @@ class WorkforceRequiredDocument(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     # GT-A-02: which job service categories this requirement applies to (e.g.
-    # ["mini_truck", "two_wheeler_delivery", "packers_movers"]). Empty list
+    # ["goods_transport_truck", "goods_transport_two_wheeler", "packers_movers"]). Empty list
     # (the default) preserves the original behaviour -- applies to every job,
     # exactly as every existing row already does. Only non-empty lists scope
     # a requirement (e.g. Driving Licence / RC / Insurance / Permit) to

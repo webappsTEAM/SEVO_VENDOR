@@ -71,15 +71,61 @@ class AuthoritativeDispatchMatrixTests(SimpleTestCase):
             {"booking_id": 6234},
             format="json",
             HTTP_X_CALSERVICES_SOURCE="calservices-platform",
+            HTTP_AUTHORIZATION="Bearer test-dispatch-secret",
         )
-        with self.settings(DEBUG=True):
+        with self.settings(WORKFORCE_WEBHOOK_SECRET="test-dispatch-secret"):
             view = WorkforceCrossServiceDispatchView.as_view()
             resp = view(req)
 
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(resp.data.get("success"))
+        self.assertTrue(resp.data.get("accepted"))
+        self.assertTrue(resp.data.get("allocation_started"))
         self.assertEqual(resp.data.get("workforce_job_id"), "6234")
-        mock_dispatch.assert_called_once_with(mock_job)
+        mock_dispatch.assert_called_once_with(mock_job, allow_legacy_override=False)
+
+    @patch("workforce_api.views.run_automatic_dispatch")
+    @patch("service_requests.models.ServiceRequest.objects.filter")
+    def test_a2_dispatch_is_accepted_when_matching_retries_later(self, mock_sr_filter, mock_dispatch):
+        """No immediate candidate is a Workforce retry, not a failed Customer hand-off."""
+        mock_job = SimpleNamespace(id=6235, request_id="SR-6235", status="unassigned")
+        mock_sr_filter.return_value.first.return_value = mock_job
+        mock_dispatch.return_value = (False, "No eligible technicians; retry scheduled.")
+
+        req = self.factory.post(
+            "/api/workforce/jobs/dispatch/",
+            {"booking_id": 6235},
+            format="json",
+            HTTP_X_CALSERVICES_SOURCE="calservices-platform",
+            HTTP_AUTHORIZATION="Bearer test-dispatch-secret",
+        )
+        with self.settings(WORKFORCE_WEBHOOK_SECRET="test-dispatch-secret"):
+            resp = WorkforceCrossServiceDispatchView.as_view()(req)
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.data.get("success"))
+        self.assertTrue(resp.data.get("accepted"))
+        self.assertFalse(resp.data.get("allocation_started"))
+
+    @patch("workforce_api.views.run_automatic_dispatch")
+    @patch("service_requests.models.ServiceRequest.objects.filter")
+    def test_a3_cross_service_dispatch_rejects_another_bookings_key(self, mock_sr_filter, mock_dispatch):
+        """A retry key is valid only for the immutable shared request_id."""
+        mock_job = SimpleNamespace(id=6236, request_id="SR-6236", status="unassigned")
+        mock_sr_filter.return_value.first.return_value = mock_job
+        req = self.factory.post(
+            "/api/workforce/jobs/dispatch/",
+            {"booking_id": 6236, "idempotency_key": "SR-SOMEONE-ELSE"},
+            format="json",
+            HTTP_X_CALSERVICES_SOURCE="calservices-platform",
+            HTTP_AUTHORIZATION="Bearer test-dispatch-secret",
+        )
+        with self.settings(WORKFORCE_WEBHOOK_SECRET="test-dispatch-secret"):
+            resp = WorkforceCrossServiceDispatchView.as_view()(req)
+
+        self.assertEqual(resp.status_code, 409)
+        self.assertEqual(resp.data["code"], "IDEMPOTENCY_KEY_MISMATCH")
+        mock_dispatch.assert_not_called()
 
     # ── Test B: Idempotency / Duplicate Offer Protection ─────────────────────
     @patch("workforce_api.models.WorkforceJobOffer.objects.filter")
@@ -120,7 +166,8 @@ class AuthoritativeDispatchMatrixTests(SimpleTestCase):
                     "services": [{"name": "AC Repair", "category": "hvac", "status": "approved"}],
                 }
             },
-            company_id=None,
+            company_id=1,
+            company=SimpleNamespace(is_active=True),
             prefetched_compliance_records=[],
             prefetched_employee_documents=[],
             prefetched_today_schedules=[],
@@ -139,18 +186,29 @@ class AuthoritativeDispatchMatrixTests(SimpleTestCase):
                     "services": [{"name": "AC Repair", "category": "hvac", "status": "approved"}],
                 }
             },
-            company_id=None,
+            company_id=1,
+            company=SimpleNamespace(is_active=True),
             prefetched_compliance_records=[],
             prefetched_employee_documents=[],
             prefetched_today_schedules=[],
             prefetched_verified_skills=[],
         )
 
-        ok_online, _, gates_on = check_candidate_eligibility(emp_online, "hvac", purpose="offer_reception")
+        eligibility_kwargs = {
+            "allow_legacy_override": True,
+            "preloaded_doc_reqs": [],
+            "preloaded_comp_reqs": [],
+            "preloaded_outstanding_cash": 0,
+        }
+        ok_online, _, gates_on = check_candidate_eligibility(
+            emp_online, "hvac", purpose="offer_reception", **eligibility_kwargs
+        )
         self.assertTrue(gates_on["G7"])
         self.assertTrue(ok_online)
 
-        ok_offline, reason_off, gates_off = check_candidate_eligibility(emp_offline, "hvac", purpose="offer_reception")
+        ok_offline, reason_off, gates_off = check_candidate_eligibility(
+            emp_offline, "hvac", purpose="offer_reception", **eligibility_kwargs
+        )
         self.assertFalse(gates_off["G7"])
         self.assertFalse(ok_offline)
         self.assertIn("OFFLINE", reason_off)
@@ -172,14 +230,23 @@ class AuthoritativeDispatchMatrixTests(SimpleTestCase):
                     "services": [{"name": "Plumbing Repair", "category": "plumbing", "status": "approved"}],
                 }
             },
-            company_id=None,
+            company_id=1,
+            company=SimpleNamespace(is_active=True),
             prefetched_compliance_records=[],
             prefetched_employee_documents=[],
             prefetched_today_schedules=[],
             prefetched_verified_skills=[],
         )
 
-        ok, reason, gates = check_candidate_eligibility(emp, "hvac", purpose="offer_reception")
+        ok, reason, gates = check_candidate_eligibility(
+            emp,
+            "hvac",
+            purpose="offer_reception",
+            allow_legacy_override=True,
+            preloaded_doc_reqs=[],
+            preloaded_comp_reqs=[],
+            preloaded_outstanding_cash=0,
+        )
         self.assertFalse(gates["G6"])
         self.assertFalse(ok)
         self.assertIn("Gate 6", reason)
@@ -247,8 +314,9 @@ class AuthoritativeDispatchMatrixTests(SimpleTestCase):
         self.assertTrue(mock_on_commit.called)
 
     # ── Test H: Offer Acceptance Gating ───────────────────────────────────────
+    @patch("workforce_api.services.automatic_dispatch.check_candidate_eligibility", return_value=(True, "eligible", {}))
     @patch("workforce_api.services.workload.get_employee_active_job")
-    def test_h_acceptance_requires_no_active_conflicting_job(self, mock_active_job):
+    def test_h_acceptance_requires_no_active_conflicting_job(self, mock_active_job, mock_eligibility):
         """H: can_accept_offer fails Gate 9 if technician is busy on another active job."""
         user = MockUser(pk=301)
         emp = SimpleNamespace(

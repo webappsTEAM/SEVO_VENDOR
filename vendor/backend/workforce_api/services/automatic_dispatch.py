@@ -210,7 +210,7 @@ EXPLICIT_SERVICE_ALIASES = {
     "goods and transport": {"goods_transport", "goods & transport", "goods and transport", "goods transport", "truck", "two wheeler", "packer & mover", "packers & movers", "logistics", "shifting", "packers_movers", "relocation", "goods_transport_truck", "goods_transport_two_wheeler"},
     "goods_transport": {"goods_transport", "goods & transport", "goods and transport", "goods transport", "truck", "two wheeler", "packer & mover", "packers & movers", "logistics", "shifting", "packers_movers", "relocation", "goods_transport_truck", "goods_transport_two_wheeler"},
     "goods_transport_truck": {"goods_transport_truck", "truck", "mini truck", "goods & transport", "goods and transport", "goods transport", "logistics", "packer & mover", "packers & movers"},
-    "goods_transport_two_wheeler": {"goods_transport_two_wheeler", "two wheeler", "bike", "scooter", "goods & transport", "goods and transport", "goods transport", "logistics"},
+    "goods_transport_two_wheeler": {"goods_transport_two_wheeler", "two_wheeler_delivery", "two wheeler delivery", "two wheeler", "bike", "scooter", "goods & transport", "goods and transport", "goods transport", "logistics"},
     "paintings": {"paintings", "painting", "interior painting", "exterior painting", "waterproofing", "wood & metal", "texture decor", "house painting", "commercial painting", "wall painting"},
     "painting": {"paintings", "painting", "interior painting", "exterior painting", "waterproofing", "wood & metal", "texture decor", "house painting", "commercial painting", "wall painting"},
     "interior painting": {"paintings", "painting", "interior painting", "wall painting"},
@@ -242,7 +242,16 @@ def normalize_service_category(cat: str) -> str:
     raw = re.sub(r"\s+", "_", raw.strip())
     if raw in ("truck", "mini_truck", "goods_transport_truck"):
         return "goods_transport_truck"
-    if raw in ("two_wheeler", "2_wheeler", "goods_transport_two_wheeler"):
+    # Seller Hub used the legacy ``two_wheeler_delivery`` value while the
+    # shared Customer/Workforce contract uses ``goods_transport_two_wheeler``.
+    # Normalize both at the dispatch boundary so vehicle, document and rapid
+    # dispatch gates cannot be bypassed by the legacy spelling.
+    if raw in (
+        "two_wheeler",
+        "2_wheeler",
+        "goods_transport_two_wheeler",
+        "two_wheeler_delivery",
+    ):
         return "goods_transport_two_wheeler"
     if raw in ("packers_movers", "packer_mover", "packers_and_movers", "shifting"):
         return "packers_movers"
@@ -556,7 +565,11 @@ def check_candidate_eligibility(
         gate_results["G1"] = False
         logger.debug(f"[9GATE_REJECT_GATE1_ACCOUNT_INACTIVE] Employee #{getattr(emp, 'id', None)} account is inactive.")
         return False, "Gate 1: Technician account is inactive.", gate_results
-    if not emp.company_id or not emp.company.is_active:
+    # Independent technicians are a supported platform-level pool for
+    # marketplace jobs without a vendor tenant.  A company-scoped employee
+    # must still belong to an active company; do not reject the independent
+    # pool merely because it has no company FK.
+    if emp.company_id and not emp.company.is_active:
         gate_results["G1"] = False
         return False, "Gate 1: An active technician company is required.", gate_results
 
@@ -757,7 +770,13 @@ def check_candidate_eligibility(
     if has_canonical_ids:
         # Canonical dispatch: Resolve capability/eligibility strictly from canonical IDs
         selections = {(job_catalog_id, job_package_id)}
-        if is_ac and isinstance(getattr(job, 'cart_data', None), list):
+        # Every catalog-backed line item is part of the booking contract.
+        # This must not be AC-only: otherwise a multi-line Plumbing,
+        # Electrical, Cleaning, or Logistics booking could be offered based
+        # solely on its first package while the technician was not approved
+        # for an additional selected package.  Customer populates these IDs
+        # from its database catalog; never fall back to display-name matching.
+        if isinstance(getattr(job, 'cart_data', None), list):
             selections.update((str(row['catalog_service_id']), str(row.get('package_id') or ''))
                               for row in job.cart_data if isinstance(row, dict) and row.get('catalog_service_id'))
         canonical_match = all((service_id and service_id in approved_svc_ids)
@@ -2144,6 +2163,7 @@ def expire_and_reassign_offers() -> int:
     Returns the count of expired offers handled.
     """
     now = timezone.now()
+    today = timezone.localdate()
     expired_offers = list(
         WorkforceJobOffer.objects.filter(
             status=WorkforceJobOffer.Status.OFFERED,
