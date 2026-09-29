@@ -58,7 +58,18 @@ function TechnicianExecutionStateView({ job, status, technicianLocation }) {
     : '';
   const paymentMethod = (job?.payment_method || 'COD').toUpperCase();
   const paymentStatus = (job?.payment_status || 'PENDING').toUpperCase();
-  const amount = job?.total_amount != null ? `₹${Number(job.total_amount).toLocaleString('en-IN')}` : '—';
+  // Determine active payable balance (accounting for 50% advance / quote milestone payments)
+  const activeQuoteTotal = Number(job?.active_quote_net_payable ?? job?.active_quote_total_amount ?? job?.total_amount ?? 0);
+  const activeQuoteAdvance = Number(job?.active_quote_advance_amount ?? (activeQuoteTotal ? activeQuoteTotal * 0.5 : 0));
+  const activeQuoteAdvancePaid = Boolean(job?.active_quote_advance_paid || paymentStatus === 'PARTIALLY_PAID');
+  const balanceDue = Number(
+    job?.active_quote_balance_amount ??
+    job?.balance_due ??
+    job?.amount_due ??
+    (activeQuoteAdvancePaid ? Math.max(0, activeQuoteTotal - activeQuoteAdvance) : activeQuoteTotal)
+  );
+
+  const amount = `₹${balanceDue.toLocaleString('en-IN')}`;
   const isCod = paymentMethod === 'COD' || paymentMethod === 'CASH_ON_SERVICE';
 
   if (status === 'proof_submitted') {

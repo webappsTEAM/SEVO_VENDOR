@@ -170,6 +170,8 @@ export function App() {
           <Routes>
             {/* Root */}
             <Route path="/" element={<RootRedirect />} />
+            <Route path="/workforce" element={<RootRedirect />} />
+            <Route path="/workforce/" element={<RootRedirect />} />
 
             {/* Direct Role Route Aliases */}
             <Route path="/admin" element={<Navigate to="/workforce/admin" replace />} />

@@ -819,7 +819,13 @@ class RateCardListView(APIView):
             or request.query_params.get("category")
         )
         if category:
-            qs = qs.filter(service_category__iexact=category.strip())
+            cat_clean = category.strip().lower()
+            if "paint" in cat_clean or "waterproof" in cat_clean:
+                qs = qs.filter(service_category__icontains="paint")
+            elif "mason" in cat_clean or "brick" in cat_clean or "plaster" in cat_clean:
+                qs = qs.filter(service_category__icontains="mason")
+            else:
+                qs = qs.filter(service_category__iexact=category.strip())
         service = request.query_params.get("service")
         if service:
             qs = qs.filter(service_name__iexact=service.strip())
