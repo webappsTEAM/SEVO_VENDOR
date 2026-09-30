@@ -280,7 +280,6 @@ from workforce_api.views_delivery_slots import (
 )
 from workforce_api.views_marketplace_integration import (
     MarketplaceCategoryFeedView,
-    MarketplaceCategoryListView,
     MarketplaceProductListView,
     MarketplaceProductDetailView,
     MarketplaceBasketListView,

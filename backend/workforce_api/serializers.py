@@ -4331,8 +4331,6 @@ class SellerProductBasketItemSerializer(serializers.ModelSerializer):
         if not inv:
             return 0
         return int(inv.on_hand_qty) if (inv.on_hand_qty % 1) == 0 else float(inv.on_hand_qty)
-
-
 class SellerProductBasketSerializer(serializers.ModelSerializer):
     company_name = serializers.CharField(source="company.company_name", read_only=True)
     items = SellerProductBasketItemSerializer(many=True, read_only=True)
