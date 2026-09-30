@@ -61,6 +61,7 @@ INSTALLED_APPS = [
     "companies",
     "accounts",
     "employees",
+    "inventory",
     "service_requests",
     "workforce_api",
     "time_tracking",
