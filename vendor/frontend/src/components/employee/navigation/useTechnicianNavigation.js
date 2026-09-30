@@ -1,14 +1,4 @@
-import React from 'react';
-  
-  const UseTechnicianNavigation = () =>  {
-	return (
-	  <div>
-	  </div>
-	);
-  }
-  
-  export default UseTechnicianNavigation;
-  /**
+/**
  * useTechnicianNavigation.js
  *
  * Dedicated Navigation State Machine Hook for CalTrack Field Technicians.

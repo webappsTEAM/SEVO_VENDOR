@@ -1,14 +1,4 @@
-import React from 'react';
-  
-  const Client = () =>  {
-	return (
-	  <div>
-	  </div>
-	);
-  }
-  
-  export default Client;
-  /**
+/**
  * workforce-app/frontend/src/api/client.js
  * Universal fetch client handling Bearer tokens, CSRF tokens, silent refresh deduplication, and JSON errors.
  */

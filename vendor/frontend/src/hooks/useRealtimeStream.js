@@ -1,14 +1,4 @@
-import React from 'react';
-  
-  const UseRealtimeStream = () =>  {
-	return (
-	  <div>
-	  </div>
-	);
-  }
-  
-  export default UseRealtimeStream;
-  /**
+/**
  * useRealtimeStream.js
  * Hardened SSE (Server-Sent Events) hook with:
  * 1. Generation-tracked connection lifecycle (immune to React rerenders and StrictMode replay)

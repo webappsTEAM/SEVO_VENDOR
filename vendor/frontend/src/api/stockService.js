@@ -1,14 +1,4 @@
-import React from 'react';
-  
-  const StockService = () =>  {
-	return (
-	  <div>
-	  </div>
-	);
-  }
-  
-  export default StockService;
-  /**
+/**
  * workforce-app/frontend/src/api/stockService.js
  *
  * VENDOR_STOCK_MANAGEMENT_IMPLEMENTATION_PLAN.md Phase 3. Thin wrappers over

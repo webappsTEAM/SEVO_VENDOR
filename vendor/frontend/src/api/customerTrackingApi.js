@@ -1,14 +1,4 @@
-import React from 'react';
-  
-  const CustomerTrackingApi = () =>  {
-	return (
-	  <div>
-	  </div>
-	);
-  }
-  
-  export default CustomerTrackingApi;
-  /**
+/**
  * customerTrackingApi.js
  *
  * Dedicated API client for customer-facing live technician tracking.
