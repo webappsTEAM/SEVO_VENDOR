@@ -1,7 +1,7 @@
 /**
  * navigationUtils.js
  *
- * Precise Geospatial & Mathematical Utilities for CalTrack Technician Navigation.
+ * Precise Geospatial & Mathematical Utilities for SEVO Technician Navigation.
  *
  * Features:
  *  - High-precision Haversine distance.

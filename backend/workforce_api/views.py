@@ -4160,7 +4160,7 @@ class WorkforceJobCashCollectView(APIView):
             pmt.payment_status = JobPayment.PaymentStatus.CASH_PENDING
             pmt.save()
 
-            # Record immutable audit event
+            # Record immutable audit event with OTP for customer confirmation
             PaymentCollectionEvent.objects.create(
                 job_payment=pmt,
                 employee=emp,
@@ -4624,33 +4624,27 @@ class WorkforceCustomerPaymentConfirmView(APIView):
 
                 if job.status == "proof_submitted" and is_fully_settled:
                     try:
-                        apply_transition(job, "completed", actor=request.user)
-                    except ValidationError as ve:
-                        completion_blocked_reason = str(ve)
-                        logger.warning("Could not complete job #%s after customer payment confirm: %s", job.id, ve)
-                        job.save(update_fields=["payment_status"])
-                        try:
-                            admin_user = None
-                            if job.company:
-                                admin_user = get_user_model().objects.filter(
-                                    Q(role__in=["admin", "manager"]) | Q(is_staff=True),
-                                    company=job.company,
-                                ).first()
-                            if admin_user:
-                                WorkforceNotification.objects.create(
-                                    recipient=admin_user,
-                                    title="Payment Confirmed but Job Did Not Close",
-                                    message=(
-                                        f"Job #{job.id} ({job.request_id}) payment was confirmed PAID but the job "
-                                        f"could not be marked completed: {completion_blocked_reason} Wallet was NOT "
-                                        f"credited. Run `complete_stuck_paid_jobs --job {job.request_id}` once resolved."
-                                    ),
-                                    notification_type="JOB_COMPLETION_BLOCKED",
-                                    company=job.company,
-                                    related_object_id=str(job.id),
-                                )
-                        except Exception as notify_err:
-                            logger.warning(f"Could not notify admin of blocked completion for Job #{job.id}: {notify_err}")
+                        admin_user = None
+                        if job.company:
+                            admin_user = get_user_model().objects.filter(
+                                Q(role__in=["admin", "manager"]) | Q(is_staff=True),
+                                company=job.company,
+                            ).first()
+                        if admin_user:
+                            WorkforceNotification.objects.create(
+                                recipient=admin_user,
+                                title="Payment Confirmed but Job Did Not Close",
+                                message=(
+                                    f"Job #{job.id} ({job.request_id}) payment was confirmed PAID but the job "
+                                    f"could not be marked completed: {completion_blocked_reason} Wallet was NOT "
+                                    f"credited. Run `complete_stuck_paid_jobs --job {job.request_id}` once resolved."
+                                ),
+                                notification_type="JOB_COMPLETION_BLOCKED",
+                                company=job.company,
+                                related_object_id=str(job.id),
+                            )
+                    except Exception as notify_err:
+                        logger.warning(f"Could not notify admin of blocked completion for Job #{job.id}: {notify_err}")
                     except Exception as e:
                         completion_blocked_reason = str(e)
                         logger.exception("Unexpected error completing job #%s after customer payment confirm: %s", job.id, e)

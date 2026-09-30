@@ -1,7 +1,7 @@
 /**
  * bikeMarker.js
  *
- * Professional Service Motorcycle / Bike Marker for CalTrack Technician Navigation.
+ * Professional Service Motorcycle / Bike Marker for SEVO Technician Navigation.
  *
  * Features:
  *  - Custom SVG Field Service Motorcycle with helmet rider and service box.

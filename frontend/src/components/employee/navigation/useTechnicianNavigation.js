@@ -1,7 +1,7 @@
 /**
  * useTechnicianNavigation.js
  *
- * Dedicated Navigation State Machine Hook for CalTrack Field Technicians.
+ * Dedicated Navigation State Machine Hook for SEVO Field Technicians.
  *
  * Manages:
  *  - High-accuracy GPS telemetry reception with out-of-order packet rejection.

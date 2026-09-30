@@ -46,7 +46,7 @@ export default function VendorQuotationBuilder({
   const [taxRatePercent, setTaxRatePercent] = useState(18);
   const [discountAmount, setDiscountAmount] = useState(0);
   const [validUntil, setValidUntil] = useState('');
-  const [notes, setNotes] = useState('Includes 90-day CalServices warranty on all replacement parts and labor.');
+  const [notes, setNotes] = useState('Includes 90-day SEVO warranty on all replacement parts and labor.');
   const [saving, setSaving] = useState(false);
   const [submittingReview, setSubmittingReview] = useState(false);
   const [showSubmitModal, setShowSubmitModal] = useState(false);

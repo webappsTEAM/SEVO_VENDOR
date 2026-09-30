@@ -1,6 +1,6 @@
 /**
  * workforce-app/frontend/src/api/workforceService.js
- * Comprehensive API Client for all 21 CalServices Workforce Lifecycle Phases.
+ * Comprehensive API Client for all 21 SEVO Workforce Lifecycle Phases.
  */
 import { apiRequest } from './client.js';
 
@@ -1092,7 +1092,7 @@ export async function apiGetJobTimeline(jobId) {
   return await apiRequest(`/workforce/jobs/${jobId}/timeline/`);
 }
 
-// ── Live Road Tracking & Telemetry (CalTrack Live Tracking) ───────────────────
+// ── Live Road Tracking & Telemetry (SEVO Live Tracking) ───────────────────
 
 export async function apiGetJobLiveTracking(jobId) {
   return await apiRequest(`/workforce/jobs/${jobId}/live-tracking/`);

@@ -1,7 +1,7 @@
 /**
  * TechnicianStandbyMapView.jsx
  *
- * Clean, modern Standby / Dispatch Radar Map View for CalTrack Technicians.
+ * Clean, modern Standby / Dispatch Radar Map View for SEVO Technicians.
  * Renders when the technician has no active assignments or in-flight navigation.
  *
  * Features:

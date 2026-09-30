@@ -264,7 +264,7 @@ def send_quote_to_customer(quote_id, actor=None, valid_days=7):
             over_threshold, threshold = pricing_policy.needs_pre_send_review(
                 quote.service_category, amount
             )
-            if (requires_admin or over_threshold) and not quote.admin_cleared_at and not is_admin_actor:
+            if (requires_admin or over_threshold) and not quote.admin_cleared_at:
                 held_reason = (
                     f"Quotation for {quote.service_category} requires CRM Admin clearance before release "
                     "and will reach the customer once approved."
@@ -343,7 +343,6 @@ def record_customer_decision(quote_id, action, notes="", reason="", token=None, 
             quote.customer_decision = "ACCEPTED"
             quote.customer_decided_at = now
             quote.customer_notes = notes
-
             quote.status = WorkforceQuote.Status.CUSTOMER_ACCEPTED
             quote.save(update_fields=["status", "customer_decision", "customer_decided_at", "customer_notes", "updated_at"])
 
@@ -392,6 +391,7 @@ def create_revised_quote_version(quote, notes=""):
         quote.save(update_fields=["status", "updated_at"])
 
         # Create new Quote Header
+        carried_customer_notes = notes or quote.customer_notes or quote.customer_decline_reason or ""
         new_quote = WorkforceQuote.objects.create(
             quote_number=quote.quote_number,
             quote_version=new_version_number,
@@ -400,7 +400,7 @@ def create_revised_quote_version(quote, notes=""):
             company=quote.company,
             customer=quote.customer,
             title=quote.title,
-            description=f"Revision v{new_version_number}: {notes}".strip(),
+            description=quote.description or f"Revision v{new_version_number}: {notes}".strip(),
             service_category=quote.service_category,
             service_name=quote.service_name,
             estimated_labor_cost=quote.estimated_labor_cost,
@@ -414,6 +414,9 @@ def create_revised_quote_version(quote, notes=""):
             net_payable=quote.net_payable,
             status=WorkforceQuote.Status.DRAFT,
             structural_impact=quote.structural_impact,
+            customer_notes=carried_customer_notes,
+            customer_decline_reason=quote.customer_decline_reason,
+            admin_rejection_reason=quote.admin_rejection_reason,
         )
 
         # Clone line items
@@ -554,9 +557,16 @@ def convert_accepted_quote_to_work_booking(quote, actor=None):
                 )
                 technician_phone = getattr(technician, "phone", "") or ""
                 technician_user_id = getattr(technician, "user_id", None)
-            elif insp_job is not None:
-                technician_name = insp_job.technician_name or ""
-                technician_phone = insp_job.technician_phone or ""
+            if insp_job:
+                insp_updates = []
+                if insp_job.quote_number == quote.quote_number:
+                    insp_job.quote_number = f"{quote.quote_number}-INSP"
+                    insp_updates.append("quote_number")
+                if insp_job.status in ["quotation_sent", "in_progress", "inspection_in_progress", "arrived", "accepted", "en_route", "standard"]:
+                    insp_job.status = "completed"
+                    insp_updates.append("status")
+                if insp_updates:
+                    insp_job.save(update_fields=insp_updates)
 
             if insp_job:
                 insp_updates = []

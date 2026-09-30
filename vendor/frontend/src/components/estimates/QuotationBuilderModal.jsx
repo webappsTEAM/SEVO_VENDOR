@@ -193,8 +193,20 @@ export default function QuotationBuilderModal({
 
   const totals = calculateTotals();
 
+  const totalMeasuredArea = measurements.reduce(
+    (sum, m) => sum + (parseFloat(m.area) || 0),
+    0
+  );
+
+  const isAreaUnit = (unit) => {
+    const u = String(unit || '').toLowerCase().trim();
+    return ['sqft', 'sq.ft', 'sq ft', 'sq_ft', 'square feet', 'sqm', 'sq.m', 'sqmtr'].includes(u);
+  };
+
   // Add line item
   const handleAddItem = (section = 'MATERIAL') => {
+    const defaultUnit = 'sqft';
+    const initialQty = isAreaUnit(defaultUnit) && totalMeasuredArea > 0 ? totalMeasuredArea : 1;
     setItems([
       ...items,
       {
@@ -202,8 +214,8 @@ export default function QuotationBuilderModal({
         section,
         name: '',
         description: '',
-        quantity: 1,
-        unit: isPainting ? 'sqft' : 'sqft',
+        quantity: initialQty,
+        unit: defaultUnit,
         unit_price: 0,
         tax_rate: 18,
         discount_amount: 0,
@@ -218,6 +230,13 @@ export default function QuotationBuilderModal({
     if (!rc) return;
 
     const tiers = Object.keys(rc.pricing_config?.tiers || {});
+    const initialQty =
+      isAreaUnit(rc.unit) && totalMeasuredArea > 0
+        ? totalMeasuredArea
+        : rc.minimum_quantity > 0
+        ? parseFloat(rc.minimum_quantity)
+        : 1;
+
     const next = {
       id: `temp_${Date.now()}`,
       rate_card_id: rc.id,
@@ -230,7 +249,7 @@ export default function QuotationBuilderModal({
       section: rc.section,
       name: rc.item_name,
       description: rc.description || '',
-      quantity: rc.minimum_quantity > 0 ? parseFloat(rc.minimum_quantity) : 1,
+      quantity: initialQty,
       unit: rc.unit,
       // Left at zero until the server prices it. Showing default_rate here
       // would be a lie for every banded, tiered, flat or quote-only item.
@@ -939,20 +958,29 @@ export default function QuotationBuilderModal({
 
                           <div className="sm:col-span-2 text-right">
                             <span className="block text-[10px] font-bold text-gray-400 uppercase mb-1">
-                              Net Total
+                              Line Total
                             </span>
-                            <span className="text-xs font-extrabold text-gray-900 dark:text-gray-100">
-                              {pricingIndexes.includes(idx) ? (
-                                <span className="text-gray-400 font-medium">pricing…</span>
-                              ) : (
-                                <>
-                                  ₹
-                                  {(
-                                    Math.max(0, (item.quantity || 1) * (item.unit_price || 0) - (item.discount_amount || 0))
-                                  ).toLocaleString()}
-                                </>
-                              )}
-                            </span>
+                            {pricingIndexes.includes(idx) ? (
+                              <span className="text-gray-400 font-medium text-xs">pricing…</span>
+                            ) : (() => {
+                              const qty = parseFloat(item.quantity) || 0;
+                              const price = parseFloat(item.unit_price) || 0;
+                              const disc = parseFloat(item.discount_amount) || 0;
+                              const taxRate = parseFloat(item.tax_rate) || 0;
+                              const net = Math.max(0, qty * price - disc);
+                              const taxAmt = net * (taxRate / 100);
+                              const gross = net + taxAmt;
+                              return (
+                                <div className="space-y-0.5">
+                                  <div className="text-xs font-black text-gray-900 dark:text-gray-100">
+                                    ₹{gross.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </div>
+                                  <div className="text-[10px] text-gray-500 dark:text-gray-400 font-medium whitespace-nowrap">
+                                    (₹{net.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{taxRate > 0 ? ` + ₹${taxAmt.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} GST` : ''})
+                                  </div>
+                                </div>
+                              );
+                            })()}
                           </div>
 
                           <div className="sm:col-span-1 flex justify-end">

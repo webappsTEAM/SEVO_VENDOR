@@ -212,6 +212,14 @@ def generate_invoice_for_job(service_request, actor=None, due_days=7):
         .exclude(status=WorkforceInvoice.Status.CANCELLED)
         .first()
     )
+    service_name = service_request.issue_title or service_request.service_category or "Service"
+    is_consultation = (
+        "consultation" in str(service_name).lower()
+        or "inspection" in str(service_name).lower()
+        or getattr(service_request, "job_type", "") in ("consultation", "inspection", "estimation")
+        or getattr(service_request, "is_estimation", False)
+    )
+
     if existing:
         payment = JobPayment.objects.filter(job=service_request).first()
         is_paid = (
@@ -225,8 +233,12 @@ def generate_invoice_for_job(service_request, actor=None, due_days=7):
             existing.balance_due = ZERO
             existing.balance_amount = ZERO
         if existing.subtotal_amount == ZERO and existing.tax_amount == ZERO and existing.total_amount > ZERO:
-            existing.subtotal_amount = (existing.total_amount / Decimal("1.18")).quantize(CENT)
-            existing.tax_amount = existing.total_amount - existing.subtotal_amount
+            if is_consultation:
+                existing.subtotal_amount = existing.total_amount
+                existing.tax_amount = ZERO
+            else:
+                existing.subtotal_amount = (existing.total_amount / Decimal("1.18")).quantize(CENT)
+                existing.tax_amount = existing.total_amount - existing.subtotal_amount
         existing.save()
         return existing
 
@@ -234,8 +246,12 @@ def generate_invoice_for_job(service_request, actor=None, due_days=7):
     total = _money(service_request.total_amount)
 
     if total > 0:
-        subtotal = (total / Decimal("1.18")).quantize(CENT)
-        tax = total - subtotal
+        if is_consultation:
+            subtotal = total
+            tax = ZERO
+        else:
+            subtotal = (total / Decimal("1.18")).quantize(CENT)
+            tax = total - subtotal
     else:
         subtotal = ZERO
         tax = ZERO
@@ -250,8 +266,6 @@ def generate_invoice_for_job(service_request, actor=None, due_days=7):
     inv_status = WorkforceInvoice.Status.PAID if is_paid else WorkforceInvoice.Status.ISSUED
     paid_amt = total if is_paid else ZERO
     bal_due = ZERO if is_paid else total
-
-    service_name = service_request.issue_title or service_request.service_category or "Service"
 
     invoice = WorkforceInvoice(
         quote=None,
@@ -288,6 +302,7 @@ def generate_invoice_for_job(service_request, actor=None, due_days=7):
     invoice.save()
 
     cart_items = getattr(service_request, "cart_data", None) or []
+    item_tax_rate = ZERO if is_consultation else Decimal("18.00")
     if isinstance(cart_items, list) and len(cart_items) > 0:
         for idx, item in enumerate(cart_items):
             if isinstance(item, dict):
@@ -303,7 +318,7 @@ def generate_invoice_for_job(service_request, actor=None, due_days=7):
                     quantity=item_qty,
                     unit="unit",
                     unit_price=item_price,
-                    tax_rate=Decimal("18.00"),
+                    tax_rate=item_tax_rate,
                     discount_amount=ZERO,
                     line_total=item_price * item_qty,
                     sort_order=idx,
@@ -318,7 +333,7 @@ def generate_invoice_for_job(service_request, actor=None, due_days=7):
             quantity=Decimal("1.00"),
             unit="unit",
             unit_price=total,
-            tax_rate=Decimal("18.00"),
+            tax_rate=item_tax_rate,
             discount_amount=ZERO,
             line_total=total,
             sort_order=0,

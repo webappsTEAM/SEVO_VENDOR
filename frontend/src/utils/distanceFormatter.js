@@ -1,7 +1,7 @@
 /**
  * frontend/src/utils/distanceFormatter.js
  * 
- * Standardized cosmetic distance display formatter for CalTrack Workforce.
+ * Standardized cosmetic distance display formatter for SEVO Workforce.
  * 
  * Display Rules:
  *   - For < 1 km: Returns meters formatted as "231.3 m", "578 m", "999 m".

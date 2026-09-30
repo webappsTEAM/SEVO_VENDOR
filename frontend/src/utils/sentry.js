@@ -1,6 +1,6 @@
 /**
  * sentry.js
- * Centralized, production-grade Sentry integration for CalTrack Workforce.
+ * Centralized, production-grade Sentry integration for SEVO Workforce.
  *
  * Requirements:
  * 1. Initialized exactly once at the bootstrap level.
@@ -259,7 +259,7 @@ export function captureSentryException(error, context = {}) {
 }
 
 /**
- * React Error Boundary component with CalTrack fallback UI.
+ * React Error Boundary component with SEVO fallback UI.
  */
 export function SentryErrorBoundary({ children }) {
   return React.createElement(

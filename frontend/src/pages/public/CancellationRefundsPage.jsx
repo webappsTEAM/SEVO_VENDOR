@@ -60,7 +60,7 @@ export function CancellationRefundsPage() {
             <span>1. Customer Service Cancellation Rules</span>
           </h2>
           <p>
-            Because CalServices reserves dedicated certified technician schedules and dispatches technicians in real time, cancellations are processed according to the operational phase of the service request:
+            Because SEVO reserves dedicated certified technician schedules and dispatches technicians in real time, cancellations are processed according to the operational phase of the service request:
           </p>
 
           <div className="border border-slate-200 rounded-lg overflow-hidden">
@@ -138,7 +138,7 @@ export function CancellationRefundsPage() {
             <span>4. Quality Disputes & 30-Day Service Guarantee</span>
           </h2>
           <p>
-            CalServices provides a <strong>30-Day Workmanship Guarantee</strong> on all standard repairs and calibration services:
+            SEVO provides a <strong>30-Day Workmanship Guarantee</strong> on all standard repairs and calibration services:
           </p>
           <ul className="list-disc pl-5 space-y-1.5 text-slate-700">
             <li>If a serviced appliance exhibits the same defect within 30 days, a senior specialist will be dispatched free of charge for re-inspection.</li>
