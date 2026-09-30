@@ -14,8 +14,6 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   apiGetAdminApplications,
-  apiGetEligibleTechnicians,
-  apiTriggerAutoDispatch,
   apiGetWorkforceJobs,
   apiGetFleetMap,
   apiGetAdminPendingServices,
@@ -35,7 +33,6 @@ import { MetricStrip } from '../../components/enterprise/MetricStrip.jsx';
 import { StatusBadge } from '../../components/enterprise/StatusBadge.jsx';
 import { ErrorState } from '../../components/enterprise/ErrorState.jsx';
 import { LoadingState } from '../../components/enterprise/LoadingState.jsx';
-import { PromptDialog } from '../../components/enterprise/PromptDialog.jsx';
 import { LocationPickerMap } from '../../components/common/LocationPickerMap.jsx';
 import { AdminDispatchRadar } from '../../components/admin/AdminDispatchRadar.jsx';
 import { loadMapsApi } from '../../utils/loadGoogleMaps.js';
@@ -418,7 +415,6 @@ function LocationFormModal({ editingLocation, onClose, onSaved }) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export function AdminOperationsPage() {
   const [technicians, setTechnicians] = useState([]);
-  const [eligibleFleet, setEligibleFleet] = useState([]);
   const [fleetMap, setFleetMap] = useState([]);
   const [pendingServices, setPendingServices] = useState([]);
   const [pendingExtensions, setPendingExtensions] = useState([]);
@@ -434,12 +430,6 @@ export function AdminOperationsPage() {
   const [dispatchLoading, setDispatchLoading] = useState(false);
   const [cancelLoading, setCancelLoading] = useState(false);
   const [statusMsg, setStatusMsg] = useState({ type: '', text: '' });
-  // Cancellation reasons, service-rejection reasons and the approved rupee
-  // amount on a work extension were all collected through a native browser
-  // input box: one unvalidated line, no context about what was being decided,
-  // and a silent fallback to a canned reason when the admin typed nothing. All
-  // three now use the app's own dialog, which requires an answer and checks it.
-  const [promptConfig, setPromptConfig] = useState(null);
   const [timelineJob, setTimelineJob] = useState(null);
   const [timelineLoading, setTimelineLoading] = useState(false);
   const [timelineData, setTimelineData] = useState(null);
@@ -447,21 +437,19 @@ export function AdminOperationsPage() {
   const loadData = async () => {
     try {
       setIsLoading(true);
-      const [techs, jobsList, eligible, locsData, fleetData, pendingSvcData, pendingExtData] =
+      const [techs, jobsList, locsData, fleetData, pendingSvcData, pendingExtData] =
         await Promise.all([
-          apiGetAdminApplications('approved').catch(() => []),
-          apiGetWorkforceJobs().catch(() => []),
-          apiGetEligibleTechnicians().catch(() => []),
-          apiGetLocations().catch(() => []),
-          apiGetFleetMap().catch(() => []),
-          apiGetAdminPendingServices().catch(() => []),
-          apiGetAdminPendingExtensions().catch(() => []),
+          apiGetAdminApplications('approved'),
+          apiGetWorkforceJobs(),
+          apiGetLocations(),
+          apiGetFleetMap(),
+          apiGetAdminPendingServices(),
+          apiGetAdminPendingExtensions(),
         ]);
 
       const safe = (d) => (Array.isArray(d) ? d : d?.results || []);
       setTechnicians(safe(techs));
       setJobs(safe(jobsList));
-      setEligibleFleet(safe(eligible));
       setLocations(safe(locsData));
       setFleetMap(safe(fleetData));
       setPendingServices(safe(pendingSvcData));
@@ -470,7 +458,8 @@ export function AdminOperationsPage() {
       if (safe(jobsList).length > 0 && !selectedJob) {
         setSelectedJob(safe(jobsList)[0]);
       }
-    } catch (_) {
+    } catch (err) {
+      setStatusMsg({ type: 'error', text: err?.message || 'Failed to load operations data. Please refresh.' });
     } finally {
       setIsLoading(false);
     }
@@ -489,30 +478,6 @@ export function AdminOperationsPage() {
     loadData();
   }, []);
 
-  // ── Dispatch & Jobs Queue: active polling every 5s so new customer bookings appear in radar automatically ──
-  useEffect(() => {
-    const pollQueue = async () => {
-      try {
-        const [jobsList, eligible] = await Promise.all([
-          apiGetWorkforceJobs().catch(() => []),
-          apiGetEligibleTechnicians().catch(() => []),
-        ]);
-        const safe = (d) => (Array.isArray(d) ? d : d?.results || []);
-        setJobs(safe(jobsList));
-        setEligibleFleet(safe(eligible));
-      } catch (_) {}
-    };
-
-    const interval = setInterval(pollQueue, 5000);
-    const onFocus = () => pollQueue();
-    window.addEventListener('focus', onFocus);
-
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener('focus', onFocus);
-    };
-  }, []);
-
   // ── Fleet Map: auto-refresh every 60s when tab is visible ──────────────────
   useEffect(() => {
     if (activeTab !== 'fleet_map') return;
@@ -525,40 +490,10 @@ export function AdminOperationsPage() {
     return () => clearInterval(interval);
   }, [activeTab]);
 
-  const handleTriggerAutoDispatch = async () => {
-    if (!selectedJob) return;
-    try {
-      setDispatchLoading(true);
-      setStatusMsg({ type: '', text: '' });
-      const res = await apiTriggerAutoDispatch(selectedJob.id);
-      setStatusMsg({ type: res.success ? 'success' : 'error', text: res.message });
-      await loadData();
-      setTimeout(() => setStatusMsg({ type: '', text: '' }), 4000);
-    } catch (err) {
-      setStatusMsg({ type: 'error', text: err.message || 'Auto dispatch failed.' });
-    } finally {
-      setDispatchLoading(false);
-    }
-  };
-
-  const handleAdminCancelBooking = (job) => {
+  const handleAdminCancelBooking = async (job) => {
     if (!job) return;
-    setPromptConfig({
-      title: `Cancel job #${job.request_id || job.id}?`,
-      message: 'The customer and any assigned technician are notified, and the job cannot be un-cancelled.',
-      label: 'Cancellation reason, recorded against the job',
-      placeholder: 'Why is this job being cancelled?',
-      initialValue: 'Cancelled by operations administrator',
-      type: 'textarea',
-      required: true,
-      confirmText: 'Cancel job',
-      confirmVariant: 'danger',
-      onSubmit: (reason) => handleAdminCancelBookingConfirmed(job, reason),
-    });
-  };
-
-  const handleAdminCancelBookingConfirmed = async (job, reason) => {
-    setPromptConfig(null);
+    const reason = prompt(`Enter cancellation reason for Job #${job.request_id || job.id}:`, 'Cancelled by operations administrator');
+    if (reason === null) return;
     try {
       setCancelLoading(true);
       setStatusMsg({ type: '', text: '' });
@@ -591,28 +526,13 @@ export function AdminOperationsPage() {
     }
   };
 
-  const handleDecideServiceRequest = (empId, serviceId, action) => {
-    if (action === 'reject') {
-      setPromptConfig({
-        title: 'Reject this service request?',
-        message: 'The technician is told why, and will not receive jobs for this service.',
-        label: 'Rejection reason',
-        placeholder: 'e.g. Trade certificate has expired',
-        type: 'textarea',
-        required: true,
-        confirmText: 'Reject request',
-        confirmVariant: 'danger',
-        onSubmit: (reason) => submitServiceDecision(empId, serviceId, action, reason),
-      });
-      return;
-    }
-    submitServiceDecision(empId, serviceId, action, '');
-  };
-
-  const submitServiceDecision = async (empId, serviceId, action, reason) => {
-    setPromptConfig(null);
+  const handleDecideServiceRequest = async (empId, serviceId, action) => {
     try {
       setStatusMsg({ type: '', text: '' });
+      let reason = '';
+      if (action === 'reject') {
+        reason = prompt('Enter rejection reason:') || 'Qualifications do not meet minimum threshold';
+      }
       await apiDecideService(empId, serviceId, action, reason);
       setStatusMsg({ type: 'success', text: `Service request ${action}d successfully.` });
       await loadData();
@@ -622,37 +542,22 @@ export function AdminOperationsPage() {
     }
   };
 
-  const handleDecideExtension = (jobId, extId, action, requestedAmount) => {
-    if (action === 'APPROVED') {
-      setPromptConfig({
-        title: `Approve work extension #${extId}`,
-        message: `The technician requested ₹${requestedAmount}. Approve that, or enter a lower amount to authorise part of it. The approved amount is what the customer is billed.`,
-        label: 'Approved amount',
-        initialValue: requestedAmount,
-        type: 'amount',
-        required: true,
-        confirmText: 'Approve extension',
-        onSubmit: (amount) => submitExtensionDecision(jobId, extId, action, '', amount),
-      });
-      return;
-    }
-    setPromptConfig({
-      title: `Reject work extension #${extId}?`,
-      message: 'The technician is told why, and the extra work is not authorised or billed.',
-      label: 'Rejection reason',
-      placeholder: 'e.g. Scope expansion not authorized',
-      type: 'textarea',
-      required: true,
-      confirmText: 'Reject extension',
-      confirmVariant: 'danger',
-      onSubmit: (reason) => submitExtensionDecision(jobId, extId, action, reason, null),
-    });
-  };
-
-  const submitExtensionDecision = async (jobId, extId, action, reason, approvedAmount) => {
-    setPromptConfig(null);
+  const handleDecideExtension = async (jobId, extId, action, requestedAmount) => {
     try {
       setStatusMsg({ type: '', text: '' });
+      let reason = '';
+      let approvedAmount = null;
+      if (action === 'APPROVED') {
+        const amtInput = prompt(
+          `Enter approved amount in ₹ (leave blank or keep ${requestedAmount} to approve full requested estimate):`,
+          requestedAmount,
+        );
+        if (amtInput !== null && amtInput !== '') {
+          approvedAmount = parseFloat(amtInput);
+        }
+      } else {
+        reason = prompt('Enter rejection reason:') || 'Scope expansion not authorized.';
+      }
       await apiAdminDecideExtension(jobId, extId, action, reason, approvedAmount);
       setStatusMsg({ type: 'success', text: `Work extension #${extId} marked as ${action}.` });
       await loadData();
@@ -1331,21 +1236,6 @@ export function AdminOperationsPage() {
           </div>
         </div>
       )}
-
-      <PromptDialog
-        isOpen={Boolean(promptConfig)}
-        onClose={() => setPromptConfig(null)}
-        onSubmit={promptConfig?.onSubmit || (() => {})}
-        title={promptConfig?.title || ''}
-        message={promptConfig?.message || ''}
-        label={promptConfig?.label || ''}
-        placeholder={promptConfig?.placeholder || ''}
-        initialValue={promptConfig?.initialValue ?? ''}
-        type={promptConfig?.type || 'textarea'}
-        required={promptConfig?.required !== false}
-        confirmText={promptConfig?.confirmText || 'Confirm'}
-        confirmVariant={promptConfig?.confirmVariant || 'primary'}
-      />
     </AppShell>
   );
 }

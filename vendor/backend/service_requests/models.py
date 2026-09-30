@@ -287,11 +287,36 @@ class ServiceRequest(models.Model):
     # look up the customer's permanent ID (e.g. for a payslip/invoice
     # reference) had no field to read it from.
     customer_code = models.CharField(max_length=30, blank=True, null=True, db_index=True)
+    catalog_service_id = models.CharField(max_length=100, blank=True, default="", db_column="catalog_service_id")
+    package_id = models.CharField(max_length=100, blank=True, default="", db_column="package_id")
+    package_version = models.CharField(max_length=50, blank=True, default="", db_column="package_version")
+    package_display = models.JSONField(default=dict, blank=True, db_column="package_display")
+
+    # GT vehicle-compatibility fix (this session): this column already exists
+    # on the shared table -- Customer/backend/service_requests/migrations/
+    # 0066_servicerequest_fare_breakdown.py added it there, and
+    # Customer/backend/service_requests/services/logistics_pricing.py has
+    # been writing {"vehicle_class": ..., "weight_class": ...} into it for
+    # every goods-transport booking since GT audit Update 14/16. This mirror
+    # model never declared the field, so nothing on the Vendor side could
+    # read it -- Gate 3 in workforce_api/services/automatic_dispatch.py
+    # could only check "has a vehicle with current documents", never "has
+    # the RIGHT CLASS of vehicle", even though the data to do so was sitting
+    # in this row the whole time. See check_vehicle_class_compatibility()
+    # in automatic_dispatch.py for the read side.
+    #
+    # NOTE ON MIGRATIONS: this app's migration graph had an unresolved
+    # conflict at 0002 (two independently-generated migrations -- see
+    # migrations/0003_merge_20260923_gt_vehicle_compat.py's own header for
+    # the full explanation). That merge, plus this field's own AddField
+    # migration (0004_servicerequest_fare_breakdown.py), were hand-written
+    # this session with no shell access to run `makemigrations`/`migrate`
+    # and verify them -- read both files' headers before trusting them
+    # against a real database. Both are state-only: this model is
+    # managed=False, so no real DDL runs for either.
+    fare_breakdown = models.JSONField(default=dict, blank=True)
+
     service_category = models.CharField(max_length=150)
-    catalog_service_id = models.CharField(max_length=100, blank=True, default="", db_index=True)
-    package_id = models.CharField(max_length=100, blank=True, default="", db_index=True)
-    package_version = models.CharField(max_length=50, blank=True, default="")
-    package_display = models.JSONField(default=dict, blank=True)
     issue_title = models.CharField(max_length=300)
     description = models.TextField(blank=True, default="")
     address = models.TextField()
@@ -303,7 +328,7 @@ class ServiceRequest(models.Model):
     # migration, and no existing location data is touched.
     latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
-    preferred_date = models.DateField(default='2026-01-01', null=True, blank=True)
+    preferred_date = models.DateField(null=True, blank=True)
     preferred_time = models.CharField(max_length=50, blank=True, null=True)
     photo = models.ImageField(upload_to="service_requests/photos/", null=True, blank=True)
     total_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
@@ -325,12 +350,6 @@ class ServiceRequest(models.Model):
     # and safe to apply on its own ahead of the rest.
     drop_latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     drop_longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
-    # Same story as accounts_user.custom_permissions: NOT NULL with no
-    # database default, absent from this mirror, so every ServiceRequest the
-    # vendor creates -- the quoted work order in
-    # quotation_service.create_work_order and the secondary job in
-    # workforce_api.views -- failed to insert against the real shared schema.
-    fare_breakdown = models.JSONField(default=dict, blank=True)
     # X-04: these were all missing from this mirror even though they exist
     # on the shared table -- a technician handling a logistics job had no
     # way, via this app's ORM, to see who they're actually handing goods to
@@ -343,16 +362,22 @@ class ServiceRequest(models.Model):
     insurance_opted_in = models.BooleanField(default=False)
     insurance_premium = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     insurance_liability_cap = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    # Mirror of the Customer column: toll/parking receipts recorded by the Customer app.
+    extra_charges = models.JSONField(default=list, blank=True)
     logistics_leg = models.CharField(max_length=20, choices=LogisticsLeg.choices, blank=True, default="")
     logistics_leg_updated_at = models.DateTimeField(null=True, blank=True)
     logistics_leg_history = models.JSONField(default=list, blank=True)
     payment_method = models.CharField(
-        max_length=10, null=True, blank=True,
-        choices=PaymentMethod.choices, default='COD'
+        max_length=20,
+        choices=PaymentMethod.choices,
+        default=PaymentMethod.COD,
+        blank=True,
     )
     payment_status = models.CharField(
-        max_length=30, null=True, blank=True,
-        choices=PaymentStatus.choices, default='pending'
+        max_length=30,
+        choices=PaymentStatus.choices,
+        default=PaymentStatus.PENDING,
+        blank=True,
     )
     transaction_id = models.CharField(max_length=200, blank=True, null=True)
     payment_gateway = models.CharField(max_length=50, blank=True, null=True)
@@ -1353,3 +1378,44 @@ class Package(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class GTWaitingChargePolicy(models.Model):
+    """
+    Unmanaged mirror of the Customer app's service_requests.GTWaitingChargePolicy
+    (same shared table). The Customer policy is the ONLY source of truth for GT
+    waiting charges; the driver app reads it here so the amount it shows
+    matches the amount the Customer fare engine bills.
+    """
+    service_category = models.CharField(max_length=100, blank=True, default="")
+    is_enabled = models.BooleanField(default=False)
+    free_minutes_per_stop = models.PositiveIntegerField(default=0)
+    rate_per_minute = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    max_charge_per_booking = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        managed = False
+        db_table = "service_requests_gtwaitingchargepolicy"
+
+
+class GTExtraChargePolicy(models.Model):
+    """Unmanaged mirror of the Customer app's GTExtraChargePolicy (single source of truth)."""
+    service_category = models.CharField(max_length=100, blank=True, default="")
+    is_enabled = models.BooleanField(default=False)
+    allow_toll = models.BooleanField(default=True)
+    allow_parking = models.BooleanField(default=True)
+    max_amount_per_item = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    max_total_per_booking = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    require_receipt_photo = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        managed = False
+        db_table = "service_requests_gtextrachargepolicy"
+
+
+def get_gt_extra_charge_policy(category):
+    cat = str(category or "").strip().lower()
+    qs = GTExtraChargePolicy.objects.filter(is_active=True, is_enabled=True)
+    return qs.filter(service_category__iexact=cat).first() or qs.filter(service_category="").first()

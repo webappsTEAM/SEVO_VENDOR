@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ConfirmDialog } from '../../../components/enterprise/ConfirmDialog.jsx';
 import { Link } from 'react-router-dom';
 import { AppShell } from '../../../components/common/AppShell.jsx';
 import {
@@ -35,7 +34,6 @@ export function EmployeeWalletWithdrawalsPage() {
   const { registrationStatus } = useAuth();
 
   const [withdrawals, setWithdrawals] = useState([]);
-  const [confirmAction, setConfirmAction] = useState(null);
   const [summary, setSummary] = useState(null);
   const [payoutAccounts, setPayoutAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -108,12 +106,8 @@ export function EmployeeWalletWithdrawalsPage() {
     }
   };
 
-  // Asked in the app's own dialog rather than a native popup: this action
-  // moves money or removes a payout destination, and a native box cannot be
-  // styled, states no consequence, and freezes the tab while it is open.
-  const handleCancelWithdrawal = (id) => setConfirmAction({ args: [id] });
-
-  const handleCancelWithdrawalConfirmed = async (id) => {
+  const handleCancelWithdrawal = async (id) => {
+    if (!window.confirm('Are you sure you want to cancel this withdrawal request? The funds will immediately return to your available balance.')) return;
     try {
       await apiCancelWithdrawal(id);
       setSuccessMsg('Withdrawal request cancelled successfully.');
@@ -423,15 +417,6 @@ export function EmployeeWalletWithdrawalsPage() {
           </div>
         )}
       </div>
-      <ConfirmDialog
-        isOpen={Boolean(confirmAction)}
-        onClose={() => setConfirmAction(null)}
-        onConfirm={() => { const a = confirmAction; setConfirmAction(null); handleCancelWithdrawalConfirmed(...a.args); }}
-        title="Cancel withdrawal"
-        message="Cancel this withdrawal request? The funds return to your available balance immediately."
-        confirmText="Cancel withdrawal"
-        confirmVariant="warning"
-      />
     </AppShell>
   );
 }

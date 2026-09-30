@@ -85,13 +85,9 @@ export default function VendorEstimationsPage() {
   const [quotationModalOpen, setQuotationModalOpen] = useState(false);
   const [feeModalOpen, setFeeModalOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
-  // Lifecycle action failures used to surface as a native browser popup, which
-  // freezes the tab and vanishes without trace. They belong on the lead panel,
-  // next to the button that failed, where the vendor can read them and retry.
-  const [actionError, setActionError] = useState(null);
 
-  const fetchLeads = useCallback(async () => {
-    setLoading(true);
+  const fetchLeads = useCallback(async (isSilent = false) => {
+    if (!isSilent) setLoading(true);
     setError(null);
     try {
       const res = await apiGetVendorEstimations({
@@ -105,19 +101,36 @@ export default function VendorEstimationsPage() {
         setMetrics(res.metrics || null);
       } else if (Array.isArray(res)) {
         setLeads(res);
+        setMetrics(null);
       } else {
         setLeads([]);
       }
     } catch (err) {
-      console.error('Failed to load estimation leads:', err);
-      setError(err.message || 'Failed to load estimation leads.');
+      if (!isSilent) {
+        console.error('Failed to load estimation leads:', err);
+        setError(err.message || 'Failed to load estimation leads.');
+      }
     } finally {
-      setLoading(false);
+      if (!isSilent) setLoading(false);
     }
   }, [activeTab, dateFilter, searchQuery]);
 
   useEffect(() => {
-    fetchLeads();
+    fetchLeads(false);
+
+    // Active auto-refresh: sync leads every 5s and on window focus
+    const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      fetchLeads(true);
+    }, 5000);
+
+    const onFocus = () => fetchLeads(true);
+    window.addEventListener('focus', onFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+    };
   }, [fetchLeads]);
 
   const handleOpenDetail = async (lead) => {
@@ -151,10 +164,9 @@ export default function VendorEstimationsPage() {
     try {
       const res = await apiConfirmVendorEstimation(selectedLead.id);
       setSelectedLead(res?.data || res);
-      setActionError(null);
       fetchLeads();
     } catch (err) {
-      setActionError(err.message || 'Failed to confirm lead.');
+      alert(err.message || 'Failed to confirm lead.');
     } finally {
       setActionLoading(false);
     }
@@ -166,10 +178,9 @@ export default function VendorEstimationsPage() {
     try {
       const res = await apiStartJourney(selectedLead.id);
       setSelectedLead(res?.data || res);
-      setActionError(null);
       fetchLeads();
     } catch (err) {
-      setActionError(err.message || 'Failed to start trip.');
+      alert(err.message || 'Failed to start trip.');
     } finally {
       setActionLoading(false);
     }
@@ -181,10 +192,9 @@ export default function VendorEstimationsPage() {
     try {
       const res = await apiMarkArrived(selectedLead.id);
       setSelectedLead(res?.data || res);
-      setActionError(null);
       fetchLeads();
     } catch (err) {
-      setActionError(err.message || 'Failed to mark arrival.');
+      alert(err.message || 'Failed to mark arrival.');
     } finally {
       setActionLoading(false);
     }
@@ -453,7 +463,7 @@ export default function VendorEstimationsPage() {
                 </div>
 
                 <button
-                  onClick={() => { setSelectedLead(null); setActionError(null); }}
+                  onClick={() => setSelectedLead(null)}
                   className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-700 hover:bg-zinc-200 transition-colors"
                 >
                   <X className="w-5 h-5" />
@@ -462,21 +472,6 @@ export default function VendorEstimationsPage() {
 
               {/* Modal Scrollable Body */}
               <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                {actionError && (
-                  <div role="alert" className="flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
-                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                    <p className="flex-1 text-xs text-rose-900">{actionError}</p>
-                    <button
-                      type="button"
-                      onClick={() => setActionError(null)}
-                      className="shrink-0 rounded-md p-1 text-rose-600 hover:bg-rose-100"
-                      aria-label="Dismiss"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                )}
-
                 {/* Primary Dynamic State CTA Banner */}
                 <div className="p-4 bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 rounded-2xl border border-blue-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
                   <div>
@@ -762,7 +757,7 @@ export default function VendorEstimationsPage() {
                 </span>
                 <button
                   type="button"
-                  onClick={() => { setSelectedLead(null); setActionError(null); }}
+                  onClick={() => setSelectedLead(null)}
                   className="px-4 py-1.5 text-xs font-semibold text-zinc-600 hover:bg-zinc-200 rounded-xl transition-colors"
                 >
                   Close

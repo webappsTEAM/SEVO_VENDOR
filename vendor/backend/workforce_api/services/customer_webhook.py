@@ -142,8 +142,6 @@ def notify_customer_app(event_type: str, service_request, **extra_payload) -> st
     2. Dispatches immediate delivery in background.
     3. If delivery fails or times out, the background reconciliation worker retries it with backoff.
     """
-    if not getattr(settings, 'CUSTOMER_WEBHOOKS_ENABLED', True):
-        return
     try:
         from workforce_api.models import WorkforceOutboundWebhook
 
@@ -180,6 +178,7 @@ def notify_customer_app(event_type: str, service_request, **extra_payload) -> st
 
         transaction.on_commit(_deliver)
         return event_id
+
     except Exception as exc:
         logger.warning(f"[NOTIFY_CUSTOMER_FAIL] Could not enqueue durable webhook for '{event_type}': {exc}")
         return ""

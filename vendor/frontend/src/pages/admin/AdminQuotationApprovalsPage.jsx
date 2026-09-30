@@ -36,8 +36,6 @@ import {
   XCircle,
 } from 'lucide-react';
 import { apiRequest } from '../../api/client.js';
-import { Modal } from '../../components/enterprise/Modal.jsx';
-import { Button } from '../../components/enterprise/Button.jsx';
 
 function money(value) {
   return Number(value || 0).toLocaleString('en-IN', {
@@ -98,7 +96,6 @@ export function AdminQuotationApprovalsPage() {
   const [flash, setFlash] = useState(null);
   const [expandedQuoteId, setExpandedQuoteId] = useState(null);
   const [modalQuote, setModalQuote] = useState(null);
-  const [pending, setPending] = useState(null);
 
   const active = useMemo(() => TABS.find((t) => t.key === tab) || TABS[0], [tab]);
 
@@ -119,8 +116,8 @@ export function AdminQuotationApprovalsPage() {
     }
   }, []);
 
-  const load = useCallback(async () => {
-    setIsLoading(true);
+  const load = useCallback(async (isSilent = false) => {
+    if (!isSilent) setIsLoading(true);
     try {
       const data = await apiRequest(active.endpoint);
       const rowList = Array.isArray(data) ? data : [];
@@ -128,37 +125,68 @@ export function AdminQuotationApprovalsPage() {
       setCounts((prev) => ({ ...prev, [active.key]: rowList.length }));
       setError(null);
     } catch (err) {
-      setError(err?.message || 'Could not load the approval queue.');
-      setRows([]);
+      if (!isSilent) {
+        setError(err?.message || 'Could not load the approval queue.');
+        setRows([]);
+      }
     } finally {
-      setIsLoading(false);
+      if (!isSilent) setIsLoading(false);
       loadCounts();
     }
   }, [active, loadCounts]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load(false);
 
-  function askToDecide(quote, approve, forcedTab = null) {
+    // Active auto-refresh: sync approval queue every 5s and on window focus
+    const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      load(true);
+    }, 5000);
+
+    const onFocus = () => load(true);
+    window.addEventListener('focus', onFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [load]);
+
+  async function decide(quote, approve, forcedTab = null, autoConvert = false) {
     const activeTab = forcedTab || (quote.status === 'PENDING_REVIEW' ? 'presend' : tab);
-    setPending({ quote, approve, forcedTab: activeTab, notes: '' });
+    const verb = activeTab === 'presend'
+      ? (approve ? 'release and send to customer' : 'reject')
+      : (approve ? 'approve and create booking' : 'reject');
+
+    if (!window.confirm(`${verb.charAt(0).toUpperCase() + verb.slice(1)} ${quote.quote_number}?`)) {
+      return;
+    }
+
+    let notes = '';
+    if (!approve) {
+      notes = window.prompt('Reason for rejection (shown in audit trail):') || '';
+      if (!notes.trim()) return;
+      return submitDecision(quote, false, false, notes, activeTab);
+    }
+
+    const actionText = autoConvert
+      ? `Approve & Convert ${quote.quote_number} directly to an active service booking?`
+      : activeTab === 'presend'
+      ? `Release ${quote.quote_number} and send to customer for approval?`
+      : `Approve ${quote.quote_number} and issue invoice?`;
+
+    if (!window.confirm(actionText)) {
+      return;
+    }
+
+    return submitDecision(quote, true, autoConvert, '', activeTab);
   }
 
-  const decide = askToDecide;
-
-  async function confirmDecision() {
-    if (!pending) return;
-    const { quote, approve, forcedTab, notes } = pending;
-    if (!approve && !notes.trim()) return;
-    await submitDecision(quote, approve, false, notes, forcedTab);
-    setPending(null);
-    setModalQuote(null);
-  }
-
-  async function submitDecision(quote, approve, autoConvert, notes, forcedTab = null) {
+  async function submitDecision(quote, approve, autoConvert, notes, targetTab = 'presend') {
     setBusyId(quote.id);
-    const activeTab = forcedTab || (quote.status === 'PENDING_REVIEW' ? 'presend' : tab);
     try {
-      const path = activeTab === 'presend'
+      const path = targetTab === 'presend'
         ? `/workforce/quotes/${quote.id}/pre-send-review/`
         : `/workforce/quotes/${quote.id}/admin-review/`;
       const result = await apiRequest(path, {
@@ -177,7 +205,7 @@ export function AdminQuotationApprovalsPage() {
 
       if (result.invoice) {
         setFlash(`${quote.quote_number} approved. Invoice ${result.invoice.invoice_number} issued for ${money(result.invoice.total_amount)}.`);
-      } else if (activeTab === 'presend' && approve) {
+      } else if (targetTab === 'presend' && approve) {
         setFlash(`${quote.quote_number} released and delivered to the customer for approval.`);
       } else {
         setFlash(`${quote.quote_number} ${approve ? 'approved' : 'rejected'}.`);
@@ -193,7 +221,6 @@ export function AdminQuotationApprovalsPage() {
       setError(err?.message || `Failed to process ${quote.quote_number}.`);
     } finally {
       setBusyId(null);
-      setPending(null);
       loadCounts();
     }
   }
@@ -764,65 +791,6 @@ export function AdminQuotationApprovalsPage() {
           </div>
         </div>
       )}
-
-      <Modal
-        isOpen={Boolean(pending)}
-        onClose={() => setPending(null)}
-        title={
-          pending
-            ? `${pending.approve ? (tab === 'presend' ? 'Release and send' : 'Approve') : 'Reject'} ${pending.quote.quote_number}`
-            : ''
-        }
-        maxWidth="max-w-md"
-        footer={
-          <>
-            <Button variant="outline" size="sm" onClick={() => setPending(null)}>
-              Cancel
-            </Button>
-            <Button
-              variant={pending?.approve ? 'primary' : 'danger'}
-              size="sm"
-              onClick={confirmDecision}
-              isLoading={Boolean(pending && busyId === pending.quote.id)}
-              disabled={Boolean(pending && !pending.approve && !pending.notes.trim())}
-            >
-              {pending?.approve
-                ? tab === 'presend' ? 'Release & send' : 'Approve'
-                : 'Reject'}
-            </Button>
-          </>
-        }
-      >
-        {pending && (
-          <div className="space-y-3">
-            <p className="text-xs text-slate-600 leading-relaxed">
-              {pending.approve
-                ? tab === 'presend'
-                  ? `This sends ${pending.quote.quote_number} to ${pending.quote.customer_name || 'the customer'} for ${money(pending.quote.net_payable || pending.quote.total_amount)}.`
-                  : `This creates the work booking and issues an invoice for ${money(pending.quote.net_payable || pending.quote.total_amount)}.`
-                : `This ends ${pending.quote.quote_number}. No work booking or invoice will be created.`}
-            </p>
-
-            <label className="block">
-              <span className="block text-[11px] font-semibold text-slate-700 mb-1">
-                {pending.approve ? 'Note (optional)' : 'Reason, recorded in the audit trail'}
-              </span>
-              <textarea
-                autoFocus
-                rows={3}
-                value={pending.notes}
-                onChange={(e) => setPending({ ...pending, notes: e.target.value })}
-                placeholder={pending.approve ? 'Anything worth recording' : 'Why is this being rejected?'}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900/10"
-              />
-            </label>
-
-            {!pending.approve && !pending.notes.trim() && (
-              <p className="text-[11px] text-slate-500">A reason is required to reject.</p>
-            )}
-          </div>
-        )}
-      </Modal>
     </div>
   );
 }

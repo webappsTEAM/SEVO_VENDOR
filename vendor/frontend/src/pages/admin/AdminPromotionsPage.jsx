@@ -14,7 +14,6 @@ import {
 } from '../../api/workforceService.js';
 import { AppShell } from '../../components/common/AppShell.jsx';
 import { PageHeader } from '../../components/common/PageHeader.jsx';
-import { ConfirmDialog } from '../../components/enterprise/ConfirmDialog.jsx';
 import {
   Tag,
   Zap,
@@ -37,7 +36,6 @@ export default function AdminPromotionsPage() {
   const [inventory, setInventory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState({ type: '', text: '' });
-  const [confirmAction, setConfirmAction] = useState(null);
 
   // Modals
   const [showDealModal, setShowDealModal] = useState(false);
@@ -103,23 +101,8 @@ export default function AdminPromotionsPage() {
     }
   };
 
-  // Ending a deal and deleting a coupon both remove something customers may be
-  // looking at right now, so they keep a confirmation step -- but in the app's
-  // own dialog, which can name what is being removed and cannot freeze the tab.
-  const handleDeleteDeal = (id) => {
-    const deal = deals.find((d) => d.id === id);
-    setConfirmAction({
-      title: 'End this deal?',
-      message: deal?.item_name
-        ? `${deal.item_name} will stop showing its discounted price to customers immediately.`
-        : 'This deal will stop showing its discounted price to customers immediately.',
-      confirmText: 'End deal',
-      onConfirm: () => handleDeleteDealConfirmed(id),
-    });
-  };
-
-  const handleDeleteDealConfirmed = async (id) => {
-    setConfirmAction(null);
+  const handleDeleteDeal = async (id) => {
+    if (!confirm('Are you sure you want to end this deal?')) return;
     try {
       await apiDeleteVendorDeal(id);
       setMsg({ type: 'success', text: 'Deal removed.' });
@@ -154,20 +137,8 @@ export default function AdminPromotionsPage() {
     }
   };
 
-  const handleDeleteCoupon = (id) => {
-    const coupon = coupons.find((c) => c.id === id);
-    setConfirmAction({
-      title: 'Delete this coupon?',
-      message: coupon?.code
-        ? `${coupon.code} will stop working at checkout. Customers who have already saved it will see it rejected.`
-        : 'This coupon will stop working at checkout.',
-      confirmText: 'Delete coupon',
-      onConfirm: () => handleDeleteCouponConfirmed(id),
-    });
-  };
-
-  const handleDeleteCouponConfirmed = async (id) => {
-    setConfirmAction(null);
+  const handleDeleteCoupon = async (id) => {
+    if (!confirm('Are you sure you want to delete this coupon?')) return;
     try {
       await apiDeleteVendorCoupon(id);
       setMsg({ type: 'success', text: 'Coupon deleted.' });
@@ -610,16 +581,6 @@ export default function AdminPromotionsPage() {
           </div>
         )}
       </div>
-
-      <ConfirmDialog
-        isOpen={Boolean(confirmAction)}
-        onClose={() => setConfirmAction(null)}
-        onConfirm={confirmAction?.onConfirm || (() => {})}
-        title={confirmAction?.title || ''}
-        message={confirmAction?.message || ''}
-        confirmText={confirmAction?.confirmText || 'Confirm'}
-        confirmVariant="danger"
-      />
     </AppShell>
   );
 }

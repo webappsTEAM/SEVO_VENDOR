@@ -1,4 +1,4 @@
-﻿"""
+"""
 Commission engine -- SEVO business plan Section 3 (Payment & Commission
 Structure) and half of Section 4 (dispute hold-and-clawback).
 
@@ -114,6 +114,19 @@ def commission_rate_for(wallet, channel: str) -> Decimal:
     return INDIVIDUAL_PROMO_RATE if promo else INDIVIDUAL_STANDARD_RATE
 
 
+def _extra_charges_total(service_request):
+    """Sum of APPLIED toll/parking entries the Customer app recorded (ServiceRequest.extra_charges)."""
+    total = Decimal("0.00")
+    items = getattr(service_request, "extra_charges", None)
+    for e in (items if isinstance(items, list) else []):
+        if isinstance(e, dict) and e.get("status") == "APPLIED":
+            try:
+                total += Decimal(str(e.get("amount") or 0))
+            except Exception:
+                pass
+    return total
+
+
 @transaction.atomic
 def settle_completed_job(service_request):
     """
@@ -163,6 +176,24 @@ def settle_completed_job(service_request):
         raise SettlementError(msg)
 
     gross = payment.amount_due or payment.amount_paid or Decimal("0")
+    reimbursement = Decimal("0.00")
+    # Logistics trips: the fare is reconciled at delivery (distance, stops, waiting), after an
+    # online JobPayment was already written PAID at the booking-time total -- and that row's
+    # amount_due is never refreshed once paid. Earnings must follow the FINAL fare, and the
+    # insurance premium (SEVO's revenue, collected online) is never part of the commissionable fare.
+    try:
+        from workforce_api.services.automatic_dispatch import LOGISTICS_SERVICE_CATEGORIES
+        if (service_request.service_category or "").strip().lower() in LOGISTICS_SERVICE_CATEGORIES:
+            final_fare = Decimal(str(service_request.total_amount or 0))
+            if getattr(service_request, "insurance_opted_in", False):
+                final_fare -= Decimal(str(service_request.insurance_premium or 0))
+            # Toll / parking receipts are reimbursed to the driver in full, not commissioned.
+            reimbursement = _extra_charges_total(service_request)
+            final_fare -= reimbursement
+            if final_fare > 0:
+                gross = final_fare
+    except Exception:
+        logger.exception("Could not derive the logistics gross for job #%s; using the payment row.", service_request.id)
     if gross <= 0:
         logger.info(f"Job #{service_request.id} has zero gross amount (consultation/free service) -- skipping commission settlement.")
         return None
@@ -170,37 +201,26 @@ def settle_completed_job(service_request):
     rate = commission_rate_for(wallet, channel)
     commission = (gross * rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     net = gross - commission
+    payout = net + reimbursement          # what the wallet is credited (net earning + receipts refunded)
 
     hold_release_at = timezone.now() + timezone.timedelta(hours=DISPUTE_HOLD_HOURS)
     worker_performed = service_request.assigned_employee
     promo = is_in_promo_period(wallet)
-
-    # Persisted mock payment guard: isolate mock earnings from real balances
-    is_mock_payment = (
-        getattr(payment, "is_mock", False)
-        or (getattr(service_request, "payment_gateway", "") in ("paytm_mock", "sandbox_razorpay"))
-    )
-    if is_mock_payment and not getattr(payment, "is_mock", False):
-        payment.is_mock = True
-        payment.save(update_fields=["is_mock"])
-
-    is_cash_job = payment.payment_method == JobPayment.PaymentMethod.CASH_ON_SERVICE
-    credit_signed_amount = net if is_cash_job else gross
 
     credit_entry = WalletLedgerEntry.objects.create(
         wallet=wallet,
         job=service_request,
         worker_performed=worker_performed,
         entry_type=WalletLedgerEntry.EntryType.JOB_CREDIT,
-        signed_amount=credit_signed_amount,
+        signed_amount=payout,
         gross_job_amount=gross,
         commission_rate_applied=rate,
         status=WalletLedgerEntry.Status.HELD,
         hold_release_at=hold_release_at,
-        notes=f"Job #{service_request.id} ({channel}, {'promo' if promo else 'standard'} rate {rate})" + (" [MOCK]" if is_mock_payment else ""),
-        is_mock=is_mock_payment,
+        notes=f"Job #{service_request.id} ({channel}, {'promo' if promo else 'standard'} rate {rate})",
     )
 
+    is_cash_job = payment.payment_method == JobPayment.PaymentMethod.CASH_ON_SERVICE
     commission_entry_type = (
         WalletLedgerEntry.EntryType.COD_COMMISSION_PAYABLE if is_cash_job
         else WalletLedgerEntry.EntryType.COMMISSION_DEBIT
@@ -213,10 +233,12 @@ def settle_completed_job(service_request):
         signed_amount=-commission,
         gross_job_amount=gross,
         commission_rate_applied=rate,
-        status=WalletLedgerEntry.Status.HELD,
-        hold_release_at=hold_release_at if not is_cash_job else None,
-        notes=f"Commission for Job #{service_request.id}" + (" (cash job, payable)" if is_cash_job else "") + (" [MOCK]" if is_mock_payment else ""),
-        is_mock=is_mock_payment,
+        # A cash job's commission isn't collectable yet (SEVO never touched
+        # the cash) -- it's recorded HELD and gets netted against this
+        # wallet's next digital payout rather than debited from a balance
+        # that doesn't reflect real money yet. See net_cod_commission_payable().
+        status=WalletLedgerEntry.Status.HELD if is_cash_job else WalletLedgerEntry.Status.RELEASED,
+        notes=f"Commission for Job #{service_request.id}" + (" (cash job, payable)" if is_cash_job else ""),
     )
 
     logger.info(
@@ -224,7 +246,7 @@ def settle_completed_job(service_request):
         f"net={net} -> wallet #{wallet.id} ({channel}), held until {hold_release_at.isoformat()}"
     )
     # Mirror earning into vendor_wallet.EmployeeWallet so the technician wallet dashboard reflects earnings
-    if worker_performed is not None and not is_mock_payment:
+    if worker_performed is not None:
         try:
             from vendor_wallet.models import EmployeeWallet, EmployeeWalletTransaction
             from vendor_wallet.constants import (
@@ -246,8 +268,8 @@ def settle_completed_job(service_request):
             if not EmployeeWalletTransaction.objects.filter(
                 wallet=emp_wallet, reference_type=REF_JOB_PAYMENT, reference_id=ref_id
             ).exists():
-                emp_wallet.pending_balance = emp_wallet.pending_balance + net
-                emp_wallet.lifetime_earnings = emp_wallet.lifetime_earnings + net
+                emp_wallet.pending_balance = emp_wallet.pending_balance + payout
+                emp_wallet.lifetime_earnings = emp_wallet.lifetime_earnings + payout
                 emp_wallet.save(update_fields=["pending_balance", "lifetime_earnings", "updated_at"])
 
                 EmployeeWalletTransaction.objects.create(
@@ -257,11 +279,11 @@ def settle_completed_job(service_request):
                     transaction_type=TXN_SERVICE_EARNING,
                     direction=DIRECTION_CREDIT,
                     status=TXN_STATUS_PENDING_SETTLEMENT,
-                    amount=net,
+                    amount=payout,
                     gross_amount=gross,
                     earn_rate_snapshot=Decimal("1.0") - rate,
                     platform_deduction_amount=commission,
-                    balance_before=emp_wallet.pending_balance - net,
+                    balance_before=emp_wallet.pending_balance - payout,
                     balance_after=emp_wallet.pending_balance,
                     balance_type=BALANCE_PENDING,
                     settlement_release_at=hold_release_at,
@@ -273,6 +295,7 @@ def settle_completed_job(service_request):
                         "request_id": service_request.request_id,
                         "gross": str(gross),
                         "net": str(net),
+                        "reimbursement": str(reimbursement),
                         "commission": str(commission),
                     },
                 )
@@ -294,59 +317,25 @@ def settle_completed_job(service_request):
     return credit_entry
 
 
-
 def release_due_holds() -> int:
     """
-    Run periodically (cron/beat): atomically releases the JOB_CREDIT and its paired
-    COMMISSION_DEBIT for each job whose hold_release_at has passed.
-    An orphaned credit with no HELD COMMISSION_DEBIT partner is skipped and logged.
-    COD_COMMISSION_PAYABLE entries are handled separately by net_cod_commission_payable().
+    Run periodically (cron/beat): flips every HELD JOB_CREDIT entry whose
+    hold_release_at has passed to RELEASED, making it withdrawable. This
+    is the other half of the dispute-hold window from Section 4 --
+    entries are created HELD and only become spendable once nobody's
+    disputed them in time. COD_COMMISSION_PAYABLE entries are handled
+    separately by net_cod_commission_payable() (they don't release into
+    the balance, they get subtracted from the next digital payout).
     """
     from workforce_api.models import WalletLedgerEntry
 
-    now = timezone.now()
-    due_job_ids = list(
-        WalletLedgerEntry.objects.filter(
-            status=WalletLedgerEntry.Status.HELD,
-            entry_type=WalletLedgerEntry.EntryType.JOB_CREDIT,
-            hold_release_at__isnull=False,
-            hold_release_at__lte=now,
-            is_mock=False,
-        ).values_list("job_id", flat=True).distinct()
+    due = WalletLedgerEntry.objects.filter(
+        status=WalletLedgerEntry.Status.HELD,
+        entry_type=WalletLedgerEntry.EntryType.JOB_CREDIT,
+        hold_release_at__isnull=False,
+        hold_release_at__lte=timezone.now(),
     )
-
-    released_count = 0
-    for job_id in due_job_ids:
-        with transaction.atomic():
-            credit_qs = WalletLedgerEntry.objects.select_for_update().filter(
-                job_id=job_id,
-                entry_type=WalletLedgerEntry.EntryType.JOB_CREDIT,
-                status=WalletLedgerEntry.Status.HELD,
-                hold_release_at__lte=now,
-                is_mock=False,
-            )
-            debit_qs = WalletLedgerEntry.objects.select_for_update().filter(
-                job_id=job_id,
-                entry_type=WalletLedgerEntry.EntryType.COMMISSION_DEBIT,
-                status=WalletLedgerEntry.Status.HELD,
-                is_mock=False,
-            )
-            credits = list(credit_qs)
-            debits  = list(debit_qs)
-            if not credits:
-                continue
-            if not debits:
-                logger.warning(
-                    "[RELEASE_HOLD_ORPHAN] Job #%s has a due JOB_CREDIT but no matching "
-                    "HELD COMMISSION_DEBIT. Skipping -- manual investigation required.",
-                    job_id,
-                )
-                continue
-            n_c = credit_qs.update(status=WalletLedgerEntry.Status.RELEASED)
-            n_d = debit_qs.update(status=WalletLedgerEntry.Status.RELEASED)
-            released_count += n_c + n_d
-            logger.info("[RELEASE_HOLD_OK] Job #%s: released %d credit + %d debit entries.", job_id, n_c, n_d)
-    return released_count
+    count = due.update(status=WalletLedgerEntry.Status.RELEASED)
     return count
 
 
@@ -374,30 +363,15 @@ def clawback_job(service_request, reason: str):
             credit_entry.status = WalletLedgerEntry.Status.CLAWED_BACK
             credit_entry.notes = (credit_entry.notes + f" | CLAWED BACK: {reason}")[:255]
             credit_entry.save(update_fields=["status", "notes"])
-            # Coordinated clawback of held commission debit
-            WalletLedgerEntry.objects.filter(
-                job=service_request,
-                entry_type=WalletLedgerEntry.EntryType.COMMISSION_DEBIT,
-                status=WalletLedgerEntry.Status.HELD,
-            ).update(
-                status=WalletLedgerEntry.Status.CLAWED_BACK,
-            )
             return credit_entry
         if credit_entry.status == WalletLedgerEntry.Status.RELEASED:
-            debit_entry = WalletLedgerEntry.objects.filter(
-                job=service_request,
-                entry_type=WalletLedgerEntry.EntryType.COMMISSION_DEBIT,
-                status=WalletLedgerEntry.Status.RELEASED,
-            ).first()
-            net_released = credit_entry.signed_amount + (debit_entry.signed_amount if debit_entry else Decimal("0"))
             return WalletLedgerEntry.objects.create(
                 wallet=credit_entry.wallet,
                 job=service_request,
                 worker_performed=credit_entry.worker_performed,
                 entry_type=WalletLedgerEntry.EntryType.CLAWBACK_DEBIT,
-                signed_amount=-net_released,
+                signed_amount=-credit_entry.signed_amount,
                 status=WalletLedgerEntry.Status.RELEASED,
-                is_mock=credit_entry.is_mock,
                 notes=f"Clawback of Job #{service_request.id}: {reason}"[:255],
             )
         logger.info(f"[CLAWBACK_ALREADY_CLAWED_BACK] Job #{service_request.id} already clawed back.")

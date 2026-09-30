@@ -45,6 +45,7 @@ import {
   ShieldAlert,
   UploadCloud,
   Warehouse as WarehouseIcon,
+  Clock,
 } from 'lucide-react';
 
 export function Sidebar({ onCloseMobile = () => {} }) {
@@ -255,6 +256,7 @@ export function Sidebar({ onCloseMobile = () => {} }) {
                 {renderNavLink('/workforce/admin/seller-hub/categories', Layers, 'Categories')}
                 {renderNavLink('/workforce/admin/seller-hub/categories-approval', ShieldCheck, 'Categories Approval')}
                 {renderNavLink('/workforce/admin/seller-hub/warehouses', WarehouseIcon, 'Warehouses')}
+                {renderNavLink('/workforce/admin/seller-hub/delivery-slots', Clock, 'Delivery Slots')}
                 {renderNavLink('/workforce/admin/seller-hub/coupons', Tag, 'Coupons')}
                 {renderNavLink('/workforce/seller-hub/reports', BarChart3, 'Reports & Quality')}
                 {renderNavLink('/workforce/seller-hub/store-profile', Store, 'Store Profile')}
@@ -332,16 +334,10 @@ export function Sidebar({ onCloseMobile = () => {} }) {
             </button>
             {!collapsed.monitoring && (
               <div className="space-y-0.5">
-                {renderNavLink('/workforce/admin/monitoring/database-egress', Activity, 'Database & Egress')}
                 {renderNavLink('/workforce/admin/reports', BarChart3, 'Reports & Audits')}
               </div>
             )}
           </div>
-        </div>
-
-        {/* Footer Settings */}
-        <div className="p-3 border-t border-slate-100">
-          {renderNavLink('/workforce/admin/settings', Settings, 'System Settings')}
         </div>
       </aside>
     );
@@ -495,16 +491,10 @@ export function Sidebar({ onCloseMobile = () => {} }) {
             </button>
             {!collapsed.monitoring && (
               <div className="space-y-0.5">
-                {renderNavLink('/workforce/admin/monitoring/database-egress', Activity, 'Database & Egress')}
                 {renderNavLink('/workforce/admin/reports', BarChart3, 'Reports & Audits')}
               </div>
             )}
           </div>
-        </div>
-
-        {/* Admin Footer Settings */}
-        <div className="p-3 border-t border-slate-100">
-          {renderNavLink('/workforce/admin/settings', Settings, 'System Settings')}
         </div>
       </aside>
     );

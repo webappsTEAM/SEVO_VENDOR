@@ -22,6 +22,32 @@ import { loadMapsApi } from '../../../utils/loadGoogleMaps.js';
 import { createNavigationPuckIcon } from './navigationPuckMarker.js';
 import { formatSpeedKmh, calculateCompassRotation, interpolateShortestAngle } from './speedAndCompassUtils.js';
 import { interpolatePosition } from './navigationUtils.js';
+import { apiGetJobLiveTracking } from '../../../api/customerTrackingApi.js';
+import { isLogisticsJob } from '../logistics/LogisticsLegController.jsx';
+
+// Multi-stop pins for Goods & Transport / Packers & Movers jobs. Same
+// teardrop shape as the destination pin; colours match LogisticsRouteMap
+// (pickup #059669 green "P", drop #dc2626 red "D").
+function stopPinIcon(maps, color, letter) {
+  return {
+    url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
+      <svg xmlns="http://www.w3.org/2000/svg" width="46" height="54" viewBox="0 0 46 54">
+        <path d="M23 0C10.3 0 0 10.3 0 23c0 15.2 20.4 30.1 21.3 30.8a2.5 2.5 0 0 0 3.4 0C25.6 53.1 46 38.2 46 23 46 10.3 35.7 0 23 0z" fill="${color}" stroke="#FFFFFF" stroke-width="2.5"/>
+        <circle cx="23" cy="21" r="14" fill="#FFFFFF"/>
+        <text x="23" y="27" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700" fill="${color}">${letter}</text>
+      </svg>
+    `)}`,
+    scaledSize: new maps.Size(42, 50),
+    anchor: new maps.Point(21, 50),
+  };
+}
+
+function toStopPoint(loc) {
+  if (!loc || loc.latitude == null || loc.longitude == null) return null;
+  const lat = Number(loc.latitude);
+  const lng = Number(loc.longitude);
+  return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+}
 
 const ANIMATION_DURATION_MS = 900; // 900ms smooth gliding interpolation between GPS fixes
 
@@ -49,6 +75,8 @@ export function TechnicianFirstPersonMap({
   const geofenceCircleRef = useRef(null);
   const directionsRendererRef = useRef(null);
   const infoWindowRef = useRef(null);
+  const stopMarkersRef = useRef({ pickup: null, drop: null });
+  const stopPointsRef = useRef([]);
 
   // Animation refs
   const animFrameRef = useRef(null);
@@ -64,6 +92,10 @@ export function TechnicianFirstPersonMap({
   const [isMuted, setIsMuted] = useState(false);
   const [apiError, setApiError] = useState(null);
   const [retryTick, setRetryTick] = useState(0);
+  const [routeStops, setRouteStops] = useState(null);
+
+  const isLogistics = !!job && isLogisticsJob(job);
+  const jobId = job?.id;
 
   // Bug found: this only read VITE_GOOGLE_MAPS_KEY, with no fallback to
   // VITE_GOOGLE_MAPS_API_KEY -- inconsistent with loadGoogleMaps.js itself
@@ -240,12 +272,98 @@ export function TechnicianFirstPersonMap({
     }
   }, [apiLoaded, computeNavigationCenter, custLat, custLon, geofenceRadius, heading, isCourseUp, job, onFollowModeChange, technicianLocation]);
 
-  // Synchronize Google Directions Result onto map
+  // Logistics jobs: fetch pickup + drop from the existing live-tracking
+  // endpoint (additive pickup_location / drop_location fields). Active
+  // navigation target (custLat/custLon) is untouched.
+  const isAssigned = !!job?.is_assigned_to_current_employee;
   useEffect(() => {
-    if (directionsRendererRef.current && directionsResult) {
+    if (!isLogistics || !jobId) { setRouteStops(null); return undefined; }
+    if (!isAssigned) {
+      // For unassigned/offer jobs, don't call live-tracking (backend returns 403)
+      setRouteStops({
+        pickup: toStopPoint({ latitude: job?.latitude, longitude: job?.longitude }),
+        drop: toStopPoint({ latitude: job?.drop_latitude, longitude: job?.drop_longitude }),
+        pickupAddress: job?.address || '',
+        dropAddress: job?.drop_address || '',
+      });
+      return undefined;
+    }
+    let cancelled = false;
+    apiGetJobLiveTracking(jobId)
+      .then((res) => {
+        if (cancelled || !res || res.is_logistics === false) return;
+        setRouteStops({
+          pickup: toStopPoint(res.pickup_location) || toStopPoint({ latitude: job?.latitude, longitude: job?.longitude }),
+          drop: toStopPoint(res.drop_location) || toStopPoint({ latitude: job?.drop_latitude, longitude: job?.drop_longitude }),
+          pickupAddress: res.pickup_location?.address || job?.address || '',
+          dropAddress: res.drop_location?.address || job?.drop_address || '',
+        });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        // Fall back to whatever the job payload already carries.
+        setRouteStops({
+          pickup: toStopPoint({ latitude: job?.latitude, longitude: job?.longitude }),
+          drop: toStopPoint({ latitude: job?.drop_latitude, longitude: job?.drop_longitude }),
+          pickupAddress: job?.address || '',
+          dropAddress: job?.drop_address || '',
+        });
+      });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLogistics, jobId, isAssigned]);
+
+  // Render pickup ("P", green) and drop ("D", red) stop pins simultaneously.
+  useEffect(() => {
+    const maps = window.google?.maps;
+    if (!mapReady || !mapRef.current || !maps) return;
+    const clear = () => {
+      Object.values(stopMarkersRef.current).forEach((m) => m && m.setMap(null));
+      stopMarkersRef.current = { pickup: null, drop: null };
+      stopPointsRef.current = [];
+    };
+    clear();
+    if (!routeStops || (!routeStops.pickup && !routeStops.drop)) {
+      if (custMarkerRef.current) custMarkerRef.current.setVisible(true);
+      return;
+    }
+    // The single house pin sits on the pickup point; replace it with the
+    // numbered stop pins so the stops are visually distinct.
+    if (custMarkerRef.current) custMarkerRef.current.setVisible(false);
+    if (routeStops.pickup) {
+      stopMarkersRef.current.pickup = new maps.Marker({
+        position: routeStops.pickup,
+        map: mapRef.current,
+        title: `Pickup: ${routeStops.pickupAddress || ''}`.trim(),
+        icon: stopPinIcon(maps, '#059669', 'P'),
+        zIndex: 110,
+      });
+    }
+    if (routeStops.drop) {
+      stopMarkersRef.current.drop = new maps.Marker({
+        position: routeStops.drop,
+        map: mapRef.current,
+        title: `Drop: ${routeStops.dropAddress || ''}`.trim(),
+        icon: stopPinIcon(maps, '#DC2626', 'D'),
+        zIndex: 105,
+      });
+    }
+    stopPointsRef.current = [routeStops.pickup, routeStops.drop].filter(Boolean);
+    return clear;
+  }, [mapReady, routeStops]);
+
+  // Synchronize Google Directions Result onto map.
+  // Bug fix: this previously depended on [directionsResult] only. The route is
+  // requested once by useTechnicianNavigation (it only re-requests when off-route),
+  // and it often resolves before this component has created the
+  // DirectionsRenderer (map init waits for its own loadMapsApi + a render).
+  // The effect then ran with a null renderer, and never re-ran, so the blue
+  // road polyline was never drawn. Re-apply once the map/renderer is ready.
+  useEffect(() => {
+    if (mapReady && directionsRendererRef.current && directionsResult) {
       directionsRendererRef.current.setDirections(directionsResult);
     }
-  }, [directionsResult]);
+  }, [directionsResult, mapReady]);
 
   // Respond to cameraMode, isFullscreen, or isCourseUp changes
   useEffect(() => {
@@ -277,6 +395,7 @@ export function TechnicianFirstPersonMap({
           const bounds = new google.maps.LatLngBounds();
           bounds.extend({ lat: custLat, lng: custLon });
           bounds.extend(currentPosRef.current);
+          stopPointsRef.current.forEach((p) => bounds.extend(p));
           mapRef.current.fitBounds(bounds, { top: 120, right: 60, bottom: 120, left: 60 });
         }
       }

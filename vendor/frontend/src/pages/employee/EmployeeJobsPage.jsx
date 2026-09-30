@@ -16,9 +16,10 @@ import { AppShell } from '../../components/common/AppShell.jsx';
 import { LoadingState } from '../../components/enterprise/LoadingState.jsx';
 import { ErrorState } from '../../components/enterprise/ErrorState.jsx';
 import { Modal } from '../../components/enterprise/Modal.jsx';
-import { ConfirmDialog } from '../../components/enterprise/ConfirmDialog.jsx';
 import { LogisticsLegController } from '../../components/employee/logistics/LogisticsLegController.jsx';
+import { LogisticsRouteMap } from '../../components/employee/logistics/LogisticsRouteMap.jsx';
 import { LogisticsStopManager } from '../../components/employee/logistics/LogisticsStopManager.jsx';
+import { PackersMoversManifestCard } from '../../components/employee/logistics/PackersMoversManifestCard.jsx';
 import {
   Search,
   MapPin,
@@ -50,6 +51,8 @@ import {
   Copy,
   Lock,
   Camera,
+  Paintbrush,
+  Hammer,
 } from 'lucide-react';
 
 /**
@@ -83,11 +86,69 @@ function cleanErrorMessage(error) {
   return msg || 'Action could not be completed.';
 }
 
+function formatCategoryLabel(raw) {
+  if (!raw) return 'Home Service';
+  return String(raw)
+    .replace(/[_\-]+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, c => c.toUpperCase());
+}
+
 /**
- * Service Category Styling (Swiggy / Urban Company clean style)
+ * Service Category Styling (Dynamic Urban Company / CalTrack Style)
  */
 function getServiceCategoryMeta(categoryName = '', title = '') {
   const cat = (categoryName || '').trim().toLowerCase();
+  const t = (title || '').trim().toLowerCase();
+  const text = `${cat} ${t}`.toLowerCase();
+
+  // 1. Painting, Waterproofing & Wall Care
+  if (
+    cat.includes('paint') ||
+    cat.includes('waterproof') ||
+    text.includes('paint') ||
+    text.includes('waterproof') ||
+    text.includes('wall') ||
+    text.includes('ceiling') ||
+    text.includes('emulsion') ||
+    text.includes('stencil') ||
+    text.includes('texture') ||
+    text.includes('tar sheet') ||
+    text.includes('epoxy') ||
+    text.includes('pu coat') ||
+    text.includes('primer')
+  ) {
+    return {
+      id: 'painting',
+      icon: Paintbrush,
+      label: 'Painting & Wall Care',
+      tagColor: 'bg-rose-500/10 text-rose-800 border-rose-200',
+      iconBg: 'bg-rose-100 text-rose-700',
+    };
+  }
+
+  // 2. Masonry & Civil Construction
+  if (
+    cat.includes('mason') ||
+    cat.includes('civil') ||
+    cat.includes('construction') ||
+    text.includes('mason') ||
+    text.includes('brick') ||
+    text.includes('tile') ||
+    text.includes('civil') ||
+    text.includes('construction') ||
+    text.includes('grouting') ||
+    text.includes('plaster') ||
+    text.includes('concrete')
+  ) {
+    return {
+      id: 'masonry',
+      icon: Hammer,
+      label: 'Masonry & Civil',
+      tagColor: 'bg-amber-600/10 text-amber-900 border-amber-300',
+      iconBg: 'bg-amber-100 text-amber-800',
+    };
+  }
 
   // Canonical category match first (robust against service title renames)
   if (cat === 'goods_transport_truck' || cat === 'truck' || cat === 'mini_truck') {
@@ -119,8 +180,6 @@ function getServiceCategoryMeta(categoryName = '', title = '') {
       iconBg: 'bg-purple-100 text-purple-700',
     };
   }
-
-  const text = `${categoryName} ${title}`.toLowerCase();
 
   // 1. Mini Truck Delivery / Heavy Goods Transport
   if (
@@ -289,7 +348,18 @@ function getServiceCategoryMeta(categoryName = '', title = '') {
     };
   }
 
-  // Fallback
+  // 12. Dynamic Fallback from categoryName
+  if (categoryName && categoryName.trim()) {
+    return {
+      id: cat || 'custom',
+      icon: Wrench,
+      label: formatCategoryLabel(categoryName),
+      tagColor: 'bg-slate-100 text-slate-800 border-slate-200',
+      iconBg: 'bg-slate-100 text-slate-700',
+    };
+  }
+
+  // General Fallback
   return {
     id: 'general',
     icon: Wrench,
@@ -342,6 +412,12 @@ function getStatusTag(job) {
   }
 
   const st = ((typeof job === 'string' ? job : job.status) || '').toUpperCase();
+  if (['CUSTOMER_APPROVED', 'REPAIR_AUTHORIZED'].includes(st)) {
+    return {
+      label: 'Repair Authorized',
+      badgeClass: 'bg-emerald-600 text-white font-bold',
+    };
+  }
   if (['ASSIGNED', 'ACCEPTED'].includes(st)) {
     return {
       label: 'Assigned',
@@ -360,7 +436,13 @@ function getStatusTag(job) {
       badgeClass: 'bg-violet-600 text-white font-bold',
     };
   }
-  if (['IN_PROGRESS', 'IN_SERVICE', 'INSPECTION', 'PROOF_SUBMITTED'].includes(st)) {
+  if (['QUOTATION_SENT', 'QUOTATION_PENDING_APPROVAL', 'QUOTATION_CREATED'].includes(st)) {
+    return {
+      label: 'Quotation Sent',
+      badgeClass: 'bg-amber-600 text-white font-bold',
+    };
+  }
+  if (['IN_PROGRESS', 'IN_SERVICE', 'INSPECTION', 'PROOF_SUBMITTED', 'INSPECTION_COMPLETED'].includes(st)) {
     return {
       label: 'In Progress',
       badgeClass: 'bg-emerald-600 text-white font-bold',
@@ -476,7 +558,6 @@ export function EmployeeJobsPage() {
   // Per-job inline action errors — replaces alert() entirely.
   // Maps jobId → { code, message, isExpired, isAlreadyAccepted, isBusy }
   const [actionErrors, setActionErrors] = useState({});
-  const [confirmAction, setConfirmAction] = useState(null);
 
   const clearJobError = (jobId) =>
     setActionErrors(prev => { const n = { ...prev }; delete n[jobId]; return n; });
@@ -512,21 +593,41 @@ export function EmployeeJobsPage() {
     }
   }, [refreshActiveJobs, refreshCompletedJobs, activeTab]);
 
-  // Combined jobs according to active tab
+  // Combined jobs according to active tab with dynamic consultation/work deduplication
   const jobs = useMemo(() => {
-    if (activeTab === 'COMPLETED') return completedJobs;
-    if (activeTab === 'OFFERS') return incomingOffers;
-    if (activeTab === 'SCHEDULED') return activeJobs.filter((j) => j.is_scheduled_future);
-    if (activeTab === 'ACTIVE') {
-      return activeJobs.filter((j) => !isOfferJob(j) && !j.is_scheduled_future);
+    let rawList = [];
+    if (activeTab === 'COMPLETED') {
+      rawList = completedJobs;
+    } else if (activeTab === 'OFFERS') {
+      rawList = incomingOffers;
+    } else if (activeTab === 'SCHEDULED') {
+      rawList = activeJobs.filter((j) => j.is_scheduled_future);
+    } else if (activeTab === 'ACTIVE') {
+      rawList = activeJobs.filter((j) => !isOfferJob(j) && !j.is_scheduled_future);
+    } else {
+      // 'ALL' tab: combines activeJobs and completedJobs
+      const map = new Map();
+      activeJobs.forEach(j => map.set(j.id, j));
+      completedJobs.forEach(j => {
+        if (!map.has(j.id)) map.set(j.id, j);
+      });
+      rawList = Array.from(map.values());
     }
-    // 'ALL' tab: combines activeJobs and completedJobs
-    const map = new Map();
-    activeJobs.forEach(j => map.set(j.id, j));
-    completedJobs.forEach(j => {
-      if (!map.has(j.id)) map.set(j.id, j);
+
+    // Dynamic Deduplication: When an execution WORK job exists alongside its parent consultation job,
+    // suppress the redundant parent consultation card so only 1 unified card is shown per customer service.
+    const parentIdsWithCompletedWork = new Set();
+    rawList.forEach(j => {
+      if (j.parent_request_id) {
+        parentIdsWithCompletedWork.add(Number(j.parent_request_id));
+      }
     });
-    return Array.from(map.values());
+
+    if (parentIdsWithCompletedWork.size > 0) {
+      return rawList.filter(j => !parentIdsWithCompletedWork.has(Number(j.id)));
+    }
+
+    return rawList;
   }, [activeTab, activeJobs, completedJobs, incomingOffers]);
 
   const handleCopyId = (id, e) => {
@@ -576,25 +677,9 @@ export function EmployeeJobsPage() {
     }
   };
 
-  // Declining hands the job to someone else and cannot be taken back, so it
-  // keeps a confirmation -- in the app's own dialog. A native one is especially
-  // poor here: technicians are on phones, often outdoors, and a browser-chrome
-  // popup over the job card gives no sense of which job is being declined.
-  const handleRejectOffer = (jobId, e) => {
+  const handleRejectOffer = async (jobId, e) => {
     e?.stopPropagation?.();
-    const job = jobs.find((j) => j.id === jobId);
-    setConfirmAction({
-      title: 'Decline this job?',
-      message: job
-        ? `${job.service_name || 'This job'} will be offered to another nearby technician. You will not be able to take it back.`
-        : 'This job will be offered to another nearby technician. You will not be able to take it back.',
-      confirmText: 'Decline job',
-      onConfirm: () => handleRejectOfferConfirmed(jobId),
-    });
-  };
-
-  const handleRejectOfferConfirmed = async (jobId) => {
-    setConfirmAction(null);
+    if (!window.confirm('Decline this job offer? It will be reassigned to another nearby technician.')) return;
     clearJobError(jobId);
     try {
       setActionLoadingId(jobId);
@@ -724,7 +809,7 @@ export function EmployeeJobsPage() {
         scheduled++;
       } else if (!isOfferJob(j)) {
         const st = (j.status || '').toUpperCase();
-        if (['ASSIGNED', 'ACCEPTED', 'ON_THE_WAY', 'EN_ROUTE', 'ARRIVED', 'IN_PROGRESS', 'IN_SERVICE', 'INSPECTION', 'PROOF_SUBMITTED'].includes(st)) {
+        if (['ASSIGNED', 'ACCEPTED', 'CUSTOMER_APPROVED', 'REPAIR_AUTHORIZED', 'ON_THE_WAY', 'EN_ROUTE', 'ARRIVED', 'IN_PROGRESS', 'IN_SERVICE', 'INSPECTION', 'PROOF_SUBMITTED', 'QUOTATION_SENT', 'QUOTATION_PENDING_APPROVAL', 'QUOTATION_CREATED', 'INSPECTION_COMPLETED'].includes(st)) {
           active++;
         }
       }
@@ -767,7 +852,10 @@ export function EmployeeJobsPage() {
       }
 
       countsMap.ALL = (countsMap.ALL || 0) + 1;
-      const meta = getServiceCategoryMeta(job.service_category, job.service_title);
+      const meta = getServiceCategoryMeta(
+        job.service_category || job.category_name || job.category,
+        job.service_title || job.issue_title || job.title
+      );
       const catId = meta.id;
       countsMap[catId] = (countsMap[catId] || 0) + 1;
       if (catId === 'goods_transport') {
@@ -799,7 +887,7 @@ export function EmployeeJobsPage() {
         activeTab === 'ACTIVE' &&
         (job.is_scheduled_future ||
           isOffer ||
-          !['ASSIGNED', 'ACCEPTED', 'ON_THE_WAY', 'EN_ROUTE', 'ARRIVED', 'IN_PROGRESS', 'IN_SERVICE', 'INSPECTION', 'PROOF_SUBMITTED'].includes(status))
+          !['ASSIGNED', 'ACCEPTED', 'CUSTOMER_APPROVED', 'REPAIR_AUTHORIZED', 'ON_THE_WAY', 'EN_ROUTE', 'ARRIVED', 'IN_PROGRESS', 'IN_SERVICE', 'INSPECTION', 'PROOF_SUBMITTED', 'QUOTATION_SENT', 'QUOTATION_PENDING_APPROVAL', 'QUOTATION_CREATED', 'INSPECTION_COMPLETED'].includes(status))
       ) {
         return false;
       }
@@ -882,7 +970,7 @@ export function EmployeeJobsPage() {
           </div>
         </div>
 
-        {error && <ErrorState message={error} onRetry={loadJobs} onDismiss={() => setError('')} />}
+        {error && <ErrorState message={error} onDismiss={() => setError('')} />}
 
         {/* ── BUSY TECHNICIAN OFFERS BANNER ── */}
         {hasActiveJob && incomingOffers.length > 0 && (
@@ -1043,13 +1131,17 @@ export function EmployeeJobsPage() {
             {filteredJobs.map((job) => {
               const isOffer = isOfferJob(job);
               const status = (job.status || '').toUpperCase();
+              const isCustomerApproved = !isOffer && (status === 'CUSTOMER_APPROVED' || status === 'REPAIR_AUTHORIZED');
               const isAssigned = !isOffer && (status === 'ASSIGNED' || status === 'ACCEPTED');
               const isOnTheWay = !isOffer && (status === 'ON_THE_WAY' || status === 'EN_ROUTE');
               const isArrived = !isOffer && status === 'ARRIVED';
-              const isInProgress = !isOffer && (status === 'IN_PROGRESS' || status === 'IN_SERVICE' || status === 'INSPECTION' || status === 'PROOF_SUBMITTED');
+              const isInProgress = !isOffer && (status === 'IN_PROGRESS' || status === 'IN_SERVICE' || status === 'INSPECTION' || status === 'PROOF_SUBMITTED' || status === 'QUOTATION_SENT' || status === 'QUOTATION_PENDING_APPROVAL' || status === 'QUOTATION_CREATED' || status === 'INSPECTION_COMPLETED' || isCustomerApproved);
               const isCompleted = !isOffer && (status === 'COMPLETED' || status === 'WORK_COMPLETED' || status === 'WAITING_FOR_PAYMENT');
 
-              const catMeta = getServiceCategoryMeta(job.service_category, job.service_title);
+              const catMeta = getServiceCategoryMeta(
+                job.service_category || job.category_name || job.category,
+                job.service_title || job.issue_title || job.title
+              );
               const statusTag = getStatusTag(job);
               const CategoryIcon = catMeta.icon;
 
@@ -1334,6 +1426,18 @@ export function EmployeeJobsPage() {
                         </div>
                       )}
 
+                      {/* CUSTOMER APPROVED / REPAIR AUTHORIZED -> START REPAIR IN COCKPIT */}
+                      {isCustomerApproved && (
+                        <Link
+                          to="/workforce/employee/dashboard"
+                          className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-2"
+                        >
+                          <Play className="w-3.5 h-3.5 fill-current" />
+                          <span>Start Repair</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </Link>
+                      )}
+
                       {/* ASSIGNED -> START TRIP */}
                       {isAssigned && (
                         <button
@@ -1409,7 +1513,7 @@ export function EmployeeJobsPage() {
                       {/* ESTIMATION WORKFLOW LINK */}
                       {(job.job_type === 'ESTIMATION' || (job.status || '').toLowerCase().includes('inspection') || (job.status || '').toLowerCase().includes('quotation')) && (
                         <Link
-                          to="/workforce/vendor/estimations"
+                          to={job.id ? `/workforce/employee/estimates/${job.id}` : '/workforce/employee/estimates'}
                           className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-1.5"
                         >
                           <Wrench className="w-3.5 h-3.5" />
@@ -1510,22 +1614,36 @@ export function EmployeeJobsPage() {
                 )}
               </div>
 
-              {/* Logistics Journey & Leg Controls (if logistics job) */}
-              <LogisticsLegController
-                job={selectedJobForDetails}
-                onLegUpdated={(newLeg) => {
-                  setSelectedJobForDetails((prev) => (prev ? { ...prev, logistics_leg: newLeg } : null));
-                  loadJobs();
-                }}
-              />
+              {/* Packers & Movers Relocation Manifest & Access Card (self-gated for P&M) */}
+              <PackersMoversManifestCard job={selectedJobForDetails} />
 
-              {/* Multi-Stop Route Itinerary (if stops exist) */}
-              <LogisticsStopManager
-                job={selectedJobForDetails}
-                onStopsUpdated={() => {
-                  loadJobs();
-                }}
-              />
+              {/* Pickup / drop / live-location map (logistics jobs only; self-gated) */}
+              <LogisticsRouteMap job={selectedJobForDetails} />
+
+              {/* Logistics Journey & Leg Controls — only for assigned jobs.
+                  Both components fire authenticated API calls (logistics-leg,
+                  logistics-checkpoint, stoppage) that the backend gates on
+                  job assignment. Rendering them for offer/unassigned jobs
+                  generates a flood of 403s. */}
+              {selectedJobForDetails.is_assigned_to_current_employee && (
+                <LogisticsLegController
+                  job={selectedJobForDetails}
+                  onLegUpdated={(newLeg) => {
+                    setSelectedJobForDetails((prev) => (prev ? { ...prev, logistics_leg: newLeg } : null));
+                    loadJobs();
+                  }}
+                />
+              )}
+
+              {/* Multi-Stop Route Itinerary — same guard: only for assigned jobs */}
+              {selectedJobForDetails.is_assigned_to_current_employee && (
+                <LogisticsStopManager
+                  job={selectedJobForDetails}
+                  onStopsUpdated={() => {
+                    loadJobs();
+                  }}
+                />
+              )}
 
               {/* Modal Footer */}
               <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
@@ -1614,16 +1732,6 @@ export function EmployeeJobsPage() {
           </Modal>
         )}
       </div>
-
-      <ConfirmDialog
-        isOpen={Boolean(confirmAction)}
-        onClose={() => setConfirmAction(null)}
-        onConfirm={confirmAction?.onConfirm || (() => {})}
-        title={confirmAction?.title || ''}
-        message={confirmAction?.message || ''}
-        confirmText={confirmAction?.confirmText || 'Confirm'}
-        confirmVariant="danger"
-      />
     </AppShell>
   );
 }

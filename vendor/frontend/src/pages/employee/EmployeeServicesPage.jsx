@@ -13,7 +13,6 @@ import { PageHeader } from '../../components/common/PageHeader.jsx';
 import { StatusBadge } from '../../components/enterprise/StatusBadge.jsx';
 import { LoadingState } from '../../components/enterprise/LoadingState.jsx';
 import { ErrorState } from '../../components/enterprise/ErrorState.jsx';
-import { ConfirmDialog } from '../../components/enterprise/ConfirmDialog.jsx';
 import {
   Wrench,
   Plus,
@@ -45,7 +44,6 @@ export function EmployeeServicesPage() {
   const [selectedCategory, setSelectedCategory] = useState('ALL');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionId, setActionId] = useState(null);
-  const [confirmAction, setConfirmAction] = useState(null);
 
   const loadData = async () => {
     try {
@@ -189,20 +187,8 @@ export function EmployeeServicesPage() {
     }
   };
 
-  // Removing a skill stops this technician being offered that kind of work, so
-  // it keeps a confirmation -- in the app's own dialog, which says what the
-  // consequence actually is rather than just "are you sure".
-  const handleRemoveService = (serviceId, name) => {
-    setConfirmAction({
-      title: `Remove ${name}?`,
-      message: `You will stop receiving ${name} job offers. You can request the skill again later, but it will need approval.`,
-      confirmText: 'Remove skill',
-      onConfirm: () => handleRemoveServiceConfirmed(serviceId, name),
-    });
-  };
-
-  const handleRemoveServiceConfirmed = async (serviceId, name) => {
-    setConfirmAction(null);
+  const handleRemoveService = async (serviceId, name) => {
+    if (!window.confirm(`Are you sure you want to remove ${name} from your profile?`)) return;
     try {
       setActionId(serviceId);
       setError('');
@@ -483,16 +469,6 @@ export function EmployeeServicesPage() {
           </div>
         )}
       </div>
-
-      <ConfirmDialog
-        isOpen={Boolean(confirmAction)}
-        onClose={() => setConfirmAction(null)}
-        onConfirm={confirmAction?.onConfirm || (() => {})}
-        title={confirmAction?.title || ''}
-        message={confirmAction?.message || ''}
-        confirmText={confirmAction?.confirmText || 'Confirm'}
-        confirmVariant="danger"
-      />
     </AppShell>
   );
 }

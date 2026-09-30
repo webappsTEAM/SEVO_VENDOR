@@ -32,6 +32,14 @@ class Migration(migrations.Migration):
             model_name='vendorwallet',
             name='company',
         ),
+        migrations.RemoveIndex(
+            model_name='vendorwallettransaction',
+            name='vwt_wallet_created_idx',
+        ),
+        migrations.RemoveIndex(
+            model_name='vendorwalletwithdrawal',
+            name='vww_wallet_created_idx',
+        ),
         migrations.RemoveField(
             model_name='vendorwalletwithdrawal',
             name='wallet',
@@ -51,6 +59,10 @@ class Migration(migrations.Migration):
         migrations.RemoveField(
             model_name='vendorwalletwithdrawal',
             name='approved_by',
+        ),
+        migrations.RemoveIndex(
+            model_name='vendorwalletwithdrawal',
+            name='vww_company_status_idx',
         ),
         migrations.RemoveField(
             model_name='vendorwalletwithdrawal',

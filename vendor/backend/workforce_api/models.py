@@ -136,7 +136,15 @@ class WorkforceRequiredDocument(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     # GT-A-02: which job service categories this requirement applies to (e.g.
-    # ["goods_transport_truck", "goods_transport_two_wheeler", "packers_movers"]). Empty list
+    # ["goods_transport_truck", "goods_transport_two_wheeler", "packers_movers"]
+    # -- the actual ServiceRequest.service_category slugs Gate 3 compares
+    # against in automatic_dispatch.check_candidate_eligibility(); the
+    # previous example here ("mini_truck", "two_wheeler_delivery") used
+    # values that don't match any real service_category or Vehicle.
+    # VehicleType member anywhere in this codebase, so an admin who copied
+    # it verbatim into applies_to_categories would configure a requirement
+    # that silently never applies to any GT job. Comment-only fix -- the
+    # field and its matching logic were already correct). Empty list
     # (the default) preserves the original behaviour -- applies to every job,
     # exactly as every existing row already does. Only non-empty lists scope
     # a requirement (e.g. Driving Licence / RC / Insurance / Permit) to
@@ -656,7 +664,7 @@ class PreServiceVerification(models.Model):
         # Work area photo and appliance photo are optional evidence.
         # Mandatory gates: arrival geofence check-in, customer OTP verification, and technician presence selfie.
         if self.job and getattr(self.job, "otp_verified", False) and not self.otp_verified:
-            self.otp_verified = True
+            setattr(self, "otp_verified", True)
             if getattr(self.job, "otp_verified_at", None) and not self.otp_verified_at:
                 self.otp_verified_at = self.job.otp_verified_at
         ready = bool(
@@ -664,7 +672,7 @@ class PreServiceVerification(models.Model):
             and (self.otp_verified or (self.job and getattr(self.job, "otp_verified", False)))
             and self.presence_photo
         )
-        self.is_complete = ready
+        setattr(self, "is_complete", ready)
         if ready and not self.completed_at:
             from django.utils import timezone
             self.completed_at = timezone.now()
@@ -673,6 +681,79 @@ class PreServiceVerification(models.Model):
 
     def __str__(self):
         return f"PreService Verification Job #{self.job_id} (Complete: {self.is_complete})"
+
+
+class LogisticsCheckpointVerification(models.Model):
+    """
+    Per-location verification record for the mid-trip checkpoints of a
+    logistics (Goods Transport / Packers & Movers) job.
+
+    PreServiceVerification is one-to-one with the job and describes the
+    job-START gate at the booking address. A trip has two further physical
+    checkpoints -- the pickup (where goods are loaded) and the drop (where
+    they are handed over) -- and reusing the start record for those would
+    overwrite the start evidence with a different location. So each
+    checkpoint gets its own row, keyed by (job, checkpoint).
+
+    Gates enforced from this record live in
+    workforce_api/services/logistics_checkpoints.py; the leg endpoint
+    (WorkforceJobLogisticsLegView) refuses to advance past a checkpoint
+    whose required evidence is missing.
+    """
+
+    class Checkpoint(models.TextChoices):
+        PICKUP = "PICKUP", "Pickup"
+        DROP = "DROP", "Drop"
+
+    job = models.ForeignKey(
+        "service_requests.ServiceRequest",
+        on_delete=models.CASCADE,
+        related_name="logistics_checkpoint_verifications",
+    )
+    checkpoint = models.CharField(max_length=10, choices=Checkpoint.choices)
+    employee = models.ForeignKey(
+        "employees.Employee",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="logistics_checkpoint_verifications",
+    )
+
+    # GPS geofence check at this checkpoint's location.
+    geofence_passed = models.BooleanField(default=False)
+    gps_lat = models.FloatField(null=True, blank=True)
+    gps_lon = models.FloatField(null=True, blank=True)
+    target_lat = models.FloatField(null=True, blank=True)
+    target_lon = models.FloatField(null=True, blank=True)
+    distance_m = models.FloatField(null=True, blank=True)
+    # "", "override" (geofence disabled / allow_all_locations) or
+    # "no_target_coordinates" (booking has no coordinates for this point).
+    geofence_note = models.CharField(max_length=40, blank=True, default="")
+    gps_verified_at = models.DateTimeField(null=True, blank=True)
+
+    # Proof photo (goods loaded at pickup / goods unloaded at drop).
+    proof_photo = models.FileField(upload_to="logistics_checkpoints/", null=True, blank=True)
+    photo_uploaded_at = models.DateTimeField(null=True, blank=True)
+
+    # Delivery OTP (drop checkpoint only).
+    otp_code = models.CharField(max_length=6, blank=True, default="")
+    otp_generated_at = models.DateTimeField(null=True, blank=True)
+    otp_expires_at = models.DateTimeField(null=True, blank=True)
+    otp_attempts = models.IntegerField(default=0)
+    otp_verified = models.BooleanField(default=False)
+    otp_verified_at = models.DateTimeField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "workforce_logistics_checkpoint_verification"
+        constraints = [
+            models.UniqueConstraint(fields=["job", "checkpoint"], name="uniq_logistics_checkpoint_per_job"),
+        ]
+
+    def __str__(self):
+        return f"{self.checkpoint} checkpoint for job #{self.job_id}"
 
 
 class WorkforceWorkExtension(models.Model):
@@ -906,7 +987,7 @@ class PostServiceProof(models.Model):
         )
         if ready and not self.is_submitted:
             from django.utils import timezone
-            self.is_submitted = True
+            setattr(self, "is_submitted", True)
             self.submitted_at = timezone.now()
         return self.is_submitted
 
@@ -1308,11 +1389,6 @@ class JobPayment(models.Model):
         default=PaymentStatus.PENDING,
         db_index=True,
     )
-    is_mock = models.BooleanField(
-        default=False,
-        db_index=True,
-        help_text="True if originated from a mock/test payment provider. Mock jobs never generate real earnings.",
-    )
     amount_due = models.DecimalField(
         max_digits=10,
         decimal_places=2,
@@ -1418,7 +1494,7 @@ class JobPayment(models.Model):
         Canonical derived property representing whether cash has been physically collected.
         Returns True if cash_collected_at is recorded, False otherwise.
         """
-        return bool(self.cash_collected_at is not None)
+        return self.cash_collected_at is not None
 
 
 class CashSettlement(models.Model):
@@ -1694,20 +1770,14 @@ class WalletAccount(models.Model):
         return f"{self.get_account_type_display()} - {owner}"
 
     def current_balance(self):
-        """Sum of RELEASED, NON-MOCK ledger entries only -- HELD entries and mock entries
-        are not withdrawable yet and must not appear in the balance the owner can act on."""
+        """Sum of RELEASED ledger entries only -- HELD entries (pending
+        dispute window, see WalletLedgerEntry.status) are not withdrawable
+        yet and must not appear in the balance the owner can act on."""
         from django.db.models import Sum
-        result = self.ledger_entries.filter(
-            status=WalletLedgerEntry.Status.RELEASED,
-            is_mock=False,
-        ).aggregate(
+        result = self.ledger_entries.filter(status=WalletLedgerEntry.Status.RELEASED).aggregate(
             total=Sum("signed_amount")
         )
         return result["total"] or 0
-
-    def get_withdrawable_balance(self):
-        """Alias for current_balance returning strictly non-mock released funds."""
-        return self.current_balance()
 
     def withdrawal_limit_for_tier(self):
         """Daily withdrawal ceiling by KYC tier (Section 1 table). This is
@@ -1774,11 +1844,6 @@ class WalletLedgerEntry(models.Model):
         help_text="JOB_CREDIT entries are held until this timestamp (dispute window) before counting toward balance.",
     )
 
-    is_mock = models.BooleanField(
-        default=False,
-        db_index=True,
-        help_text="True for mock transactions. Mock entries are never released to withdrawable balance.",
-    )
     notes = models.CharField(max_length=255, blank=True, default="")
     is_mock = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
@@ -2550,8 +2615,9 @@ class WorkforceQuote(models.Model):
                 if "quote_number" not in str(exc):
                     raise
                 last_error = exc
-                self.quote_number = ""
-        raise last_error
+                setattr(self, "quote_number", "")
+        if last_error is not None:
+            raise last_error
 
 
 class WorkforceQuoteItem(models.Model):
@@ -2923,8 +2989,9 @@ class WorkforceInvoice(models.Model):
                 if "invoice_number" not in str(exc):
                     raise
                 last_error = exc
-                self.invoice_number = ""
-        raise last_error
+                setattr(self, "invoice_number", "")
+        if last_error is not None:
+            raise last_error
 
 
 class WorkforceInvoiceItem(models.Model):
@@ -3166,6 +3233,38 @@ class WorkforceServicePricingPolicy(models.Model):
                   "workmanship warranty, so quote items claiming it are rejected.",
     )
 
+    # GT waiting / detention charges (admin-configured; disabled by default).
+    # Null free-minute values or a zero per-minute rate mean "no waiting
+    # charge" -- SEVO has not set a commercial rule yet, so nothing is billed
+    # until an admin configures it. Computed by services/waiting_charges.py
+    # from ServiceRequest.logistics_leg_history.
+    waiting_free_loading_minutes = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="GT: free minutes for loading at pickup. Blank disables loading waiting charges.",
+    )
+    waiting_free_unloading_minutes = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="GT: free minutes for unloading at drop. Blank disables unloading waiting charges.",
+    )
+    waiting_charge_per_minute = models.DecimalField(
+        max_digits=8, decimal_places=2, default=0.00,
+        help_text="GT: amount charged per minute beyond the free window. 0 disables.",
+    )
+    waiting_charge_cap = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text="GT: maximum waiting charge per booking. Blank means no cap.",
+    )
+
+    # Technician-side no-penalty cancellation window (minutes after
+    # acceptance). Default 5 matches the value that was previously hardcoded
+    # in WorkforceJobAcceptView / WorkforceJobCancelAssignmentView /
+    # WorkforceJobTechnicianCancelView, so behaviour is unchanged until an
+    # admin edits it. Read via services.pricing_policy.technician_cancel_window_minutes.
+    technician_free_cancel_minutes = models.PositiveIntegerField(
+        default=5,
+        help_text="Minutes after accepting a job during which the technician may cancel without penalty.",
+    )
+
     is_active = models.BooleanField(default=True, db_index=True)
     updated_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -3319,6 +3418,8 @@ class VendorStore(models.Model):
     logo_url = models.CharField(max_length=1000, blank=True, default="")
     banner_url = models.CharField(max_length=1000, blank=True, default="")
     fssai_license_number = models.CharField(max_length=100, blank=True, default="")
+    gst_number = models.CharField(max_length=50, blank=True, default="")
+    onboarding = models.JSONField(default=dict, blank=True)
     store_address = models.TextField(blank=True, default="")
     latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
@@ -3849,6 +3950,12 @@ class SellerHubCategory(models.Model):
     description = models.TextField(blank=True, default="")
     icon = models.CharField(max_length=100, blank=True, default="Store")
     image = models.CharField(max_length=500, blank=True, default="")
+    image_url = models.CharField(
+        max_length=1000,
+        blank=True,
+        default="",
+        help_text="Category photo image URL or uploaded asset path",
+    )
     parent = models.ForeignKey(
         "self",
         on_delete=models.RESTRICT,
@@ -3935,6 +4042,10 @@ class SellerProduct(models.Model):
         REJECTED = "REJECTED", "Rejected"
         PAUSED = "PAUSED", "Paused"
 
+    class FulfillmentMethod(models.TextChoices):
+        SELF_SHIP = "SELF_SHIP", "Self-Ship"
+        FULFILLED_BY_SEVO = "FULFILLED_BY_SEVO", "Fulfilled by Sevo"
+
     company = models.ForeignKey(
         "companies.Company",
         on_delete=models.CASCADE,
@@ -3959,10 +4070,24 @@ class SellerProduct(models.Model):
     brand = models.CharField(max_length=150, blank=True, default="", db_index=True)
     sku = models.CharField(max_length=100, db_index=True)
     barcode = models.CharField(max_length=100, blank=True, default="", db_index=True)
+    fulfillment_method = models.CharField(
+        max_length=30,
+        choices=FulfillmentMethod.choices,
+        default=FulfillmentMethod.SELF_SHIP,
+        db_index=True,
+        help_text="Fulfillment mode: SELF_SHIP (seller dispatches directly) or FULFILLED_BY_SEVO (FBS - stock held at Sevo warehouse)",
+    )
     unit = models.CharField(max_length=50, default="piece")
     pack_size = models.CharField(max_length=50, default="1")
     mrp = models.DecimalField(max_digits=10, decimal_places=2)
     selling_price = models.DecimalField(max_digits=10, decimal_places=2)
+    procurement_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Seller's own cost/acquisition price for this product. Private — visible only to the owning seller and platform admins.",
+    )
     tax_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("0.00"))
     hsn_code = models.CharField(max_length=50, blank=True, default="")
     storage_info = models.CharField(max_length=255, blank=True, default="")
@@ -4014,7 +4139,7 @@ class SellerProduct(models.Model):
 
     @rejection_reason.setter
     def rejection_reason(self, value):
-        self.admin_review_note = value or ""
+        setattr(self, "admin_review_note", str(value or ""))
 
     def __str__(self):
         return f"{self.title} ({self.sku}) - {self.company.company_name}"
@@ -4071,10 +4196,199 @@ class SellerProductAuditLog(models.Model):
     def __str__(self):
         return f"Audit #{self.id} for Product #{self.product_id}: {self.action} ({self.from_status} -> {self.to_status})"
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# SELLER HUB BASKET / COMBO OFFERS (Phase 3 Bundle Extensions)
+# ═══════════════════════════════════════════════════════════════════════════════
 
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+class SellerProductBasket(models.Model):
+    """
+    Multi-product combo bundle ("Basket Offer") created by a Seller Hub merchant.
+    Bundles 3 or more approved products with margin-driven or fixed-price deal pricing.
+    """
+    class Status(models.TextChoices):
+        DRAFT = "DRAFT", "Draft"
+        ACTIVE = "ACTIVE", "Active"
+        PAUSED = "PAUSED", "Paused"
+        OUT_OF_STOCK = "OUT_OF_STOCK", "Out of Stock"
+
+    class PricingMode(models.TextChoices):
+        MARGIN = "MARGIN", "Margin Percentage"
+        FIXED_PRICE = "FIXED_PRICE", "Fixed Basket Price"
+
+    company = models.ForeignKey(
+        "companies.Company",
+        on_delete=models.CASCADE,
+        related_name="seller_product_baskets",
+        db_index=True,
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_seller_baskets",
+    )
+    title = models.CharField(max_length=255, db_index=True)
+    description = models.TextField(blank=True, default="")
+    image_url = models.CharField(max_length=1000, blank=True, default="")
+    status = models.CharField(
+        max_length=30,
+        choices=Status.choices,
+        default=Status.DRAFT,
+        db_index=True,
+    )
+    pricing_mode = models.CharField(
+        max_length=30,
+        choices=PricingMode.choices,
+        default=PricingMode.MARGIN,
+    )
+    margin_percent = models.DecimalField(
+        max_digits=8,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Seller margin percentage on total procurement cost",
+    )
+    selling_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        help_text="Final customer-facing selling price for the combo basket",
+    )
+    total_mrp = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        help_text="Sum of component MRPs * quantities at last calculation",
+    )
+    total_procurement_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        help_text="Sum of component procurement prices * quantities at last calculation",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "workforce_seller_product_basket"
+        ordering = ["-updated_at", "-created_at"]
+        indexes = [
+            models.Index(fields=["company", "status"], name="wf_basket_comp_stat_idx"),
+            models.Index(fields=["status", "updated_at"], name="wf_basket_stat_upd_idx"),
+        ]
+
+    def __str__(self):
+        return f"Basket Offer: {self.title} ({self.company.company_name}) - ₹{self.selling_price} [{self.status}]"
+
+    def recalculate_totals(self, save=False):
+        """Authoritative server-side calculation of total_mrp, total_procurement_price, selling_price/margin."""
+        items = list(self.items.select_related("product").all())
+        mrp_sum = Decimal("0.00")
+        proc_sum = Decimal("0.00")
+        missing_proc = []
+
+        for item in items:
+            prod = item.product
+            qty = Decimal(str(item.quantity))
+            mrp_sum += (prod.mrp or Decimal("0.00")) * qty
+            if prod.procurement_price is None:
+                missing_proc.append(prod.title or f"Product #{prod.id}")
+            else:
+                proc_sum += prod.procurement_price * qty
+
+        self.total_mrp = mrp_sum
+        self.total_procurement_price = proc_sum
+
+        if self.pricing_mode == self.PricingMode.MARGIN and self.margin_percent is not None:
+            mult = Decimal("1.00") + (self.margin_percent / Decimal("100.00"))
+            self.selling_price = (proc_sum * mult).quantize(Decimal("0.01"))
+        elif self.pricing_mode == self.PricingMode.FIXED_PRICE and self.selling_price is not None:
+            if proc_sum > Decimal("0.00"):
+                self.margin_percent = (((self.selling_price - proc_sum) / proc_sum) * Decimal("100.00")).quantize(Decimal("0.01"))
+            else:
+                self.margin_percent = Decimal("0.00")
+
+        if save:
+            self.save(update_fields=["total_mrp", "total_procurement_price", "selling_price", "margin_percent", "updated_at"])
+
+        return {
+            "total_mrp": self.total_mrp,
+            "total_procurement_price": self.total_procurement_price,
+            "selling_price": self.selling_price,
+            "margin_percent": self.margin_percent,
+            "missing_procurement_products": missing_proc,
+        }
+
+    def check_availability(self):
+        """
+        Validates if all component products are APPROVED, company active, and available stock >= required qty.
+        Returns (is_available: bool, available_units: int, reasons: list[str])
+        """
+        if not self.company or not self.company.is_active:
+            return False, 0, ["Merchant store is inactive."]
+
+        items = list(self.items.select_related("product", "product__inventory", "product__company").all())
+        if len(items) < 3:
+            return False, 0, ["Basket must contain at least 3 distinct products."]
+
+        reasons = []
+        max_possible_units = []
+        for it in items:
+            p = it.product
+            if p.status != SellerProduct.Status.APPROVED:
+                reasons.append(f"Product '{p.title}' is not approved (Status: {p.status}).")
+            if p.procurement_price is None:
+                reasons.append(f"Product '{p.title}' is missing a procurement price.")
+            inv = getattr(p, "inventory", None)
+            avail_qty = max(Decimal("0.000"), (inv.on_hand_qty - inv.reserved_qty)) if inv else Decimal("0.000")
+            req_qty = Decimal(str(it.quantity))
+            if req_qty > Decimal("0.000"):
+                max_possible_units.append(int(avail_qty // req_qty))
+            else:
+                max_possible_units.append(0)
+            if avail_qty < req_qty:
+                reasons.append(f"Product '{p.title}' has insufficient stock ({avail_qty} available, {it.quantity} required).")
+
+        available_units = min(max_possible_units) if max_possible_units else 0
+        is_avail = len(reasons) == 0 and available_units > 0
+        return is_avail, available_units, reasons
+
+
+class SellerProductBasketItem(models.Model):
+    """
+    Component product row in a combo basket offer.
+    """
+    basket = models.ForeignKey(
+        SellerProductBasket,
+        on_delete=models.CASCADE,
+        related_name="items",
+        db_index=True,
+    )
+    product = models.ForeignKey(
+        SellerProduct,
+        on_delete=models.CASCADE,
+        related_name="basket_items",
+        db_index=True,
+    )
+    quantity = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        db_table = "workforce_seller_product_basket_item"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["basket", "product"],
+                name="unique_seller_product_basket_item",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.quantity}x {self.product.title} in Basket #{self.basket_id}"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # SELLER HUB INVENTORY MANAGEMENT (Phase 3)
-# ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+# ═══════════════════════════════════════════════════════════════════════════════
 
 class SellerInventory(models.Model):
     """
@@ -4537,6 +4851,13 @@ class SellerOrderItem(models.Model):
         max_digits=10,
         decimal_places=2,
     )
+    procurement_price_snapshot = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Snapshot of seller's procurement price at time of order creation/fulfillment.",
+    )
     line_total = models.DecimalField(
         max_digits=12,
         decimal_places=2,
@@ -4548,6 +4869,14 @@ class SellerOrderItem(models.Model):
         blank=True,
         related_name="order_items",
     )
+    basket = models.ForeignKey(
+        SellerProductBasket,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="order_items",
+    )
+    basket_title = models.CharField(max_length=255, blank=True, default="")
     is_picked = models.BooleanField(default=False)
     is_packed = models.BooleanField(default=False)
     notes = models.TextField(blank=True, default="")
@@ -5243,49 +5572,440 @@ def get_seller_assigned_warehouse(company_or_id):
         return None
 
 
-class WorkforceJobHold(models.Model):
-    """
-    Tracks multi-day job hold/pause events (e.g. rain/weather, emergency, client unavailability).
-    Frees technician availability while job is on hold; automatically extends completion deadline upon resumption.
-    """
-    class Status(models.TextChoices):
-        ACTIVE = "ACTIVE", "Active Hold"
-        RESUMED = "RESUMED", "Resumed"
-        CANCELLED = "CANCELLED", "Cancelled"
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE V: WAREHOUSE PORTAL & STAFF AUTHENTICATION
+# ═══════════════════════════════════════════════════════════════════════════════
 
-    job = models.ForeignKey(
-        "service_requests.ServiceRequest",
-        on_delete=models.CASCADE,
-        related_name="job_holds",
-    )
-    employee = models.ForeignKey(
-        "employees.Employee",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="job_holds",
-    )
-    held_by = models.ForeignKey(
+class WarehouseStaff(models.Model):
+    """
+    Operator / staff credentials linked to a specific Warehouse facility.
+    Grants portal login access to view and manage that warehouse's orders, inventory, and profile.
+    """
+    user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="created_job_holds",
+        on_delete=models.CASCADE,
+        related_name="warehouse_profile",
+        db_index=True,
     )
-    reason = models.CharField(max_length=100, default="WEATHER_DELAY")
-    notes = models.TextField(blank=True, default="")
-    hold_start = models.DateTimeField(auto_now_add=True)
-    hold_end = models.DateTimeField(null=True, blank=True)
-    status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE, db_index=True)
+    warehouse = models.ForeignKey(
+        Warehouse,
+        on_delete=models.CASCADE,
+        related_name="staff_members",
+        db_index=True,
+    )
+    role = models.CharField(max_length=50, default="operator", help_text="Role at the warehouse: operator, manager, supervisor")
+    is_primary = models.BooleanField(default=True, help_text="Primary contact/account for this warehouse facility")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        db_table = "workforce_job_hold"
+        db_table = "workforce_warehouse_staff"
+        indexes = [
+            models.Index(fields=["user", "warehouse"], name="wf_wh_staff_user_wh_idx"),
+            models.Index(fields=["warehouse", "is_primary"], name="wf_wh_staff_wh_prim_idx"),
+        ]
+
+    def __str__(self):
+        return f"User #{self.user_id} ({self.user.username}) -> Warehouse #{self.warehouse_id} ({self.warehouse.name})"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE X: SELLER-TO-WAREHOUSE STOCK REQUEST (FULFILLED BY SEVO / INBOUND INTAKE)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class WarehouseInboundRequest(models.Model):
+    """
+    Phase X: Merchant inbound stock replenishment request for Fulfilled by Sevo (FBS) items.
+    Links a seller product to the merchant's designated warehouse.
+    Warehouse staff review and Accept (awaiting physical receipt / Phase Y) or Reject with notes.
+    Phase Z: Handles Shortfall reporting & Seller accept/reject return resolution.
+    """
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "Pending Review"
+        ACCEPTED = "ACCEPTED", "Accepted - Awaiting Receipt"
+        SHORT_RECEIVED = "SHORT_RECEIVED", "Shortfall Reported - Pending Seller Decision"
+        COMPLETED = "COMPLETED", "Completed / Verified"
+        REJECTED_RETURN = "REJECTED_RETURN", "Shortfall Rejected - Return to Seller"
+        REJECTED = "REJECTED", "Rejected"
+        CANCELLED = "CANCELLED", "Cancelled"
+
+    class SellerShortfallDecision(models.TextChoices):
+        ACCEPT_PARTIAL = "ACCEPT_PARTIAL", "Accept Partial Batch"
+        REJECT_RETURN = "REJECT_RETURN", "Reject & Return Entire Batch"
+
+    product = models.ForeignKey(
+        SellerProduct,
+        on_delete=models.CASCADE,
+        related_name="inbound_requests",
+        db_index=True,
+    )
+    company = models.ForeignKey(
+        "companies.Company",
+        on_delete=models.CASCADE,
+        related_name="warehouse_inbound_requests",
+        db_index=True,
+    )
+    warehouse = models.ForeignKey(
+        Warehouse,
+        on_delete=models.PROTECT,
+        related_name="inbound_requests",
+        db_index=True,
+    )
+    requested_quantity = models.PositiveIntegerField(
+        help_text="Units of inventory requested for warehouse storage/intake"
+    )
+    confirmed_quantity = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Units physically scanned and confirmed at warehouse intake (Phase Z)"
+    )
+    status = models.CharField(
+        max_length=30,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+    )
+    seller_note = models.TextField(blank=True, default="", help_text="Note or special handling instructions from seller")
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="requested_inbound_stock",
+    )
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="reviewed_inbound_stock",
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    reviewer_note = models.TextField(blank=True, default="", help_text="Note or rejection reason provided by warehouse staff")
+
+    # Phase Z: Warehouse Shortfall Report fields
+    shortfall_note = models.TextField(blank=True, default="", help_text="Warehouse staff explanation of missing/short units")
+    shortfall_reported_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="reported_shortfalls",
+    )
+    shortfall_reported_at = models.DateTimeField(null=True, blank=True)
+
+    # Phase Z: Seller Shortfall Decision fields
+    seller_shortfall_decision = models.CharField(
+        max_length=30,
+        blank=True,
+        default="",
+        choices=SellerShortfallDecision.choices,
+        help_text="Seller decision on shortfall notice: ACCEPT_PARTIAL or REJECT_RETURN"
+    )
+    seller_shortfall_decided_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="decided_shortfalls",
+    )
+    seller_shortfall_decided_at = models.DateTimeField(null=True, blank=True)
+    seller_shortfall_note = models.TextField(blank=True, default="", help_text="Seller note upon deciding shortfall")
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "workforce_warehouse_inbound_request"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["company", "status"], name="wf_wh_inb_comp_stat_idx"),
+            models.Index(fields=["warehouse", "status"], name="wf_wh_inb_wh_stat_idx"),
+            models.Index(fields=["product", "status"], name="wf_wh_inb_prod_stat_idx"),
+        ]
+
+    def __str__(self):
+        return f"Inbound #{self.id} | {self.product.title} x {self.requested_quantity} -> {self.warehouse.name} ({self.status})"
+
+
+class WarehouseInboundRequestAuditLog(models.Model):
+    """
+    Phase X: Immutable audit trail for inbound stock request lifecycle transitions.
+    """
+    inbound_request = models.ForeignKey(
+        WarehouseInboundRequest,
+        on_delete=models.CASCADE,
+        related_name="audit_logs",
+        db_index=True,
+    )
+    action = models.CharField(max_length=50)  # CREATED, ACCEPTED, REJECTED, CANCELLED, RECEIVE_COMPLETE, SHORTFALL_REPORTED, SHORTFALL_ACCEPTED_PARTIAL, SHORTFALL_REJECTED_RETURN
+    from_status = models.CharField(max_length=30, blank=True, default="")
+    to_status = models.CharField(max_length=30)
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="warehouse_inbound_audit_logs",
+    )
+    notes = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "workforce_warehouse_inbound_request_audit_log"
         ordering = ["-created_at"]
 
     def __str__(self):
-        return f"Hold #{self.id} for Job #{self.job_id} ({self.reason}) [{self.status}]"
+        return f"Inbound #{self.inbound_request_id} Log: {self.action} ({self.from_status} -> {self.to_status})"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE Y: UNIQUE PER-UNIT BARCODE TRACKING & PHYSICAL SCAN-IN VERIFICATION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class WarehouseInboundUnit(models.Model):
+    """
+    Phase Y: Unique per-unit physical stock tracking for WarehouseInboundRequest.
+    Each requested unit is generated at ACCEPT time with an immutable unique barcode.
+    Status transitions:
+    - PENDING_SCAN: awaiting physical scan at intake
+    - RECEIVED: physically scanned & verified
+    - NOT_RECEIVED: shorted / missing upon intake completion or shortfall reconciliation (Phase Z)
+    - RETURN_PENDING: returning to merchant following shortfall rejection (Phase Z)
+    """
+    class Status(models.TextChoices):
+        PENDING_SCAN = "PENDING_SCAN", "Pending Scan"
+        RECEIVED = "RECEIVED", "Received / Verified"
+        NOT_RECEIVED = "NOT_RECEIVED", "Not Received / Missing"
+        RETURN_PENDING = "RETURN_PENDING", "Return Pending to Seller"
+
+    inbound_request = models.ForeignKey(
+        WarehouseInboundRequest,
+        on_delete=models.CASCADE,
+        related_name="units",
+        db_index=True,
+    )
+    unit_number = models.PositiveIntegerField(
+        help_text="1-indexed sequence number within the inbound request batch (1 to N)"
+    )
+    barcode = models.CharField(
+        max_length=64,
+        unique=True,
+        db_index=True,
+        help_text="Unique per-unit Code128 serial barcode for physical intake verification",
+    )
+    status = models.CharField(
+        max_length=30,
+        choices=Status.choices,
+        default=Status.PENDING_SCAN,
+        db_index=True,
+    )
+    scanned_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="scanned_inbound_units",
+    )
+    scanned_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "workforce_warehouse_inbound_unit"
+        ordering = ["unit_number", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["inbound_request", "unit_number"],
+                name="unique_inbound_request_unit_number",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["inbound_request", "status"], name="wf_wh_inb_unit_req_stat_idx"),
+            models.Index(fields=["barcode"], name="wf_wh_inb_unit_barcode_idx"),
+        ]
+
+    def __str__(self):
+        return f"Unit #{self.unit_number} of Inbound #{self.inbound_request_id} ({self.barcode}) - {self.status}"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE Z: WAREHOUSE RETURNS (REJECTED INBOUND BATCHES & SHORTFALL REVERSE LOGISTICS)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class WarehouseReturn(models.Model):
+    """
+    Phase Z: Warehouse Return record for rejected inbound batches or shortfall batches returning to the merchant.
+    Maintains relational link to the inbound request, warehouse, seller company, and records the seller's physical address.
+    """
+    class Status(models.TextChoices):
+        PENDING_DISPATCH = "PENDING_DISPATCH", "Pending Return to Seller"
+        DISPATCHED = "DISPATCHED", "Dispatched to Seller"
+        RETURNED = "RETURNED", "Returned / Handed Over to Seller"
+        CANCELLED = "CANCELLED", "Cancelled"
+
+    return_number = models.CharField(
+        max_length=50,
+        unique=True,
+        db_index=True,
+        help_text="Unique return batch identifier (e.g. RET-INB-0042)"
+    )
+    inbound_request = models.ForeignKey(
+        WarehouseInboundRequest,
+        on_delete=models.CASCADE,
+        related_name="warehouse_returns",
+        db_index=True,
+    )
+    warehouse = models.ForeignKey(
+        Warehouse,
+        on_delete=models.PROTECT,
+        related_name="warehouse_portal_returns",
+        db_index=True,
+    )
+    company = models.ForeignKey(
+        "companies.Company",
+        on_delete=models.CASCADE,
+        related_name="warehouse_portal_returns",
+        db_index=True,
+    )
+    product = models.ForeignKey(
+        SellerProduct,
+        on_delete=models.PROTECT,
+        related_name="warehouse_portal_returns",
+    )
+    returned_quantity = models.PositiveIntegerField(
+        help_text="Count of physical units to be returned back to the seller"
+    )
+    seller_address = models.TextField(
+        help_text="Seller company destination address for returning physical goods"
+    )
+    seller_city = models.CharField(max_length=100, blank=True, default="")
+    seller_phone = models.CharField(max_length=50, blank=True, default="")
+    reason = models.CharField(
+        max_length=100,
+        default="INBOUND_SHORTFALL_REJECTED",
+        help_text="Reason code for warehouse return"
+    )
+    notes = models.TextField(blank=True, default="")
+    status = models.CharField(
+        max_length=30,
+        choices=Status.choices,
+        default=Status.PENDING_DISPATCH,
+        db_index=True,
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_warehouse_portal_returns",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "workforce_warehouse_return"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["warehouse", "status"], name="wf_wh_ret_wh_stat_idx"),
+            models.Index(fields=["company", "status"], name="wf_wh_ret_comp_stat_idx"),
+            models.Index(fields=["return_number"], name="wf_wh_ret_num_idx"),
+        ]
+
+    def __str__(self):
+        return f"Return {self.return_number} | {self.product.title} x {self.returned_quantity} -> {self.company.company_name}"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# DELIVERY SLOTS & CAPACITY SCHEDULING (PHASE 1)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class DeliverySlot(models.Model):
+    """
+    Delivery window slot scoped to a physical fulfillment Warehouse.
+    Defines timing, standard vs express delivery types, optional capacity caps per slot,
+    and applicable days of the week.
+    """
+    class SlotType(models.TextChoices):
+        STANDARD = "STANDARD", "Standard Delivery"
+        EXPRESS = "EXPRESS", "Fast Delivery"
+
+    warehouse = models.ForeignKey(
+        Warehouse,
+        on_delete=models.CASCADE,
+        related_name="delivery_slots",
+        db_index=True,
+    )
+    label = models.CharField(
+        max_length=100,
+        help_text="Customer-facing slot label (e.g. '9:00 AM - 11:00 AM')",
+    )
+    start_time = models.TimeField(help_text="Slot window start time")
+    end_time = models.TimeField(help_text="Slot window end time")
+    slot_type = models.CharField(
+        max_length=20,
+        choices=SlotType.choices,
+        default=SlotType.STANDARD,
+        db_index=True,
+    )
+    max_orders_per_slot = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Optional maximum capacity cap per calendar date. Null = unlimited capacity.",
+    )
+    is_active = models.BooleanField(default=True, db_index=True)
+    applicable_days = models.CharField(
+        max_length=20,
+        blank=True,
+        default="",
+        help_text="Comma-separated day-of-week ints (0=Mon .. 6=Sun), empty = every day",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "workforce_delivery_slot"
+        ordering = ["warehouse", "start_time"]
+        indexes = [
+            models.Index(fields=["warehouse", "is_active"], name="wf_dslot_wh_active_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.warehouse.name} - {self.label} ({self.get_slot_type_display()})"
+
+
+class DeliverySlotBooking(models.Model):
+    """
+    Capacity booking ledger entry linking a DeliverySlot to a calendar delivery_date and SellerOrder.
+    """
+    slot = models.ForeignKey(
+        DeliverySlot,
+        on_delete=models.CASCADE,
+        related_name="bookings",
+        db_index=True,
+    )
+    delivery_date = models.DateField(db_index=True)
+    seller_order = models.OneToOneField(
+        "workforce_api.SellerOrder",
+        on_delete=models.CASCADE,
+        related_name="slot_booking",
+        null=True,
+        blank=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "workforce_delivery_slot_booking"
+        indexes = [
+            models.Index(fields=["slot", "delivery_date"], name="wf_dslot_bkg_slot_date_idx"),
+        ]
+
+    def __str__(self):
+        return f"Booking for Slot #{self.slot_id} on {self.delivery_date} (Order #{self.seller_order_id or 'N/A'})"
+
+
+
+
 
 
 class WorkforceScopeReduction(models.Model):
@@ -5380,3 +6100,65 @@ class WorkforceVendorBaseLocation(models.Model):
         target = self.company.company_name if self.company else str(self.employee)
         return f"BaseLocation for {target}: ({self.base_latitude}, {self.base_longitude}) - Max {self.max_service_radius_km}km"
 
+
+class WorkforceJobHold(models.Model):
+    """
+    Records a hold event on a multi-day job (e.g. weather delay, client emergency).
+    Toggling the hold releases the technician back to AVAILABLE status.
+    """
+
+    class Status(models.TextChoices):
+        ACTIVE = "ACTIVE", "Active Hold"
+        RESUMED = "RESUMED", "Resumed"
+        CANCELLED = "CANCELLED", "Cancelled"
+
+    class Reason(models.TextChoices):
+        WEATHER_DELAY = "WEATHER_DELAY", "Weather / Rain Delay"
+        CLIENT_REQUEST = "CLIENT_REQUEST", "Client Request"
+        MATERIAL_DELAY = "MATERIAL_DELAY", "Material / Parts Delay"
+        EMERGENCY = "EMERGENCY", "Emergency"
+        OTHER = "OTHER", "Other"
+
+    job = models.ForeignKey(
+        "service_requests.ServiceRequest",
+        on_delete=models.CASCADE,
+        related_name="job_holds",
+        db_index=True,
+    )
+    employee = models.ForeignKey(
+        "employees.Employee",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="job_holds",
+    )
+    held_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="initiated_job_holds",
+    )
+    reason = models.CharField(
+        max_length=50,
+        choices=Reason.choices,
+        default=Reason.WEATHER_DELAY,
+        db_index=True,
+    )
+    notes = models.TextField(blank=True, default="")
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.ACTIVE,
+        db_index=True,
+    )
+    hold_end = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "workforce_job_hold"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"JobHold #{self.id} on Job #{self.job_id} [{self.status}] - {self.reason}"

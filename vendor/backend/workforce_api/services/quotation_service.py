@@ -71,26 +71,12 @@ def _emit(event_type, quote, **extra):
 
 def can_create_quote(job, psv=None):
     """
-    Authoritative backend gate determining if an employee can create/draft/send
-    a quotation for an estimation job.
-
-    For estimation / quotation-mode jobs the PSV requirements are deliberately
-    lighter than for standard direct-service jobs:
-
-    REQUIRED (both must pass):
-        1. GPS Auto-Verification (geofence_passed) — proves the technician is
-           physically at the customer's premises.
-        2. Customer OTP Verification (otp_verified) — proves the customer
-           acknowledged the technician's arrival.
-
-    NOT required for quote creation:
-        • Employee Presence Selfie — the standard job clock-in flow handles
-          this; estimation jobs capture inspection photos inside the Quote
-          Builder itself.
-        • Work-area / appliance photos — these live inside the Quote Builder
-          inspection form (PaintingInspectionForm / MasonInspectionForm).
-          Requiring them here creates a chicken-and-egg: the technician cannot
-          open the quote to take photos until the quote is created.
+    Authoritative backend gate determining if an employee can create/draft/send a quotation for a job.
+    Enforces all 4 mandatory pre-service verification gates:
+      1. GPS Auto-Verification (geofence_passed)
+      2. Customer OTP Verification (otp_verified)
+      3. Employee Presence Selfie (presence_photo uploaded)
+      4. Required Inspection Photos (min photos uploaded per service type)
     """
     if not job:
         return False, {"code": "JOB_NOT_FOUND", "message": "Job not found", "missing": ["JOB"]}
@@ -121,16 +107,10 @@ def can_create_quote(job, psv=None):
     if psv is None:
         psv = PreServiceVerification.objects.filter(job=job).first()
     if not psv:
-        # No PSV record means the GPS arrival flow was never completed.
-        # Block until the technician uses 'Verify Arrival' on the job card.
         return False, {
             "code": "ESTIMATION_VERIFICATION_INCOMPLETE",
-            "message": (
-                "GPS check-in has not been completed for this job. "
-                "Please tap \"Verify Arrival\" on the job card to confirm your location "
-                "before starting the estimate."
-            ),
-            "missing": ["GPS", "CUSTOMER_OTP"],
+            "message": "Pre-service verification record has not been initialized for this job.",
+            "missing": ["GPS", "CUSTOMER_OTP", "EMPLOYEE_SELFIE", "REQUIRED_PHOTOS"],
             "checks": {
                 "gps_verified": False,
                 "otp_verified": False,
@@ -141,49 +121,35 @@ def can_create_quote(job, psv=None):
 
     gps_ok = bool(psv.geofence_passed)
     otp_ok = bool(psv.otp_verified or job.otp_verified)
-
-    # Selfie and photos are informational only for estimation jobs (see docstring).
     selfie_ok = bool(psv.presence_photo and str(psv.presence_photo).strip())
-    photo_count = (
-        (1 if (psv.work_area_photo and str(psv.work_area_photo).strip()) else 0)
-        + (1 if (psv.appliance_photo and str(psv.appliance_photo).strip()) else 0)
-    )
+
+    # Required photos check
+    min_photos = 2
+    photo_count = (1 if (psv.work_area_photo and str(psv.work_area_photo).strip()) else 0) + (1 if (psv.appliance_photo and str(psv.appliance_photo).strip()) else 0)
     photos_ok = bool(psv.is_complete or photo_count > 0)
 
-    # Only GPS and OTP are hard requirements for estimation quote creation.
     missing = []
     if not gps_ok:
         missing.append("GPS")
     if not otp_ok:
         missing.append("CUSTOMER_OTP")
+    if not selfie_ok:
+        missing.append("EMPLOYEE_SELFIE")
+    if not photos_ok:
+        missing.append("REQUIRED_PHOTOS")
 
     is_allowed = len(missing) == 0
-
-    if is_allowed:
-        message = "All required checks passed. You may now create the estimate."
-    else:
-        label_map = {
-            "GPS": "GPS location check",
-            "CUSTOMER_OTP": "customer OTP verification",
-        }
-        labels = [label_map.get(m, m) for m in missing]
-        message = (
-            f"Cannot start estimate — {' and '.join(labels)} "
-            f"{'has' if len(labels) == 1 else 'have'} not been completed. "
-            "Please complete these steps on the job card before creating the estimate."
-        )
-
     details = {
         "code": "ESTIMATION_VERIFICATION_COMPLETE" if is_allowed else "ESTIMATION_VERIFICATION_INCOMPLETE",
-        "message": message,
+        "message": "All estimation verification checks passed." if is_allowed else f"Missing required verification checks: {', '.join(missing)}",
         "missing": missing,
         "checks": {
             "gps_verified": gps_ok,
             "otp_verified": otp_ok,
-            # Informational only — not required for quote creation:
             "selfie_verified": selfie_ok,
             "photos_verified": photos_ok,
-            "photo_count": photo_count,
+            "min_photos_required": min_photos,
+            "photos_uploaded_count": photo_count,
         }
     }
     return is_allowed, details
@@ -272,31 +238,49 @@ def send_quote_to_customer(quote_id, actor=None, valid_days=7):
         recalculate_quote_totals(quote)
         quote.refresh_from_db()
 
+        # Technician submitting AC estimation quote must always route through Vendor Admin review
+        is_ac_estimation = (
+            getattr(quote.job, "is_estimation", False) or
+            getattr(quote.job, "request_kind", "") == "ESTIMATION" or
+            getattr(quote.job, "job_type", "") == "ESTIMATION" or
+            "ac" in (quote.service_category or "").lower()
+        )
+        is_admin_actor = bool(actor and ((getattr(actor, "role", "") or "").lower() in ("admin", "manager") or getattr(actor, "is_staff", False)))
+
         held_reason = None
-        if quote.requires_structural_clearance and not quote.is_structurally_cleared:
+        if is_ac_estimation and not quote.admin_cleared_at and not is_admin_actor:
+            held_reason = (
+                "AC Estimation quotation must be reviewed and approved by Vendor Admin "
+                "before sending to customer."
+            )
+        elif quote.requires_structural_clearance and not quote.is_structurally_cleared:
             held_reason = (
                 "Quotation involves structural modification or load-bearing demolition. "
                 "Admin or Structural Engineer clearance is required before sending."
             )
         else:
             amount = quote.net_payable or quote.total_amount
+            requires_admin = pricing_policy.requires_admin_approval(quote.service_category)
             over_threshold, threshold = pricing_policy.needs_pre_send_review(
                 quote.service_category, amount
             )
-            if over_threshold and not quote.admin_cleared_at:
+            if (requires_admin or over_threshold) and not quote.admin_cleared_at and not is_admin_actor:
                 held_reason = (
-                    f"Quotation total {amount} exceeds the {threshold} review threshold "
-                    f"for {quote.service_category}. It has been sent for admin review "
+                    f"Quotation for {quote.service_category} requires CRM Admin clearance before release "
                     "and will reach the customer once approved."
                 )
 
         if held_reason:
             quote.status = WorkforceQuote.Status.PENDING_REVIEW
-            quote.save(update_fields=["status", "updated_at"])
+            quote.submitted_for_approval_at = timezone.now()
+            quote.save(update_fields=["status", "submitted_for_approval_at", "updated_at"])
+            _project(quote)
 
     if held_reason:
         _emit("QUOTATION_PENDING_REVIEW", quote, reason=held_reason)
-        raise ValidationError(held_reason)
+        # Suppress customer projection until admin releases
+        _project(quote)
+        return quote
 
     with transaction.atomic():
         quote = WorkforceQuote.objects.select_for_update().get(id=quote_id)
@@ -338,64 +322,37 @@ def record_customer_decision(quote_id, action, notes="", reason="", token=None, 
 
     with transaction.atomic():
         query = WorkforceQuote.objects.select_for_update().filter(id=quote_id)
+        if token:
+            query = query.filter(decision_token=token)
 
         quote = query.first()
         if not quote:
-            raise ValidationError("Quotation not found.")
-
-        if token:
-            if not isinstance(token, str) or len(str(token).strip()) < 16:
-                raise ValidationError("Invalid decision token.")
-            import hmac
-            clean_token = str(token).strip()
-            if not quote.decision_token or not hmac.compare_digest(clean_token, str(quote.decision_token)):
-                raise ValidationError("Invalid decision token.")
+            raise ValidationError("Quotation not found or invalid token.")
 
         # Check expiration
         now = timezone.now()
         if quote.valid_until and quote.valid_until < now:
             quote.status = WorkforceQuote.Status.EXPIRED
-            quote.decision_token = None
-            quote.save(update_fields=["status", "decision_token", "updated_at"])
+            quote.save(update_fields=["status", "updated_at"])
             raise ValidationError("This quotation has expired and can no longer be decided upon.")
 
         if quote.status in [WorkforceQuote.Status.SUPERSEDED, WorkforceQuote.Status.CANCELLED]:
             raise ValidationError(f"This quote version ({quote.quote_version}) is no longer active ({quote.status}).")
-
-        quote.decision_token = None
 
         if clean_action == "ACCEPT":
             quote.customer_decision = "ACCEPTED"
             quote.customer_decided_at = now
             quote.customer_notes = notes
 
-            if requires_admin_approval(quote.service_category):
-                # The customer accepting is a commercial commitment, not an
-                # authorisation to start work. The quote parks here until a
-                # SEVO admin approves it; admin_review_quote() is what
-                # converts and invoices it.
-                quote.status = WorkforceQuote.Status.PENDING_ADMIN_APPROVAL
-                quote.submitted_for_approval_at = now
-                quote.save(update_fields=[
-                    "status", "customer_decision", "customer_decided_at",
-                    "customer_notes", "submitted_for_approval_at", "updated_at",
-                    "decision_token",
-                ])
-                logger.info(
-                    "Quote %s v%s accepted by customer; awaiting SEVO admin approval.",
-                    quote.quote_number, quote.quote_version,
-                )
-                _emit("QUOTATION_APPROVED", quote, awaiting_admin_approval=True)
-                _project(quote)
-                return quote, None
-
             quote.status = WorkforceQuote.Status.CUSTOMER_ACCEPTED
-            quote.save(update_fields=["status", "customer_decision", "customer_decided_at", "customer_notes", "updated_at", "decision_token"])
+            quote.save(update_fields=["status", "customer_decision", "customer_decided_at", "customer_notes", "updated_at"])
 
-            # Admin approval disabled for this deployment -- convert directly.
+            # Directly convert to active work booking and generate 50% milestone invoice
             work_job = convert_accepted_quote_to_work_booking(quote, actor=actor)
             invoice_service.generate_invoice_for_quote(quote, work_job=work_job, actor=actor)
             quote.refresh_from_db()
+            _emit("QUOTATION_ACCEPTED", quote, work_job_id=work_job.id if work_job else None)
+            _project(quote)
             return quote, work_job
 
         elif clean_action == "DECLINE":
@@ -403,7 +360,7 @@ def record_customer_decision(quote_id, action, notes="", reason="", token=None, 
             quote.customer_decision = "DECLINED"
             quote.customer_decline_reason = reason or notes
             quote.customer_decided_at = now
-            quote.save(update_fields=["status", "customer_decision", "customer_decline_reason", "customer_decided_at", "updated_at", "decision_token"])
+            quote.save(update_fields=["status", "customer_decision", "customer_decline_reason", "customer_decided_at", "updated_at"])
             _emit("QUOTATION_DECLINED", quote, reason=quote.customer_decline_reason)
             _project(quote)
             return quote, None
@@ -413,7 +370,7 @@ def record_customer_decision(quote_id, action, notes="", reason="", token=None, 
             quote.customer_decision = "CHANGES_REQUESTED"
             quote.customer_notes = notes or reason
             quote.customer_decided_at = now
-            quote.save(update_fields=["status", "customer_decision", "customer_notes", "customer_decided_at", "updated_at", "decision_token"])
+            quote.save(update_fields=["status", "customer_decision", "customer_notes", "customer_decided_at", "updated_at"])
 
             # Create revised version (V2 draft)
             new_quote = create_revised_quote_version(quote, notes=notes)
@@ -600,7 +557,17 @@ def convert_accepted_quote_to_work_booking(quote, actor=None):
             elif insp_job is not None:
                 technician_name = insp_job.technician_name or ""
                 technician_phone = insp_job.technician_phone or ""
-                technician_user_id = insp_job.technician_id
+
+            if insp_job:
+                insp_updates = []
+                if insp_job.quote_number == quote.quote_number:
+                    insp_job.quote_number = f"{quote.quote_number}-INSP"
+                    insp_updates.append("quote_number")
+                if insp_job.status in ["quotation_sent", "in_progress", "inspection_in_progress", "arrived", "accepted", "en_route", "standard"]:
+                    insp_job.status = "completed"
+                    insp_updates.append("status")
+                if insp_updates:
+                    insp_job.save(update_fields=insp_updates)
 
             work_sr = ServiceRequest.objects.create(
                 request_kind="WORK",
@@ -638,12 +605,54 @@ def convert_accepted_quote_to_work_booking(quote, actor=None):
                 assigned_employee=technician,
                 technician_name=technician_name,
                 technician_phone=technician_phone,
-                technician_id=technician_user_id,
             )
+
+            if insp_job:
+                insp_psv = PreServiceVerification.objects.filter(job=insp_job).first()
+                if insp_psv:
+                    PreServiceVerification.objects.get_or_create(
+                        job=work_sr,
+                        defaults={
+                            "employee": technician or insp_psv.employee,
+                            "geofence_passed": insp_psv.geofence_passed,
+                            "arrival_lat": insp_psv.arrival_lat,
+                            "arrival_lon": insp_psv.arrival_lon,
+                            "arrived_at": insp_psv.arrived_at,
+                            "presence_photo": insp_psv.presence_photo,
+                            "appliance_photo": insp_psv.appliance_photo,
+                            "work_area_photo": insp_psv.work_area_photo,
+                            "otp_code": insp_psv.otp_code,
+                            "otp_verified": insp_psv.otp_verified,
+                            "otp_verified_at": insp_psv.otp_verified_at,
+                            "is_complete": insp_psv.is_complete,
+                            "completed_at": insp_psv.completed_at,
+                        }
+                    )
 
             quote.work_job = work_sr
             quote.status = WorkforceQuote.Status.CONVERTED
             quote.save(update_fields=["work_job", "status", "updated_at"])
+
+            if technician:
+                try:
+                    from service_requests.models import EmployeeJob
+                    EmployeeJob.objects.update_or_create(
+                        service_request=work_sr,
+                        employee=technician,
+                        defaults={"status": "ASSIGNED", "assigned_date": timezone.now()}
+                    )
+                except Exception as ej_err:
+                    logger.warning("Could not update EmployeeJob for work_sr #%s: %s", work_sr.id, ej_err)
+
+            if insp_job:
+                try:
+                    from service_requests.models import Estimation
+                    est = Estimation.objects.filter(service_request=insp_job).first()
+                    if est:
+                        est.status = "CONVERTED_TO_JOB"
+                        est.save(update_fields=["status", "updated_at"])
+                except Exception as est_err:
+                    logger.warning("Could not sync Estimation status: %s", est_err)
 
             logger.info("Successfully converted Quote %s to Work ServiceRequest #%s", quote.quote_number, work_sr.id)
             return work_sr
@@ -829,9 +838,14 @@ def _activate_approved_quote(quote, admin_user):
         from service_requests.models import EstimationQuotation
         from service_requests.vendor_views import activate_service_job_from_quotation
 
+        from django.db.models import Q
         est_quote = (
             EstimationQuotation.objects
-            .filter(quote_ref=quote.quote_number)
+            .filter(
+                Q(quote_ref=quote.quote_number)
+                | Q(quote_ref__startswith=quote.quote_number)
+                | Q(estimation__service_request_id=quote.job_id)
+            )
             .select_related("estimation")
             .order_by("-version")
             .first()

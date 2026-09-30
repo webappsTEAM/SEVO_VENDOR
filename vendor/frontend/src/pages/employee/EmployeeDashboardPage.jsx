@@ -49,7 +49,6 @@ import { PortalCockpitLayout } from '../../components/employee/dashboard/PortalC
 import { AppShell } from '../../components/common/AppShell.jsx';
 import { StatusBadge } from '../../components/enterprise/StatusBadge.jsx';
 import { ErrorState } from '../../components/enterprise/ErrorState.jsx';
-import { PromptDialog } from '../../components/enterprise/PromptDialog.jsx';
 import { Modal } from '../../components/enterprise/Modal.jsx';
 import { LiveCameraCaptureModal } from '../../components/common/LiveCameraCaptureModal.jsx';
 import { classifyApiError } from '../../utils/apiErrorHandler.js';
@@ -271,11 +270,6 @@ export function EmployeeDashboardPage() {
     }
   });
   const [actionLoading, setActionLoading] = useState(null);
-  // A decline reason recorded against a customer's decision was being typed
-  // into a native browser input box, which cannot be validated, cannot show
-  // what is being declined, and quietly substituted a canned reason when the
-  // technician dismissed it.
-  const [promptConfig, setPromptConfig] = useState(null);
   const [isTogglingOnline, setIsTogglingOnline] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
@@ -357,8 +351,6 @@ export function EmployeeDashboardPage() {
     is_complete: false,
   });
   const [otpInput, setOtpInput] = useState('');
-  const [otpError, setOtpError] = useState('');
-  const [otpSuccessMsg, setOtpSuccessMsg] = useState('');
   const [paymentOtpInput, setPaymentOtpInput] = useState('');
   const [isVerifyingPaymentOtp, setIsVerifyingPaymentOtp] = useState(false);
 
@@ -546,12 +538,8 @@ export function EmployeeDashboardPage() {
     if (!targetJob || !otpInput.trim()) return;
     try {
       setActionLoading(targetJob.id);
-      setOtpError('');
-      setOtpSuccessMsg('');
       const res = await apiVerifyOTP(targetJob.id, otpInput.trim());
-      const msg = res.message || 'Customer OTP verified!';
-      setOtpSuccessMsg(msg);
-      setSuccessMsg(msg);
+      setSuccessMsg(res.message || 'Customer OTP verified!');
       const updatedState = { ...preServiceState, otp_verified: true, is_complete: res.is_complete };
       setPreServiceState(updatedState);
       await loadDashboard();
@@ -560,14 +548,9 @@ export function EmployeeDashboardPage() {
         console.info('[EmployeeDashboard] Mandatory pre-checks complete after OTP verification. Triggering auto clock-in...');
         await handleDirectJobClockIn(targetJob);
       }
-      setTimeout(() => {
-        setSuccessMsg('');
-        setOtpSuccessMsg('');
-      }, 4000);
+      setTimeout(() => setSuccessMsg(''), 4000);
     } catch (err) {
-      const msg = err.message || 'Invalid Customer OTP code.';
-      setOtpError(msg);
-      setError(msg);
+      setError(err.message || 'Invalid Customer OTP code.');
     } finally {
       setActionLoading(null);
     }
@@ -578,19 +561,11 @@ export function EmployeeDashboardPage() {
     if (!targetJob) return;
     try {
       setActionLoading(targetJob.id);
-      setOtpError('');
       const res = await apiResendOTP(targetJob.id);
-      const msg = res.message || 'Fresh OTP generated and sent to customer!';
-      setOtpSuccessMsg(msg);
-      setSuccessMsg(msg);
-      setTimeout(() => {
-        setSuccessMsg('');
-        setOtpSuccessMsg('');
-      }, 6000);
+      setSuccessMsg(res.message || 'Fresh OTP generated and sent to customer!');
+      setTimeout(() => setSuccessMsg(''), 4000);
     } catch (err) {
-      const msg = err.message || 'Failed to resend OTP.';
-      setOtpError(msg);
-      setError(msg);
+      setError(err.message || 'Failed to resend OTP.');
     } finally {
       setActionLoading(null);
     }
@@ -960,6 +935,28 @@ export function EmployeeDashboardPage() {
           return resumeRes;
         }
 
+        if (String(targetStatus).toUpperCase() === 'COMPLETED') {
+          const targetJob = (activeJobs && activeJobs.find(j => j.id === jobId)) || activeAssignedJob;
+          const quoteTotal = Number(targetJob?.active_quote_net_payable ?? targetJob?.active_quote_total_amount ?? 0);
+          const isFullyPaid = quoteTotal > 0
+            ? Boolean(targetJob?.active_quote_is_fully_paid)
+            : (targetJob?.payment_status === 'paid' || targetJob?.payment?.payment_status === 'PAID');
+
+          if (!isFullyPaid) {
+            setCashModalJob(targetJob);
+            const isAdvPaid = Boolean(targetJob?.active_quote_advance_paid);
+            const advDue = targetJob?.active_quote_advance_due !== undefined && targetJob?.active_quote_advance_due !== null ? parseFloat(targetJob.active_quote_advance_due) : null;
+            const milestoneDue = !isAdvPaid && advDue !== null && advDue > 0
+              ? advDue
+              : (targetJob?.active_quote_balance_amount ?? targetJob?.active_quote_advance_amount ?? targetJob?.active_quote_net_payable ?? targetJob?.active_quote_total_amount);
+            const due = (milestoneDue !== undefined && milestoneDue !== null && parseFloat(milestoneDue) > 0)
+              ? parseFloat(milestoneDue)
+              : (targetJob?.payment?.amount_due ?? targetJob?.total_amount ?? '');
+            setCashAmountReceived(due ? String(due) : '');
+            return;
+          }
+        }
+
         const res = await apiTransitionJob(jobId, targetStatus);
         // Starting a job also clocks the technician in server-side, so pull the
         // authoritative TimeLog immediately: the shift timer derives its start
@@ -1013,7 +1010,8 @@ export function EmployeeDashboardPage() {
         const isPaid = isCompleted || res?.payment_status === 'PAID' || targetJob.payment?.payment_status === 'PAID' || targetJob.payment_status === 'paid';
         if (!isPaid) {
           setCashModalJob(targetJob);
-          setCashAmountReceived(String(targetJob.payment?.amount_due || targetJob.total_amount || ''));
+          const initialDue = targetJob.active_quote_balance_amount ?? targetJob.payment?.amount_due ?? targetJob.total_amount ?? '';
+          setCashAmountReceived(String(initialDue));
           setSuccessMsg('After-service proof submitted! Please collect customer payment.');
         } else {
           if (typeof reconcileJobCompleted === 'function') {
@@ -1046,7 +1044,11 @@ export function EmployeeDashboardPage() {
       if (!candidateJob) return;
 
       const targetJob = (activeJobs && activeJobs.find(j => j.id === candidateJob.id)) || candidateJob;
-      const quoteAmt = targetJob.active_quote_balance_amount ?? targetJob.active_quote_net_payable ?? targetJob.active_quote_total_amount;
+      const isAdvancePaid = Boolean(targetJob.active_quote_advance_paid);
+      const advDue = targetJob.active_quote_advance_due !== undefined && targetJob.active_quote_advance_due !== null ? parseFloat(targetJob.active_quote_advance_due) : null;
+      const quoteAmt = (!isAdvancePaid && advDue !== null && advDue > 0)
+        ? advDue
+        : (targetJob.active_quote_balance_amount ?? targetJob.active_quote_advance_amount ?? targetJob.active_quote_net_payable ?? targetJob.active_quote_total_amount);
       const amtDue = (customAmount !== null && customAmount !== undefined && !isNaN(customAmount) && parseFloat(customAmount) >= 0)
         ? parseFloat(customAmount)
         : (quoteAmt !== undefined && quoteAmt !== null && parseFloat(quoteAmt) > 0)
@@ -1313,26 +1315,13 @@ export function EmployeeDashboardPage() {
       }
     };
 
-    const handleCustomerDecideExtensionAction = (jobId, extId, action) => {
-      if (action === 'DECLINE') {
-        setPromptConfig({
-          title: 'Record the customer\u2019s decline',
-          message: 'The extra work will not be carried out or billed. This reason is recorded against the job.',
-          label: 'Reason given by the customer',
-          placeholder: 'e.g. Customer will arrange this separately',
-          confirmText: 'Record decline',
-          confirmVariant: 'danger',
-          onSubmit: (reason) => submitCustomerExtensionDecision(jobId, extId, action, reason),
-        });
-        return;
-      }
-      submitCustomerExtensionDecision(jobId, extId, action, '');
-    };
-
-    const submitCustomerExtensionDecision = async (jobId, extId, action, reason) => {
-      setPromptConfig(null);
+    const handleCustomerDecideExtensionAction = async (jobId, extId, action) => {
       try {
         setActionLoading(`ext-${extId}`);
+        let reason = '';
+        if (action === 'DECLINE') {
+          reason = prompt('Enter reason for customer decline:') || 'Customer declined additional scope';
+        }
         const res = await apiCustomerDecideExtension(jobId, extId, action, reason);
         setSuccessMsg(res.message || 'Customer decision recorded.');
         await loadDashboard();
@@ -1419,18 +1408,19 @@ export function EmployeeDashboardPage() {
             onOpenCashModal={(j) => {
               const target = j || activeAssignedJob;
               setCashModalJob(target);
-              const quoteAmt = target?.active_quote_balance_amount ?? target?.active_quote_net_payable ?? target?.active_quote_total_amount;
-              const due = (quoteAmt !== undefined && quoteAmt !== null && parseFloat(quoteAmt) > 0)
-                ? parseFloat(quoteAmt)
+              const isAdvancePaid = Boolean(target?.active_quote_advance_paid);
+              const advanceDue = target?.active_quote_advance_due !== undefined && target?.active_quote_advance_due !== null ? parseFloat(target.active_quote_advance_due) : null;
+              const milestoneDue = !isAdvancePaid && advanceDue !== null && advanceDue > 0
+                ? advanceDue
+                : (target?.active_quote_balance_amount ?? target?.active_quote_advance_amount ?? target?.active_quote_net_payable ?? target?.active_quote_total_amount);
+              const due = (milestoneDue !== undefined && milestoneDue !== null && parseFloat(milestoneDue) > 0)
+                ? parseFloat(milestoneDue)
                 : (target?.payment?.amount_due ?? target?.total_amount ?? '');
               setCashAmountReceived(due ? String(due) : '');
             }}
             preServiceState={preServiceState}
             otpInput={otpInput}
             setOtpInput={setOtpInput}
-            otpError={otpError}
-            setOtpError={setOtpError}
-            otpSuccessMsg={otpSuccessMsg}
             handleVerifyOtpSubmit={handleVerifyOtpSubmit}
             handleResendOtp={handleResendOtp}
             paymentOtpInput={paymentOtpInput}
@@ -1448,6 +1438,10 @@ export function EmployeeDashboardPage() {
               setSelectedJob(jobToQuote || activeAssignedJob);
               setIsQuotationModalOpen(true);
             }}
+            error={error}
+            setError={setError}
+            successMsg={successMsg}
+            setSuccessMsg={setSuccessMsg}
           />
 
           {/* Real-Time Live Camera Viewfinder & Snapshot Modal */}
@@ -1473,14 +1467,11 @@ export function EmployeeDashboardPage() {
               onClose={() => {
                 setIsQuotationModalOpen(false);
                 if (typeof refreshActiveJobs === 'function') refreshActiveJobs({ force: true });
-                loadDashboard({ silent: true });
+                loadDashboard({ force: true });
               }}
               onQuoteSaved={() => {
-                // Intentionally a no-op here. Refreshing the dashboard while the
-                // modal is open would update selectedJob, re-render this tree,
-                // and previously caused the modal to reload its state from the
-                // backend (erasing unsaved items/measurements). The refresh
-                // happens in onClose above once the technician is done.
+                if (typeof refreshActiveJobs === 'function') refreshActiveJobs({ force: true });
+                loadDashboard({ force: true });
               }}
             />
           )}
@@ -1819,15 +1810,32 @@ export function EmployeeDashboardPage() {
               title={`Collect Cash — Job #${cashModalJob.request_id || cashModalJob.id}`}
             >
               <form onSubmit={handleCashCollectSubmit} className="space-y-4 text-xs font-sans">
+                {error && (
+                  <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-lg text-rose-700 text-xs font-semibold flex items-center gap-1.5">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{error}</span>
+                  </div>
+                )}
+
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-1">
                   <div className="flex justify-between items-center text-xs">
                     <span className="text-amber-800 font-semibold">Service:</span>
                     <span className="font-bold text-amber-950">{cashModalJob.service_title || cashModalJob.issue_title || 'Service'}</span>
                   </div>
                   <div className="flex justify-between items-center text-xs">
-                    <span className="text-amber-800 font-semibold">Authoritative Amount Due:</span>
+                    <span className="text-amber-800 font-semibold">
+                      {!cashModalJob.active_quote_advance_paid && (cashModalJob.active_quote_advance_due > 0 || cashModalJob.active_quote_advance_amount > 0)
+                        ? '50% Advance Milestone Due:'
+                        : (cashModalJob.active_quote_advance_paid && cashModalJob.active_quote_balance_amount > 0)
+                        ? '50% Balance Amount Due:'
+                        : 'Authoritative Amount Due:'}
+                    </span>
                     <span className="font-mono font-bold text-base text-amber-950">
-                      ₹{cashModalJob.active_quote_balance_amount || cashModalJob.active_quote_net_payable || cashModalJob.payment?.amount_due || cashModalJob.total_amount || 0}
+                      ₹{
+                        (!cashModalJob.active_quote_advance_paid && (cashModalJob.active_quote_advance_due > 0 || cashModalJob.active_quote_advance_amount > 0))
+                          ? (cashModalJob.active_quote_advance_due || cashModalJob.active_quote_advance_amount)
+                          : (cashModalJob.active_quote_balance_amount ?? cashModalJob.active_quote_net_payable ?? cashModalJob.payment?.amount_due ?? cashModalJob.total_amount ?? 0)
+                      }
                     </span>
                   </div>
                 </div>
@@ -1907,9 +1915,16 @@ export function EmployeeDashboardPage() {
                       <button
                         type="submit"
                         disabled={isCollectingCash || cashAmountReceived === '' || cashAmountReceived === null || cashAmountReceived === undefined || isNaN(Number(cashAmountReceived))}
-                        className="px-5 py-2 rounded-lg bg-emerald-600 disabled:opacity-50 text-white font-bold hover:bg-emerald-700 shadow-sm cursor-pointer"
+                        className="px-5 py-2 rounded-lg bg-emerald-600 disabled:opacity-50 text-white font-bold hover:bg-emerald-700 shadow-sm cursor-pointer flex items-center gap-1.5"
                       >
-                        {isCollectingCash ? 'Confirming...' : 'Confirm Cash Received'}
+                        {isCollectingCash ? (
+                          <>
+                            <RotateCw className="w-3.5 h-3.5 animate-spin" />
+                            <span>Confirming...</span>
+                          </>
+                        ) : (
+                          'Confirm Cash Received'
+                        )}
                       </button>
                     </div>
                   </>
@@ -2608,9 +2623,6 @@ export function EmployeeDashboardPage() {
               preServiceState={preServiceState}
               otpInput={otpInput}
               setOtpInput={setOtpInput}
-              otpError={otpError}
-              setOtpError={setOtpError}
-              otpSuccessMsg={otpSuccessMsg}
               handleVerifyOtpSubmit={handleVerifyOtpSubmit}
               handleResendOtp={handleResendOtp}
               approvedServices={approvedServices}
@@ -3524,10 +3536,31 @@ export function EmployeeDashboardPage() {
                                           {selectedJob.active_quote_number}
                                         </span>
                                       )}
+                                      {selectedJob.active_quote_status && (
+                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
+                                          ['APPROVED', 'CUSTOMER_ACCEPTED'].includes(selectedJob.active_quote_status)
+                                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                                            : selectedJob.active_quote_status === 'PENDING_REVIEW'
+                                            ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                                            : selectedJob.active_quote_status === 'CHANGES_REQUESTED'
+                                            ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                                            : 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300'
+                                        }`}>
+                                          {selectedJob.active_quote_status.replace(/_/g, ' ')}
+                                        </span>
+                                      )}
                                     </div>
                                     <p className="text-[11px] text-indigo-700 dark:text-indigo-300 mt-0.5">
-                                      {preServiceState.is_complete || selectedJob.can_create_quote
-                                        ? 'Site inspection unlocked. Record dimensions, select rate-card items, and deliver formal quote to customer.'
+                                      {['APPROVED', 'CUSTOMER_ACCEPTED'].includes(selectedJob.active_quote_status)
+                                        ? 'Customer has accepted the quotation. Repair is authorized to begin.'
+                                        : selectedJob.active_quote_status === 'PENDING_REVIEW'
+                                        ? 'Quotation submitted for Vendor Admin review. Waiting for admin approval before customer release.'
+                                        : selectedJob.active_quote_status === 'CHANGES_REQUESTED'
+                                        ? 'Vendor Admin requested changes. Please open Quotation Builder to revise and resubmit.'
+                                        : selectedJob.active_quote_status === 'SENT_TO_CUSTOMER'
+                                        ? 'Quotation released to customer. Awaiting customer review and authorization.'
+                                        : (preServiceState.is_complete || selectedJob.can_create_quote)
+                                        ? 'Site inspection unlocked. Record dimensions, select rate-card items, and submit quote for Vendor Admin approval.'
                                         : 'Complete Step 1 Arrival and Step 2 OTP/Selfie verification above to unlock Quotation Builder.'}
                                     </p>
                                   </div>
@@ -4366,130 +4399,7 @@ export function EmployeeDashboardPage() {
           </form>
         </Modal>
 
-        {/* Cash Collection Modal */}
-        <Modal
-          isOpen={Boolean(cashModalJob)}
-          onClose={() => setCashModalJob(null)}
-          title={`Collect Cash — Job #${cashModalJob?.request_id || cashModalJob?.id || ''}`}
-        >
-          {cashModalJob && (
-            <form onSubmit={handleCashCollectSubmit} className="space-y-4">
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-1">
-                <div className="flex justify-between items-center text-xs">
-                  <span className="text-amber-800 font-semibold">Service:</span>
-                  <span className="font-bold text-amber-950">{cashModalJob.service_title || cashModalJob.issue_title || 'Service'}</span>
-                </div>
-                <div className="flex justify-between items-center text-xs">
-                  <span className="text-amber-800 font-semibold">Authoritative Amount Due:</span>
-                  <span className="font-mono font-bold text-base text-amber-950">
-                    ₹{cashModalJob.active_quote_balance_amount || cashModalJob.active_quote_net_payable || cashModalJob.payment?.amount_due || cashModalJob.total_amount || 0}
-                  </span>
-                </div>
-              </div>
 
-              {(cashModalJob.payment?.payment_status === 'CASH_PENDING' || cashModalJob.payment_status === 'cash_pending') ? (
-                <div className="space-y-3">
-                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-900 text-xs space-y-1">
-                    <p className="font-bold flex items-center gap-1.5">
-                      <ShieldCheck className="w-4 h-4 text-blue-700" />
-                      <span>Customer Confirmation Code Required</span>
-                    </p>
-                    <p className="text-[11px] text-blue-800 leading-relaxed">
-                      Cash collection was recorded. Ask customer for the <strong>6-digit Cash Payment Confirmation OTP</strong> displayed in their app to verify payment and complete the job.
-                    </p>
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-700 font-bold mb-1">
-                      Customer Cash OTP (6-digits) <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      maxLength={6}
-                      required
-                      value={paymentOtpInput}
-                      onChange={(e) => setPaymentOtpInput(e.target.value)}
-                      placeholder="• • • • • •"
-                      className="w-full border border-slate-300 rounded-lg p-2.5 font-mono text-base font-bold text-slate-900 tracking-[0.3em] text-center outline-none focus:border-slate-800"
-                    />
-                  </div>
-
-                  <div className="flex justify-end gap-2 pt-2 border-t border-slate-200">
-                    <button
-                      type="button"
-                      onClick={() => setCashModalJob(null)}
-                      className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 font-bold hover:bg-slate-50 cursor-pointer"
-                    >
-                      Close
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleVerifyPaymentOtpSubmit(cashModalJob.id, paymentOtpInput)}
-                      disabled={isVerifyingPaymentOtp || !paymentOtpInput || paymentOtpInput.trim().length !== 6}
-                      className="px-5 py-2 rounded-lg bg-emerald-600 disabled:opacity-50 text-white font-bold hover:bg-emerald-700 shadow-sm cursor-pointer flex items-center gap-1.5"
-                    >
-                      {isVerifyingPaymentOtp ? <RotateCw className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-                      <span>Verify OTP &amp; Complete</span>
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      Cash Amount Received from Customer (₹)
-                    </label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-sm">₹</span>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min={parseFloat(cashModalJob.payment?.amount_due || cashModalJob.total_amount || 0)}
-                        required
-                        value={cashAmountReceived}
-                        onChange={(e) => setCashAmountReceived(e.target.value)}
-                        placeholder={String(cashModalJob.payment?.amount_due || cashModalJob.total_amount || '')}
-                        className="w-full pl-7 pr-3 py-2 border border-slate-300 rounded-lg text-sm font-mono font-bold text-slate-800 focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Calculated Change Returned */}
-                  {parseFloat(cashAmountReceived || 0) > parseFloat(cashModalJob.payment?.amount_due || cashModalJob.total_amount || 0) && (
-                    <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 flex justify-between items-center">
-                      <span className="text-xs font-semibold text-emerald-800">Change to Return Customer:</span>
-                      <span className="font-mono font-bold text-sm text-emerald-950">
-                        ₹{(parseFloat(cashAmountReceived || 0) - parseFloat(cashModalJob.payment?.amount_due || cashModalJob.total_amount || 0)).toFixed(2)}
-                      </span>
-                    </div>
-                  )}
-
-                  <p className="text-[11px] text-slate-500">
-                    Submitting records the cash received and requests customer confirmation OTP to verify payment and complete the job.
-                  </p>
-
-                  <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
-                    <button
-                      type="button"
-                      onClick={() => setCashModalJob(null)}
-                      className="px-3.5 py-1.5 rounded border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-50 cursor-pointer"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={isCollectingCash || !cashAmountReceived || parseFloat(cashAmountReceived) < parseFloat(cashModalJob.payment?.amount_due || cashModalJob.total_amount || 0)}
-                      className="px-4 py-2 rounded bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-bold text-xs shadow-sm flex items-center gap-1.5 transition-colors cursor-pointer"
-                    >
-                      <DollarSign className="w-4 h-4" />
-                      <span>{isCollectingCash ? 'Recording...' : 'Confirm Cash Received'}</span>
-                    </button>
-                  </div>
-                </>
-              )}
-            </form>
-          )}
-        </Modal>
 
         {/* Modal: Job No Longer Available / Race Condition Notification */}
         <Modal
@@ -4614,27 +4524,15 @@ export function EmployeeDashboardPage() {
             onClose={() => {
               setIsQuotationModalOpen(false);
               if (typeof refreshActiveJobs === 'function') refreshActiveJobs({ force: true });
-              loadDashboard({ silent: true });
+              loadDashboard({ force: true });
             }}
             onQuoteSaved={() => {
               if (typeof refreshActiveJobs === 'function') refreshActiveJobs({ force: true });
-              loadDashboard({ silent: true });
+              loadDashboard({ force: true });
             }}
           />
         )}
       </div>
-
-      <PromptDialog
-        isOpen={Boolean(promptConfig)}
-        onClose={() => setPromptConfig(null)}
-        onSubmit={promptConfig?.onSubmit || (() => {})}
-        title={promptConfig?.title || ''}
-        message={promptConfig?.message || ''}
-        label={promptConfig?.label || ''}
-        placeholder={promptConfig?.placeholder || ''}
-        confirmText={promptConfig?.confirmText || 'Confirm'}
-        confirmVariant={promptConfig?.confirmVariant || 'primary'}
-      />
     </AppShell >
   );
 }

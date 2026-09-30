@@ -257,10 +257,7 @@ export function EmployeeSettingsPage() {
       setError('');
       await apiDeactivateAccount(deactivatePassword, deactivateReason);
       setShowDeactivateModal(false);
-      // Shown in the app rather than a native popup, then a short pause so the
-      // message is readable before the session ends and the screen changes.
-      setSuccessMsg('Your account has been deactivated. Signing you out...');
-      await new Promise((resolve) => setTimeout(resolve, 1800));
+      alert('Your account has been deactivated. Logging out now.');
       await logout();
     } catch (err) {
       setError(err.message || 'Account deactivation failed.');
@@ -288,7 +285,7 @@ export function EmployeeSettingsPage() {
     <AppShell breadcrumbs={[{ label: 'Home' }, { label: 'Settings' }]}>
       <div className="space-y-4 max-w-5xl mx-auto">
         {/* Alerts */}
-        {error && <ErrorState message={error} onRetry={loadSettingsData} onDismiss={() => setError('')} />}
+        {error && <ErrorState message={error} onDismiss={() => setError('')} />}
         {successMsg && (
           <div className="p-3 rounded border border-emerald-200 bg-emerald-50 text-emerald-800 text-xs font-semibold flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />

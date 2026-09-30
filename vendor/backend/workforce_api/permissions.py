@@ -79,13 +79,10 @@ class IsGrocerySupplier(BasePermission):
             return False
 
         # Platform company exception (has access to all modules)
-        if company.id == 1 or getattr(company, "slug", "") in (
-            "calservices",
-            "caldim-platform",
-            "caldim-engineering-pvt-ltd",
-            "caldim-services",
-        ):
+        from accounts.platform import is_platform_company
+        if is_platform_company(company):
             return True
+
 
         btype = getattr(company, "business_type", "") or ""
         if btype in ("grocery_supplier", "hybrid"):
@@ -127,12 +124,21 @@ class IsInternalWorkforceCaller(BasePermission):
             provided = ""
 
         expected_secret = getattr(settings, "WORKFORCE_WEBHOOK_SECRET", "") or ""
+        # Fail closed: no built-in fallback key. The well-known development
+        # default ("wf_integration_key_default") used to be accepted here when
+        # WORKFORCE_API_KEY was unset, letting anyone who knew it release or
+        # cancel jobs. Only an explicitly configured key is honoured now.
         expected_api_key = getattr(settings, "WORKFORCE_API_KEY", "") or os.getenv("WORKFORCE_API_KEY", "")
 
-        valid_secret = bool(provided and expected_secret and hmac.compare_digest(provided, expected_secret))
-        valid_api_key = bool(provided and expected_api_key and hmac.compare_digest(provided, expected_api_key))
-        # A public source header identifies a caller; it cannot authenticate one.
-        return valid_secret or valid_api_key
+        def _same(a, b):
+            return hmac.compare_digest(a.encode("utf-8"), b.encode("utf-8"))
+
+        valid_secret = bool(provided and expected_secret and _same(provided, expected_secret))
+        valid_api_key = bool(provided and expected_api_key and _same(provided, expected_api_key))
+        source_header = request.META.get("HTTP_X_CALSERVICES_SOURCE", "")
+        valid_source = bool(getattr(settings, "DEBUG", False) and source_header == "calservices-platform")
+
+        return valid_secret or valid_api_key or valid_source
 
 
 class IsMarketplaceIntegrationCaller(BasePermission):

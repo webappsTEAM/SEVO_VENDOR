@@ -283,6 +283,56 @@ export async function apiGetLogisticsLeg(jobId) {
   return await apiRequest(`/workforce/jobs/${jobId}/logistics-leg/`);
 }
 
+// Pickup / drop checkpoint verification for logistics trips (GPS <= 250m,
+// proof photo, delivery OTP). The leg endpoint refuses to advance past a
+// checkpoint whose evidence is missing -- see backend
+// services/logistics_checkpoints.py.
+export async function apiGetLogisticsCheckpoints(jobId) {
+  return await apiRequest(`/workforce/jobs/${jobId}/logistics-checkpoint/`);
+}
+
+export async function apiVerifyCheckpointGps(jobId, checkpoint, lat, lon) {
+  return await apiRequest(`/workforce/jobs/${jobId}/logistics-checkpoint/`, {
+    method: 'POST',
+    json: { checkpoint, action: 'gps', lat, lon },
+  });
+}
+
+export async function apiUploadCheckpointPhoto(jobId, checkpoint, file) {
+  const formData = new FormData();
+  formData.append('checkpoint', checkpoint);
+  formData.append('action', 'photo');
+  formData.append('file', file);
+  return await apiRequest(`/workforce/jobs/${jobId}/logistics-checkpoint/`, {
+    method: 'POST',
+    body: formData,
+    isFormData: true,
+  });
+}
+
+export async function apiVerifyDeliveryOtp(jobId, otp) {
+  return await apiRequest(`/workforce/jobs/${jobId}/logistics-checkpoint/`, {
+    method: 'POST',
+    json: { checkpoint: 'DROP', action: 'otp', otp },
+  });
+}
+
+export async function apiResendDeliveryOtp(jobId) {
+  return await apiRequest(`/workforce/jobs/${jobId}/logistics-checkpoint/`, {
+    method: 'POST',
+    json: { checkpoint: 'DROP', action: 'resend_otp' },
+  });
+}
+
+// Driver reports a trip problem (receiver unavailable, customer unreachable, address not found).
+// Never cancels the trip -- see backend WorkforceJobLogisticsExceptionView.
+export async function apiReportLogisticsException(jobId, exceptionType, notes) {
+  return await apiRequest(`/workforce/jobs/${jobId}/logistics-exception/`, {
+    method: 'POST',
+    json: { exception_type: exceptionType, notes },
+  });
+}
+
 export async function apiGetJobStops(jobId) {
   return await apiRequest(`/workforce/jobs/${jobId}/stops/`);
 }
@@ -630,14 +680,6 @@ export async function apiGetEligibleTechnicians(jobId = '', serviceName = '') {
   if (jobId) params.set('job_id', jobId);
   if (serviceName) params.set('service', serviceName);
   return await apiRequest(`/workforce/dispatch/eligible-technicians/?${params.toString()}`);
-}
-
-export async function apiDispatchAssign(jobId, employeeId = null) {
-  // Converges into authoritative automatic dispatch engine
-  return await apiRequest(`/workforce/dispatch/auto-dispatch/${jobId}/`, {
-    method: 'POST',
-    json: employeeId ? { employee_id: employeeId } : {},
-  });
 }
 
 // ── Notifications (Phase 21) ──────────────────────────────────────────────────
@@ -1100,40 +1142,6 @@ export async function apiGetProviderProfile() {
   return await apiRequest('/workforce/provider/profile/');
 }
 
-// ── Phase 2B: Provider Technician Management ──────────────────────────────────
-
-export async function apiGetAdminTechnicians(params = {}) {
-  const query = new URLSearchParams();
-  if (params.q) query.append('q', params.q);
-  if (params.is_active !== undefined) query.append('is_active', params.is_active);
-  if (params.company_id !== undefined) query.append('company_id', params.company_id);
-  const qs = query.toString() ? `?${query.toString()}` : '';
-  return await apiRequest(`/workforce/admin/technicians/${qs}`);
-}
-
-export async function apiCreateAdminTechnician(payload) {
-  return await apiRequest('/workforce/admin/technicians/', {
-    method: 'POST',
-    json: payload,
-  });
-}
-
-export async function apiGetAdminTechnicianDetail(id) {
-  return await apiRequest(`/workforce/admin/technicians/${id}/`);
-}
-
-export async function apiUpdateAdminTechnician(id, payload) {
-  return await apiRequest(`/workforce/admin/technicians/${id}/`, {
-    method: 'PATCH',
-    json: payload,
-  });
-}
-
-export async function apiToggleAdminTechnicianActive(id) {
-  return await apiRequest(`/workforce/admin/technicians/${id}/toggle-active/`, {
-    method: 'POST',
-  });
-}
 
 // ── Phase 2C: Public Providers & Join Requests ────────────────────────────────
 
@@ -1640,6 +1648,16 @@ export async function apiDeleteSellerHubCategory(id) {
   });
 }
 
+export async function apiUploadSellerHubImage(file) {
+  const formData = new FormData();
+  formData.append('image', file);
+  return await apiRequest('/workforce/seller-hub/products/upload-image/', {
+    method: 'POST',
+    body: formData,
+    isFormData: true,
+  });
+}
+
 export async function apiGetSellerHubActiveCategories(tree = false) {
   return await apiRequest(`/workforce/seller-hub/categories/active/${tree ? '?tree=true' : ''}`);
 }
@@ -1672,6 +1690,75 @@ export async function apiDeleteSellerHubCoupon(id) {
   return await apiRequest(`/workforce/seller-hub/coupons/${id}/`, {
     method: 'DELETE',
   });
+}
+
+// ── Seller Hub Basket Offers (Combo Bundles) ──────────────────────────────
+
+export async function apiGetSellerBaskets(params = {}) {
+  const query = new URLSearchParams();
+  if (params.search) query.append('search', params.search);
+  if (params.status) query.append('status', params.status);
+  const qStr = query.toString();
+  return await apiRequest(`/workforce/seller-hub/baskets/${qStr ? `?${qStr}` : ''}`);
+}
+
+export async function apiGetSellerBasketDetail(id) {
+  return await apiRequest(`/workforce/seller-hub/baskets/${id}/`);
+}
+
+export async function apiCalculateSellerBasket(data) {
+  return await apiRequest('/workforce/seller-hub/baskets/calculate/', {
+    method: 'POST',
+    json: data,
+  });
+}
+
+export async function apiCreateSellerBasket(data) {
+  return await apiRequest('/workforce/seller-hub/baskets/', {
+    method: 'POST',
+    json: data,
+  });
+}
+
+export async function apiUpdateSellerBasket(id, data) {
+  return await apiRequest(`/workforce/seller-hub/baskets/${id}/`, {
+    method: 'PUT',
+    json: data,
+  });
+}
+
+export async function apiActivateSellerBasket(id) {
+  return await apiRequest(`/workforce/seller-hub/baskets/${id}/activate/`, {
+    method: 'POST',
+    json: {},
+  });
+}
+
+export async function apiPauseSellerBasket(id) {
+  return await apiRequest(`/workforce/seller-hub/baskets/${id}/pause/`, {
+    method: 'POST',
+    json: {},
+  });
+}
+
+export async function apiDeleteSellerBasket(id) {
+  return await apiRequest(`/workforce/seller-hub/baskets/${id}/`, {
+    method: 'DELETE',
+  });
+}
+
+export async function apiGetMarketplaceBaskets(params = {}) {
+  const query = new URLSearchParams();
+  if (params.search) query.append('search', params.search);
+  if (params.company_id) query.append('company_id', params.company_id);
+  if (params.page) query.append('page', params.page);
+  if (params.page_size) query.append('page_size', params.page_size);
+  const qStr = query.toString();
+  return await apiRequest(`/workforce/marketplace/baskets/${qStr ? `?${qStr}` : ''}`);
+}
+
+export async function apiGetMarketplaceBasketDetail(id) {
+  return await apiRequest(`/workforce/marketplace/baskets/${id}/`);
 }
 
 export async function apiSellerOrderAdminOverride(orderId, action, reason) {
@@ -1727,7 +1814,6 @@ export async function apiSaveVendorBaseLocation(payload) {
 }
 
 export async function apiAdminUpdateWarehouse(id, payload) {
-
   return await apiRequest(`/workforce/admin/warehouses/${id}/`, {
     method: 'PATCH',
     json: payload,
@@ -1764,6 +1850,77 @@ export async function apiAdminUnassignSellerWarehouse(sellerId) {
   });
 }
 
+export async function apiAdminAssignMerchantToWarehouse(warehouseId, companyId, notes = '') {
+  return await apiRequest(`/workforce/admin/warehouses/${warehouseId}/assign-merchant/`, {
+    method: 'POST',
+    json: { company_id: companyId, notes },
+  });
+}
+
+export async function apiAdminUnassignMerchantFromWarehouse(warehouseId, companyId) {
+  return await apiRequest(`/workforce/admin/warehouses/${warehouseId}/assign-merchant/${companyId}/`, {
+    method: 'DELETE',
+  });
+}
+
+export async function apiAdminGetCompanies(params = {}) {
+  const qs = new URLSearchParams();
+  if (params.search) qs.append('search', params.search);
+  const queryStr = qs.toString();
+  return await apiRequest(`/workforce/admin/companies/${queryStr ? `?${queryStr}` : ''}`);
+}
+
+export async function apiWarehouseGetProfile() {
+  return await apiRequest('/workforce/warehouse/profile/');
+}
+
+export async function apiWarehouseUpdateProfile(payload) {
+  return await apiRequest('/workforce/warehouse/profile/', {
+    method: 'PATCH',
+    json: payload,
+  });
+}
+
+export async function apiWarehouseGetStats() {
+  return await apiRequest('/workforce/warehouse/stats/');
+}
+
+export async function apiWarehouseGetOrders(params = {}) {
+  const qs = new URLSearchParams();
+  if (params.status) qs.append('status', params.status);
+  if (params.search) qs.append('search', params.search);
+  if (params.date) qs.append('date', params.date);
+  if (params.page) qs.append('page', params.page);
+  if (params.page_size) qs.append('page_size', params.page_size);
+  const queryStr = qs.toString();
+  return await apiRequest(`/workforce/warehouse/orders/${queryStr ? `?${queryStr}` : ''}`);
+}
+
+export async function apiWarehouseGetOrderDetail(id) {
+  return await apiRequest(`/workforce/warehouse/orders/${id}/`);
+}
+
+// ── Phase X: Inbound Stock Requests & Storage ─────────────────────────────────
+
+export async function apiSellerGetAssignedWarehouse() {
+  return await apiRequest('/workforce/seller-hub/assigned-warehouse/');
+}
+
+export async function apiSellerGetInboundRequests(params = {}) {
+  const qs = new URLSearchParams();
+  if (params.product_id) qs.append('product_id', params.product_id);
+  if (params.status) qs.append('status', params.status);
+  const queryStr = qs.toString();
+  return await apiRequest(`/workforce/seller-hub/inbound-requests/${queryStr ? `?${queryStr}` : ''}`);
+}
+
+export async function apiSellerCreateInboundRequest(payload) {
+  return await apiRequest('/workforce/seller-hub/inbound-requests/', {
+    method: 'POST',
+    json: payload,
+  });
+}
+
 export async function apiSubmitScopeReduction(jobId, payload) {
   return await apiRequest(`/workforce/jobs/${jobId}/scope-reduction/`, {
     method: 'POST',
@@ -1789,6 +1946,78 @@ export async function apiApproveQuoteCRM(quoteId, payload = {}) {
   return await apiRequest(`/workforce/quotes/${quoteId}/crm-approve/`, {
     method: 'POST',
     json: payload,
+  });
+}
+
+export async function apiSellerGetEligibleWarehouses() {
+  return await apiRequest('/workforce/seller-hub/eligible-warehouses/');
+}
+
+export async function apiSellerGetInventoryBalance(productId, warehouseId) {
+  const qs = new URLSearchParams();
+  if (productId) qs.append('product_id', productId);
+  if (warehouseId) qs.append('warehouse_id', warehouseId);
+  const queryStr = qs.toString();
+  return await apiRequest(`/workforce/seller-hub/inventory-balance/${queryStr ? `?${queryStr}` : ''}`);
+}
+
+export function apiSellerGetInboundLabelsPdfUrl(id, format = 'a4') {
+  return `/api/workforce/seller-hub/inbound-requests/${id}/labels-pdf/?format=${encodeURIComponent(format)}`;
+}
+
+export function apiWarehouseGetInboundLabelsPdfUrl(id, format = 'a4') {
+  return `/api/workforce/warehouse/inbound-requests/${id}/labels-pdf/?format=${encodeURIComponent(format)}`;
+}
+
+export async function apiWarehouseGetInboundRequests(params = {}) {
+  const qs = new URLSearchParams();
+  if (params.status) qs.append('status', params.status);
+  if (params.search) qs.append('search', params.search);
+  if (params.page) qs.append('page', params.page);
+  if (params.page_size) qs.append('page_size', params.page_size);
+  const queryStr = qs.toString();
+  return await apiRequest(`/workforce/warehouse/inbound-requests/${queryStr ? `?${queryStr}` : ''}`);
+}
+
+export async function apiWarehouseDecideInboundRequest(id, action, reviewerNote = '') {
+  return await apiRequest(`/workforce/warehouse/inbound-requests/${id}/decision/`, {
+    method: 'POST',
+    json: {
+      action,
+      reviewer_note: reviewerNote,
+    },
+  });
+}
+
+export async function apiWarehouseScanInboundUnit(id, barcode) {
+  return await apiRequest(`/workforce/warehouse/inbound-requests/${id}/scan-unit/`, {
+    method: 'POST',
+    json: { barcode },
+  });
+}
+
+export async function apiWarehouseGetInboundUnits(id) {
+  return await apiRequest(`/workforce/warehouse/inbound-requests/${id}/units/`);
+}
+
+export async function apiWarehouseReportShortfall(id, shortfallNote = '') {
+  return await apiRequest(`/workforce/warehouse/inbound-requests/${id}/report-shortfall/`, {
+    method: 'POST',
+    json: { shortfall_note: shortfallNote },
+  });
+}
+
+export async function apiWarehouseGetReturns() {
+  return await apiRequest('/workforce/warehouse/returns/');
+}
+
+export async function apiSellerDecideShortfall(id, action, sellerNote = '') {
+  return await apiRequest(`/workforce/seller-hub/inbound-requests/${id}/shortfall-decision/`, {
+    method: 'POST',
+    json: {
+      action,
+      seller_note: sellerNote,
+    },
   });
 }
 
@@ -1831,10 +2060,99 @@ export const workforceService = {
   getSellerWarehouse: apiAdminGetSellerWarehouse,
   assignSellerWarehouse: apiAdminAssignSellerWarehouse,
   unassignSellerWarehouse: apiAdminUnassignSellerWarehouse,
+  assignMerchantToWarehouse: apiAdminAssignMerchantToWarehouse,
+  unassignMerchantFromWarehouse: apiAdminUnassignMerchantFromWarehouse,
+  getCompanies: apiAdminGetCompanies,
+  warehouseGetProfile: apiWarehouseGetProfile,
+  warehouseUpdateProfile: apiWarehouseUpdateProfile,
+  warehouseGetStats: apiWarehouseGetStats,
+  warehouseGetOrders: apiWarehouseGetOrders,
+  warehouseGetOrderDetail: apiWarehouseGetOrderDetail,
+  sellerGetAssignedWarehouse: apiSellerGetAssignedWarehouse,
+  sellerGetInboundRequests: apiSellerGetInboundRequests,
+  sellerCreateInboundRequest: apiSellerCreateInboundRequest,
+  sellerGetEligibleWarehouses: apiSellerGetEligibleWarehouses,
+  sellerGetInventoryBalance: apiSellerGetInventoryBalance,
+  sellerGetInboundLabelsPdfUrl: apiSellerGetInboundLabelsPdfUrl,
+  warehouseGetInboundRequests: apiWarehouseGetInboundRequests,
+  warehouseDecideInboundRequest: apiWarehouseDecideInboundRequest,
+  warehouseScanInboundUnit: apiWarehouseScanInboundUnit,
+  warehouseGetInboundUnits: apiWarehouseGetInboundUnits,
+  warehouseGetInboundLabelsPdfUrl: apiWarehouseGetInboundLabelsPdfUrl,
   submitScopeReduction: apiSubmitScopeReduction,
   reviewScopeReduction: apiReviewScopeReduction,
   submitQuoteToCRM: apiSubmitQuoteToCRM,
   approveQuoteCRM: apiApproveQuoteCRM,
+  reportLogisticsException: apiReportLogisticsException,
+  getLogisticsExtraChargeOptions: apiGetLogisticsExtraChargeOptions,
+  reportLogisticsExtraCharge: apiReportLogisticsExtraCharge,
+  getDeliverySlots: apiAdminGetDeliverySlots,
+  getDeliverySlotDetail: apiAdminGetDeliverySlotDetail,
+  createDeliverySlot: apiAdminCreateDeliverySlot,
+  updateDeliverySlot: apiAdminUpdateDeliverySlot,
+  deleteDeliverySlot: apiAdminDeleteDeliverySlot,
+  getSellerBaskets: apiGetSellerBaskets,
+  getSellerBasketDetail: apiGetSellerBasketDetail,
+  createSellerBasket: apiCreateSellerBasket,
+  updateSellerBasket: apiUpdateSellerBasket,
+  activateSellerBasket: apiActivateSellerBasket,
+  pauseSellerBasket: apiPauseSellerBasket,
+  deleteSellerBasket: apiDeleteSellerBasket,
 };
+
+// Toll / parking pass-through (policy = Customer GTExtraChargePolicy; see WorkforceJobLogisticsExtraChargeView).
+export async function apiGetLogisticsExtraChargeOptions(jobId) {
+  return await apiRequest(`/workforce/jobs/${jobId}/logistics-extra-charge/`);
+}
+
+export async function apiReportLogisticsExtraCharge(jobId, { chargeType, amount, receipt, note, photo }) {
+  const formData = new FormData();
+  formData.append('charge_type', chargeType);
+  formData.append('amount', amount);
+  if (receipt) formData.append('receipt', receipt);
+  if (note) formData.append('note', note);
+  if (photo) formData.append('receipt_photo', photo);
+  return await apiRequest(`/workforce/jobs/${jobId}/logistics-extra-charge/`, {
+    method: 'POST',
+    body: formData,
+    isFormData: true,
+  });
+}
+
+// ── Delivery Slots & Capacity Scheduling (Phase 1) ───────────────────────────
+export async function apiAdminGetDeliverySlots(params = {}) {
+  const qs = new URLSearchParams();
+  if (params.warehouse_id) qs.set('warehouse_id', String(params.warehouse_id));
+  if (params.is_active != null) qs.set('is_active', String(params.is_active));
+  if (params.slot_type) qs.set('slot_type', params.slot_type);
+  if (params.search) qs.set('search', params.search);
+  const queryStr = qs.toString();
+  return await apiRequest(`/workforce/admin/delivery-slots/${queryStr ? `?${queryStr}` : ''}`);
+}
+
+export async function apiAdminGetDeliverySlotDetail(id) {
+  return await apiRequest(`/workforce/admin/delivery-slots/${id}/`);
+}
+
+export async function apiAdminCreateDeliverySlot(payload) {
+  return await apiRequest('/workforce/admin/delivery-slots/', {
+    method: 'POST',
+    json: payload,
+  });
+}
+
+export async function apiAdminUpdateDeliverySlot(id, payload) {
+  return await apiRequest(`/workforce/admin/delivery-slots/${id}/`, {
+    method: 'PATCH',
+    json: payload,
+  });
+}
+
+export async function apiAdminDeleteDeliverySlot(id) {
+  return await apiRequest(`/workforce/admin/delivery-slots/${id}/`, {
+    method: 'DELETE',
+  });
+}
+
 
 

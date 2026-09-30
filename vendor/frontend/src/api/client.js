@@ -10,45 +10,10 @@ import {
   clearAuthTokens,
 } from '../utils/authTokens.js';
 import { classifyApiError } from '../utils/apiErrors.js';
+import { captureUnexpectedApiError } from '../utils/sentry.js';
 
 let inFlightRefreshPromise = null;
-
-/**
- * Announce a failed request to the application.
- *
- * Fourteen pages across this app call `.catch(() => [])` on their loaders, in
- * 56 places. That is a reasonable instinct -- one optional widget failing
- * should not blank a whole screen -- but the effect is that a dead API renders
- * as legitimately empty data. The admin dashboard shows "0 applications, 0
- * jobs"; the technician dashboard shows an empty day. The user is told
- * something false, confidently.
- *
- * Fixing that page by page would mean editing 56 call sites and inventing an
- * error surface for each. Every request already passes through this function,
- * so announcing the failure once here lets a single listener tell the user that
- * what they are looking at is incomplete -- regardless of which page swallowed
- * it. 401 is excluded: the auth flow already handles it, and a redirect to
- * login is not a data-integrity problem.
- */
-function announceApiFailure(error, path) {
-  if (typeof window === 'undefined') return;
-  if (error && error.status === 401) return;
-  try {
-    window.dispatchEvent(
-      new CustomEvent('workforce:api-error', {
-        detail: {
-          status: error?.status ?? 0,
-          code: error?.code || 'UNKNOWN',
-          message: error?.message || 'Request failed',
-          path,
-        },
-      })
-    );
-  } catch {
-    // A notification must never be the reason a request fails.
-  }
-}
-
+let lastRefreshFailure = null;
 
 function getCookie(name) {
   if (typeof document === 'undefined' || !document.cookie) return null;
@@ -73,6 +38,11 @@ export async function apiRefreshToken() {
 
   const refreshToken = getRefreshToken();
   if (!refreshToken) {
+    lastRefreshFailure = {
+      type: 'AUTH_INVALID',
+      status: 401,
+      message: 'No refresh token available.',
+    };
     clearAuthTokens();
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('workforce:auth-unauthorized'));
@@ -94,20 +64,37 @@ export async function apiRefreshToken() {
         const newRefreshToken = data.refresh_token || data.refresh || refreshToken;
         if (newToken) {
           setAuthTokens(newToken, newRefreshToken);
+          lastRefreshFailure = null;
           return newToken;
         }
       }
 
       if (res.status === 401 || res.status === 400) {
         // Refresh rejected by server (invalid/expired refresh token)
+        lastRefreshFailure = {
+          type: 'AUTH_INVALID',
+          status: res.status,
+          message: 'Session expired. Please log in again.',
+        };
         clearAuthTokens();
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('workforce:auth-unauthorized'));
         }
+      } else {
+        // For 503 (DB connection pool exhaustion) or 5xx, do NOT clear tokens
+        lastRefreshFailure = {
+          type: 'SERVER_ERROR',
+          status: res.status,
+          message: `Authentication service temporarily unavailable (${res.status}).`,
+        };
       }
-      // For 503 (DB connection pool exhaustion) or 5xx, do NOT clear tokens
       return null;
-    } catch (_) {
+    } catch (err) {
+      lastRefreshFailure = {
+        type: 'NETWORK_ERROR',
+        status: 0,
+        message: 'Network error during token refresh.',
+      };
       return null;
     } finally {
       inFlightRefreshPromise = null;
@@ -157,7 +144,7 @@ export async function apiRequest(path, options = {}) {
     error.status = 0;
     error.code = 'NETWORK_ERROR';
     error.originalError = netErr;
-    announceApiFailure(error, path);
+    captureUnexpectedApiError(error, { path, method: config.method, status: 0 });
     throw error;
   }
 
@@ -175,18 +162,33 @@ export async function apiRequest(path, options = {}) {
           error.status = 0;
           error.code = 'NETWORK_ERROR';
           error.originalError = retryNetErr;
-          announceApiFailure(error, path);
           throw error;
         }
-      }
-    }
 
-    if (response.status === 401) {
-      sessionStorage.removeItem('wf_token');
-      sessionStorage.removeItem('wf_refresh_token');
-      sessionStorage.removeItem('wf_tab_id');
-      localStorage.removeItem('wf_token');
-      localStorage.removeItem('wf_refresh_token');
+        // If the retried request STILL returns 401, the fresh token was rejected.
+        // Clear authentication and dispatch unauthorized event once.
+        if (response.status === 401) {
+          clearAuthTokens();
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('workforce:auth-unauthorized'));
+          }
+        }
+      } else {
+        // Refresh did not yield a new token.
+        // If refresh failed temporarily (5xx or network error):
+        if (lastRefreshFailure && lastRefreshFailure.type !== 'AUTH_INVALID') {
+          // DO NOT clear tokens. DO NOT dispatch auth-unauthorized.
+          const error = new Error(lastRefreshFailure.message || 'Authentication service temporarily unavailable.');
+          error.status = lastRefreshFailure.status || 503;
+          error.code = lastRefreshFailure.type === 'NETWORK_ERROR' ? 'NETWORK_ERROR' : 'AUTH_SERVICE_UNAVAILABLE';
+          throw error;
+        }
+        // If AUTH_INVALID, apiRefreshToken() has already called clearAuthTokens()
+        // and dispatched workforce:auth-unauthorized once. We do not repeat it here.
+      }
+    } else {
+      // The request was already a retry (_isRetry: true) and returned 401.
+      clearAuthTokens();
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('workforce:auth-unauthorized'));
       }
@@ -202,12 +204,31 @@ export async function apiRequest(path, options = {}) {
   const data = isJson ? await response.json() : await response.text();
 
   if (!response.ok) {
-    const errorMsg =
+    let rawError =
       (data && data.message && (data.error === 'ONBOARDING_VALIDATION_FAILED' || data.error === 'ONBOARDING_STEP_SKIPPED') ? data.message : null) ||
       (data && data.error) ||
       (data && data.message) ||
       (data && data.detail) ||
       (data && typeof data === 'object' ? JSON.stringify(data) : 'Request failed');
+
+    if (Array.isArray(rawError)) {
+      rawError = rawError[0] || 'Request failed';
+    }
+    if (typeof rawError === 'object' && rawError !== null) {
+      try {
+        rawError = rawError.detail || rawError.message || rawError.string || JSON.stringify(rawError);
+      } catch (_) {
+        rawError = 'Request failed';
+      }
+    }
+    let errorMsg = String(rawError || 'Request failed');
+    if (errorMsg.includes('ErrorDetail')) {
+      const match = errorMsg.match(/string=['"]([^'"]+)['"]/);
+      if (match && match[1]) {
+        errorMsg = match[1];
+      }
+    }
+    errorMsg = errorMsg.replace(/^\[['"]?|['"]?\]$/g, '').trim();
 
     const error = new Error(errorMsg);
     error.status = response.status;
@@ -216,7 +237,9 @@ export async function apiRequest(path, options = {}) {
     if (data && data.fields) {
       error.fields = data.fields;
     }
-    announceApiFailure(error, path);
+    if (response.status >= 500) {
+      captureUnexpectedApiError(error, { path, method: config.method, status: response.status });
+    }
     throw error;
   }
 

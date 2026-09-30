@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useParams, useSearchParams } from 'react-router-dom';
 import {
   Calculator,
   Search,
@@ -38,6 +39,10 @@ const STATUS_TABS = [
 ];
 
 export default function EmployeeEstimatesPage() {
+  const { id: urlParamId } = useParams();
+  const [searchParams] = useSearchParams();
+  const urlJobId = searchParams.get('job_id') || urlParamId;
+
   const [activeTab, setActiveTab] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [quotes, setQuotes] = useState([]);
@@ -48,10 +53,9 @@ export default function EmployeeEstimatesPage() {
   const [selectedQuoteId, setSelectedQuoteId] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedJob, setSelectedJob] = useState(null);
-  const [actionError, setActionError] = useState(null);
 
-  const fetchQuotes = useCallback(async () => {
-    setLoading(true);
+  const fetchQuotes = useCallback(async (isSilent = false) => {
+    if (!isSilent) setLoading(true);
     setError(null);
     try {
       const data = await apiGetQuotes({
@@ -61,15 +65,31 @@ export default function EmployeeEstimatesPage() {
       const raw = Array.isArray(data) ? data : (Array.isArray(data?.results) ? data.results : []);
       setQuotes(raw.filter((q) => q && typeof q === 'object'));
     } catch (err) {
-      console.error('Failed to load estimates:', err);
-      setError(err.message || 'Failed to load quotations list.');
+      if (!isSilent) {
+        console.error('Failed to load estimates:', err);
+        setError(err.message || 'Failed to load quotations list.');
+      }
     } finally {
-      setLoading(false);
+      if (!isSilent) setLoading(false);
     }
   }, [activeTab, searchQuery]);
 
   useEffect(() => {
-    fetchQuotes();
+    fetchQuotes(false);
+
+    // Active auto-refresh: sync quotations list every 5s and on window focus
+    const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      fetchQuotes(true);
+    }, 5000);
+
+    const onFocus = () => fetchQuotes(true);
+    window.addEventListener('focus', onFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+    };
   }, [fetchQuotes]);
 
   const handleOpenQuote = (quote) => {
@@ -79,6 +99,17 @@ export default function EmployeeEstimatesPage() {
     setIsModalOpen(true);
   };
 
+  // Auto-open modal if URL specifies an estimate or job ID
+  useEffect(() => {
+    if (!quotes || quotes.length === 0 || (!urlParamId && !urlJobId)) return;
+    const match = quotes.find(
+      (q) => String(q.id) === String(urlParamId) || String(q.job_id) === String(urlJobId)
+    );
+    if (match) {
+      handleOpenQuote(match);
+    }
+  }, [quotes, urlParamId, urlJobId]);
+
   const handleRevise = async (quote, e) => {
     e.stopPropagation();
     if (!quote) return;
@@ -87,10 +118,7 @@ export default function EmployeeEstimatesPage() {
       handleOpenQuote(revised);
       fetchQuotes();
     } catch (err) {
-      // `error` drives the whole-list failure branch below, so a failed
-      // revision gets its own banner rather than replacing the quotations the
-      // technician is looking at.
-      setActionError(err.message || 'That quotation could not be revised.');
+      alert(err.message || 'Failed to revise quotation.');
     }
   };
 
@@ -109,16 +137,6 @@ export default function EmployeeEstimatesPage() {
   return (
     <AppShell breadcrumbs={[{ label: 'Home', to: '/workforce/employee/dashboard' }, { label: 'Estimates' }]}>
       <div className="max-w-6xl mx-auto space-y-6 text-xs">
-        {actionError && (
-          <div role="alert" className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-900 flex items-start gap-2">
-            <AlertTriangle className="w-4 h-4 shrink-0 text-rose-700 mt-0.5" />
-            <span className="flex-1">{actionError}</span>
-            <button type="button" aria-label="Dismiss" onClick={() => setActionError(null)} className="shrink-0 rounded-md px-1.5 text-rose-700 hover:bg-rose-100 font-bold">
-              &times;
-            </button>
-          </div>
-        )}
-
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white border border-zinc-200/90 p-5 rounded-md shadow-card">
         <div>
@@ -208,16 +226,9 @@ export default function EmployeeEstimatesPage() {
           Loading quotations...
         </div>
       ) : error ? (
-        <div className="p-4 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-900 flex items-start gap-2">
-          <AlertTriangle className="w-4 h-4 shrink-0 text-rose-700 mt-0.5" />
-          <span className="flex-1">{error}</span>
-          <button
-            type="button"
-            onClick={fetchQuotes}
-            className="shrink-0 rounded-md border border-rose-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-rose-800 hover:bg-rose-100"
-          >
-            Try again
-          </button>
+        <div className="p-4 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-900 flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 shrink-0 text-rose-700" />
+          <span>{error}</span>
         </div>
       ) : validQuotes.length === 0 ? (
         <div className="py-16 text-center border border-zinc-200/90 rounded-md bg-white shadow-card">

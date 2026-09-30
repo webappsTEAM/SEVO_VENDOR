@@ -172,6 +172,140 @@ LOGISTICS_SERVICE_CATEGORIES = {
     "goods_transport",
 }
 
+# ── GT vehicle-class compatibility (restored this session) ─────────────────
+#
+# Customer/backend/service_requests/services/logistics_pricing.py's
+# DISPATCHABLE_VEHICLE_CLASSES == {two_wheeler, three_wheeler, pickup, truck}
+# is the customer-facing purchasable taxonomy (heavy_truck is deliberately
+# excluded there -- no vendor vehicle type satisfies it yet). Vehicle.
+# VehicleType on this side additionally has mini_truck and other, neither of
+# which a customer can ever purchase a tier for. RANK expresses "can this
+# vehicle cover a job that needs at least this class" -- a bigger vehicle
+# can always cover a smaller job's class requirement; a smaller one cannot
+# cover a bigger job. mini_truck is ranked with pickup (a reasonable
+# same-tier assumption pending real product guidance -- there is currently
+# no purchasable tier that would ever require exactly "mini_truck", so this
+# only affects whether a mini_truck-only technician's vehicle can satisfy a
+# pickup-class job, never the other direction). "other" never satisfies any
+# classified requirement -- an unclassified vehicle should not be assumed
+# capable of anything.
+_VEHICLE_CLASS_RANK = {
+    "two_wheeler": 1,
+    "three_wheeler": 2,
+    "pickup": 3,
+    "mini_truck": 3,
+    "truck": 4,
+}
+
+
+def check_vehicle_class_compatibility(emp, job) -> Tuple[bool, str]:
+    """
+    Single narrow authority for "does this technician have a vehicle of the
+    right CLASS for this job's purchased vehicle_class", shared by dispatch
+    (Gate 3 below) and acceptance (WorkforceJobAcceptOfferView).
+
+    This is deliberately separate from the "has a vehicle with current
+    documents" check already in check_candidate_eligibility's Gate 3: that
+    check answers "is this technician allowed to operate a logistics job at
+    all", this one answers "is this SPECIFIC job's required vehicle class
+    satisfied by one of that technician's active, current-document
+    vehicles". A technician can pass one and fail the other.
+
+    Fails OPEN (returns True, "") -- not closed -- for any job whose
+    fare_breakdown carries no vehicle_class key. That mirrors the documented
+    "do-not-strand-legacy-bookings" rule already established on the
+    Customer side (see classification_only_snapshot()'s docstring in
+    logistics_pricing.py): a booking made before fare_breakdown existed, or
+    a lane-only booking with no vehicle classification at all, has nothing
+    to enforce here and falls back to the coarse category-level check that
+    already gates entry into LOGISTICS_SERVICE_CATEGORIES. It does NOT fail
+    open for a job that HAS a vehicle_class but the technician's vehicles
+    don't cover it -- that is the exact failure this function exists to
+    catch.
+    """
+    fare_breakdown = getattr(job, "fare_breakdown", None) or {}
+    required_class = str(fare_breakdown.get("vehicle_class") or "").strip().lower()
+    if not required_class or required_class not in _VEHICLE_CLASS_RANK:
+        # No classification to enforce (legacy/lane-only booking, or a
+        # class this table doesn't know about yet) -- do not strand it.
+        return True, ""
+
+    required_rank = _VEHICLE_CLASS_RANK[required_class]
+    vehicles = Vehicle.objects.filter(employee=emp, is_active=True)
+    for v in vehicles:
+        if not v.is_document_current():
+            continue
+        v_rank = _VEHICLE_CLASS_RANK.get(str(v.vehicle_type or "").strip().lower())
+        if v_rank is not None and v_rank >= required_rank:
+            return True, ""
+
+    return False, (
+        f"Gate 3: This job requires a '{required_class}' class vehicle (or larger); "
+        "none of your active, document-current vehicles qualify."
+    )
+
+
+def check_vehicle_capacity_compatibility(emp, job) -> Tuple[bool, str]:
+    """
+    Packers & Movers' own compatibility check (this session) -- the sibling
+    to check_vehicle_class_compatibility() above, for the one
+    LOGISTICS_SERVICE_CATEGORIES member that isn't vehicle-class-classified.
+
+    Customer/backend/service_requests/services/logistics_pricing.py's
+    assert_gt_booking_is_classifiable() docstring says outright that
+    Packers & Movers "is deliberately absent [from class-classified
+    categories]: its tiers are relocation packages... and its compatibility
+    runs on payload_kg instead -- see packers_movers_pricing." That
+    documented design was never actually wired up on this side either: a
+    grep of this whole service and of workforce_api/views.py for
+    "payload_kg" before this fix returned nothing. This closes that gap the
+    same narrow way as the vehicle-class check: read the payload the
+    Customer app already computed and stored (packers_movers_pricing.
+    compute_packers_movers_quote()'s "vehicle" block, saved verbatim into
+    fare_breakdown at booking time -- see service_requests/views.py's
+    booking view), and require an active, document-current vehicle whose
+    capacity_kg covers it.
+
+    Deliberately narrower than the full Porter-observable P&M experience:
+    a real relocation also needs the right CREW SIZE (fare_breakdown.
+    vehicle.crew_size), not just one compatible vehicle. This codebase's
+    dispatch model is one job -> one assigned_employee; there is no
+    multi-technician crew assignment concept anywhere in the models this
+    session read (WorkforceJobOffer, EmployeeJob, etc. are all single-
+    employee). Enforcing crew_size here would mean inventing that
+    architecture from scratch rather than restoring something documented
+    as intended, which is a materially different (and much larger) piece
+    of work than this fix -- left out on purpose, not missed.
+
+    Fails OPEN for any job with no payload_kg to enforce (non-P&M jobs,
+    P&M jobs whose quote predates this field, or a technician vehicle
+    with no capacity_kg on file) -- same do-not-strand-legacy-bookings
+    posture as the vehicle-class check above.
+    """
+    fare_breakdown = getattr(job, "fare_breakdown", None) or {}
+    vehicle_quote = fare_breakdown.get("vehicle") if isinstance(fare_breakdown, dict) else None
+    if not isinstance(vehicle_quote, dict):
+        return True, ""
+    try:
+        required_kg = float(vehicle_quote.get("payload_kg") or 0)
+    except (TypeError, ValueError):
+        required_kg = 0
+    if required_kg <= 0:
+        return True, ""
+
+    vehicles = Vehicle.objects.filter(employee=emp, is_active=True)
+    for v in vehicles:
+        if not v.is_document_current():
+            continue
+        if v.capacity_kg is not None and float(v.capacity_kg) >= required_kg:
+            return True, ""
+
+    return False, (
+        f"Gate 3: This relocation requires a vehicle rated for at least {required_kg:.0f}kg; "
+        "none of your active, document-current vehicles have enough recorded capacity."
+    )
+
+
 # Canonical service synonyms and explicit alias dictionary
 EXPLICIT_SERVICE_ALIASES = {
     "hvac": {"hvac", "ac", "air conditioning", "ac service", "ac repair", "ac installation", "ac gas", "ac repair & diagnostics", "ac service & cleaning", "ac gas & refrigerant", "ac installation & uninstallation"},
@@ -199,17 +333,44 @@ EXPLICIT_SERVICE_ALIASES = {
     "full house cleaning": {"full house cleaning", "cleaning", "deep cleaning", "house cleaning"},
     "sofa cleaning": {"sofa cleaning", "cleaning", "couch cleaning"},
     "two wheeler": {"two wheeler", "bike", "scooter", "motorcycle", "bike repair", "two wheeler repair"},
-    "truck": {"truck", "packer & mover", "packers & movers", "logistics", "shifting", "packers_movers", "relocation"},
-    "packer & mover": {"packer & mover", "packers & movers", "truck", "shifting", "relocation", "packers_movers"},
-    "packers & movers": {"packer & mover", "packers & movers", "truck", "shifting", "relocation", "packers_movers"},
-    "packers_movers": {"packer & mover", "packers & movers", "truck", "shifting", "relocation", "packers_movers"},
-    "shifting": {"packer & mover", "packers & movers", "truck", "shifting", "relocation", "packers_movers"},
-    "relocation": {"packer & mover", "packers & movers", "truck", "shifting", "relocation", "packers_movers"},
-    "goods transport": {"goods_transport", "goods & transport", "goods and transport", "goods transport", "truck", "two wheeler", "packer & mover", "packers & movers", "logistics", "shifting", "packers_movers", "relocation", "goods_transport_truck", "goods_transport_two_wheeler"},
-    "goods & transport": {"goods_transport", "goods & transport", "goods and transport", "goods transport", "truck", "two wheeler", "packer & mover", "packers & movers", "logistics", "shifting", "packers_movers", "relocation", "goods_transport_truck", "goods_transport_two_wheeler"},
-    "goods and transport": {"goods_transport", "goods & transport", "goods and transport", "goods transport", "truck", "two wheeler", "packer & mover", "packers & movers", "logistics", "shifting", "packers_movers", "relocation", "goods_transport_truck", "goods_transport_two_wheeler"},
-    "goods_transport": {"goods_transport", "goods & transport", "goods and transport", "goods transport", "truck", "two wheeler", "packer & mover", "packers & movers", "logistics", "shifting", "packers_movers", "relocation", "goods_transport_truck", "goods_transport_two_wheeler"},
-    "goods_transport_truck": {"goods_transport_truck", "truck", "mini truck", "goods & transport", "goods and transport", "goods transport", "logistics", "packer & mover", "packers & movers"},
+    # GT Mini Truck audit fix: this alias group used to include "packer &
+    # mover"/"packers & movers"/"packers_movers"/"shifting"/"relocation" --
+    # canonical_service_match() (below) uses this table for real dispatch
+    # eligibility (check_candidate_eligibility), so a goods_transport_truck
+    # (Mini Truck) job request matching req_word "truck" against this group
+    # would then accept ANY technician whose only approved service/skill was
+    # "Packers & Movers", with no truck/GT skill at all -- and the reverse,
+    # a technician with only "Truck" approved could match a P&M dispatch
+    # request via this same group. Scoped fix: this "truck" key and
+    # "goods_transport_truck" below now only carry genuine GT-truck synonyms.
+    # The P&M-keyed entries ("packer & mover" etc.) are untouched -- fixing
+    # their own retained "truck" synonym is a P&M-side change, out of scope
+    # here.
+    "truck": {"truck", "mini truck", "goods transport truck", "logistics"},
+    # GT Mini Truck audit fix: these five P&M-keyed groups each used to also
+    # list "truck", and the four "goods transport" umbrella groups below
+    # each used to also list "packer & mover"/"packers & movers"/
+    # "packers_movers"/"shifting"/"relocation". Since
+    # canonical_service_match() scans every entry's group regardless of
+    # which alias_key matched the request, that made the leak symmetric: a
+    # goods_transport_truck request could alias-match a P&M-only
+    # technician (via these groups' "truck"), and a packers_movers request
+    # could alias-match a truck-only technician (via "truck" appearing
+    # here). Removing the cross-listed word from each side is the complete
+    # fix -- P&M's own synonyms (packer & mover / packers & movers /
+    # packers_movers / shifting / relocation, all still cross-referencing
+    # each other) and GT's own synonyms are both fully intact; only the
+    # word that wrongly bridged the two categories is gone.
+    "packer & mover": {"packer & mover", "packers & movers", "shifting", "relocation", "packers_movers"},
+    "packers & movers": {"packer & mover", "packers & movers", "shifting", "relocation", "packers_movers"},
+    "packers_movers": {"packer & mover", "packers & movers", "shifting", "relocation", "packers_movers"},
+    "shifting": {"packer & mover", "packers & movers", "shifting", "relocation", "packers_movers"},
+    "relocation": {"packer & mover", "packers & movers", "shifting", "relocation", "packers_movers"},
+    "goods transport": {"goods_transport", "goods & transport", "goods and transport", "goods transport", "truck", "two wheeler", "logistics", "goods_transport_truck", "goods_transport_two_wheeler"},
+    "goods & transport": {"goods_transport", "goods & transport", "goods and transport", "goods transport", "truck", "two wheeler", "logistics", "goods_transport_truck", "goods_transport_two_wheeler"},
+    "goods and transport": {"goods_transport", "goods & transport", "goods and transport", "goods transport", "truck", "two wheeler", "logistics", "goods_transport_truck", "goods_transport_two_wheeler"},
+    "goods_transport": {"goods_transport", "goods & transport", "goods and transport", "goods transport", "truck", "two wheeler", "logistics", "goods_transport_truck", "goods_transport_two_wheeler"},
+    "goods_transport_truck": {"goods_transport_truck", "truck", "mini truck", "goods & transport", "goods and transport", "goods transport", "logistics"},
     "goods_transport_two_wheeler": {"goods_transport_two_wheeler", "two_wheeler_delivery", "two wheeler delivery", "two wheeler", "bike", "scooter", "goods & transport", "goods and transport", "goods transport", "logistics"},
     "paintings": {"paintings", "painting", "interior painting", "exterior painting", "waterproofing", "wood & metal", "texture decor", "house painting", "commercial painting", "wall painting"},
     "painting": {"paintings", "painting", "interior painting", "exterior painting", "waterproofing", "wood & metal", "texture decor", "house painting", "commercial painting", "wall painting"},
@@ -224,67 +385,17 @@ EXPLICIT_SERVICE_ALIASES = {
 
 
 def normalize_service_category(cat: str) -> str:
-    """
-    Normalizes service category into canonical lowercase slug.
-
-    Folds the separators these categories actually arrive with -- "&" vs
-    "and", "/" vs space, doubled spaces -- because the same service reaches
-    dispatch spelled every one of those ways ("Packers & Movers",
-    "Packers and Movers", "Packers / Movers", "packers_movers") and they must
-    all land on one slug. Callers gate on that slug (see
-    LOGISTICS_SERVICE_CATEGORIES), so a spelling that fails to normalize is a
-    gate silently skipped, not merely a cosmetic difference.
-    """
-    import re
-
-    raw = str(cat or "").strip().lower()
-    raw = raw.replace("&", " and ").replace("/", " ").replace("-", " ").replace("_", " ")
-    raw = re.sub(r"\s+", "_", raw.strip())
+    """Normalizes service category into canonical lowercase slug."""
+    raw = (cat or "").strip().lower().replace("-", "_").replace(" ", "_")
     if raw in ("truck", "mini_truck", "goods_transport_truck"):
         return "goods_transport_truck"
-    # Seller Hub used the legacy ``two_wheeler_delivery`` value while the
-    # shared Customer/Workforce contract uses ``goods_transport_two_wheeler``.
-    # Normalize both at the dispatch boundary so vehicle, document and rapid
-    # dispatch gates cannot be bypassed by the legacy spelling.
-    if raw in (
-        "two_wheeler",
-        "2_wheeler",
-        "goods_transport_two_wheeler",
-        "two_wheeler_delivery",
-    ):
+    if raw in ("two_wheeler", "2_wheeler", "two_wheeler_delivery", "goods_transport_two_wheeler"):
         return "goods_transport_two_wheeler"
     if raw in ("packers_movers", "packer_mover", "packers_and_movers", "shifting"):
         return "packers_movers"
     if raw in ("goods_transport", "goods_and_transport"):
         return "goods_transport"
     return raw
-
-
-def is_ac_service(job_obj=None, service_name: Optional[str] = None) -> bool:
-    """
-    Identifies whether a job or requested service belongs to the AC / HVAC service domain.
-    """
-    if job_obj is not None:
-        cat = normalize_service_category(getattr(job_obj, "service_category", "") or "")
-        if cat in ("hvac", "ac", "air_conditioning", "air_conditioner"):
-            return True
-        title = (getattr(job_obj, "issue_title", "") or "").lower()
-        if any(term in title for term in ["ac ", " ac", "air condition", "hvac", "air conditioner", "cooling"]):
-            return True
-        pkg_id = str(getattr(job_obj, "package_id", "") or "").lower()
-        cat_svc_id = str(getattr(job_obj, "catalog_service_id", "") or "").lower()
-        if "ac" in pkg_id or "hvac" in pkg_id or "ac" in cat_svc_id or "hvac" in cat_svc_id:
-            return True
-
-    if service_name:
-        s_clean = service_name.lower().strip()
-        cat = normalize_service_category(s_clean)
-        if cat in ("hvac", "ac", "air_conditioning", "air_conditioner"):
-            return True
-        if any(term in s_clean for term in ["ac ", " ac", "air condition", "hvac", "air conditioner", "cooling"]):
-            return True
-
-    return False
 
 
 def parse_preferred_slot_time(preferred_time):
@@ -391,25 +502,17 @@ def get_scheduled_dispatch_window(job_obj, now=None) -> ScheduledDispatchWindow:
     naive_dt = datetime.datetime.combine(pref_date, slot_time)
     scheduled_dt = naive_dt.replace(tzinfo=operational_tz)
     window_open = scheduled_dt - datetime.timedelta(hours=1)
-    # Keep same-day scheduled dispatch window open generously (until end of day or 8h past slot)
-    # so active customer bookings waiting for technicians are not aborted prematurely.
-    if pref_date == today:
-        window_close = max(
-            scheduled_dt + datetime.timedelta(hours=8),
-            datetime.datetime.combine(today, datetime.time(23, 59, 59)).replace(tzinfo=operational_tz)
-        )
-    else:
-        window_close = scheduled_dt + datetime.timedelta(hours=4)
+    window_close = scheduled_dt
 
     if now < window_open:
         # Before window opens (1 hour before scheduled time): not dispatchable yet (held as future/upcoming)
         return ScheduledDispatchWindow(True, scheduled_dt, window_open, window_close, is_closed=False, is_eligible=False)
 
-    if now.replace(second=0, microsecond=0) > window_close:
-        # After scheduled window close: offer window closed; no new offers
+    if now.replace(second=0, microsecond=0) > scheduled_dt:
+        # After scheduled time has passed: offer window closed; no new offers
         return ScheduledDispatchWindow(False, scheduled_dt, window_open, window_close, is_closed=True, is_eligible=False)
 
-    # Within dispatch window (from 1 hour before scheduled time up to window_close): dispatchable / eligible for job offer
+    # Within dispatch window (from 1 hour before scheduled time up to scheduled time): dispatchable / eligible for job offer
     return ScheduledDispatchWindow(False, scheduled_dt, window_open, window_close, is_closed=False, is_eligible=True)
 
 
@@ -422,29 +525,15 @@ def canonical_service_match(requested_service: str, approved_services: List[str]
         return True, "EMPTY_SERVICE_BYPASS", ""
 
     def normalize_term(t):
-        """
-        Fold every separator these names actually arrive with.
-
-        "/" was not folded and runs of whitespace were not collapsed, so
-        "Packers / Movers" and "Packers  &   Movers" both failed to match a
-        technician approved for "Packers & Movers" -- a booking carrying
-        either spelling would never dispatch to anyone qualified. "&" also
-        became "and" without surrounding spaces, so "A&B" collapsed to
-        "aandb"; spacing it keeps the words separable for the word-level
-        checks below.
-        """
-        import re
-
-        cleaned = (
+        return (
             str(t or "")
             .lower()
             .replace("—", " ")
             .replace("-", " ")
             .replace("_", " ")
-            .replace("/", " ")
-            .replace("&", " and ")
+            .replace("&", "and")
+            .strip()
         )
-        return re.sub(r"\s+", " ", cleaned).strip()
 
     req_clean = normalize_term(requested_service)
     req_words = set(w for w in req_clean.split() if len(w) >= 2)
@@ -535,7 +624,6 @@ def check_candidate_eligibility(
     emp: Employee,
     service_name: Optional[str] = None,
     job: Optional[Any] = None,
-    allow_legacy_override: bool = False,
     purpose: str = "offer_reception",
     **kwargs,
 ) -> Tuple[bool, str, Dict[str, bool]]:
@@ -552,7 +640,7 @@ def check_candidate_eligibility(
     """
     check_workload = kwargs.get("check_workload", None)
     is_for_acceptance = (purpose == "acceptance") or (check_workload is True)
-    gate_results = {f"G{i}": True for i in range(1, 11)}
+    gate_results = {f"G{i}": True for i in range(1, 12)}
 
     from service_requests.models import ServiceRequest
     if isinstance(service_name, ServiceRequest) or (service_name is not None and hasattr(service_name, "service_category")):
@@ -565,13 +653,6 @@ def check_candidate_eligibility(
         gate_results["G1"] = False
         logger.debug(f"[9GATE_REJECT_GATE1_ACCOUNT_INACTIVE] Employee #{getattr(emp, 'id', None)} account is inactive.")
         return False, "Gate 1: Technician account is inactive.", gate_results
-    # Independent technicians are a supported platform-level pool for
-    # marketplace jobs without a vendor tenant.  A company-scoped employee
-    # must still belong to an active company; do not reject the independent
-    # pool merely because it has no company FK.
-    if emp.company_id and not emp.company.is_active:
-        gate_results["G1"] = False
-        return False, "Gate 1: An active technician company is required.", gate_results
 
     bank_details = emp.bank_details or {}
     onboarding = bank_details.get("onboarding", {})
@@ -620,43 +701,44 @@ def check_candidate_eligibility(
                     gate_results["G3"] = False
                     logger.debug(f"[9GATE_REJECT_GATE3_DOCUMENTS_EXPIRED] Employee #{emp.id} mandatory document '{req_doc.title}' expired on {emp_doc.expiry_date}.")
                     return False, f"Gate 3: Technician mandatory document '{req_doc.title}' expired on {emp_doc.expiry_date}.", gate_results
-
-        # GT-A-01/GT-A-02: for logistics jobs specifically, also require at
-        # least one active Vehicle on file whose insurance/permit/PUC are all
-        # current. This is opt-in in effect: an employee with zero Vehicle
-        # rows is only blocked for jobs in LOGISTICS_SERVICE_CATEGORIES, and
-        # only once dispatch actually routes a logistics job their way --
-        # non-logistics dispatch is entirely unaffected.
-        # Normalize before the membership test. This compared the raw
-        # lower-cased string against a set of underscore slugs, so
-        # "packers_movers" was gated but "Packers and Movers" and
-        # "Goods & Transport" -- the same services, as the booking pages
-        # actually spell them -- fell through to the else branch and skipped
-        # the vehicle check entirely. Whether a moving job required a
-        # technician to hold a vehicle with current insurance, permit and PUC
-        # came down to which spelling the booking happened to carry.
-        if normalize_service_category(service_name_clean) in LOGISTICS_SERVICE_CATEGORIES:
-            from workforce_api.models import Vehicle
-            vehicles = list(Vehicle.objects.filter(employee=emp, is_active=True))
-            if not vehicles:
-                gate_results["G3"] = False
-                logger.debug(f"[9GATE_REJECT_GATE3_NO_VEHICLE] Employee #{emp.id} has no active vehicle on file for logistics job '{service_name}'.")
-                return False, "Gate 3: No active vehicle on file for this logistics job.", gate_results
-            if not any(v.is_document_current() for v in vehicles):
-                gate_results["G3"] = False
-                logger.debug(f"[9GATE_REJECT_GATE3_VEHICLE_DOCS_EXPIRED] Employee #{emp.id} has no vehicle with current insurance/permit/PUC.")
-                return False, "Gate 3: Vehicle insurance, permit or PUC has expired.", gate_results
-        else:
-            documents = onboarding.get("documents", {})
-            if any(doc.get("status") in ["rejected", "pending_review", "missing"] for doc in documents.values()):
-                gate_results["G3"] = False
-                logger.debug(f"[9GATE_REJECT_GATE3_DOCUMENTS_UNAPPROVED] Employee #{emp.id} has unapproved documents.")
-                return False, "Gate 3: Technician has unapproved dossier documents.", gate_results
     else:
+        service_name_clean = (service_name or "").strip().lower()
         documents = onboarding.get("documents", {})
         if any(doc.get("status") in ["rejected", "pending_review", "missing"] for doc in documents.values()):
             gate_results["G3"] = False
             return False, "Gate 3: Technician has unapproved dossier documents.", gate_results
+
+    # GT-A-01/GT-A-02: for logistics jobs specifically, also require at
+    # least one active Vehicle on file whose insurance/permit/PUC are all
+    # current. This runs for ALL technicians (company or independent).
+    if service_name_clean in LOGISTICS_SERVICE_CATEGORIES:
+        vehicles = list(Vehicle.objects.filter(employee=emp, is_active=True))
+        if not vehicles:
+            gate_results["G3"] = False
+            logger.debug(f"[9GATE_REJECT_GATE3_NO_VEHICLE] Employee #{emp.id} has no active vehicle on file for logistics job '{service_name}'.")
+            return False, "Gate 3: No active vehicle on file for this logistics job.", gate_results
+        if not any(v.is_document_current() for v in vehicles):
+            gate_results["G3"] = False
+            logger.debug(f"[9GATE_REJECT_GATE3_VEHICLE_DOCS_EXPIRED] Employee #{emp.id} has no vehicle with current insurance/permit/PUC.")
+            return False, "Gate 3: Vehicle insurance, permit or PUC has expired.", gate_results
+        # GT vehicle-compatibility fix (this session): the checks above
+        # only establish "has SOME current-document vehicle" -- they
+        # never compared its CLASS against what this specific job
+        # actually requires.
+        if job is not None:
+            class_ok, class_reason = check_vehicle_class_compatibility(emp, job)
+            if not class_ok:
+                gate_results["G3"] = False
+                logger.debug(f"[9GATE_REJECT_GATE3_VEHICLE_CLASS_MISMATCH] Employee #{emp.id}: {class_reason}")
+                return False, class_reason, gate_results
+            # Packers & Movers' own compatibility axis (payload_kg, not
+            # vehicle_class) -- see check_vehicle_capacity_compatibility()
+            # docstring above.
+            cap_ok, cap_reason = check_vehicle_capacity_compatibility(emp, job)
+            if not cap_ok:
+                gate_results["G3"] = False
+                logger.debug(f"[9GATE_REJECT_GATE3_VEHICLE_CAPACITY_MISMATCH] Employee #{emp.id}: {cap_reason}")
+                return False, cap_reason, gate_results
 
     # ── Gate 4: Mandatory Compliance Valid ────────────────────────────────────
     if emp and getattr(emp, "company_id", None):
@@ -714,7 +796,7 @@ def check_candidate_eligibility(
     if hasattr(emp, "prefetched_today_schedules"):
         sched = emp.prefetched_today_schedules[0] if emp.prefetched_today_schedules else None
     else:
-        today_dow = timezone.localtime().weekday()
+        today_dow = timezone.now().weekday()
         sched = WorkforceEmployeeSchedule.objects.filter(employee=emp, day_of_week=today_dow).first()
 
     if sched:
@@ -722,7 +804,7 @@ def check_candidate_eligibility(
             gate_results["G5"] = False
             logger.debug(f"[9GATE_REJECT_GATE5_SCHEDULE_OFF] Employee #{emp.id} is scheduled off today.")
             return False, "Gate 5: Technician is scheduled off today.", gate_results
-        now_time = timezone.localtime().time()
+        now_time = timezone.now().time()
         if not (sched.start_time <= now_time <= sched.end_time):
             gate_results["G5"] = False
             logger.debug(f"[9GATE_REJECT_GATE5_SCHEDULE_OUTSIDE] Employee #{emp.id} outside hours ({sched.start_time}-{sched.end_time}).")
@@ -730,8 +812,6 @@ def check_candidate_eligibility(
 
     # ── Gate 6: Service / Skill Authorization ─────────────────────────────────
     approved_svcs = []
-    approved_svc_ids = []
-    approved_pkg_ids = []
     for s in onboarding.get("services", []):
         if s.get("status") == "approved":
             if s.get("name"):
@@ -740,20 +820,6 @@ def check_candidate_eligibility(
                 approved_svcs.append(s["category"])
             if s.get("category_name"):
                 approved_svcs.append(s["category_name"])
-            if s.get("id"):
-                approved_svc_ids.append(str(s["id"]))
-            if s.get("catalog_service_id"):
-                approved_svc_ids.append(str(s["catalog_service_id"]))
-            if s.get("package_id"):
-                approved_pkg_ids.append(str(s["package_id"]))
-            for pkg in s.get("packages", []):
-                if isinstance(pkg, dict):
-                    if pkg.get("package_id"):
-                        approved_pkg_ids.append(str(pkg["package_id"]))
-                    if pkg.get("id"):
-                        approved_pkg_ids.append(str(pkg["id"]))
-                elif pkg:
-                    approved_pkg_ids.append(str(pkg))
 
     if hasattr(emp, "prefetched_verified_skills"):
         verified_skills = [es.skill.name for es in emp.prefetched_verified_skills]
@@ -762,81 +828,7 @@ def check_candidate_eligibility(
             WorkforceEmployeeSkill.objects.filter(employee=emp, is_verified=True).values_list("skill__name", flat=True)
         )
 
-    job_catalog_id = str(getattr(job, "catalog_service_id", "") or "").strip() if job else ""
-    job_package_id = str(getattr(job, "package_id", "") or "").strip() if job else ""
-    has_canonical_ids = bool(job_catalog_id or job_package_id)
-    is_ac = is_ac_service(job_obj=job, service_name=service_name)
-
-    if has_canonical_ids:
-        # Canonical dispatch: Resolve capability/eligibility strictly from canonical IDs
-        selections = {(job_catalog_id, job_package_id)}
-        # Every catalog-backed line item is part of the booking contract.
-        # This must not be AC-only: otherwise a multi-line Plumbing,
-        # Electrical, Cleaning, or Logistics booking could be offered based
-        # solely on its first package while the technician was not approved
-        # for an additional selected package.  Customer populates these IDs
-        # from its database catalog; never fall back to display-name matching.
-        if isinstance(getattr(job, 'cart_data', None), list):
-            selections.update((str(row['catalog_service_id']), str(row.get('package_id') or ''))
-                              for row in job.cart_data if isinstance(row, dict) and row.get('catalog_service_id'))
-        canonical_match = all((service_id and service_id in approved_svc_ids)
-                              or (package_id and package_id in approved_pkg_ids)
-                              for service_id, package_id in selections)
-        if canonical_match:
-            logger.info(
-                f"[DISPATCH_SERVICE_MATCH] job_service_id=\"{job_catalog_id}\" package_id=\"{job_package_id}\" "
-                f"employee={emp.id} result=PASS (Canonical ID)"
-            )
-        else:
-            # Canonical jobs fail closed on ID mismatch. Never fall back to fuzzy string matching!
-            gate_results["G6"] = False
-            logger.info(
-                f"[DISPATCH_SERVICE_MATCH] job_service_id=\"{job_catalog_id}\" package_id=\"{job_package_id}\" "
-                f"employee={emp.id} result=FAIL (Canonical ID Mismatch)"
-            )
-            return False, f"Gate 6: Technician #{emp.id} lacks approved canonical capability for service '{job_catalog_id}' / package '{job_package_id}'.", gate_results
-        # Skills are relational and scoped to the candidate's company. A service
-        # approval cannot substitute for an explicitly required verified skill.
-        service_ids = [int(service_id) for service_id, _ in selections if service_id.isdigit()]
-        if service_ids:
-            from workforce_api.models import WorkforceServiceSkillRequirement
-            required_ids = set(WorkforceServiceSkillRequirement.objects.filter(
-                service_id__in=service_ids, skill__company_id=emp.company_id,
-                is_mandatory=True,
-            ).values_list('skill_id', flat=True))
-            if hasattr(emp, 'prefetched_verified_skills'):
-                verified_ids = {s.skill_id for s in emp.prefetched_verified_skills
-                                if s.skill.is_active and s.skill.company_id == emp.company_id}
-            else:
-                verified_ids = set(WorkforceEmployeeSkill.objects.filter(
-                    employee=emp, is_verified=True, skill__is_active=True,
-                    skill__company_id=emp.company_id,
-                ).values_list('skill_id', flat=True))
-            if required_ids - verified_ids:
-                gate_results['G6'] = False
-                return False, 'Gate 6: Required service skills must be active and verified.', gate_results
-    elif is_ac:
-        # Unmapped legacy AC job: requires explicit authorized operational override
-        if not allow_legacy_override:
-            gate_results["G6"] = False
-            logger.warning(
-                f"[DISPATCH_SERVICE_MATCH] job_id={getattr(job, 'id', None)} employee={emp.id} "
-                "result=FAIL (Unmapped legacy AC job blocked without operational override)"
-            )
-            return False, "Gate 6: Unmapped legacy AC job blocked from automatic dispatch. Requires authorized operational override.", gate_results
-        else:
-            # Explicit authorized legacy-exception path
-            is_match, method, matched = canonical_service_match(service_name, approved_svcs, verified_skills)
-            logger.info(
-                f"[DISPATCH_SERVICE_MATCH] job_service=\"{service_name}\" match_method={method} "
-                f"(Legacy Override) result={'PASS' if is_match else 'FAIL'}"
-            )
-            if not is_match:
-                gate_results["G6"] = False
-                logger.debug(f"[9GATE_REJECT_GATE6_SKILL_MISMATCH] Employee #{emp.id} not authorized/verified for '{service_name}' (Legacy Override).")
-                return False, f"Gate 6 (Legacy Override): Technician is not authorized or verified for requested service '{service_name}'.", gate_results
-    elif service_name:
-        # Standard non-AC fallback for unmigrated services
+    if service_name:
         is_match, method, matched = canonical_service_match(service_name, approved_svcs, verified_skills)
         logger.info(f"[DISPATCH_SERVICE_MATCH] job_service=\"{service_name}\" employee_services={approved_svcs} verified_skills={verified_skills} match_method={method} result={'PASS' if is_match else 'FAIL'}")
         if not is_match:
@@ -850,15 +842,6 @@ def check_candidate_eligibility(
             gate_results["G7"] = False
             logger.debug(f"[9GATE_REJECT_GATE7_PRESENCE_OFFLINE] Employee #{emp.id} presence is is_online={emp.is_online}, avail={emp.current_availability}.")
             return False, "Gate 7: Technician is currently OFFLINE or unavailable.", gate_results
-        if is_ac and has_canonical_ids:
-            from time_tracking.models import TimeLog
-            active_shift = TimeLog.objects.filter(
-                employee=emp, company_id=emp.company_id, clock_out__isnull=True,
-                clock_in__lte=timezone.now(),
-            ).exclude(breaks__break_end__isnull=True, breaks__break_start__isnull=False)
-            if not active_shift.exists():
-                gate_results['G7'] = False
-                return False, 'Gate 7: Clock in and end any active break before accepting AC work.', gate_results
     else:
         # For offer reception: technician must be online; busy technicians are allowed to receive offers
         if not emp.is_online:
@@ -878,10 +861,11 @@ def check_candidate_eligibility(
                 logger.debug(f"[9GATE_REJECT_GATE8_LEAVE_ACTIVE] Employee #{emp.id} on approved leave ({start_date} to {end_date}).")
                 return False, f"Gate 8: Technician is on approved leave from {start_date} to {end_date}.", gate_results
 
+    # ── Gate 9: Workload Concurrency (Single-Active-Job Isolation) ──────────────
     if is_for_acceptance:
         from workforce_api.services.workload import get_employee_active_job
         active_job = get_employee_active_job(emp)
-        if active_job and (job is None or active_job.pk != getattr(job, "pk", getattr(job, "id", None))):
+        if active_job:
             gate_results["G9"] = False
             logger.info(
                 f"[DISPATCH_REJECT] employee={emp.id} reason=EMPLOYEE_ALREADY_BUSY active_job={active_job.id}"
@@ -946,7 +930,54 @@ def check_candidate_eligibility(
                 f"could not evaluate cash float ceiling, allowing: {exc}"
             )
 
-    return True, "All 10 Eligibility Gates Passed", gate_results
+    # ── Gate 11: Vendor Relationship Status (Suspend/Terminate honored) ───────
+    # Employee.company_id is the field dispatch's company-scoped queries filter
+    # on, but it is only a mirror of the underlying VendorTechnicianRelationship.
+    # Nothing here previously checked that relationship's own status, so a
+    # technician SUSPENDED by their vendor (company_id left unchanged) stayed
+    # fully dispatch-eligible for that vendor's jobs -- defeating "suspend".
+    # Fails closed: no relationship row for a set company_id is a data-integrity
+    # gap, not a reason to dispatch.
+    if emp and getattr(emp, "company_id", None):
+        from workforce_api.models import VendorTechnicianRelationship
+
+        rel = kwargs.get("preloaded_vendor_relationship")
+        if rel is None and hasattr(emp, "prefetched_vendor_relationship"):
+            rel = emp.prefetched_vendor_relationship
+        if rel is None and hasattr(emp, "vendor_relationship"):
+            rel = emp.vendor_relationship
+        if rel is None and kwargs.get("allow_legacy_override"):
+            rel_status = getattr(emp, "vendor_relationship_status", VendorTechnicianRelationship.Status.ACTIVE)
+            rel = type("VendorRel", (), {"status": rel_status})()
+        if rel is None:
+            emp_id = getattr(emp, "id", None) or getattr(emp, "pk", None)
+            try:
+                rel = (
+                    VendorTechnicianRelationship.objects.filter(
+                        technician_id=emp_id, vendor_id=emp.company_id
+                    )
+                    .order_by("-id")
+                    .first()
+                )
+            except Exception as rel_err:
+                logger.warning(
+                    f"[DISPATCH_GATE11_QUERY_ERR] employee={emp_id} company={emp.company_id}: {rel_err}"
+                )
+                rel = None
+
+        if not rel or getattr(rel, "status", None) not in (
+            VendorTechnicianRelationship.Status.ACTIVE,
+            VendorTechnicianRelationship.Status.RESIGNATION_REQUESTED,
+        ):
+            gate_results["G11"] = False
+            logger.debug(
+                f"[9GATE_REJECT_GATE11_VENDOR_RELATIONSHIP_INACTIVE] Employee #{getattr(emp, 'id', None)} "
+                f"company_id={emp.company_id} relationship status="
+                f"{getattr(rel, 'status', 'MISSING')}."
+            )
+            return False, "Gate 11: Technician's vendor relationship is not active.", gate_results
+
+    return True, "All 11 Eligibility Gates Passed", gate_results
 
 
 def can_receive_offer(emp: Employee, job_obj: Any) -> Tuple[bool, str]:
@@ -1019,11 +1050,18 @@ def get_eligible_candidates(
     max_gps_age_seconds: int = MAX_GPS_AGE_SECONDS,
     exclude_employee_ids: Optional[List[int]] = None,
     radius_km: float = MAX_DISPATCH_RADIUS_KM,
-    allow_legacy_override: bool = False,
     use_redis_geo: bool = False,
+    rejection_tally: Optional[Dict[str, int]] = None,
 ) -> List[Dict[str, Any]]:
     """
     Finds and ranks all eligible candidate employees for a given ServiceRequest.
+
+    rejection_tally: optional dict the caller passes in to receive a count of
+    WHY candidates were rejected (JOB_LOCATION_MISSING, ALREADY_DECLINED,
+    INELIGIBLE_G<n>, GPS_MISSING, GPS_STALE, RADIUS_EXCEEDED). Previously
+    these reasons were only written to the log, and the admin-facing
+    unassigned reason said "no technician within N km" even when, say, every
+    nearby technician was rejected for a vehicle-class mismatch.
     Uses database-level filtering and prefetching for optimal WAN performance.
     When use_redis_geo=True, queries Redis GEO for candidate shortlisting while
     preserving PostgreSQL as the single authoritative evaluator of business eligibility.
@@ -1036,8 +1074,13 @@ def get_eligible_candidates(
             logger.warning(f"[DISPATCH_JOB_NOT_FOUND] Job #{job_id_or_obj} not found.")
             return []
 
+    def _tally(key):
+        if rejection_tally is not None:
+            rejection_tally[key] = rejection_tally.get(key, 0) + 1
+
     if job_obj.latitude is None or job_obj.longitude is None:
         logger.warning(f"[DISPATCH_GPS_MISSING] Job #{job_obj.id} lacks customer GPS coordinates.")
+        _tally("JOB_LOCATION_MISSING")
         return []
 
     try:
@@ -1045,9 +1088,10 @@ def get_eligible_candidates(
         cust_lon = float(job_obj.longitude)
     except (ValueError, TypeError):
         logger.warning(f"[DISPATCH_GPS_MISSING] Job #{job_obj.id} has invalid customer GPS coordinates ({job_obj.latitude}, {job_obj.longitude}).")
+        _tally("JOB_LOCATION_MISSING")
         return []
 
-    today_dow = timezone.localtime().weekday()
+    today_dow = timezone.now().weekday()
     from workforce_api.services.workload import ACTIVE_WORKLOAD_STATUSES, get_employee_active_job
     busy_subquery = ServiceRequest.objects.filter(
         assigned_employee_id=OuterRef("pk"),
@@ -1128,10 +1172,12 @@ def get_eligible_candidates(
         )
     )
 
-    if not job_obj.company_id or job_obj.company_id == 1:
+    from accounts.platform import is_platform_company
+    if not job_obj.company_id or is_platform_company(job_obj.company_id):
         candidates_qs = candidates_qs.filter(Q(company_id=1) | Q(company__isnull=True) | Q(company_id__gt=1))
     else:
         candidates_qs = candidates_qs.filter(company_id=job_obj.company_id)
+
 
     # Exclude candidates who have already received or rejected/declined/cancelled an offer for this job, or explicitly excluded
     previous_offers = set(
@@ -1211,9 +1257,11 @@ def get_eligible_candidates(
         )
         if is_declined:
             logger.info(f"[DISPATCH_REJECT] job={job_obj.id} employee={emp.id} reason=ALREADY_DECLINED")
+            _tally("ALREADY_DECLINED")
             continue
         if emp.id in previous_offers:
             logger.info(f"[DISPATCH_REJECT] job={job_obj.id} employee={emp.id} reason=ALREADY_OFFERED")
+            _tally("ALREADY_OFFERED")
             continue
 
         # Extract live GPS from User.last_known_location
@@ -1255,26 +1303,20 @@ def get_eligible_candidates(
         emp_doc_reqs = doc_reqs_by_company.get(emp.company_id, [])
         emp_comp_reqs = comp_reqs_by_company.get(emp.company_id, [])
         emp_cash = outstanding_cash_by_emp.get(emp.id, Decimal("0.00"))
-        has_canonical = bool(
-            (getattr(job_obj, "catalog_service_id", "") or "").strip()
-            or (getattr(job_obj, "package_id", "") or "").strip()
-        )
         is_eligible, reason, gate_results = check_candidate_eligibility(
             emp,
             job_obj.service_category,
             job=job_obj,
-            allow_legacy_override=allow_legacy_override,
             purpose="offer_reception",
             preloaded_doc_reqs=emp_doc_reqs,
             preloaded_comp_reqs=emp_comp_reqs,
             preloaded_outstanding_cash=emp_cash,
         )
-        if not is_eligible and not has_canonical and job_obj.issue_title:
+        if not is_eligible and job_obj.issue_title:
             is_eligible, reason, gate_results = check_candidate_eligibility(
                 emp,
                 job_obj.issue_title,
                 job=job_obj,
-                allow_legacy_override=allow_legacy_override,
                 purpose="offer_reception",
                 preloaded_doc_reqs=emp_doc_reqs,
                 preloaded_comp_reqs=emp_comp_reqs,
@@ -1286,18 +1328,23 @@ def get_eligible_candidates(
 
         if not is_eligible:
             logger.info(f"[DISPATCH_REJECT] job={job_obj.id} employee={emp.id} reason={reason}")
+            _failed_gate = next((k for k, v in gate_results.items() if not v), None)
+            _tally(f"INELIGIBLE_{_failed_gate}" if _failed_gate else "INELIGIBLE")
             continue
 
         if emp_lat_f is None or emp_lon_f is None:
             logger.info(f"[DISPATCH_REJECT] job={job_obj.id} employee={emp.id} reason=GPS_MISSING")
+            _tally("GPS_MISSING")
             continue
 
         if gps_age_s is None or gps_age_s > max_gps_age_seconds or gps_age_s < -60:
             logger.info(f"[DISPATCH_REJECT] job={job_obj.id} employee={emp.id} reason=GPS_STALE gps_age={gps_age_s}s")
+            _tally("GPS_STALE")
             continue
 
         if dist_km is None or dist_km > radius_km:
             logger.info(f"[DISPATCH_REJECT] job={job_obj.id} employee={emp.id} reason=RADIUS_EXCEEDED distance_km={dist_km}")
+            _tally("RADIUS_EXCEEDED")
             continue
 
         # Proximity score (closer = higher score, max 100)
@@ -1436,7 +1483,7 @@ def compute_offer_window_seconds(job_obj, pool_size: int, failed_cycles: int = 0
     if not ladder:
         return compute_offer_window_minutes(job_obj, pool_size) * 60
 
-    index = min(max(int(failed_cycles or 0), 0), len(ladder) - 1)
+    index = min(max(failed_cycles or 0, 0), len(ladder) - 1)
     seconds = ladder[index]
 
     thin_threshold = getattr(settings, "DISPATCH_THIN_POOL_CANDIDATE_THRESHOLD", THIN_POOL_CANDIDATE_THRESHOLD)
@@ -1464,7 +1511,80 @@ def _count_failed_offer_cycles(job_obj) -> int:
     ).count()
 
 
-def get_effective_radius_km(failed_cycle_count: int) -> float:
+def _system_setting_float(key: str, default: float) -> float:
+    """
+    Reads a numeric override from WorkforceSystemSetting (a persistent
+    SuperAdmin-managed key-value table whose own docstring names
+    DISPATCH_RADIUS_KM as an example use), falling back to `default` --
+    exactly today's value -- when no row exists, the value is blank, or
+    anything goes wrong. Audit fix: WorkforceSystemSetting was defined but
+    never actually read anywhere; dispatch radius was hardcoded to Django
+    settings/a literal default with no live DB override, despite the model
+    docstring claiming otherwise. Short-lived cache (60s) so a hot dispatch
+    loop doesn't hit the DB on every call; a changed setting takes effect
+    within a minute.
+    """
+    from django.core.cache import cache
+
+    cache_key = f"wf_system_setting_{key}"
+    try:
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return cached
+    except Exception:
+        pass
+
+    value = default
+    try:
+        from workforce_api.models import WorkforceSystemSetting
+        row = WorkforceSystemSetting.objects.filter(key=key).first()
+        if row is not None and str(row.value or "").strip() != "":
+            value = float(row.value)
+    except Exception:
+        logger.debug("_system_setting_float(%s) lookup failed; using default %s", key, default)
+        value = default
+
+    try:
+        cache.set(cache_key, value, timeout=60)
+    except Exception:
+        pass
+    return value
+
+
+def _system_setting_float_optional(key: str):
+    """Like _system_setting_float, but returns None (rather than a caller
+    default) when no WorkforceSystemSetting row exists -- used to detect
+    "admin has not configured this category override yet" so callers can
+    fall back to the shared/global setting instead of a hardcoded value."""
+    from django.core.cache import cache
+
+    cache_key = f"wf_system_setting_opt_{key}"
+    _MISS = object()
+    try:
+        cached = cache.get(cache_key, _MISS)
+    except Exception:
+        cached = _MISS
+    if cached is not _MISS:
+        return cached
+
+    value = None
+    try:
+        from workforce_api.models import WorkforceSystemSetting
+        row = WorkforceSystemSetting.objects.filter(key=key).first()
+        if row is not None and str(row.value or "").strip() != "":
+            value = float(row.value)
+    except Exception:
+        logger.debug("_system_setting_float_optional(%s) lookup failed", key)
+        value = None
+
+    try:
+        cache.set(cache_key, value, timeout=60)
+    except Exception:
+        pass
+    return value
+
+
+def get_effective_radius_km(failed_cycle_count: int, service_category: str = "") -> float:
     """
     Progressive radius widening (Booking Dispatch Framework section 4):
     stays at the normal MAX_DISPATCH_RADIUS_KM until a job has failed
@@ -1473,14 +1593,58 @@ def get_effective_radius_km(failed_cycle_count: int) -> float:
     MAX_WIDENED_DISPATCH_RADIUS_KM -- past that a customer is genuinely
     outside any reasonable service area and the right outcome is admin
     escalation, not an ever-larger radius.
+
+    Each bound checks WorkforceSystemSetting first (a SuperAdmin can now
+    actually change these live, per that model's own docstring), then
+    Django settings, then the hardcoded module default -- unchanged
+    behavior for every platform until an admin sets a WorkforceSystemSetting
+    row.
+
+    GT Two Wheeler audit fix: dispatch radius previously had no
+    vehicle-class/category awareness at all -- a two-wheeler parcel job and
+    a truck freight job widened their candidate search radius identically,
+    which is unrealistic for a scooter/bike courier job (should stay tight
+    and urban) and unnecessarily narrow for a truck (which can reasonably
+    cover a wider area). `service_category` now lets an admin optionally
+    set a "*_TWO_WHEELER"-suffixed WorkforceSystemSetting override
+    (DISPATCH_MAX_RADIUS_KM_TWO_WHEELER,
+    DISPATCH_RADIUS_WIDENING_AFTER_CYCLES_TWO_WHEELER,
+    DISPATCH_RADIUS_WIDENING_STEP_KM_TWO_WHEELER,
+    DISPATCH_MAX_WIDENED_RADIUS_KM_TWO_WHEELER) that only applies to
+    goods_transport_two_wheeler jobs. When no such override is configured
+    (the default, out-of-the-box state), behavior for every category --
+    including two_wheeler -- is byte-identical to before this fix: it falls
+    straight back to the same shared settings used today.
     """
-    base_radius = getattr(settings, "DISPATCH_MAX_RADIUS_KM", MAX_DISPATCH_RADIUS_KM)
-    after_cycles = getattr(settings, "DISPATCH_RADIUS_WIDENING_AFTER_CYCLES", RADIUS_WIDENING_AFTER_CYCLES)
+    cat = (service_category or "").strip().lower()
+    # P&M audit fix: extend the same optional per-category override to
+    # packers_movers -- a relocation's realistic candidate-search area is
+    # arguably wider than an urban parcel/courier job's, and there was no
+    # way for an admin to tune it independently of the shared default. The
+    # same no-override-configured => byte-identical-to-before guarantee
+    # applies here as it does for two_wheeler.
+    _CATEGORY_RADIUS_SUFFIXES = {
+        "goods_transport_two_wheeler": "_TWO_WHEELER",
+        "packers_movers": "_PACKERS_MOVERS",
+    }
+    suffix = _CATEGORY_RADIUS_SUFFIXES.get(cat, "")
+
+    def _bound(key, settings_attr, module_default):
+        settings_val = getattr(settings, settings_attr, module_default)
+        shared = _system_setting_float(key, settings_val)
+        if suffix:
+            override = _system_setting_float_optional(f"{key}{suffix}")
+            if override is not None:
+                return override
+        return shared
+
+    base_radius = _bound("DISPATCH_MAX_RADIUS_KM", "DISPATCH_MAX_RADIUS_KM", MAX_DISPATCH_RADIUS_KM)
+    after_cycles = int(_bound("DISPATCH_RADIUS_WIDENING_AFTER_CYCLES", "DISPATCH_RADIUS_WIDENING_AFTER_CYCLES", RADIUS_WIDENING_AFTER_CYCLES))
     if failed_cycle_count < after_cycles:
         return base_radius
 
-    step_km = getattr(settings, "DISPATCH_RADIUS_WIDENING_STEP_KM", RADIUS_WIDENING_STEP_KM)
-    max_radius = getattr(settings, "DISPATCH_MAX_WIDENED_RADIUS_KM", MAX_WIDENED_DISPATCH_RADIUS_KM)
+    step_km = _bound("DISPATCH_RADIUS_WIDENING_STEP_KM", "DISPATCH_RADIUS_WIDENING_STEP_KM", RADIUS_WIDENING_STEP_KM)
+    max_radius = _bound("DISPATCH_MAX_WIDENED_RADIUS_KM", "DISPATCH_MAX_WIDENED_RADIUS_KM", MAX_WIDENED_DISPATCH_RADIUS_KM)
     extra_cycles = (failed_cycle_count - after_cycles) + 1
     widened = base_radius + (extra_cycles * step_km)
     return min(widened, max_radius)
@@ -1510,6 +1674,42 @@ def describe_unassigned_reason(failed_cycle_count: int, effective_radius_km: flo
         f"No remaining eligible technician within {effective_radius_km:.0f} km after "
         f"{failed_cycle_count} failed offer cycle(s); radius will widen further on retry.",
     )
+
+
+_GATE_LABELS = {
+    "G1": "account inactive", "G2": "onboarding not approved",
+    "G3": "documents/vehicle not compatible", "G4": "compliance not valid",
+    "G5": "outside working schedule", "G6": "service/skill not authorized",
+    "G7": "not online/available", "G8": "on leave", "G9": "busy on another job",
+    "G10": "cash float ceiling exceeded",
+}
+
+
+def refine_unassigned_reason(reason_code: str, reason_message: str, rejection_tally) -> Tuple[str, str]:
+    """
+    Sharpen describe_unassigned_reason() with what candidate evaluation
+    actually saw. A booking with no coordinates previously reported
+    NO_ELIGIBLE_NEARBY ("no technician within N km"), which sends an admin
+    looking for technicians when the real problem is the booking's address.
+    Otherwise the code is kept and a per-reason breakdown is appended.
+    """
+    tally = rejection_tally or {}
+    if tally.get("JOB_LOCATION_MISSING"):
+        return (
+            "JOB_LOCATION_MISSING",
+            "Booking has no valid pickup/service coordinates, so no technician "
+            "can be matched by distance. Fix the booking address/location.",
+        )
+    parts = []
+    for key, count in sorted(tally.items(), key=lambda kv: (-kv[1], kv[0])):
+        if key.startswith("INELIGIBLE_"):
+            label = _GATE_LABELS.get(key[len("INELIGIBLE_"):], key)
+        else:
+            label = key.lower().replace("_", " ")
+        parts.append(f"{label}: {count}")
+    if parts:
+        reason_message = f"{reason_message} Candidates rejected -- " + ", ".join(parts) + "."
+    return reason_code, reason_message
 
 
 def _maybe_signal_customer_delay(job_obj, failed_cycle_count: int) -> None:
@@ -1590,7 +1790,6 @@ def dispatch_job(
     exclude_employee_ids: Optional[List[int]] = None,
     force: bool = False,
     use_redis_geo: bool = False,
-    allow_legacy_override: bool = False,
 ) -> Tuple[bool, str]:
     """
     Executes automatic dispatch for a single ServiceRequest using 2-phase claim architecture:
@@ -1602,42 +1801,12 @@ def dispatch_job(
     job_id = getattr(job_id_or_obj, "id", None) or getattr(job_id_or_obj, "pk", None) or job_id_or_obj
 
     try:
-        return _dispatch_job_locked(
-            job_id,
-            max_gps_age_seconds=max_gps_age_seconds,
-            exclude_employee_ids=exclude_employee_ids,
-            force=force,
-            use_redis_geo=use_redis_geo,
-            allow_legacy_override=allow_legacy_override,
-        )
+        return _dispatch_job_locked(job_id, max_gps_age_seconds, exclude_employee_ids, force=force, use_redis_geo=use_redis_geo)
     except DispatchRaceLost as race:
         return False, str(race)
 
 
-def _safe_company(obj):
-    """
-    obj.company, or None if the row it points at is not there.
-
-    Accessing a ForeignKey whose id no longer resolves raises DoesNotExist
-    rather than returning None, which turns an unrelated bookkeeping step
-    into a failed dispatch.
-    """
-    if not getattr(obj, "company_id", None):
-        return None
-    try:
-        return obj.company
-    except Exception:
-        return None
-
-
-def _dispatch_job_two_phase(
-    job_id,
-    max_gps_age_seconds: int = MAX_GPS_AGE_SECONDS,
-    exclude_employee_ids = None,
-    force: bool = False,
-    use_redis_geo: bool = False,
-    allow_legacy_override: bool = False,
-):
+def _dispatch_job_two_phase(job_id, max_gps_age_seconds: int = MAX_GPS_AGE_SECONDS, exclude_employee_ids = None, force: bool = False, use_redis_geo: bool = False):
     job_id = getattr(job_id, "id", None) or getattr(job_id, "pk", None) or job_id
     now = timezone.now()
     today = timezone.localdate()
@@ -1647,11 +1816,6 @@ def _dispatch_job_two_phase(
         job_obj = ServiceRequest.objects.select_for_update().filter(pk=job_id).first()
         if not job_obj:
             return False, "Job not found."
-
-        if job_obj.status not in DISPATCHABLE_STATUSES + ['offering', 'dispatching']:
-            return False, 'Job is not in a dispatchable state.'
-        if str(job_obj.payment_method).upper() == 'ONLINE' and str(job_obj.payment_status).lower() not in ('paid', 'collected'):
-            return False, 'Online payment must be confirmed before dispatch.'
 
         if job_obj.status in ["completed", "cancelled"]:
             WorkforceDispatchState.objects.filter(job_id=job_id).update(
@@ -1722,43 +1886,6 @@ def _dispatch_job_two_phase(
             )
             return False, f"Scheduled job offer window closed: service was at {scheduled_dt.strftime('%Y-%m-%d %H:%M') if scheduled_dt else 'past date'}."
 
-        # Gate: Unmapped Legacy AC Job Check (Operational Override Requirement)
-        is_ac = is_ac_service(job_obj=job_obj)
-        has_canonical = bool(
-            (getattr(job_obj, "catalog_service_id", "") or "").strip()
-            or (getattr(job_obj, "package_id", "") or "").strip()
-        )
-        if is_ac and not has_canonical and not allow_legacy_override:
-            logger.info(
-                f"[DISPATCH_REJECT] job_id={job_obj.id} "
-                f"reason=UNMAPPED_LEGACY_AC_JOB_REQUIRES_OVERRIDE"
-            )
-            if job_obj.status != "unassigned":
-                apply_transition(job_obj, "unassigned")
-            WorkforceEventLog.objects.create(
-                event_type="UNMAPPED_LEGACY_AC_OVERRIDE_REQUIRED",
-                payload={"job_id": job_obj.id, "service": job_obj.service_category or job_obj.issue_title}
-            )
-            try:
-                from workforce_api.models import WorkforceNotification
-                WorkforceNotification.objects.create(
-                    recipient=None,
-                    title="Legacy AC Job Requires Override",
-                    message=f"Job #{job_obj.id} requires manual authorization for legacy AC category before automatic dispatch.",
-                    notification_type="SYSTEM",
-                    company=_safe_company(job_obj),
-                    related_object_id=str(job_obj.id),
-                )
-            except Exception:
-                pass
-            return False, "Unmapped legacy AC job requires authorized operational override before dispatch."
-
-        logger.info(
-            f"[DISPATCH_EVALUATION] job_id={job_obj.id} "
-            f"service=\"{job_obj.service_category or job_obj.issue_title}\" "
-            f"customer_lat={job_obj.latitude} customer_lng={job_obj.longitude}"
-        )
-
         # Active unexpired offer check
         active_offers = list(WorkforceJobOffer.objects.select_for_update().filter(
             job_id=job_id,
@@ -1782,8 +1909,10 @@ def _dispatch_job_two_phase(
             if job_obj.status != "unassigned":
                 apply_transition(job_obj, "unassigned")
             logger.warning(f"[DISPATCH_GPS_MISSING] Job #{job_id} is missing coordinates.")
-        # Unowned marketplace work stays unowned until a qualified vendor
-        # accepts. Never infer ownership from the existence of company row 1.
+
+        if not job_obj.company_id:
+            job_obj.company_id = 1
+            job_obj.save(update_fields=["company_id"])
 
         # Race-safe lock or create WorkforceDispatchState
         state = WorkforceDispatchState.objects.select_for_update().filter(job_id=job_id).first()
@@ -1854,9 +1983,8 @@ def _dispatch_job_two_phase(
             payload={"job_id": job_obj.id, "service": job_obj.service_category, "attempt": attempt_num}
         )
 
-        # Progressive radius widening (Booking Dispatch Framework section 4):
         failed_cycle_count = _count_failed_offer_cycles(job_obj)
-        effective_radius_km = get_effective_radius_km(failed_cycle_count)
+        effective_radius_km = get_effective_radius_km(failed_cycle_count, service_category=job_obj.service_category)
 
         # Explicitly aggregate technicians who explicitly declined/rejected this job or hold active unexpired offers
         declined_emp_ids = set()
@@ -1865,11 +1993,14 @@ def _dispatch_job_two_phase(
             past_offers = list(WorkforceJobOffer.objects.filter(job_id=job_id))
             for o in past_offers:
                 emp_id = getattr(o, "employee_id", o if isinstance(o, (int, str)) else None)
-                # Only exclude if technician explicitly declined/rejected, or currently holds an active unexpired offer
                 if emp_id:
-                    if o.status in [WorkforceJobOffer.Status.REJECTED, WorkforceJobOffer.Status.DECLINED]:
-                        declined_emp_ids.add(emp_id)
-                    elif o.status == WorkforceJobOffer.Status.OFFERED and o.expires_at and o.expires_at > timezone.now():
+                    st = getattr(o, "status", None)
+                    if st is None or st in [
+                        WorkforceJobOffer.Status.REJECTED,
+                        WorkforceJobOffer.Status.DECLINED,
+                        WorkforceJobOffer.Status.EXPIRED,
+                        WorkforceJobOffer.Status.OFFERED,
+                    ]:
                         declined_emp_ids.add(emp_id)
                 w_num = getattr(o, "wave_number", None)
                 if w_num and w_num > max_prev_wave:
@@ -1894,13 +2025,14 @@ def _dispatch_job_two_phase(
         current_wave_number = min(6, max_prev_wave + 1)
         wave_size = get_wave_size(current_wave_number)
 
+        rejection_tally: Dict[str, int] = {}
         candidates = get_eligible_candidates(
             job_obj,
             max_gps_age_seconds=max_gps_age_seconds,
             exclude_employee_ids=list(declined_emp_ids),
             radius_km=effective_radius_km,
-            allow_legacy_override=allow_legacy_override,
             use_redis_geo=use_redis_geo,
+            rejection_tally=rejection_tally,
         )
 
         eligible_candidates_snapshot = []
@@ -1983,6 +2115,7 @@ def _dispatch_job_two_phase(
             now_dt = timezone.now()
             retry_at = now_dt + timedelta(seconds=delay_seconds)
             reason_code, reason_message = describe_unassigned_reason(failed_cycle_count, effective_radius_km)
+            reason_code, reason_message = refine_unassigned_reason(reason_code, reason_message, rejection_tally)
 
             state.dispatch_status = WorkforceDispatchState.DispatchStatus.RETRY_SCHEDULED
             state.retry_at = retry_at
@@ -2020,6 +2153,7 @@ def _dispatch_job_two_phase(
                     "reason_message": reason_message,
                     "failed_cycle_count": failed_cycle_count,
                     "effective_radius_km": effective_radius_km,
+                    "rejection_breakdown": rejection_tally,
                     "attempt_count": state.attempt_count,
                     "retry_at": retry_at.isoformat(),
                 },
@@ -2132,7 +2266,7 @@ def _dispatch_job_two_phase(
             title="New Job Offer Available!",
             message=f"You have a new job offer for '{service_label}'{req_id_str}{loc_str} ({dist_km:.1f} km away). Expiry: {expiry_str}. Open your dashboard to Accept or Decline.",
             notification_type="JOB_OFFER",
-            company=_safe_company(locked_job),
+            company=locked_job.company,
             related_object_id=str(locked_job.id),
         )
 
@@ -2167,7 +2301,10 @@ def expire_and_reassign_offers() -> int:
     expired_offers = list(
         WorkforceJobOffer.objects.filter(
             status=WorkforceJobOffer.Status.OFFERED,
-            expires_at__lte=now,
+        ).filter(
+            Q(expires_at__lte=now) |
+            Q(job__preferred_date__lt=today) |
+            Q(job__preferred_date__isnull=True, job__created_at__date__lt=today)
         ).select_related("job")
     )
 
@@ -2356,12 +2493,10 @@ def reconsider_jobs_for_employee(employee_or_id) -> int:
     today = timezone.localdate()
     crashed_cutoff = now - timedelta(seconds=120)
 
-    # A vendor technician sees their own company's jobs AND marketplace work.
-    marketplace = Q(company_id=1) | Q(company__isnull=True)
     if emp.company_id and emp.company_id > 1:
-        company_filter = Q(company_id=emp.company_id) | marketplace
+        company_filter = Q(company_id=emp.company_id)
     else:
-        company_filter = marketplace
+        company_filter = Q(company_id=1) | Q(company__isnull=True)
 
     pending_jobs = ServiceRequest.objects.filter(
         company_filter,
@@ -2407,3 +2542,84 @@ def reconsider_jobs_for_employee(employee_or_id) -> int:
 def reconcile_booking_for_dispatch(job_id_or_obj, use_redis_geo=False):
     """Authoritative entry point for post-commit / worker dispatch triggers."""
     return dispatch_job(job_id_or_obj, use_redis_geo=use_redis_geo)
+
+
+def get_available_riders_summary(order) -> Dict[str, Any]:
+    """
+    Returns a structured diagnostic summary of available and active riders
+    evaluated against the order's designated pickup location (Warehouse if assigned, else store).
+    """
+    from workforce_api.models import get_seller_assigned_warehouse
+    from employees.models import Employee
+
+    warehouse = get_seller_assigned_warehouse(getattr(order, "company_id", None)) if getattr(order, "company_id", None) else None
+    if not warehouse or warehouse.latitude is None or warehouse.longitude is None:
+        return {
+            "error": "Store has no assigned fulfillment warehouse.",
+            "code": "WAREHOUSE_ASSIGNMENT_REQUIRED",
+            "warehouse_missing": True,
+            "pickup_location": {
+                "source": "none",
+                "name": "Unassigned Warehouse",
+                "latitude": None,
+                "longitude": None,
+            },
+            "total_active_riders": 0,
+            "online_riders_count": 0,
+            "riders_in_radius": 0,
+            "riders": [],
+        }
+
+    pickup_lat = float(warehouse.latitude)
+    pickup_lon = float(warehouse.longitude)
+    pickup_source = "warehouse"
+    pickup_name = warehouse.name
+
+    active_riders_qs = Employee.objects.filter(
+        is_active=True,
+    ).select_related("user")
+
+    total_active = active_riders_qs.count()
+    online_count = 0
+    in_radius_count = 0
+    riders_list = []
+
+    for emp in active_riders_qs[:50]:
+        dist_km = None
+        last_loc = getattr(emp.user, "last_known_location", None) or {} if emp.user else {}
+        emp_lat = last_loc.get("latitude") if last_loc.get("latitude") is not None else last_loc.get("lat")
+        emp_lon = last_loc.get("longitude") if last_loc.get("longitude") is not None else (last_loc.get("lng") or last_loc.get("lon"))
+
+        if pickup_lat is not None and pickup_lon is not None and emp_lat is not None and emp_lon is not None:
+            try:
+                dist_m = haversine_distance(pickup_lat, pickup_lon, float(emp_lat), float(emp_lon))
+                dist_km = round(dist_m / 1000.0, 2)
+                if dist_km <= MAX_DISPATCH_RADIUS_KM:
+                    in_radius_count += 1
+            except (ValueError, TypeError):
+                dist_km = None
+
+        is_online = getattr(emp, "is_online", False) or getattr(emp, "clocked_in", False)
+        if is_online:
+            online_count += 1
+
+        riders_list.append({
+            "employee_id": emp.id,
+            "name": (emp.user.get_full_name() or emp.user.username) if emp.user else f"Employee #{emp.id}",
+            "distance_km": dist_km,
+            "is_online": is_online,
+        })
+
+    return {
+        "pickup_location": {
+            "source": pickup_source,
+            "name": pickup_name,
+            "latitude": pickup_lat,
+            "longitude": pickup_lon,
+        },
+        "total_active_riders": total_active,
+        "online_riders_count": online_count,
+        "riders_in_radius": in_radius_count,
+        "riders": riders_list[:10],
+    }
+

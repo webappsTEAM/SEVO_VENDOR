@@ -20,38 +20,62 @@ logger = logging.getLogger("workforce.workload")
 ACTIVE_QUEUE_STATUSES: List[str] = [
     "assigned",
     "accepted",
+    "customer_approved",
+    "repair_authorized",
     "on_the_way",
     "en_route",
     "arrived",
+    "inspection_in_progress",
     "in_progress",
-    "on_hold",
-    "service_started",
+    "in_service",
+    "inspection",
     "proof_submitted",
+    "quotation_created",
+    "quotation_pending_approval",
+    "quotation_sent",
+    "inspection_completed",
+    "on_hold",
 ]
 
 # Authoritative definition of all statuses where an employee is actively executing work
 ACTIVE_WORKLOAD_STATUSES: List[str] = [
     "accepted",
+    "customer_approved",
+    "repair_authorized",
     "on_the_way",
     "en_route",
     "arrived",
+    "inspection_in_progress",
     "in_progress",
-    "on_hold",
-    "service_started",
+    "in_service",
+    "inspection",
     "proof_submitted",
+    "quotation_created",
+    "quotation_pending_approval",
+    "quotation_sent",
+    "inspection_completed",
+    "on_hold",
 ]
 
 # Workload blocking statuses that prevent new exclusive offers (ONE EMPLOYEE = ONE ACTIVE JOB)
 WORKLOAD_OCCUPIED_STATUSES: List[str] = [
     "assigned",
     "accepted",
+    "customer_approved",
+    "repair_authorized",
     "on_the_way",
     "en_route",
     "arrived",
+    "inspection_in_progress",
     "in_progress",
-    "on_hold",
-    "service_started",
+    "in_service",
+    "inspection",
     "proof_submitted",
+    "quotation_created",
+    "quotation_pending_approval",
+    "quotation_sent",
+    "inspection_completed",
+    "on_hold",
 ]
 
 # Terminal statuses where an assignment has fully ended
@@ -104,7 +128,7 @@ def get_employee_active_job(employee_or_id, for_update: bool = False, statuses: 
             from service_requests.models import EmployeeJob
             emp_job_qs = EmployeeJob.objects.filter(
                 employee_id=emp_id,
-                status__in=["ASSIGNED", "ACCEPTED", "ON_THE_WAY", "EN_ROUTE", "ARRIVED", "IN_PROGRESS", "ON_HOLD", "SERVICE_STARTED", "PROOF_SUBMITTED"],
+                status__in=["ASSIGNED", "ACCEPTED", "ON_THE_WAY", "EN_ROUTE", "ARRIVED", "INSPECTION_IN_PROGRESS", "IN_PROGRESS", "QUOTATION_SENT", "ON_HOLD", "PROOF_SUBMITTED"],
             )
             if for_update:
                 emp_job_qs = emp_job_qs.select_for_update()
@@ -159,42 +183,12 @@ def reconcile_employee_availability(employee_or_id) -> str:
     else:
         new_avail = "available"
 
-    previous_avail = emp.current_availability
-    availability_changed = previous_avail != new_avail
-    if availability_changed:
+    if emp.current_availability != new_avail:
         emp.current_availability = new_avail
         update_fields.append("current_availability")
 
     if update_fields:
         emp.save(update_fields=update_fields)
-
-    # publish_workforce_event() documents EMPLOYEE_AVAILABILITY_CHANGED as one
-    # of the events it publishes, but nothing emitted it -- so anything
-    # watching the realtime stream (admin dashboards, dispatch) never learned
-    # that a technician had freed up, and only saw it on the next poll. Emit
-    # it here, where the change actually happens, rather than at each of the
-    # many call sites that can cause one.
-    if availability_changed:
-        try:
-            from workforce_api.services.realtime import publish_workforce_event
-
-            publish_workforce_event(
-                "EMPLOYEE_AVAILABILITY_CHANGED",
-                {
-                    "employee_id": emp.id,
-                    "previous_availability": previous_avail,
-                    "availability": new_avail,
-                    "active_job_id": active_job.id if active_job else None,
-                    "is_online": emp.is_online,
-                },
-                user=getattr(emp, "user", None),
-                company=getattr(emp, "company", None),
-            )
-        except Exception as _evt_err:
-            logger.warning(
-                "Could not publish EMPLOYEE_AVAILABILITY_CHANGED for employee %s: %s",
-                emp.id, _evt_err,
-            )
 
     logger.info(
         f"[EMPLOYEE_WORKLOAD] employee={emp.id} active_job={active_job.id if active_job else 'null'} "
@@ -248,26 +242,39 @@ def supersede_other_offers_for_employee(employee, accepted_job, reason: str = "E
                     "message": "Offer closed automatically because you accepted another job.",
                 }
             )
+            # Reconcile unread JOB_OFFER notifications for superseded offers
+            # so the notification count and actionable offers do not misleadingly diverge.
+            from workforce_api.models import WorkforceNotification
+            from django.utils import timezone
+            WorkforceNotification.objects.filter(
+                recipient=user_obj,
+                notification_type="JOB_OFFER",
+                related_object_id=str(offer.job_id),
+                is_read=False,
+            ).update(is_read=True, read_at=timezone.now())
 
     # Recover any jobs that now have zero active unexpired offers
-    from workforce_api.models import WorkforceDispatchState
-    from django.utils import timezone
-    now = timezone.now()
-    for j_id in jobs_to_redispatch:
-        has_active = WorkforceJobOffer.objects.filter(
-            job_id=j_id,
-            status=WorkforceJobOffer.Status.OFFERED,
-            expires_at__gt=now,
-        ).exists()
-        if not has_active:
-            WorkforceDispatchState.objects.filter(job_id=j_id).update(
-                dispatch_status=WorkforceDispatchState.DispatchStatus.NEVER_ATTEMPTED,
-                locked_at=None,
-            )
-            try:
-                from workforce_api.services.automatic_dispatch import dispatch_next_candidate
-                dispatch_next_candidate(j_id)
-            except Exception as e:
-                logger.warning(f"[SUPERSEDE_REDISPATCH_FAIL] Job #{j_id}: {e}")
+    try:
+        from workforce_api.models import WorkforceDispatchState
+        from django.utils import timezone
+        now = timezone.now()
+        for j_id in jobs_to_redispatch:
+            has_active = WorkforceJobOffer.objects.filter(
+                job_id=j_id,
+                status=WorkforceJobOffer.Status.OFFERED,
+                expires_at__gt=now,
+            ).exists()
+            if not has_active:
+                WorkforceDispatchState.objects.filter(job_id=j_id).update(
+                    dispatch_status=WorkforceDispatchState.DispatchStatus.NEVER_ATTEMPTED,
+                    locked_at=None,
+                )
+                try:
+                    from workforce_api.services.automatic_dispatch import dispatch_next_candidate
+                    dispatch_next_candidate(j_id)
+                except Exception as e:
+                    logger.warning(f"[SUPERSEDE_REDISPATCH_FAIL] Job #{j_id}: {e}")
+    except Exception as exc:
+        logger.debug(f"[SUPERSEDE_REDISPATCH_SKIP] {exc}")
 
     return closed_count

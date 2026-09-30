@@ -51,6 +51,61 @@ def noop_reverse(apps, schema_editor):
     pass
 
 
+def add_postgres_partial_unique_index(apps, schema_editor):
+    """
+    Postgres-only (partial unique index via DO $$ + pg_indexes catalog).
+    manage.py test always runs against sqlite (see workforce_core.settings
+    IS_TESTING), which has no pg_indexes catalog and no partial-unique-index
+    DDL syntax compatible with this block, so this is a genuine no-op there
+    -- not a behavior change for production, which is Postgres-only per
+    settings.py's DATABASES config.
+    """
+    if schema_editor.connection.vendor != "postgresql":
+        return
+    schema_editor.execute(
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_indexes
+                WHERE tablename = 'workforce_job_tracking_session'
+                  AND indexname = 'unique_active_tracking_session_per_job'
+            ) THEN
+                CREATE UNIQUE INDEX unique_active_tracking_session_per_job
+                ON workforce_job_tracking_session (job_id)
+                WHERE (status = 'ACTIVE');
+            END IF;
+        END
+        $$;
+        """
+    )
+
+
+def add_tracking_indexes(apps, schema_editor):
+    """
+    IF NOT EXISTS index creation is Postgres/sqlite-compatible syntax, but
+    sqlite's in-memory test DB uses Django's own auto-generated table names
+    at this point in a fresh test run, so keep this alongside its sibling
+    for symmetry and to guarantee it only ever runs against the real schema.
+    """
+    if schema_editor.connection.vendor != "postgresql":
+        return
+    schema_editor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS wf_ts_job_status_idx
+            ON workforce_job_tracking_session (job_id, status);
+        CREATE INDEX IF NOT EXISTS wf_ts_emp_status_idx
+            ON workforce_job_tracking_session (employee_id, status);
+        CREATE INDEX IF NOT EXISTS wf_lp_job_emp_cap_idx
+            ON workforce_job_location_point (job_id, employee_id, captured_at);
+        CREATE INDEX IF NOT EXISTS wf_lp_session_time_idx
+            ON workforce_job_location_point (tracking_session_id, created_at);
+        CREATE INDEX IF NOT EXISTS wf_lp_job_time_idx
+            ON workforce_job_location_point (job_id, created_at);
+        """
+    )
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -110,39 +165,8 @@ class Migration(migrations.Migration):
         ),
 
         # Step 4: Add DB-level partial unique constraint (idempotent — uses IF NOT EXISTS)
-        migrations.RunSQL(
-            sql="""
-                DO $$
-                BEGIN
-                    IF NOT EXISTS (
-                        SELECT 1 FROM pg_indexes
-                        WHERE tablename = 'workforce_job_tracking_session'
-                          AND indexname = 'unique_active_tracking_session_per_job'
-                    ) THEN
-                        CREATE UNIQUE INDEX unique_active_tracking_session_per_job
-                        ON workforce_job_tracking_session (job_id)
-                        WHERE (status = 'ACTIVE');
-                    END IF;
-                END
-                $$;
-            """,
-            reverse_sql=migrations.RunSQL.noop,
-        ),
+        migrations.RunPython(add_postgres_partial_unique_index, noop_reverse),
 
         # Step 5–7: Add indexes (idempotent — uses IF NOT EXISTS)
-        migrations.RunSQL(
-            sql="""
-                CREATE INDEX IF NOT EXISTS wf_ts_job_status_idx
-                    ON workforce_job_tracking_session (job_id, status);
-                CREATE INDEX IF NOT EXISTS wf_ts_emp_status_idx
-                    ON workforce_job_tracking_session (employee_id, status);
-                CREATE INDEX IF NOT EXISTS wf_lp_job_emp_cap_idx
-                    ON workforce_job_location_point (job_id, employee_id, captured_at);
-                CREATE INDEX IF NOT EXISTS wf_lp_session_time_idx
-                    ON workforce_job_location_point (tracking_session_id, created_at);
-                CREATE INDEX IF NOT EXISTS wf_lp_job_time_idx
-                    ON workforce_job_location_point (job_id, created_at);
-            """,
-            reverse_sql=migrations.RunSQL.noop,
-        ),
+        migrations.RunPython(add_tracking_indexes, noop_reverse),
     ]

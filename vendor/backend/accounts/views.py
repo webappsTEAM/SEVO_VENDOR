@@ -11,7 +11,6 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from .authentication import set_auth_cookies
-from django.utils import timezone
 from employees.models import Employee
 
 logger = logging.getLogger(__name__)
@@ -257,11 +256,38 @@ class LoginView(APIView):
                 except Exception as _w_err:
                     logger.warning("Could not ensure individual wallet: %s", str(_w_err))
 
+            # Check warehouse staff profile
+            wh_staff = None
+            is_warehouse_staff = False
+            try:
+                from workforce_api.models import WarehouseStaff
+                wh_staff = WarehouseStaff.objects.filter(user=user).select_related("warehouse").first()
+                if wh_staff and wh_staff.warehouse and wh_staff.warehouse.is_active:
+                    is_warehouse_staff = True
+                    user_role = "warehouse"
+            except Exception as _wh_err:
+                wh_staff = None
+
             user_type = (
                 "platform_admin"
                 if is_platform_admin
-                else ("vendor_admin" if is_vendor_admin else "technician")
+                else ("warehouse_staff" if is_warehouse_staff else ("vendor_admin" if is_vendor_admin else "technician"))
             )
+
+            company_obj = (emp.company if (emp and emp.company) else (user.company if getattr(user, "company", None) else None))
+            if not company_obj and company_id:
+                from companies.models import Company
+                company_obj = Company.objects.filter(id=company_id).first()
+
+            btype = getattr(company_obj, "business_type", "") if company_obj else ""
+            is_grocery_supplier = bool(
+                company_obj and (
+                    btype in ("grocery_supplier", "hybrid")
+                    or any(m in (getattr(company_obj, "selected_modules", []) or []) for m in ("grocery_supplier", "grocery_inventory", "groceries"))
+                    or any(k in (getattr(company_obj, "industry", "") or "").lower() for k in ("grocery", "vegetable", "produce", "farm", "supermarket"))
+                )
+            )
+            is_seller = bool(is_grocery_supplier and not is_platform_admin and not is_warehouse_staff)
 
             from workforce_api.services.registration import get_employee_registration_status
             reg_status = get_employee_registration_status(user)
@@ -280,10 +306,17 @@ class LoginView(APIView):
                     "role": user_role,
                     "company": company_id,
                     "company_name": company_name,
+                    "business_type": btype,
+                    "is_grocery_supplier": is_grocery_supplier,
+                    "is_seller": is_seller,
+                    "is_warehouse_staff": is_warehouse_staff,
+                    "warehouse_id": wh_staff.warehouse_id if wh_staff else None,
+                    "warehouse_name": wh_staff.warehouse.name if (wh_staff and wh_staff.warehouse) else "",
+                    "warehouse_code": wh_staff.warehouse.code if (wh_staff and wh_staff.warehouse) else "",
                     "is_superuser": getattr(user, "is_superuser", False),
                     "is_platform_admin": is_platform_admin,
                     "is_vendor_admin": is_vendor_admin,
-                    "is_technician": is_technician,
+                    "is_technician": is_technician and not is_warehouse_staff,
                     "is_tied_worker": is_tied_worker,
                     "is_solo_worker": is_solo_worker,
                     "user_type": user_type,
@@ -483,24 +516,38 @@ class MeView(APIView):
                 except Exception as _w_err:
                     logger.warning("Could not ensure individual wallet: %s", str(_w_err))
 
+            company_obj = (emp.company if (emp and emp.company) else (user.company if getattr(user, "company", None) else None))
+            if not company_obj and company_id:
+                from companies.models import Company
+                company_obj = Company.objects.filter(id=company_id).first()
+
+            btype = getattr(company_obj, "business_type", "") if company_obj else ""
+            is_grocery_supplier = bool(
+                company_obj and (
+                    btype in ("grocery_supplier", "hybrid")
+                    or any(m in (getattr(company_obj, "selected_modules", []) or []) for m in ("grocery_supplier", "grocery_inventory", "groceries"))
+                    or any(k in (getattr(company_obj, "industry", "") or "").lower() for k in ("grocery", "vegetable", "produce", "farm", "supermarket"))
+                )
+            )
+            is_seller = bool(is_grocery_supplier and not is_platform_admin)
+
+            # Check warehouse staff profile
+            wh_staff = None
+            is_warehouse_staff = False
+            try:
+                from workforce_api.models import WarehouseStaff
+                wh_staff = WarehouseStaff.objects.filter(user=user).select_related("warehouse").first()
+                if wh_staff and wh_staff.warehouse and wh_staff.warehouse.is_active:
+                    is_warehouse_staff = True
+                    user_role = "warehouse"
+            except Exception as _wh_err:
+                wh_staff = None
+
             user_type = (
                 "platform_admin"
                 if is_platform_admin
-                else ("vendor_admin" if is_vendor_admin else "technician")
+                else ("warehouse_staff" if is_warehouse_staff else ("vendor_admin" if is_vendor_admin else "technician"))
             )
-
-            live_availability = None
-            if emp:
-                try:
-                    from workforce_api.services.workload import reconcile_employee_availability
-
-                    live_availability = reconcile_employee_availability(emp)
-                except Exception as _avail_err:
-                    logger.warning(
-                        "Could not reconcile availability for employee %s: %s",
-                        getattr(emp, "id", None), _avail_err,
-                    )
-                    live_availability = getattr(emp, "current_availability", None)
 
             from workforce_api.services.registration import get_employee_registration_status
             reg_status = get_employee_registration_status(emp or user)
@@ -514,24 +561,22 @@ class MeView(APIView):
                 "role": user_role,
                 "company": company_id,
                 "company_name": company_name,
+                "business_type": btype,
+                "is_grocery_supplier": is_grocery_supplier,
+                "is_seller": is_seller and not is_warehouse_staff,
+                "is_warehouse_staff": is_warehouse_staff,
+                "warehouse_id": wh_staff.warehouse_id if wh_staff else None,
+                "warehouse_name": wh_staff.warehouse.name if (wh_staff and wh_staff.warehouse) else "",
+                "warehouse_code": wh_staff.warehouse.code if (wh_staff and wh_staff.warehouse) else "",
                 "is_superuser": getattr(user, "is_superuser", False),
                 "is_platform_admin": is_platform_admin,
                 "is_vendor_admin": is_vendor_admin,
-                "is_technician": is_technician,
+                "is_technician": is_technician and not is_warehouse_staff,
                 "is_tied_worker": is_tied_worker,
                 "is_solo_worker": is_solo_worker,
                 "user_type": user_type,
                 "employee_id": getattr(emp, "employee_id", None) if emp else None,
                 "registration_status": reg_status,
-                # Reconciled on read rather than served from the stored column.
-                # A stale "busy" -- left by a job that ended without a
-                # reconcile, or a crash mid-job -- otherwise keeps a technician
-                # out of dispatch indefinitely, and the app has no way to tell
-                # it is looking at a lie. WorkforcePresenceStatusView already
-                # answers with a live value; this is the same thing on the
-                # endpoint the app calls on every load, so the state heals
-                # itself the next time the technician opens it.
-                "live_availability": live_availability,
             }, status=status.HTTP_200_OK)
         except (OperationalError, DatabaseError) as db_err:
             logger.error("Database error in MeView: %s", str(db_err), exc_info=True)
@@ -548,73 +593,10 @@ class MeView(APIView):
 
 
 class LogoutView(APIView):
-    """
-    Sign out, and take the technician offline while doing it.
-
-    This used to delete the two cookies and nothing else, so a technician who
-    logged out stayed is_online=True in the database indefinitely. Dispatch
-    went on offering them jobs they could not possibly see: each offer held
-    its exclusive window until it expired, the booking lost those cycles
-    before moving to the next candidate, and the technician's own
-    offer-outcome history -- which dispatch ranks on -- decayed for offers
-    they never received. Signing out is the clearest statement available that
-    someone has stopped working, so presence follows it.
-
-    Availability is reconciled rather than assigned, so the value lands on
-    whatever the workload rules say offline means, and a PresenceLog row is
-    written for the same reason the presence toggle writes one: the shift
-    history should show the technician going offline here too, not a gap.
-    """
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        # request.user is resolved directly rather than via getattr(...,
-        # None): DRF authenticates lazily on attribute access, and a getattr
-        # default silently swallows anything raised in there, which would
-        # turn an authenticated sign-out into a cookie-only one with no sign
-        # that presence had been skipped.
-        user = request.user
-        payload = {"message": "Logged out successfully."}
-
-        if user is not None and getattr(user, "is_authenticated", False):
-            emp = Employee.objects.filter(user=user).select_related("company").first()
-            if emp:
-                try:
-                    emp.is_online = False
-                    emp.last_logout_at = timezone.now()
-                    emp.save(update_fields=["is_online", "last_logout_at"])
-
-                    from workforce_api.services.workload import reconcile_employee_availability
-
-                    availability = reconcile_employee_availability(emp)
-                    emp.refresh_from_db()
-
-                    try:
-                        from employees.models import PresenceLog
-
-                        PresenceLog.objects.create(
-                            employee=emp,
-                            company=emp.company,
-                            is_online=False,
-                            availability=emp.current_availability,
-                        )
-                    except Exception as _log_err:
-                        logger.warning(
-                            "Could not write PresenceLog on logout for employee %s: %s",
-                            emp.id, _log_err,
-                        )
-
-                    payload["is_online"] = False
-                    payload["availability"] = availability
-                except Exception as _presence_err:
-                    # Never fail the sign-out itself over presence bookkeeping --
-                    # refusing to log someone out is worse than a stale flag.
-                    logger.warning(
-                        "Could not take employee %s offline on logout: %s",
-                        getattr(emp, "id", None), _presence_err,
-                    )
-
-        response = Response(payload, status=status.HTTP_200_OK)
+        response = Response({"message": "Logged out successfully."}, status=status.HTTP_200_OK)
         response.delete_cookie("qt_access")
         response.delete_cookie("qt_refresh")
         return response

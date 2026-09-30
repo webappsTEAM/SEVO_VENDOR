@@ -1,5 +1,4 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { ConfirmDialog } from '../../../components/enterprise/ConfirmDialog.jsx';
 import { AppShell } from '../../../components/common/AppShell.jsx';
 import { LoadingState } from '../../../components/enterprise/LoadingState.jsx';
 import {
@@ -16,7 +15,6 @@ function AddAccountModal({ onClose, onSuccess }) {
     account_type: 'SAVINGS',
   });
   const [loading, setLoading] = useState(false);
-  const [confirmAction, setConfirmAction] = useState(null);
   const [error, setError] = useState(null);
 
   const update = (key) => (e) => setForm(f => ({ ...f, [key]: e.target.value }));
@@ -139,19 +137,15 @@ export function WalletPayoutAccountsPage() {
     loadData();
   }, []);
 
-  // Asked in the app's own dialog rather than a native popup: this action
-  // moves money or removes a payout destination, and a native box cannot be
-  // styled, states no consequence, and freezes the tab while it is open.
-  const handleDelete = (id) => setConfirmAction({ args: [id] });
-
-  const handleDeleteConfirmed = async (id) => {
+  const handleDelete = async (id) => {
+    if (!window.confirm('Deactivate this bank account? It will no longer be available for withdrawals.')) return;
     try {
       setDeleting(id);
       await apiDeletePayoutAccount(id);
       fetchedRef.current = false;
       loadData();
     } catch (err) {
-      setError(err?.data?.error || 'Failed to remove account. It may be referenced by an active withdrawal.');
+      alert(err?.data?.error || 'Failed to remove account. It may be referenced by an active withdrawal.');
     } finally {
       setDeleting(null);
     }
@@ -246,15 +240,6 @@ export function WalletPayoutAccountsPage() {
           />
         )}
       </div>
-      <ConfirmDialog
-        isOpen={Boolean(confirmAction)}
-        onClose={() => setConfirmAction(null)}
-        onConfirm={() => { const a = confirmAction; setConfirmAction(null); handleDeleteConfirmed(...a.args); }}
-        title="Deactivate bank account"
-        message="Deactivate this bank account? It will no longer be available for withdrawals."
-        confirmText="Deactivate"
-        confirmVariant="danger"
-      />
     </AppShell>
   );
 }

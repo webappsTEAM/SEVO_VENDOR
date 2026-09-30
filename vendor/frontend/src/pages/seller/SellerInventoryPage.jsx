@@ -34,9 +34,14 @@ import {
   Check,
   Scan,
   Barcode as BarcodeIcon,
+  Boxes,
+  ShoppingBag,
 } from 'lucide-react';
 import { BarcodeScannerModal } from '../../components/common/BarcodeScannerModal.jsx';
 import { BarcodeRenderer } from '../../components/common/BarcodeRenderer.jsx';
+import { BasketOfferBuilderModal } from '../../components/vendor/BasketOfferBuilderModal.jsx';
+import { SellerBasketOffersTab } from '../../components/vendor/SellerBasketOffersTab.jsx';
+import { apiGetSellerBaskets } from '../../api/workforceService.js';
 
 export function SellerInventoryPage() {
   const { user, token } = useAuth();
@@ -49,11 +54,17 @@ export function SellerInventoryPage() {
   const [successMsg, setSuccessMsg] = useState('');
 
   // Filters & Search
-  const [activeTab, setActiveTab] = useState('ALL'); // ALL, IN_STOCK, LOW_STOCK, OUT_OF_STOCK, EXPIRING_SOON, EXPIRED, PAUSED
+  const [activeTab, setActiveTab] = useState('ALL'); // ALL, IN_STOCK, LOW_STOCK, OUT_OF_STOCK, EXPIRING_SOON, EXPIRED, PAUSED, BASKET_OFFERS
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [categories, setCategories] = useState([]);
   const [showInventoryScanner, setShowInventoryScanner] = useState(false);
+
+  // Basket Offers State
+  const [baskets, setBaskets] = useState([]);
+  const [basketsLoading, setBasketsLoading] = useState(false);
+  const [basketBuilderOpen, setBasketBuilderOpen] = useState(false);
+  const [editingBasket, setEditingBasket] = useState(null);
 
   // Selected Item for Detail / Drawer
   const [selectedItem, setSelectedItem] = useState(null);
@@ -225,6 +236,19 @@ export function SellerInventoryPage() {
     }
   }, [token, inventoryItems, initForm.product_id]);
 
+  const fetchBaskets = useCallback(async () => {
+    setBasketsLoading(true);
+    try {
+      const res = await apiGetSellerBaskets();
+      const list = Array.isArray(res) ? res : Array.isArray(res?.results) ? res.results : [];
+      setBaskets(list);
+    } catch (e) {
+      console.warn('Could not fetch baskets', e);
+    } finally {
+      setBasketsLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchInventory();
   }, [fetchInventory]);
@@ -232,6 +256,10 @@ export function SellerInventoryPage() {
   useEffect(() => {
     fetchCategories();
   }, [fetchCategories]);
+
+  useEffect(() => {
+    fetchBaskets();
+  }, [fetchBaskets]);
 
   // ── Fetch Movement History for Drawer ─────────────────────────────────────
   const fetchLedger = async (invId) => {
@@ -565,6 +593,14 @@ export function SellerInventoryPage() {
           </div>
 
           <div className="flex items-center gap-2">
+            <Link
+              to="/workforce/seller-hub/catalogs?tab=inbound_requests"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl shadow-xs transition-all"
+            >
+              <Boxes className="w-4 h-4 text-indigo-600" />
+              <span>Warehouse Storage Requests</span>
+            </Link>
+
             <button
               onClick={() => {
                 fetchApprovedProductsForInit();
@@ -734,6 +770,7 @@ export function SellerInventoryPage() {
               { key: 'EXPIRING_SOON', label: 'Expiring Soon', count: metrics.expiring, alert: metrics.expiring > 0 },
               { key: 'EXPIRED', label: 'Expired' },
               { key: 'PAUSED', label: 'Paused Products' },
+              { key: 'BASKET_OFFERS', label: 'Basket Offers', count: baskets.length },
             ].map((tab) => (
               <button
                 key={tab.key}
@@ -762,14 +799,31 @@ export function SellerInventoryPage() {
             ))}
           </div>
 
-          {/* ── INVENTORY TABLE ────────────────────────────────────────────── */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
-            {loading ? (
-              <div className="p-16 text-center space-y-3">
-                <RefreshCw className="w-8 h-8 text-emerald-600 animate-spin mx-auto" />
-                <p className="text-xs font-semibold text-slate-500">Loading store stock balances...</p>
-              </div>
-            ) : inventoryItems.length === 0 ? (
+          {/* ── INVENTORY TABLE OR BASKET OFFERS TAB ─────────────────────── */}
+          {activeTab === 'BASKET_OFFERS' ? (
+            <SellerBasketOffersTab
+              baskets={baskets}
+              loading={basketsLoading}
+              onRefresh={fetchBaskets}
+              onOpenCreate={() => {
+                setEditingBasket(null);
+                setBasketBuilderOpen(true);
+              }}
+              onOpenEdit={(basket) => {
+                setEditingBasket(basket);
+                setBasketBuilderOpen(true);
+              }}
+              setSuccessMsg={setSuccessMsg}
+              setErrorMsg={setError}
+            />
+          ) : (
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+              {loading ? (
+                <div className="p-16 text-center space-y-3">
+                  <RefreshCw className="w-8 h-8 text-emerald-600 animate-spin mx-auto" />
+                  <p className="text-xs font-semibold text-slate-500">Loading store stock balances...</p>
+                </div>
+              ) : inventoryItems.length === 0 ? (
               <div className="p-16 text-center space-y-3">
                 <div className="w-12 h-12 bg-emerald-50 rounded-2xl text-emerald-600 flex items-center justify-center mx-auto border border-emerald-100">
                   <Package className="w-6 h-6" />
@@ -1037,6 +1091,7 @@ export function SellerInventoryPage() {
               </div>
             )}
           </div>
+          )}
         </div>
 
         {/* ── MODAL: STOCK IN / REPLENISH ─────────────────────────────────── */}
@@ -1789,6 +1844,21 @@ export function SellerInventoryPage() {
           }}
           title="Scan to Search Store Stock"
           description="Point your camera at a physical product barcode to jump directly to its stock record"
+        />
+
+        {/* ── BASKET OFFER BUILDER MODAL ───────────────────────────────────── */}
+        <BasketOfferBuilderModal
+          isOpen={basketBuilderOpen}
+          onClose={() => {
+            setBasketBuilderOpen(false);
+            setEditingBasket(null);
+          }}
+          editingBasket={editingBasket}
+          onSaved={() => {
+            fetchBaskets();
+            setSuccessMsg('Basket offer saved successfully.');
+          }}
+          token={token}
         />
       </main>
     </div>

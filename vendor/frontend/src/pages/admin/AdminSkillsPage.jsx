@@ -3,7 +3,6 @@ import { AppShell } from '../../components/common/AppShell.jsx';
 import { Modal } from '../../components/enterprise/Modal.jsx';
 import { apiGetSkills, apiCreateSkill, apiAssignSkill, apiGetEmployees } from '../../api/workforceService.js';
 import { Award, PlusCircle, CheckCircle2, AlertCircle, User, ShieldCheck } from 'lucide-react';
-import ServiceSkillRequirements from '../../components/admin/ServiceSkillRequirements.jsx';
 
 export function AdminSkillsPage() {
   const [skills, setSkills] = useState([]);
@@ -29,15 +28,14 @@ export function AdminSkillsPage() {
     try {
       setIsLoading(true);
       const [skData, empData] = await Promise.all([
-        apiGetSkills(),
-        apiGetEmployees(),
+        apiGetSkills().catch(() => []),
+        apiGetEmployees().catch(() => []),
       ]);
       setSkills(skData || []);
       setEmployees(empData || []);
       if (empData && empData.length > 0) setAssignEmpId(empData[0].id);
       if (skData && skData.length > 0) setAssignSkillId(skData[0].id);
-    } catch (err) {
-      setStatusMsg({ type: 'error', text: err.message || 'Could not load skills and technicians. Please retry.' });
+    } catch (_) {
     } finally {
       setIsLoading(false);
     }
@@ -76,7 +74,10 @@ export function AdminSkillsPage() {
     try {
       setIsAssigning(true);
       setStatusMsg({ type: '', text: '' });
-      await apiAssignSkill(assignEmpId, assignSkillId, proficiencyLevel);
+      await apiAssignSkill(assignEmpId, {
+        skill_id: assignSkillId,
+        proficiency_level: proficiencyLevel,
+      });
       setShowAssignModal(false);
       setStatusMsg({ type: 'success', text: 'Skill assigned and verified for technician.' });
       await loadData();
@@ -128,9 +129,6 @@ export function AdminSkillsPage() {
           </div>
         )}
 
-        <ServiceSkillRequirements skills={skills} />
-        {isLoading && <p role="status">Loading skills and technicians…</p>}
-        {statusMsg.type === 'error' && <button onClick={loadData} className="underline">Retry loading</button>}
         <div className="bg-white border border-zinc-200/90 rounded-md overflow-hidden shadow-card">
           <div className="bg-zinc-50/80 px-4 py-3 border-b border-zinc-200/80 font-bold text-zinc-950 uppercase tracking-wider text-xs">
             Master Skill Catalog ({skills.length})
