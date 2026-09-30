@@ -1,4 +1,14 @@
-/**
+import React from 'react';
+  
+  const JobPresentation = () =>  {
+	return (
+	  <div>
+	  </div>
+	);
+  }
+  
+  export default JobPresentation;
+  /**
  * workforce-app/frontend/src/utils/jobPresentation.js
  * Centralized, authoritative presentation derivation for Technician Jobs & Offers.
  * 

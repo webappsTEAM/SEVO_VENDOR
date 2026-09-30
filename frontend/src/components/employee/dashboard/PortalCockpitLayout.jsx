@@ -28,6 +28,7 @@ import { ACTIVE_QUEUE_STATUSES } from '../../../context/EmployeeRuntimeContext.j
 import { LogisticsLegController, isLogisticsJob } from '../logistics/LogisticsLegController.jsx';
 import { LogisticsStopManager } from '../logistics/LogisticsStopManager.jsx';
 import { PackersMoversManifestCard } from '../logistics/PackersMoversManifestCard.jsx';
+import { PTLLoadingNotice } from '../logistics/PTLLoadingNotice.jsx';
 
 /**
  * Real-time Countdown Badge for Offer Expiration & Cancellation Window
@@ -737,6 +738,10 @@ export function PortalCockpitLayout({
                   <PackersMoversManifestCard
                     job={activeJob}
                   />
+                )}
+                {/* Light PTL: customer loads & unloads (self-gated) */}
+                {isActiveAssignment && activeJob && (
+                  <PTLLoadingNotice job={activeJob} />
                 )}
 
                 {/* ── LOGISTICS JOURNEY & LEG PROGRESSION (P&M 13 Stages & GT 5 Stages) ── */}

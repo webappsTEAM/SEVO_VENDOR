@@ -1,4 +1,14 @@
-/**
+import React from 'react';
+  
+  const AuthTokens = () =>  {
+	return (
+	  <div>
+	  </div>
+	);
+  }
+  
+  export default AuthTokens;
+  /**
  * authTokens.js
  * Single authoritative source of truth for Workforce JWT access and refresh tokens.
  * Storage strategy: sessionStorage (primary tab-scoped isolation) with localStorage fallback.

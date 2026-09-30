@@ -1,4 +1,14 @@
-/**
+import React from 'react';
+  
+  const LoadGoogleMaps = () =>  {
+	return (
+	  <div>
+	  </div>
+	);
+  }
+  
+  export default LoadGoogleMaps;
+  /**
  * loadGoogleMaps.js
  *
  * Authoritative, robust singleton loader for Google Maps JavaScript API.

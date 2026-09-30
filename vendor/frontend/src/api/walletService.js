@@ -1,4 +1,14 @@
-/**
+import React from 'react';
+  
+  const WalletService = () =>  {
+	return (
+	  <div>
+	  </div>
+	);
+  }
+  
+  export default WalletService;
+  /**
  * frontend/src/api/walletService.js
  * API client for the Employee Wallet module.
  * Uses the same `apiRequest` helper as workforceService.js.

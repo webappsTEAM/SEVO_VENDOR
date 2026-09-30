@@ -554,6 +554,8 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
     crew_size = serializers.SerializerMethodField()
     inventory_items = serializers.SerializerMethodField()
     relocation_details = serializers.SerializerMethodField()
+    # Light PTL: customer loads/unloads indicator (read-only, from fare_breakdown)
+    ptl_details = serializers.SerializerMethodField()
     assigned_employee_id = serializers.IntegerField(read_only=True)
     technician_name = serializers.CharField(read_only=True)
 
@@ -647,6 +649,7 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
             "crew_size",
             "inventory_items",
             "relocation_details",
+            "ptl_details",
         ]
 
     def get_clock_in_time(self, obj):
@@ -698,6 +701,10 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
     def get_relocation_details(self, obj):
         _, _, details = self._get_pm_details(obj)
         return details
+
+    def get_ptl_details(self, obj):
+        from workforce_api.services.logistics_events import extract_ptl_job_details
+        return extract_ptl_job_details(obj)
 
     def _get_scheduled_window(self, obj):
         if hasattr(obj, "_cached_scheduled_window"):

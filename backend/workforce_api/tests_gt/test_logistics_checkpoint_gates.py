@@ -211,9 +211,29 @@ class CheckpointServiceTests(TestCase):
         # minimal stand-in keeps SQLite's FK check satisfied; it is rolled
         # back with the class transaction.
         from django.db import connection
+        if "service_requests_servicerequest" in connection.introspection.table_names() and \
+                connection.vendor == "postgresql":
+            # Real shared schema (Customer-owned table present, e.g. a local
+            # Postgres built from both apps' migrations): a bare (id) row
+            # violates its NOT NULL columns, so create a genuine row through
+            # the mirror model instead.
+            from datetime import date
+            from decimal import Decimal
+            from service_requests.models import ServiceRequest
+            from workforce_api.tests_gt.test_realdb_gt_lifecycle import relax_unmirrored_not_null
+            relax_unmirrored_not_null()
+            if not ServiceRequest.objects.filter(pk=11).exists():
+                ServiceRequest.objects.create(
+                    id=11, request_id="SR-CP-11", customer_name="C", phone="9",
+                    service_category="goods_transport_truck", issue_title="t", address="Pickup",
+                    drop_address="Drop", status="in_progress", payment_method="COD",
+                    payment_status="pending", total_amount=Decimal("0"), preferred_date=date.today(),
+                )
+            return
         with connection.cursor() as cur:
             cur.execute("CREATE TABLE IF NOT EXISTS service_requests_servicerequest (id integer PRIMARY KEY)")
-            cur.execute("INSERT OR IGNORE INTO service_requests_servicerequest (id) VALUES (11)")
+            cur.execute("INSERT INTO service_requests_servicerequest (id) SELECT 11 WHERE NOT EXISTS "
+                        "(SELECT 1 FROM service_requests_servicerequest WHERE id = 11)")
 
     def setUp(self):
         self.create_notification = patch("workforce_api.views.create_notification").start()

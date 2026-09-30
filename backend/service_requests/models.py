@@ -473,7 +473,7 @@ class ServiceRequest(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.request_id:
-            self.request_id = _generate_request_id()
+            setattr(self, "request_id", _generate_request_id())
         super().save(*args, **kwargs)
 
         if self.status in ["cancelled", "completed", "unable_to_complete"]:
@@ -563,7 +563,8 @@ class ServiceRequest(models.Model):
             )
 
         # 3. Check specialist secondary jobs linked via cart_data or extension foreign keys
-        cart_data = self.cart_data or []
+        raw_cart = getattr(self, "cart_data", None)
+        cart_data = raw_cart if isinstance(raw_cart, list) else []
         for item in cart_data:
             if item.get("type") == "specialist_job" and item.get("job_id"):
                 s_job = ServiceRequest.objects.filter(pk=item["job_id"]).first()
@@ -688,7 +689,8 @@ class BookingMessage(models.Model):
         ordering = ["created_at"]
 
     def __str__(self):
-        return f"{self.sender_persona}: {self.body[:40]}"
+        body_text = str(self.body or "")
+        return f"{self.sender_persona}: {body_text[:40]}"
 
 
 class TripStop(models.Model):
@@ -1419,3 +1421,16 @@ def get_gt_extra_charge_policy(category):
     cat = str(category or "").strip().lower()
     qs = GTExtraChargePolicy.objects.filter(is_active=True, is_enabled=True)
     return qs.filter(service_category__iexact=cat).first() or qs.filter(service_category="").first()
+
+
+class GTOperationsConfig(models.Model):
+    """Unmanaged mirror of the Customer app's GTOperationsConfig (Admin-editable GT limits)."""
+    checkpoint_radius_meters = models.PositiveIntegerField(default=250)
+    delivery_otp_ttl_minutes = models.PositiveIntegerField(default=30)
+    max_otp_attempts = models.PositiveIntegerField(default=5)
+    delivery_otp_required = models.BooleanField(default=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        managed = False
+        db_table = "service_requests_gtoperationsconfig"

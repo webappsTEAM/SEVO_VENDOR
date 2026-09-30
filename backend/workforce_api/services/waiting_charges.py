@@ -4,7 +4,7 @@ GT waiting (detention) charge computation.
 Pure, read-only: derives loading/unloading dwell time from the append-only
 ServiceRequest.logistics_leg_history ({"leg", "at", "by"} entries written by
 services/logistics_events.py) and prices it with the admin-configured
-WorkforceServicePricingPolicy waiting_* fields. Nothing here writes to the
+Customer GTWaitingChargePolicy (single source of truth). Nothing here writes to the
 booking, the fare, JobPayment or the wallet -- wiring the result into billing
 is a separate, test-gated step (see the GT ownership report).
 

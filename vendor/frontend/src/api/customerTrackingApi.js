@@ -1,4 +1,14 @@
-/**
+import React from 'react';
+  
+  const CustomerTrackingApi = () =>  {
+	return (
+	  <div>
+	  </div>
+	);
+  }
+  
+  export default CustomerTrackingApi;
+  /**
  * customerTrackingApi.js
  *
  * Dedicated API client for customer-facing live technician tracking.
@@ -14,3 +24,5 @@ import { apiRequest } from './client.js';
 export async function apiGetJobLiveTracking(jobId) {
   return await apiRequest(`/workforce/jobs/${jobId}/live-tracking/`);
 }
+
+

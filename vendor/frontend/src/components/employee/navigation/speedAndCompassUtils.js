@@ -1,4 +1,14 @@
-/**
+import React from 'react';
+  
+  const SpeedAndCompassUtils = () =>  {
+	return (
+	  <div>
+	  </div>
+	);
+  }
+  
+  export default SpeedAndCompassUtils;
+  /**
  * speedAndCompassUtils.js
  *
  * Utilities for real device speed conversion, magnetic compass needle orientation,

@@ -1,4 +1,14 @@
-/**
+import React from 'react';
+  
+  const DistanceFormatter = () =>  {
+	return (
+	  <div>
+	  </div>
+	);
+  }
+  
+  export default DistanceFormatter;
+  /**
  * frontend/src/utils/distanceFormatter.js
  * 
  * Standardized cosmetic distance display formatter for CalTrack Workforce.

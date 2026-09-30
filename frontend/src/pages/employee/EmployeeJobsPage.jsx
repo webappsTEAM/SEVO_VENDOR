@@ -20,6 +20,7 @@ import { LogisticsLegController } from '../../components/employee/logistics/Logi
 import { LogisticsRouteMap } from '../../components/employee/logistics/LogisticsRouteMap.jsx';
 import { LogisticsStopManager } from '../../components/employee/logistics/LogisticsStopManager.jsx';
 import { PackersMoversManifestCard } from '../../components/employee/logistics/PackersMoversManifestCard.jsx';
+import { PTLLoadingNotice } from '../../components/employee/logistics/PTLLoadingNotice.jsx';
 import {
   Search,
   MapPin,
@@ -1588,6 +1589,8 @@ export function EmployeeJobsPage() {
 
               {/* Packers & Movers Relocation Manifest & Access Card (self-gated for P&M) */}
               <PackersMoversManifestCard job={selectedJobForDetails} />
+              {/* Light PTL: customer loads & unloads (self-gated) */}
+              <PTLLoadingNotice job={selectedJobForDetails} />
 
               {/* Pickup / drop / live-location map (logistics jobs only; self-gated) */}
               <LogisticsRouteMap job={selectedJobForDetails} />

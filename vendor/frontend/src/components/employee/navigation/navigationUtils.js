@@ -1,4 +1,14 @@
-/**
+import React from 'react';
+  
+  const NavigationUtils = () =>  {
+	return (
+	  <div>
+	  </div>
+	);
+  }
+  
+  export default NavigationUtils;
+  /**
  * navigationUtils.js
  *
  * Precise Geospatial & Mathematical Utilities for CalTrack Technician Navigation.

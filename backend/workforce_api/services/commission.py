@@ -128,6 +128,19 @@ def _extra_charges_total(service_request):
 
 
 @transaction.atomic
+def _extra_charges_total(service_request):
+    """Sum of APPLIED toll/parking entries the Customer app recorded (ServiceRequest.extra_charges)."""
+    total = Decimal("0.00")
+    items = getattr(service_request, "extra_charges", None)
+    for e in (items if isinstance(items, list) else []):
+        if isinstance(e, dict) and e.get("status") == "APPLIED":
+            try:
+                total += Decimal(str(e.get("amount") or 0))
+            except Exception:
+                pass
+    return total
+
+
 def settle_completed_job(service_request):
     """
     Idempotent: safe to call more than once for the same job (e.g. a retry
