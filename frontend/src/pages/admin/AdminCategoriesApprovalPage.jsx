@@ -722,6 +722,12 @@ export function AdminCategoriesApprovalPage() {
                                     {prod.sku}
                                   </span>
                                   {prod.brand && <span>Brand: {prod.brand}</span>}
+                                  {prod.variant_group_title && (
+                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200" title={`Family: ${prod.variant_group_title}`}>
+                                      <Layers className="w-3 h-3 text-indigo-500" />
+                                      <span>{prod.variant_group_title} • {prod.variant_label || 'Variant'}</span>
+                                    </span>
+                                  )}
                                   {prod.fulfillment_method === 'FULFILLED_BY_SEVO' ? (
                                     <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
                                       <WarehouseIcon className="w-3 h-3 text-indigo-500" />
@@ -875,6 +881,58 @@ export function AdminCategoriesApprovalPage() {
                           </div>
                         )}
                       </div>
+
+                      {/* Variant Family Sibling Context */}
+                      {detailProduct.variant_group_title && (
+                        <div className="p-3.5 bg-indigo-50/70 border border-indigo-200 rounded-xl space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-950">
+                              <Layers className="w-4 h-4 text-indigo-600 shrink-0" />
+                              <span>Part of variant family: <strong className="text-indigo-900">{detailProduct.variant_group_title}</strong></span>
+                            </div>
+                            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-bold">
+                              {detailProduct.variant_attribute_name || 'Size'}: {detailProduct.variant_label || 'Default'}
+                            </span>
+                          </div>
+
+                          <div className="space-y-1.5 pt-1 border-t border-indigo-150">
+                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                              Sibling Variants in Family:
+                            </span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {/* Current Product Badge */}
+                              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-white border-2 border-indigo-500 text-indigo-900 shadow-xs">
+                                <span>{detailProduct.variant_label || 'This SKU'}</span>
+                                <span className="text-[10px] font-medium text-indigo-600 font-mono">(this one — {detailProduct.status})</span>
+                              </div>
+
+                              {/* Siblings */}
+                              {detailProduct.variant_siblings?.map((sib) => (
+                                <div
+                                  key={sib.id}
+                                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs bg-white border border-slate-200 text-slate-700"
+                                >
+                                  <span className="font-semibold">{sib.variant_label || sib.sku}</span>
+                                  <span className="text-[10px] text-slate-400 font-mono">₹{sib.selling_price}</span>
+                                  <span
+                                    className={`px-1.5 py-0.2 rounded text-[9px] font-bold ${
+                                      sib.status === 'APPROVED'
+                                        ? 'bg-emerald-100 text-emerald-800'
+                                        : sib.status === 'UNDER_REVIEW' || sib.status === 'SUBMITTED'
+                                        ? 'bg-amber-100 text-amber-800'
+                                        : sib.status === 'REJECTED'
+                                        ? 'bg-rose-100 text-rose-800'
+                                        : 'bg-slate-100 text-slate-600'
+                                    }`}
+                                  >
+                                    {sib.status}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
 
                       {/* Image Gallery */}
                       {detailProduct.images && detailProduct.images.length > 0 && (

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Boxes,
   Clock,
@@ -13,6 +13,8 @@ import {
   AlertTriangle,
   Info,
   ChevronRight,
+  ChevronDown,
+  CornerDownRight,
   Check,
   X,
   Store,
@@ -197,6 +199,376 @@ export function WarehouseInventoryPage() {
     } finally {
       setSubmittingDecision(false);
     }
+  };
+
+  // ── Variant Group Collapsible State & Helpers ──────────────────────────────
+  const [collapsedGroups, setCollapsedGroups] = useState({});
+
+  const toggleGroupCollapse = (groupId) => {
+    setCollapsedGroups((prev) => ({
+      ...prev,
+      [groupId]: !prev[groupId],
+    }));
+  };
+
+  // Group inbound requests by variant_group_id
+  const groupedRequests = useMemo(() => {
+    const groupsMap = new Map();
+    const result = [];
+
+    requests.forEach((req) => {
+      const vGroupId = req.variant_group_id;
+      if (vGroupId) {
+        if (!groupsMap.has(vGroupId)) {
+          const groupEntry = {
+            isGroup: true,
+            groupId: vGroupId,
+            groupTitle: req.variant_group_title || req.product_title,
+            company_name: req.company_name,
+            product_image_url: req.product_image_url,
+            children: [],
+          };
+          groupsMap.set(vGroupId, groupEntry);
+          result.push(groupEntry);
+        }
+        const existingGroup = groupsMap.get(vGroupId);
+        if (!existingGroup.product_image_url && req.product_image_url) {
+          existingGroup.product_image_url = req.product_image_url;
+        }
+        existingGroup.children.push(req);
+      } else {
+        result.push({
+          isGroup: false,
+          request: req,
+        });
+      }
+    });
+
+    return result;
+  }, [requests]);
+
+  // Helper: Parent group status summary
+  const getGroupStatusSummary = (children) => {
+    const counts = {};
+    children.forEach((c) => {
+      counts[c.status] = (counts[c.status] || 0) + 1;
+    });
+
+    const statusKeys = Object.keys(counts);
+    if (statusKeys.length === 1) {
+      const status = statusKeys[0];
+      const conf = STATUS_CONFIG[status] || STATUS_CONFIG.ALL;
+      const StIcon = conf.icon || Info;
+      return {
+        isUniform: true,
+        conf,
+        Icon: StIcon,
+        label: `${children.length} ${conf.label}`,
+      };
+    }
+
+    return {
+      isUniform: false,
+      counts,
+    };
+  };
+
+  // Helper: Render individual request row (standalone or indented child)
+  const renderRequestRow = (req, isChild = false) => {
+    const statusInfo = STATUS_CONFIG[req.status] || STATUS_CONFIG.ALL;
+    const isPending = req.status === 'PENDING';
+    const isAccepted = req.status === 'ACCEPTED';
+    const isCompleted = req.status === 'COMPLETED';
+
+    const total = req.total_units_count || req.requested_quantity;
+    const received = req.received_units_count || 0;
+    const percent = total > 0 ? Math.round((received / total) * 100) : 0;
+
+    return (
+      <tr
+        key={req.id}
+        className={`transition-colors ${
+          isChild
+            ? 'bg-purple-50/20 hover:bg-purple-50/40 border-b border-purple-100/60'
+            : 'hover:bg-slate-50/80 border-b border-slate-200'
+        }`}
+      >
+        {/* Product & Inbound ID */}
+        <td className="py-3.5 px-4">
+          <div className={`flex items-start gap-3 ${isChild ? 'pl-6' : ''}`}>
+            {isChild && (
+              <CornerDownRight className="w-3.5 h-3.5 text-purple-400 shrink-0 mt-2.5" />
+            )}
+            <div className="w-9 h-9 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0 text-slate-400 font-bold overflow-hidden shadow-2xs">
+              {req.product_image_url ? (
+                <img
+                  src={req.product_image_url}
+                  alt={req.product_title}
+                  className="w-full h-full object-cover rounded-xl"
+                  onError={(e) => {
+                    e.target.style.display = 'none';
+                  }}
+                />
+              ) : (
+                <Package className="w-4 h-4" />
+              )}
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="font-mono text-[10px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
+                  #{req.id}
+                </span>
+                {isChild && req.variant_label ? (
+                  <span className="font-bold text-purple-950 bg-purple-100/90 text-[11px] px-2 py-0.5 rounded-md border border-purple-200/80">
+                    {req.variant_label}
+                  </span>
+                ) : (
+                  <span className="font-bold text-slate-900 text-xs truncate max-w-[200px]">
+                    {req.product_title}
+                  </span>
+                )}
+                <span className="bg-slate-100 px-1.5 py-0.2 rounded text-slate-700 font-mono font-bold text-[10px]">
+                  {req.product_sku}
+                </span>
+              </div>
+              <div className="text-[10px] font-mono text-slate-500 mt-0.5">
+                Price: ₹{req.product_selling_price}
+                {req.product_pack_size && (
+                  <span className="text-slate-400 ml-1">
+                    • {req.product_pack_size} {req.product_unit || ''}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        </td>
+
+        {/* Merchant Store */}
+        <td className="py-3.5 px-4">
+          <div className="flex items-center gap-1.5 font-bold text-slate-900">
+            <Store className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+            <span className="truncate max-w-[140px]">{req.company_name}</span>
+          </div>
+          <div className="text-[10px] text-slate-500 mt-0.5">
+            By: {req.requested_by_name || 'Store Manager'}
+          </div>
+        </td>
+
+        {/* Requested Quantity */}
+        <td className="py-3.5 px-4 text-center">
+          <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-slate-100 text-slate-900 border border-slate-200 font-black text-sm">
+            {req.requested_quantity}
+          </span>
+          <div className="text-[10px] text-slate-500 mt-0.5 font-medium">Units</div>
+        </td>
+
+        {/* Status & Scan Progress */}
+        <td className="py-3.5 px-4">
+          {isPending && (
+            <span
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border ${statusInfo.bg} ${statusInfo.text} ${statusInfo.border}`}
+            >
+              <Clock className="w-3 h-3" />
+              <span>Pending Review</span>
+            </span>
+          )}
+
+          {isAccepted && (
+            <div className="space-y-1.5 min-w-[150px]">
+              <div className="flex items-center justify-between gap-2 text-[10px]">
+                <span className="inline-flex items-center gap-1 font-bold text-indigo-700">
+                  <ScanLine className="w-3 h-3 text-indigo-600" />
+                  <span>Scanning In Progress</span>
+                </span>
+                <span className="font-mono font-bold text-slate-800">
+                  {received} / {total} ({percent}%)
+                </span>
+              </div>
+              <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden border border-slate-200">
+                <div
+                  className="bg-indigo-600 h-1.5 rounded-full transition-all duration-300"
+                  style={{ width: `${percent}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {req.status === 'SHORT_RECEIVED' && (
+            <div className="space-y-1 min-w-[150px]">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border bg-amber-50 text-amber-700 border-amber-200">
+                <AlertTriangle className="w-3 h-3" />
+                <span>Shortfall Reported</span>
+              </span>
+              <div className="text-[10px] text-amber-800 font-mono pl-1">
+                {req.confirmed_quantity || received} / {total} units confirmed (Waiting for seller)
+              </div>
+            </div>
+          )}
+
+          {isCompleted && (
+            <div className="space-y-1 min-w-[150px]">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border bg-emerald-50 text-emerald-700 border-emerald-200">
+                <CheckCircle2 className="w-3 h-3" />
+                <span>Live in Warehouse Stock</span>
+              </span>
+              <div className="text-[10px] text-emerald-700 font-bold pl-1 font-mono">
+                {req.confirmed_quantity != null && req.confirmed_quantity < req.requested_quantity
+                  ? `${req.confirmed_quantity} of ${req.requested_quantity} units live (Partial)`
+                  : `${total} / ${total} units verified`}
+              </div>
+            </div>
+          )}
+
+          {req.status === 'REJECTED_RETURN' && (
+            <div className="space-y-1 min-w-[150px]">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border bg-rose-50 text-rose-700 border-rose-200">
+                <XCircle className="w-3 h-3" />
+                <span>Shortfall Rejected</span>
+              </span>
+              <div className="text-[10px] text-rose-700 font-medium pl-1">
+                Staged for return to seller
+              </div>
+            </div>
+          )}
+
+          {req.status === 'REJECTED' && (
+            <span
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border ${statusInfo.bg} ${statusInfo.text} ${statusInfo.border}`}
+            >
+              <XCircle className="w-3 h-3" />
+              <span>Rejected</span>
+            </span>
+          )}
+        </td>
+
+        {/* Notes & Timestamp */}
+        <td className="py-3.5 px-4 max-w-xs">
+          <div className="space-y-1">
+            {req.seller_note && (
+              <div className="text-[11px] text-slate-700 bg-slate-50 p-2 rounded-lg border border-slate-200">
+                <span className="text-[10px] font-bold text-slate-500 block">Seller Note:</span>
+                "{req.seller_note}"
+              </div>
+            )}
+
+            {req.shortfall_note && (
+              <div className="text-[11px] text-amber-800 bg-amber-50 p-2 rounded-lg border border-amber-200">
+                <span className="text-[10px] font-bold text-amber-700 block">Shortfall Note:</span>
+                "{req.shortfall_note}"
+              </div>
+            )}
+
+            {req.reviewer_note && !req.shortfall_note && (
+              <div className="text-[11px] text-amber-800 bg-amber-50 p-2 rounded-lg border border-amber-200">
+                <span className="text-[10px] font-bold text-amber-700 block">Reviewer Note:</span>
+                "{req.reviewer_note}"
+              </div>
+            )}
+
+            <div className="text-[10px] text-slate-400 pt-0.5">
+              Created: {new Date(req.created_at).toLocaleDateString()} {new Date(req.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </div>
+          </div>
+        </td>
+
+        {/* Action Buttons */}
+        <td className="py-3.5 px-4 text-right">
+          {isPending && (
+            <div className="flex items-center justify-end gap-2">
+              <button
+                onClick={() => openDecisionModal(req, 'ACCEPT')}
+                className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-xs"
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>Accept</span>
+              </button>
+              <button
+                onClick={() => openDecisionModal(req, 'REJECT')}
+                className="px-2.5 py-1.5 bg-white hover:bg-rose-50 text-rose-700 hover:text-rose-800 border border-slate-200 hover:border-rose-300 rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-xs"
+              >
+                <X className="w-3.5 h-3.5" />
+                <span>Reject</span>
+              </button>
+            </div>
+          )}
+
+          {isAccepted && (
+            <div className="flex items-center justify-end gap-2">
+              <button
+                onClick={() => handleOpenLabelsModal(req)}
+                title="Print Unit Barcode Labels"
+                className="p-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-xs"
+              >
+                <Printer className="w-3.5 h-3.5 text-indigo-600" />
+                <span className="hidden sm:inline">Labels</span>
+              </button>
+
+              <button
+                onClick={() => handleOpenShortfallModal(req)}
+                title="Report missing units & request seller decision"
+                className="px-2.5 py-1.5 bg-white hover:bg-amber-50 text-amber-700 border border-slate-200 hover:border-amber-300 rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-xs"
+              >
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                <span className="hidden sm:inline">Shortfall</span>
+              </button>
+
+              <button
+                onClick={() => handleOpenScanModal(req)}
+                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs"
+              >
+                <ScanLine className="w-3.5 h-3.5" />
+                <span>Scan Units</span>
+              </button>
+            </div>
+          )}
+
+          {req.status === 'SHORT_RECEIVED' && (
+            <div className="flex items-center justify-end gap-2">
+              <button
+                onClick={() => handleOpenScanModal(req)}
+                className="px-2.5 py-1.5 bg-white hover:bg-amber-50 text-amber-700 border border-slate-200 hover:border-amber-300 rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-xs"
+              >
+                <ScanLine className="w-3.5 h-3.5 text-amber-600" />
+                <span>Inspect Units</span>
+              </button>
+            </div>
+          )}
+
+          {isCompleted && (
+            <div className="flex items-center justify-end gap-2">
+              <button
+                onClick={() => handleOpenLabelsModal(req)}
+                title="Print Unit Barcode Labels"
+                className="p-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-xs"
+              >
+                <Printer className="w-3.5 h-3.5 text-indigo-600" />
+                <span className="hidden sm:inline">Labels</span>
+              </button>
+
+              <button
+                onClick={() => handleOpenScanModal(req)}
+                className="px-2.5 py-1.5 bg-white hover:bg-emerald-50 text-emerald-700 border border-slate-200 hover:border-emerald-300 rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-xs"
+              >
+                <CheckCheck className="w-3.5 h-3.5 text-emerald-600" />
+                <span>View Units</span>
+              </button>
+            </div>
+          )}
+
+          {req.status === 'REJECTED_RETURN' && (
+            <div className="text-[11px] text-rose-700 font-medium flex items-center justify-end gap-1">
+              <XCircle className="w-3.5 h-3.5" /> Staged Return
+            </div>
+          )}
+
+          {req.status === 'REJECTED' && (
+            <div className="text-[11px] text-rose-700 font-medium flex items-center justify-end gap-1">
+              <XCircle className="w-3.5 h-3.5" /> Closed
+            </div>
+          )}
+        </td>
+      </tr>
+    );
   };
 
   // Phase Y: Open Physical Unit Scan Modal
@@ -519,274 +891,168 @@ export function WarehouseInventoryPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {requests.map((req) => {
-                  const statusInfo = STATUS_CONFIG[req.status] || STATUS_CONFIG.ALL;
-                  const isPending = req.status === 'PENDING';
-                  const isAccepted = req.status === 'ACCEPTED';
-                  const isCompleted = req.status === 'COMPLETED';
+                {groupedRequests.map((item) => {
+                  if (item.isGroup) {
+                    const isExpanded = !collapsedGroups[item.groupId];
+                    const statusSummary = getGroupStatusSummary(item.children);
+                    const totalUnits = item.children.reduce(
+                      (acc, c) => acc + (c.requested_quantity || 0),
+                      0
+                    );
 
-                  const total = req.total_units_count || req.requested_quantity;
-                  const received = req.received_units_count || 0;
-                  const percent = total > 0 ? Math.round((received / total) * 100) : 0;
+                    return (
+                      <React.Fragment key={`group-${item.groupId}`}>
+                        {/* Parent Family Row */}
+                        <tr
+                          onClick={() => toggleGroupCollapse(item.groupId)}
+                          className="bg-slate-50/90 hover:bg-slate-100/90 transition-colors border-b border-slate-200/80 cursor-pointer font-medium"
+                        >
+                          {/* 1. Req # / Product */}
+                          <td className="py-3.5 px-4">
+                            <div className="flex items-center gap-2.5">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleGroupCollapse(item.groupId);
+                                }}
+                                className="p-1 rounded-md text-slate-400 hover:text-purple-700 hover:bg-purple-50 transition-colors shrink-0"
+                                title={isExpanded ? 'Collapse variant family' : 'Expand variant family'}
+                              >
+                                {isExpanded ? (
+                                  <ChevronDown className="w-4 h-4 text-purple-700" />
+                                ) : (
+                                  <ChevronRight className="w-4 h-4 text-slate-400" />
+                                )}
+                              </button>
+                              <div className="w-10 h-10 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0 text-slate-400 font-bold overflow-hidden shadow-2xs">
+                                {item.product_image_url ? (
+                                  <img
+                                    src={item.product_image_url}
+                                    alt={item.groupTitle}
+                                    className="w-full h-full object-cover"
+                                    onError={(e) => {
+                                      e.target.style.display = 'none';
+                                    }}
+                                  />
+                                ) : (
+                                  <Package className="w-5 h-5 text-slate-300" />
+                                )}
+                              </div>
+                              <div className="min-w-0 max-w-xs">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="font-bold text-slate-900 block truncate text-xs" title={item.groupTitle}>
+                                    {item.groupTitle}
+                                  </span>
+                                  <span
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800 border border-purple-200"
+                                    title={`Variant Family with ${item.children.length} inbound requests`}
+                                  >
+                                    <Layers className="w-3 h-3 text-purple-600" />
+                                    <span>
+                                      {item.children.length} {item.children.length === 1 ? 'request' : 'requests'}
+                                    </span>
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-slate-400 truncate">
+                                  ({item.children
+                                    .map((c) =>
+                                      c.variant_label ||
+                                      (c.product_pack_size
+                                        ? `${c.product_pack_size} ${c.product_unit || ''}`.trim()
+                                        : c.product_sku)
+                                    )
+                                    .filter(Boolean)
+                                    .join(', ')})
+                                </div>
+                              </div>
+                            </div>
+                          </td>
 
-                  return (
-                    <tr key={req.id} className="hover:bg-slate-50/80 transition-colors">
-                      {/* Product & Inbound ID */}
-                      <td className="py-3.5 px-4">
-                        <div className="flex items-start gap-3">
-                          <div className="w-9 h-9 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0 text-slate-400 font-bold overflow-hidden">
-                            {req.product_image_url ? (
-                              <img
-                                src={req.product_image_url}
-                                alt={req.product_title}
-                                className="w-full h-full object-cover rounded-xl"
-                              />
+                          {/* 2. Merchant Store */}
+                          <td className="py-3.5 px-4">
+                            <div className="flex items-center gap-1.5 font-bold text-slate-900">
+                              <Store className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                              <span className="truncate max-w-[140px]">{item.company_name}</span>
+                            </div>
+                            <div className="text-[10px] text-slate-500 mt-0.5">
+                              {item.children.length} size request{item.children.length === 1 ? '' : 's'}
+                            </div>
+                          </td>
+
+                          {/* 3. Requested Units */}
+                          <td className="py-3.5 px-4 text-center">
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-slate-100 text-slate-900 border border-slate-200 font-black text-sm">
+                              {totalUnits}
+                            </span>
+                            <div className="text-[10px] text-slate-500 mt-0.5 font-medium">Total Units</div>
+                          </td>
+
+                          {/* 4. Status & Scan Progress */}
+                          <td className="py-3.5 px-4">
+                            {statusSummary.isUniform ? (
+                              <span
+                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border ${statusSummary.conf.bg} ${statusSummary.conf.text} ${statusSummary.conf.border}`}
+                              >
+                                <statusSummary.Icon className="w-3 h-3 shrink-0" />
+                                <span>{statusSummary.label}</span>
+                              </span>
                             ) : (
-                              <Package className="w-4 h-4" />
+                              <div className="flex flex-wrap gap-1 max-w-[200px]">
+                                {Object.entries(statusSummary.counts).map(([st, cnt]) => {
+                                  const conf = STATUS_CONFIG[st] || STATUS_CONFIG.ALL;
+                                  const StIcon = conf.icon || Info;
+                                  return (
+                                    <span
+                                      key={st}
+                                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${conf.bg} ${conf.text} ${conf.border}`}
+                                    >
+                                      <StIcon className="w-3 h-3 shrink-0" />
+                                      <span>
+                                        {cnt} {conf.label}
+                                      </span>
+                                    </span>
+                                  );
+                                })}
+                              </div>
                             )}
-                          </div>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-mono text-[10px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
-                                #{req.id}
-                              </span>
-                              <span className="font-bold text-slate-900 text-xs truncate max-w-[200px]">
-                                {req.product_title}
-                              </span>
-                            </div>
-                            <div className="text-[10px] font-mono text-slate-500 mt-0.5">
-                              SKU: <span className="text-slate-700 font-bold">{req.product_sku}</span> • Price: ₹{req.product_selling_price}
-                            </div>
-                          </div>
-                        </div>
-                      </td>
+                          </td>
 
-                      {/* Merchant Store */}
-                      <td className="py-3.5 px-4">
-                        <div className="flex items-center gap-1.5 font-bold text-slate-900">
-                          <Store className="w-3.5 h-3.5 text-indigo-600" />
-                          <span>{req.company_name}</span>
-                        </div>
-                        <div className="text-[10px] text-slate-500 mt-0.5">
-                          By: {req.requested_by_name || 'Store Manager'}
-                        </div>
-                      </td>
+                          {/* 5. Notes & Reviewer Comments */}
+                          <td className="py-3.5 px-4 text-slate-400 italic text-[11px]">
+                            Per-request notes below
+                          </td>
 
-                      {/* Requested Quantity */}
-                      <td className="py-3.5 px-4 text-center">
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-slate-100 text-slate-900 border border-slate-200 font-black text-sm">
-                          {req.requested_quantity}
-                        </span>
-                        <div className="text-[10px] text-slate-500 mt-0.5 font-medium">Units</div>
-                      </td>
-
-                      {/* Status & Scan Progress */}
-                      <td className="py-3.5 px-4">
-                        {isPending && (
-                          <span
-                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border ${statusInfo.bg} ${statusInfo.text} ${statusInfo.border}`}
-                          >
-                            <Clock className="w-3 h-3" />
-                            <span>Pending Review</span>
-                          </span>
-                        )}
-
-                        {isAccepted && (
-                          <div className="space-y-1.5 min-w-[150px]">
-                            <div className="flex items-center justify-between gap-2 text-[10px]">
-                              <span className="inline-flex items-center gap-1 font-bold text-indigo-700">
-                                <ScanLine className="w-3 h-3 text-indigo-600" />
-                                <span>Scanning In Progress</span>
-                              </span>
-                              <span className="font-mono font-bold text-slate-800">
-                                {received} / {total} ({percent}%)
-                              </span>
-                            </div>
-                            <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden border border-slate-200">
-                              <div
-                                className="bg-indigo-600 h-1.5 rounded-full transition-all duration-300"
-                                style={{ width: `${percent}%` }}
-                              />
-                            </div>
-                          </div>
-                        )}
-
-                        {req.status === 'SHORT_RECEIVED' && (
-                          <div className="space-y-1 min-w-[150px]">
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border bg-amber-50 text-amber-700 border-amber-200">
-                              <AlertTriangle className="w-3 h-3" />
-                              <span>Shortfall Reported</span>
-                            </span>
-                            <div className="text-[10px] text-amber-800 font-mono pl-1">
-                              {req.confirmed_quantity || received} / {total} units confirmed (Waiting for seller)
-                            </div>
-                          </div>
-                        )}
-
-                        {isCompleted && (
-                          <div className="space-y-1 min-w-[150px]">
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border bg-emerald-50 text-emerald-700 border-emerald-200">
-                              <CheckCircle2 className="w-3 h-3" />
-                              <span>Live in Warehouse Stock</span>
-                            </span>
-                            <div className="text-[10px] text-emerald-700 font-bold pl-1 font-mono">
-                              {req.confirmed_quantity != null && req.confirmed_quantity < req.requested_quantity
-                                ? `${req.confirmed_quantity} of ${req.requested_quantity} units live (Partial)`
-                                : `${total} / ${total} units verified`}
-                            </div>
-                          </div>
-                        )}
-
-                        {req.status === 'REJECTED_RETURN' && (
-                          <div className="space-y-1 min-w-[150px]">
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border bg-rose-50 text-rose-700 border-rose-200">
-                              <XCircle className="w-3 h-3" />
-                              <span>Shortfall Rejected</span>
-                            </span>
-                            <div className="text-[10px] text-rose-700 font-medium pl-1">
-                              Staged for return to seller
-                            </div>
-                          </div>
-                        )}
-
-                        {req.status === 'REJECTED' && (
-                          <span
-                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border ${statusInfo.bg} ${statusInfo.text} ${statusInfo.border}`}
-                          >
-                            <XCircle className="w-3 h-3" />
-                            <span>Rejected</span>
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Notes & Timestamp */}
-                      <td className="py-3.5 px-4 max-w-xs">
-                        <div className="space-y-1">
-                          {req.seller_note && (
-                            <div className="text-[11px] text-slate-700 bg-slate-50 p-2 rounded-lg border border-slate-200">
-                              <span className="text-[10px] font-bold text-slate-500 block">Seller Note:</span>
-                              "{req.seller_note}"
-                            </div>
-                          )}
-
-                          {req.shortfall_note && (
-                            <div className="text-[11px] text-amber-800 bg-amber-50 p-2 rounded-lg border border-amber-200">
-                              <span className="text-[10px] font-bold text-amber-700 block">Shortfall Note:</span>
-                              "{req.shortfall_note}"
-                            </div>
-                          )}
-
-                          {req.reviewer_note && !req.shortfall_note && (
-                            <div className="text-[11px] text-amber-800 bg-amber-50 p-2 rounded-lg border border-amber-200">
-                              <span className="text-[10px] font-bold text-amber-700 block">Reviewer Note:</span>
-                              "{req.reviewer_note}"
-                            </div>
-                          )}
-
-                          <div className="text-[10px] text-slate-400 pt-0.5">
-                            Created: {new Date(req.created_at).toLocaleDateString()} {new Date(req.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* Action Buttons */}
-                      <td className="py-3.5 px-4 text-right">
-                        {isPending && (
-                          <div className="flex items-center justify-end gap-2">
+                          {/* 6. Actions */}
+                          <td className="py-3.5 px-4 text-right" onClick={(e) => e.stopPropagation()}>
                             <button
-                              onClick={() => openDecisionModal(req, 'ACCEPT')}
-                              className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-xs"
+                              type="button"
+                              onClick={() => toggleGroupCollapse(item.groupId)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg transition-colors"
                             >
-                              <Check className="w-3.5 h-3.5" />
-                              <span>Accept</span>
+                              {isExpanded ? (
+                                <>
+                                  <ChevronDown className="w-3 h-3 text-purple-600" />
+                                  <span>Collapse</span>
+                                </>
+                              ) : (
+                                <>
+                                  <ChevronRight className="w-3 h-3 text-purple-600" />
+                                  <span>View {item.children.length} Requests</span>
+                                </>
+                              )}
                             </button>
-                            <button
-                              onClick={() => openDecisionModal(req, 'REJECT')}
-                              className="px-2.5 py-1.5 bg-white hover:bg-rose-50 text-rose-700 hover:text-rose-800 border border-slate-200 hover:border-rose-300 rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-xs"
-                            >
-                              <X className="w-3.5 h-3.5" />
-                              <span>Reject</span>
-                            </button>
-                          </div>
-                        )}
+                          </td>
+                        </tr>
 
-                        {isAccepted && (
-                          <div className="flex items-center justify-end gap-2">
-                            <button
-                              onClick={() => handleOpenLabelsModal(req)}
-                              title="Print Unit Barcode Labels"
-                              className="p-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-xs"
-                            >
-                              <Printer className="w-3.5 h-3.5 text-indigo-600" />
-                              <span className="hidden sm:inline">Labels</span>
-                            </button>
+                        {/* Indented Child Rows */}
+                        {isExpanded &&
+                          item.children.map((childReq) => renderRequestRow(childReq, true))}
+                      </React.Fragment>
+                    );
+                  }
 
-                            <button
-                              onClick={() => handleOpenShortfallModal(req)}
-                              title="Report missing units & request seller decision"
-                              className="px-2.5 py-1.5 bg-white hover:bg-amber-50 text-amber-700 border border-slate-200 hover:border-amber-300 rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-xs"
-                            >
-                              <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-                              <span className="hidden sm:inline">Shortfall</span>
-                            </button>
-
-                            <button
-                              onClick={() => handleOpenScanModal(req)}
-                              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs"
-                            >
-                              <ScanLine className="w-3.5 h-3.5" />
-                              <span>Scan Units</span>
-                            </button>
-                          </div>
-                        )}
-
-                        {req.status === 'SHORT_RECEIVED' && (
-                          <div className="flex items-center justify-end gap-2">
-                            <button
-                              onClick={() => handleOpenScanModal(req)}
-                              className="px-2.5 py-1.5 bg-white hover:bg-amber-50 text-amber-700 border border-slate-200 hover:border-amber-300 rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-xs"
-                            >
-                              <ScanLine className="w-3.5 h-3.5 text-amber-600" />
-                              <span>Inspect Units</span>
-                            </button>
-                          </div>
-                        )}
-
-                        {isCompleted && (
-                          <div className="flex items-center justify-end gap-2">
-                            <button
-                              onClick={() => handleOpenLabelsModal(req)}
-                              title="Print Unit Barcode Labels"
-                              className="p-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-xs"
-                            >
-                              <Printer className="w-3.5 h-3.5 text-indigo-600" />
-                              <span className="hidden sm:inline">Labels</span>
-                            </button>
-
-                            <button
-                              onClick={() => handleOpenScanModal(req)}
-                              className="px-2.5 py-1.5 bg-white hover:bg-emerald-50 text-emerald-700 border border-slate-200 hover:border-emerald-300 rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-xs"
-                            >
-                              <CheckCheck className="w-3.5 h-3.5 text-emerald-600" />
-                              <span>View Units</span>
-                            </button>
-                          </div>
-                        )}
-
-                        {req.status === 'REJECTED_RETURN' && (
-                          <div className="text-[11px] text-rose-700 font-medium flex items-center justify-end gap-1">
-                            <XCircle className="w-3.5 h-3.5" /> Staged Return
-                          </div>
-                        )}
-
-                        {req.status === 'REJECTED' && (
-                          <div className="text-[11px] text-rose-700 font-medium flex items-center justify-end gap-1">
-                            <XCircle className="w-3.5 h-3.5" /> Closed
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  );
+                  return renderRequestRow(item.request, false);
                 })}
               </tbody>
             </table>

@@ -210,6 +210,8 @@ from workforce_api.views_seller_hub import (
     AdminSellerCouponDetailView,
     SellerProductListView,
     SellerProductDetailView,
+    SellerProductVariantGroupListView,
+    SellerProductVariantGroupDetailView,
     SellerProductSubmitView,
     SellerProductReviewDecisionView,
     SellerProductTemplateDownloadView,
@@ -656,6 +658,8 @@ urlpatterns = [
 
     # Phase 2: Seller Product Catalog & Uploads
     path("seller-hub/products/", SellerProductListView.as_view(), name="seller-hub-products-list"),
+    path("seller-hub/variant-groups/", SellerProductVariantGroupListView.as_view(), name="seller-hub-variant-groups-list"),
+    path("seller-hub/variant-groups/<int:pk>/", SellerProductVariantGroupDetailView.as_view(), name="seller-hub-variant-groups-detail"),
     path("seller-hub/products/template/", SellerProductTemplateDownloadView.as_view(), name="seller-hub-products-template"),
     path("seller-hub/products/bulk-upload/", SellerProductBulkUploadView.as_view(), name="seller-hub-products-bulk-upload"),
     path("seller-hub/products/batches/", SellerProductBatchListView.as_view(), name="seller-hub-products-batches"),

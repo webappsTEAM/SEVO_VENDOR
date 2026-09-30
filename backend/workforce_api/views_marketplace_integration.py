@@ -133,19 +133,29 @@ def get_sellable_products_queryset(active_cat_ids=None):
       - status == APPROVED (and not paused/rejected/draft)
       - company__is_active == True
       - category_id in active_cat_ids (active category and entire ancestor chain active)
-      - inventory available qty > 0 (on_hand_qty > reserved_qty)
+      - Either:
+          a) Available inventory quantity > 0 (on_hand_qty > reserved_qty)
+          b) Belong to a variant_group where AT LEAST ONE sibling in the group has available inventory > 0
+             (Allows customer app to render zero-stock variants disabled/struck-through).
     """
     if active_cat_ids is None:
         active_cat_ids = get_active_seller_category_ids()
     if not active_cat_ids:
         return SellerProduct.objects.none()
 
-    return SellerProduct.objects.filter(
+    base = SellerProduct.objects.filter(
         status=SellerProduct.Status.APPROVED,
         company__is_active=True,
         category_id__in=active_cat_ids,
-        inventory__on_hand_qty__gt=models.F("inventory__reserved_qty"),
     )
+    in_stock = base.filter(inventory__on_hand_qty__gt=models.F("inventory__reserved_qty"))
+    out_of_stock_siblings = base.filter(
+        variant_group_id__in=models.Subquery(
+            in_stock.filter(variant_group__isnull=False).values("variant_group_id").distinct()
+        ),
+        inventory__on_hand_qty__lte=models.F("inventory__reserved_qty"),
+    )
+    return (in_stock | out_of_stock_siblings).distinct()
 
 
 # ─── 1. Public Customer Catalog Integration APIs ──────────────────────────────
@@ -342,7 +352,7 @@ class MarketplaceProductListView(APIView):
 
         # Base Published Filter (reusing shared helper)
         queryset = get_sellable_products_queryset(active_cat_ids).select_related(
-            "company", "category", "category__parent", "inventory"
+            "company", "category", "category__parent", "inventory", "variant_group"
         ).prefetch_related("images")
 
         # 1. Search Query
@@ -410,6 +420,45 @@ class MarketplaceProductListView(APIView):
         end_idx = start_idx + page_size
         page_items = queryset[start_idx:end_idx]
 
+        # Pre-fetch variant siblings for products in the current page
+        variant_group_ids = {p.variant_group_id for p in page_items if p.variant_group_id}
+        sibling_map = {}
+        if variant_group_ids:
+            sibling_qs = SellerProduct.objects.filter(
+                variant_group_id__in=variant_group_ids,
+                status=SellerProduct.Status.APPROVED,
+                company__is_active=True,
+                category_id__in=active_cat_ids,
+            ).select_related("inventory").prefetch_related("images", "specs").order_by("selling_price", "id")
+            for sib in sibling_qs:
+                s_inv = getattr(sib, "inventory", None)
+                s_avail = max(Decimal("0.000"), (s_inv.on_hand_qty - s_inv.reserved_qty)) if s_inv else Decimal("0.000")
+                s_img = ""
+                for im in sib.images.all():
+                    if im.image_url:
+                        if im.is_primary:
+                            s_img = im.image_url
+                            break
+                        if not s_img:
+                            s_img = im.image_url
+                sibling_map.setdefault(sib.variant_group_id, []).append({
+                    "id": sib.id,
+                    "seller_product_id": sib.id,
+                    "title": sib.title,
+                    "sku": sib.sku,
+                    "variant_label": sib.variant_label or sib.pack_size or "Default",
+                    "selling_price": str(sib.selling_price),
+                    "mrp": str(sib.mrp),
+                    "available": s_avail > Decimal("0.000"),
+                    "in_stock": s_avail > Decimal("0.000"),
+                    "available_stock": float(round(s_avail, 3)) if (s_avail % 1) != 0 else int(s_avail),
+                    "primary_image": s_img,
+                    "description": sib.description or "",
+                    "storage_info": sib.storage_info or "",
+                    "expiry_info": sib.expiry_info or "",
+                    "specs": [{"label": s.label, "value": s.value} for s in sib.specs.all()],
+                })
+
         results = []
         for p in page_items:
             inv = getattr(p, "inventory", None)
@@ -435,6 +484,12 @@ class MarketplaceProductListView(APIView):
                 "brand": p.brand or "",
                 "unit": p.unit,
                 "pack_size": str(p.pack_size),
+                "variant_group_id": p.variant_group_id,
+                "variant_group_title": p.variant_group.group_title if p.variant_group else "",
+                "variant_attribute_name": p.variant_group.variant_attribute_name if p.variant_group else "Size",
+                "variant_label": p.variant_label or "",
+                "available": avail_qty > Decimal("0.000"),
+                "variants": sibling_map.get(p.variant_group_id, []),
                 "mrp": str(p.mrp),
                 "selling_price": str(p.selling_price),
                 "currency": "INR",
@@ -503,15 +558,28 @@ class MarketplaceProductDetailView(APIView):
             status=SellerProduct.Status.APPROVED,
             company__is_active=True,
             category_id__in=active_cat_ids,
-        ).select_related("company", "category", "category__parent", "inventory").prefetch_related("images").first()
+        ).select_related("company", "category", "category__parent", "inventory", "variant_group").prefetch_related("images").first()
 
         if not p:
             return Response({"error": "Product not found or unavailable."}, status=status.HTTP_404_NOT_FOUND)
 
         inv = getattr(p, "inventory", None)
         avail_qty = max(Decimal("0.000"), (inv.on_hand_qty - inv.reserved_qty)) if inv else Decimal("0.000")
-        if avail_qty <= Decimal("0.000"):
-            return Response({"error": "Product is currently out of stock."}, status=status.HTTP_404_NOT_FOUND)
+        is_in_stock = avail_qty > Decimal("0.000")
+
+        # If out of stock, allow viewing if it is part of a variant group with at least one in-stock sibling
+        if not is_in_stock:
+            has_in_stock_sibling = False
+            if p.variant_group_id:
+                has_in_stock_sibling = SellerProduct.objects.filter(
+                    variant_group_id=p.variant_group_id,
+                    status=SellerProduct.Status.APPROVED,
+                    company__is_active=True,
+                    category_id__in=active_cat_ids,
+                    inventory__on_hand_qty__gt=models.F("inventory__reserved_qty"),
+                ).exists()
+            if not has_in_stock_sibling:
+                return Response({"error": "Product is currently out of stock."}, status=status.HTTP_404_NOT_FOUND)
 
         primary_img = ""
         gallery = []
@@ -523,6 +591,44 @@ class MarketplaceProductDetailView(APIView):
         if not primary_img and gallery:
             primary_img = gallery[0]
 
+        # Sibling list for detail view
+        siblings = []
+        if p.variant_group_id:
+            sibling_qs = SellerProduct.objects.filter(
+                variant_group_id=p.variant_group_id,
+                status=SellerProduct.Status.APPROVED,
+                company__is_active=True,
+                category_id__in=active_cat_ids,
+            ).select_related("inventory").prefetch_related("images", "specs").order_by("selling_price", "id")
+            for sib in sibling_qs:
+                s_inv = getattr(sib, "inventory", None)
+                s_avail = max(Decimal("0.000"), (s_inv.on_hand_qty - s_inv.reserved_qty)) if s_inv else Decimal("0.000")
+                s_img = ""
+                for im in sib.images.all():
+                    if im.image_url:
+                        if im.is_primary:
+                            s_img = im.image_url
+                            break
+                        if not s_img:
+                            s_img = im.image_url
+                siblings.append({
+                    "id": sib.id,
+                    "seller_product_id": sib.id,
+                    "title": sib.title,
+                    "sku": sib.sku,
+                    "variant_label": sib.variant_label or sib.pack_size or "Default",
+                    "selling_price": str(sib.selling_price),
+                    "mrp": str(sib.mrp),
+                    "available": s_avail > Decimal("0.000"),
+                    "in_stock": s_avail > Decimal("0.000"),
+                    "available_stock": float(round(s_avail, 3)) if (s_avail % 1) != 0 else int(s_avail),
+                    "primary_image": s_img,
+                    "description": sib.description or "",
+                    "storage_info": sib.storage_info or "",
+                    "expiry_info": sib.expiry_info or "",
+                    "specs": [{"label": s.label, "value": s.value} for s in sib.specs.all()],
+                })
+
         cat_path = build_category_path(p.category)
         cat_hierarchy = build_category_hierarchy(p.category)
         wh = get_seller_assigned_warehouse(p.company_id)
@@ -533,6 +639,12 @@ class MarketplaceProductDetailView(APIView):
             "brand": p.brand or "",
             "unit": p.unit,
             "pack_size": str(p.pack_size),
+            "variant_group_id": p.variant_group_id,
+            "variant_group_title": p.variant_group.group_title if p.variant_group else "",
+            "variant_attribute_name": p.variant_group.variant_attribute_name if p.variant_group else "Size",
+            "variant_label": p.variant_label or "",
+            "available": is_in_stock,
+            "variants": siblings,
             "mrp": str(p.mrp),
             "selling_price": str(p.selling_price),
             "currency": "INR",
@@ -541,6 +653,7 @@ class MarketplaceProductDetailView(APIView):
             "description": p.description or "",
             "storage_info": p.storage_info or "",
             "expiry_info": p.expiry_info or "",
+            "specs": [{"label": s.label, "value": s.value} for s in p.specs.all()],
             "tax_rate": str(p.tax_rate),
             "hsn_code": p.hsn_code or "",
             "seller_id": p.company.id,
@@ -556,7 +669,7 @@ class MarketplaceProductDetailView(APIView):
             "category_path": cat_path,
             "category_hierarchy": cat_hierarchy,
             "available_stock": float(round(avail_qty, 3)) if (avail_qty % 1) != 0 else int(avail_qty),
-            "in_stock": avail_qty > Decimal("0.000"),
+            "in_stock": is_in_stock,
             "seller": {
                 "id": p.company.id,
                 "name": p.company.company_name,
@@ -570,7 +683,7 @@ class MarketplaceProductDetailView(APIView):
                 "hierarchy": cat_hierarchy,
             },
             "availability": {
-                "in_stock": avail_qty > Decimal("0.000"),
+                "in_stock": is_in_stock,
                 "available_quantity": str(round(avail_qty, 3)),
                 "unit": p.unit,
             },
