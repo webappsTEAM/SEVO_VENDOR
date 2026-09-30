@@ -254,3 +254,35 @@ sudo journalctl -u workforce-dispatch-worker -f
 | **Worker process crashes** | systemd triggers `RestartSec=5s`. | Recovers unacked messages via `XCLAIM` and resumes. |
 | **Redis process restarts** | Worker logs error, sleeps 1s, reconnects. | Reclaims pending messages; no duplicate offers created. |
 | **VPS reboot** | systemd starts Redis → Backend → Worker automatically. | Zero manual intervention required. |
+# Cloudflare R2 media
+
+Workforce uses two separately scoped Cloudflare R2 credentials when
+`MEDIA_STORAGE_PROVIDER=r2`:
+
+- `sevo-private-media-prod` stores workforce documents, attendance photos,
+  job evidence, inspection photos, and receipts. API responses use short-lived
+  signed URLs.
+- `sevo-public-media-prod` stores seller product images served from
+  `https://media.sevo.co.in`.
+
+Set these only in the backend environment; never expose them to the frontend or
+commit them to Git:
+
+```dotenv
+MEDIA_STORAGE_PROVIDER=r2
+R2_ENDPOINT_URL=https://<cloudflare-account-id>.r2.cloudflarestorage.com
+R2_PRIVATE_ACCESS_KEY_ID=<private-bucket-token-access-key-id>
+R2_PRIVATE_SECRET_ACCESS_KEY=<private-bucket-token-secret-access-key>
+R2_PRIVATE_BUCKET=sevo-private-media-prod
+R2_PUBLIC_ACCESS_KEY_ID=<public-bucket-token-access-key-id>
+R2_PUBLIC_SECRET_ACCESS_KEY=<public-bucket-token-secret-access-key>
+R2_PUBLIC_BUCKET=sevo-public-media-prod
+R2_PUBLIC_BASE_URL=https://media.sevo.co.in
+R2_SIGNED_URL_EXPIRES=900
+R2_LEGACY_LOCAL_READS=1
+```
+
+Install `requirements.txt`, restart the Workforce backend, then verify one
+authenticated private evidence upload and one seller product image upload.
+Rollback is `MEDIA_STORAGE_PROVIDER=local` followed by a backend restart; keep
+legacy local media available during the migration window.

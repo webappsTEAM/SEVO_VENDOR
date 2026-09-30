@@ -185,8 +185,9 @@ class WorkforceEmployeeProfileSerializer(serializers.ModelSerializer):
         return ob.get("services", [])
 
     def get_documents_status(self, obj):
+        from workforce_core.storage import hydrate_private_document_urls, private_media_url
         ob = (obj.bank_details or {}).get("onboarding", {})
-        docs_dict = dict(ob.get("documents", {}))
+        docs_dict = hydrate_private_document_urls(ob).get("documents", {})
 
         # Include relational WorkforceEmployeeDocument models if present
         try:
@@ -199,7 +200,7 @@ class WorkforceEmployeeProfileSerializer(serializers.ModelSerializer):
                     "category": cat,
                     "title": ed.requirement.title or existing.get("title", cat.replace("_", " ").title()),
                     "document_number": ed.document_number or existing.get("document_number", ""),
-                    "file_url": ed.file_url or existing.get("file_url", ""),
+                    "file_url": private_media_url(ed.file_url) if ed.file_url else existing.get("file_url", ""),
                     "status": ed.status.lower() if ed.status else existing.get("status", "approved"),
                     "issue_date": str(ed.issue_date) if ed.issue_date else existing.get("issue_date"),
                     "expiry_date": str(ed.expiry_date) if ed.expiry_date else existing.get("expiry_date"),

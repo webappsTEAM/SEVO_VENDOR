@@ -23,6 +23,7 @@ import uuid
 
 from django.conf import settings
 from django.core.files.storage import default_storage
+from workforce_core.storage import private_media_url
 from django.db import models, transaction
 from django.utils import timezone
 from rest_framework import permissions, status, renderers
@@ -304,7 +305,7 @@ def _serialize_estimation(sr, est=None, full_detail=False):
             for p in inspection.photos.all():
                 data["photos"].append({
                     "id": p.id,
-                    "photo": p.photo,
+                    "photo": private_media_url(p.photo),
                     "caption": p.caption,
                     "finding_id": p.finding_id,
                     "uploaded_by": p.uploaded_by,
@@ -1115,7 +1116,7 @@ class VendorEstimationPhotosView(APIView):
         else:
             filename = f"inspection_{est.id}_{uuid.uuid4().hex[:8]}_{file_obj.name}"
             saved_path = default_storage.save(f"service_requests/inspection_photos/{filename}", file_obj)
-            photo_url = default_storage.url(saved_path)
+            photo_url = saved_path
 
         photo_rec = InspectionPhoto.objects.create(
             inspection=inspection,
@@ -1129,7 +1130,7 @@ class VendorEstimationPhotosView(APIView):
             "success": True,
             "photo": {
                 "id": photo_rec.id,
-                "photo": photo_rec.photo,
+                "photo": private_media_url(photo_rec.photo),
                 "caption": photo_rec.caption,
                 "finding_id": photo_rec.finding_id,
                 "uploaded_at": photo_rec.uploaded_at.isoformat(),

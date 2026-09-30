@@ -210,6 +210,24 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = os.getenv("MEDIA_URL", "/media/")
 MEDIA_ROOT = BASE_DIR / "media"
 
+MEDIA_STORAGE_PROVIDER = os.getenv("MEDIA_STORAGE_PROVIDER", "local").strip().lower()
+R2_ENDPOINT_URL = os.getenv("R2_ENDPOINT_URL", "").rstrip("/")
+R2_PRIVATE_ACCESS_KEY_ID = os.getenv("R2_PRIVATE_ACCESS_KEY_ID", "")
+R2_PRIVATE_SECRET_ACCESS_KEY = os.getenv("R2_PRIVATE_SECRET_ACCESS_KEY", "")
+R2_PRIVATE_BUCKET = os.getenv("R2_PRIVATE_BUCKET", "sevo-private-media-prod")
+R2_PUBLIC_ACCESS_KEY_ID = os.getenv("R2_PUBLIC_ACCESS_KEY_ID", "")
+R2_PUBLIC_SECRET_ACCESS_KEY = os.getenv("R2_PUBLIC_SECRET_ACCESS_KEY", "")
+R2_PUBLIC_BUCKET = os.getenv("R2_PUBLIC_BUCKET", "sevo-public-media-prod")
+R2_PUBLIC_BASE_URL = os.getenv("R2_PUBLIC_BASE_URL", "https://media.sevo.co.in").rstrip("/")
+R2_SIGNED_URL_EXPIRES = int(os.getenv("R2_SIGNED_URL_EXPIRES", "900"))
+R2_LEGACY_LOCAL_READS = os.getenv("R2_LEGACY_LOCAL_READS", "1").strip().lower() in ("1", "true", "yes")
+
+if MEDIA_STORAGE_PROVIDER == "r2":
+    STORAGES = {
+        "default": {"BACKEND": "workforce_core.storage.PrivateR2Storage"},
+        "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+    }
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # ─── REST Framework & JWT Auth ────────────────────────────────────────────────

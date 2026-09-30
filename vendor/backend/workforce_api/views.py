@@ -1391,7 +1391,6 @@ class WorkforceOnboardingDocumentUploadView(APIView):
         # Generate safe server-side storage path
         safe_filename = f"workforce_docs/emp_{emp.id}_{category}_{uuid.uuid4().hex[:12]}{ext}"
         saved_path = default_storage.save(safe_filename, file_obj)
-        file_url = default_storage.url(saved_path)
 
         with transaction.atomic():
             emp.refresh_from_db(fields=["bank_details"])
@@ -1415,7 +1414,7 @@ class WorkforceOnboardingDocumentUploadView(APIView):
                 "category": category,
                 "title": title,
                 "document_number": document_number,
-                "file_url": file_url,
+                "file_url": saved_path,
                 "storage_path": saved_path,
                 "file_name": os.path.basename(file_obj.name),
                 "file_size": file_obj.size,
@@ -1448,9 +1447,13 @@ class WorkforceOnboardingDocumentUploadView(APIView):
             emp.bank_details = bank_details
             emp.save()
 
+        from workforce_core.storage import hydrate_private_document_urls
+        response_document = hydrate_private_document_urls(
+            {"documents": {category: new_doc_entry}}
+        )["documents"][category]
         return Response({
             "message": f"Document '{title}' uploaded successfully.",
-            "document": new_doc_entry,
+            "document": response_document,
         }, status=status.HTTP_201_CREATED)
 
 
@@ -12598,7 +12601,8 @@ class WorkforceJobLogisticsExtraChargeView(WorkforceJobLogisticsCheckpointView):
         if photo:
             from django.core.files.storage import default_storage
             saved = default_storage.save(f"logistics_receipts/{job.id}_{photo.name}", photo)
-            photo_url = default_storage.url(saved)
+            from workforce_core.storage import private_media_url
+            photo_url = private_media_url(saved)
         cid = ec.report_extra_charge(job, emp, kind, request.data.get("amount"),
                                      str(request.data.get("note") or ""), receipt, request.data.get("charge_id"),
                                      receipt_photo_url=photo_url)

@@ -23,6 +23,7 @@ from django.utils.text import slugify
 from django.http import HttpResponse
 from django.conf import settings
 from django.core.files.storage import default_storage
+from workforce_core.storage import get_public_media_storage
 from rest_framework import permissions, status, serializers
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -2572,8 +2573,9 @@ class SellerProductImageUploadView(APIView):
 
         ext = os.path.splitext(image_file.name)[1].lower() or ".jpg"
         unique_name = f"seller_products/{uuid.uuid4().hex}{ext}"
-        saved_path = default_storage.save(unique_name, image_file)
-        image_url = default_storage.url(saved_path)
+        storage = get_public_media_storage()
+        saved_path = storage.save(unique_name, image_file)
+        image_url = storage.url(saved_path)
 
         return Response(
             {

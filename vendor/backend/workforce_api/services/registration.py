@@ -52,7 +52,8 @@ def get_employee_onboarding_dict(emp: Any) -> Dict[str, Any]:
         if isinstance(ob, dict):
             if "completed_steps" not in ob:
                 ob["completed_steps"] = []
-            return ob
+            from workforce_core.storage import hydrate_private_document_urls
+            return hydrate_private_document_urls(ob)
 
     return {
         "status": REGISTRATION_STATUS_NOT_STARTED,
