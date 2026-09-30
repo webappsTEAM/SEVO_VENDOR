@@ -339,6 +339,7 @@ class ServiceRequest(models.Model):
     discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     subtotal_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     final_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    fare_breakdown = models.JSONField(default=dict, blank=True)
 
     # X-04: cancellation fields, all missing from this mirror -- without
     # these a technician-side "why was this job cancelled" view (e.g. after
