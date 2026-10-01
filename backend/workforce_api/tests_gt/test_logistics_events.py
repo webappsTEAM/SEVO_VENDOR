@@ -294,3 +294,56 @@ class CategoryPinnedSequenceTests(SimpleTestCase):
         self.assertIn("Invalid leg", err)
         self.assertEqual(job.logistics_leg, "EN_ROUTE_DROP")
         emit.assert_not_called()
+
+
+class _StubSignatureFile:
+    """Stands in for a FieldFile (proof.delivery_signature)."""
+    def __init__(self, url):
+        self._url = url
+
+    @property
+    def url(self):
+        return self._url
+
+    def __bool__(self):
+        return bool(self._url)
+
+
+class EmitDeliveryProofForJobRecipientAndSignatureTests(SimpleTestCase):
+    """Round 8 gap 2: emit_delivery_proof_for_job must forward an optional
+    recipient_name/signature through to emit_completion_proof, for logistics
+    jobs only, without ever requiring either."""
+
+    def test_recipient_name_and_signature_are_forwarded_when_present(self):
+        job = _StubJob(category="goods_transport_truck")
+        with patch("workforce_api.models.LogisticsCheckpointVerification") as MockCkpt, \
+             patch.object(le, "emit_completion_proof") as emit:
+            MockCkpt.objects.filter.return_value.first.return_value = None
+            ok = le.emit_delivery_proof_for_job(
+                job, emp=None, notes="delivered",
+                recipient_name="Asha K",
+                signature=_StubSignatureFile("https://vendor.example/sig.png"),
+            )
+        self.assertTrue(ok)
+        emit.assert_called_once()
+        _args, kwargs = emit.call_args
+        self.assertEqual(kwargs["recipient_name"], "Asha K")
+        self.assertEqual(kwargs["signature_url"], "https://vendor.example/sig.png")
+
+    def test_absent_recipient_and_signature_never_block_emission(self):
+        job = _StubJob(category="goods_transport_truck")
+        with patch("workforce_api.models.LogisticsCheckpointVerification") as MockCkpt, \
+             patch.object(le, "emit_completion_proof") as emit:
+            MockCkpt.objects.filter.return_value.first.return_value = None
+            ok = le.emit_delivery_proof_for_job(job, emp=None, notes="delivered")
+        self.assertTrue(ok)
+        _args, kwargs = emit.call_args
+        self.assertEqual(kwargs["recipient_name"], "")
+        self.assertEqual(kwargs["signature_url"], "")
+
+    def test_non_logistics_job_is_a_no_op(self):
+        job = _StubJob(category="ac_repair")
+        with patch.object(le, "emit_completion_proof") as emit:
+            ok = le.emit_delivery_proof_for_job(job, emp=None, recipient_name="Asha K")
+        self.assertFalse(ok)
+        emit.assert_not_called()

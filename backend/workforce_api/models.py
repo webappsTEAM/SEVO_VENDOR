@@ -3,6 +3,7 @@ workforce-app/backend/workforce_api/models.py
 Relational database models for Workforce Scheduling, Skills, Compliance, Notifications, Events, Payroll, and Reports.
 """
 from decimal import Decimal
+from typing import Any
 import uuid
 import django
 from django.conf import settings
@@ -971,6 +972,13 @@ class PostServiceProof(models.Model):
     after_work_area_photo = models.FileField(upload_to="post_service/work_area/", null=True, blank=True)
     completion_notes = models.TextField(blank=True, default="")
     parts_used = models.JSONField(default=list, blank=True)
+
+    # Round 8 gap 2: optional recipient signature + structured recipient name for GT/logistics
+    # deliveries only (home-service jobs never populate these). Both are OPTIONAL -- Porter
+    # itself does not strictly require signature capture either -- so their absence never
+    # blocks job completion; see WorkforceJobProofView.post() and emit_delivery_proof_for_job().
+    delivery_recipient_name = models.CharField(max_length=200, blank=True, default="")
+    delivery_signature = models.ImageField(upload_to="post_service/signatures/", null=True, blank=True)
 
     is_submitted = models.BooleanField(default=False, db_index=True)
     submitted_at = models.DateTimeField(null=True, blank=True)
@@ -4322,26 +4330,26 @@ class SellerProductBasket(models.Model):
         choices=PricingMode.choices,
         default=PricingMode.MARGIN,
     )
-    margin_percent = models.DecimalField(
+    margin_percent: Any = models.DecimalField(
         max_digits=8,
         decimal_places=2,
         null=True,
         blank=True,
         help_text="Seller margin percentage on total procurement cost",
     )
-    selling_price = models.DecimalField(
+    selling_price: Any = models.DecimalField(
         max_digits=10,
         decimal_places=2,
         default=Decimal("0.00"),
         help_text="Final customer-facing selling price for the combo basket",
     )
-    total_mrp = models.DecimalField(
+    total_mrp: Any = models.DecimalField(
         max_digits=10,
         decimal_places=2,
         default=Decimal("0.00"),
         help_text="Sum of component MRPs * quantities at last calculation",
     )
-    total_procurement_price = models.DecimalField(
+    total_procurement_price: Any = models.DecimalField(
         max_digits=10,
         decimal_places=2,
         default=Decimal("0.00"),
@@ -4377,17 +4385,19 @@ class SellerProductBasket(models.Model):
             else:
                 proc_sum += prod.procurement_price * qty
 
-        self.total_mrp = mrp_sum
-        self.total_procurement_price = proc_sum
+        setattr(self, "total_mrp", mrp_sum)
+        setattr(self, "total_procurement_price", proc_sum)
 
         if self.pricing_mode == self.PricingMode.MARGIN and self.margin_percent is not None:
-            mult = Decimal("1.00") + (self.margin_percent / Decimal("100.00"))
-            self.selling_price = (proc_sum * mult).quantize(Decimal("0.01"))
+            margin_val = Decimal(str(self.margin_percent))
+            mult = Decimal("1.00") + (margin_val / Decimal("100.00"))
+            setattr(self, "selling_price", (proc_sum * mult).quantize(Decimal("0.01")))
         elif self.pricing_mode == self.PricingMode.FIXED_PRICE and self.selling_price is not None:
             if proc_sum > Decimal("0.00"):
-                self.margin_percent = (((self.selling_price - proc_sum) / proc_sum) * Decimal("100.00")).quantize(Decimal("0.01"))
+                selling_val = Decimal(str(self.selling_price))
+                setattr(self, "margin_percent", (((selling_val - proc_sum) / proc_sum) * Decimal("100.00")).quantize(Decimal("0.01")))
             else:
-                self.margin_percent = Decimal("0.00")
+                setattr(self, "margin_percent", Decimal("0.00"))
 
         if save:
             self.save(update_fields=["total_mrp", "total_procurement_price", "selling_price", "margin_percent", "updated_at"])

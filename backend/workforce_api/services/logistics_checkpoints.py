@@ -104,13 +104,27 @@ PM_GATES = [
     ("DELIVERED", DROP, OTP),
 ]
 
-REQUIREMENT_LABELS = {
-    (PICKUP, GPS): "Pickup GPS check-in (within 250m of pickup)",
+class _DynamicLabels(dict):
+    """Labels quote the Admin-configured checkpoint radius, never a hard-coded 250m."""
+
+    def __getitem__(self, key):
+        return super().__getitem__(key).replace("{radius}", str(int(checkpoint_radius_meters())))
+
+
+REQUIREMENT_LABELS = _DynamicLabels({
+    (PICKUP, GPS): "Pickup GPS check-in (within {radius}m of pickup)",
     (PICKUP, PHOTO): "Loading proof photo at pickup",
-    (DROP, GPS): "Drop GPS check-in (within 250m of drop)",
+    (DROP, GPS): "Drop GPS check-in (within {radius}m of drop)",
     (DROP, PHOTO): "Unloading proof photo at drop",
     (DROP, OTP): "Customer delivery OTP",
-}
+})
+
+
+def _missing_item(cp, r):
+    item = {"checkpoint": cp, "requirement": r, "label": REQUIREMENT_LABELS[(cp, r)]}
+    if r == GPS:
+        item["radius_m"] = int(checkpoint_radius_meters())
+    return item
 
 
 def drop_otp_required(job):
@@ -197,7 +211,7 @@ def checkpoint_gate_error(job, target_leg, state=None):
     labels = [REQUIREMENT_LABELS[m] for m in missing]
     return (
         f"Cannot advance to '{target_leg}' yet. Still required: " + "; ".join(labels) + ".",
-        [{"checkpoint": cp, "requirement": r, "label": REQUIREMENT_LABELS[(cp, r)]} for cp, r in missing],
+        [_missing_item(cp, r) for cp, r in missing],
     )
 
 
@@ -207,8 +221,7 @@ def gate_summary(job, state=None):
         state = checkpoint_state(job)
     seq, _ = gates_for_job(job)
     return {
-        leg: [{"checkpoint": cp, "requirement": r, "label": REQUIREMENT_LABELS[(cp, r)]}
-              for cp, r in missing_for_leg(job, leg, state=state)]
+        leg: [_missing_item(cp, r) for cp, r in missing_for_leg(job, leg, state=state)]
         for leg in seq
     }
 
@@ -425,7 +438,7 @@ def verify_delivery_otp(job, emp, otp_input):
         if not rec.otp_code:
             return False, {"error": "No delivery OTP issued yet. Use 'Resend OTP'.", "code": "OTP_NOT_ISSUED"}
         if rec.otp_attempts >= max_otp_attempts():
-            return False, {"error": "Maximum delivery OTP attempts exceeded (5/5). Use 'Resend OTP' for a fresh code.",
+            return False, {"error": f"Maximum delivery OTP attempts exceeded ({max_otp_attempts()}/{max_otp_attempts()}). Use 'Resend OTP' for a fresh code.",
                            "code": "MAX_OTP_ATTEMPTS_EXCEEDED"}
         now = timezone.now()
         if rec.otp_expires_at and now > rec.otp_expires_at:

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { apiReportLogisticsException } from '../../../api/workforceService.js';
 
@@ -17,11 +17,14 @@ export function TripExceptionReporter({ jobId, currentLeg }) {
   const [code, setCode] = useState('');
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
   if (options.length === 0) return null;
 
   const submit = async () => {
+    if (inFlight.current) return; // double-tap guard (state updates are async)
+    inFlight.current = true;
     setBusy(true); setErr(''); setMsg('');
     try {
       await apiReportLogisticsException(jobId, code, notes);
@@ -30,6 +33,7 @@ export function TripExceptionReporter({ jobId, currentLeg }) {
     } catch (e) {
       setErr(e?.message || 'Could not send the report. Please retry.');
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   };

@@ -347,7 +347,11 @@ export function PortalCockpitLayout({
   // undefined, so this always rendered a flat ₹0 "EST. PAYOUT" on the
   // technician's home cockpit. Matches the correct pattern already used in
   // EmployeeDashboardPage.jsx and EmployeeJobsPage.jsx.
-  const payoutAmount = isEstimationJob && !isQuoteAccepted
+  // Logistics jobs: the backend previews the real settlement (fare - commission + toll refunds).
+  const _serverPayout = job?.estimated_payout_info?.estimated_payout;
+  const payoutAmount = _serverPayout != null
+    ? Number(_serverPayout)
+    : isEstimationJob && !isQuoteAccepted
     ? Number(job?.consultation_fee ?? job?.base_price ?? 0)
     : Number(job?.payment?.amount_due ?? job?.total_amount ?? offer?.payment?.amount_due ?? offer?.total_amount ?? 0);
   const payableCashDue = isQuoteAccepted

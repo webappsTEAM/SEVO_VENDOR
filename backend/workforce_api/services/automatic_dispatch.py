@@ -58,14 +58,22 @@ SUBSEQUENT_WAVE_SIZE = 20 # Wave 4+: Ranks 36+ in batches of 20
 
 def get_wave_size(wave_number: int) -> int:
     """Returns the configured bounded wave size for a given dispatch wave number."""
+    # GT_WAVE_CFG: wave sizes can be changed live from the SuperAdmin system settings
+    # (WorkforceSystemSetting keys DISPATCH_*_WAVE_SIZE, picked up within a minute);
+    # without a row the Django settings / module defaults apply exactly as before.
     if wave_number <= 1:
-        return getattr(settings, "DISPATCH_INITIAL_WAVE_SIZE", INITIAL_WAVE_SIZE)
+        key, dflt = "DISPATCH_INITIAL_WAVE_SIZE", getattr(settings, "DISPATCH_INITIAL_WAVE_SIZE", INITIAL_WAVE_SIZE)
     elif wave_number == 2:
-        return getattr(settings, "DISPATCH_SECOND_WAVE_SIZE", SECOND_WAVE_SIZE)
+        key, dflt = "DISPATCH_SECOND_WAVE_SIZE", getattr(settings, "DISPATCH_SECOND_WAVE_SIZE", SECOND_WAVE_SIZE)
     elif wave_number == 3:
-        return getattr(settings, "DISPATCH_THIRD_WAVE_SIZE", THIRD_WAVE_SIZE)
+        key, dflt = "DISPATCH_THIRD_WAVE_SIZE", getattr(settings, "DISPATCH_THIRD_WAVE_SIZE", THIRD_WAVE_SIZE)
     else:
-        return getattr(settings, "DISPATCH_SUBSEQUENT_WAVE_SIZE", SUBSEQUENT_WAVE_SIZE)
+        key, dflt = "DISPATCH_SUBSEQUENT_WAVE_SIZE", getattr(settings, "DISPATCH_SUBSEQUENT_WAVE_SIZE", SUBSEQUENT_WAVE_SIZE)
+    try:
+        size = int(_system_setting_float(key, float(dflt)))
+    except Exception:
+        size = int(dflt)
+    return size if size >= 1 else int(dflt)
 
 
 # ── Variable offer window (Booking Dispatch Framework) ──────────────────────
@@ -711,7 +719,14 @@ def check_candidate_eligibility(
     # GT-A-01/GT-A-02: for logistics jobs specifically, also require at
     # least one active Vehicle on file whose insurance/permit/PUC are all
     # current. This runs for ALL technicians (company or independent).
-    if service_name_clean in LOGISTICS_SERVICE_CATEGORIES:
+    # The job's OWN category decides this too: callers retry eligibility with the
+    # booking's free-text issue_title (not a category) when the first pass fails, and
+    # that retry must not skip the vehicle gates and rescue an unsuitable driver.
+    _job_is_logistics = (
+        job is not None
+        and str(getattr(job, "service_category", "") or "").strip().lower() in LOGISTICS_SERVICE_CATEGORIES
+    )
+    if service_name_clean in LOGISTICS_SERVICE_CATEGORIES or _job_is_logistics:
         vehicles = list(Vehicle.objects.filter(employee=emp, is_active=True))
         if not vehicles:
             gate_results["G3"] = False

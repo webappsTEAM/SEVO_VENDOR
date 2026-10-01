@@ -2105,10 +2105,11 @@ export async function apiGetLogisticsExtraChargeOptions(jobId) {
   return await apiRequest(`/workforce/jobs/${jobId}/logistics-extra-charge/`);
 }
 
-export async function apiReportLogisticsExtraCharge(jobId, { chargeType, amount, receipt, note, photo }) {
+export async function apiReportLogisticsExtraCharge(jobId, { chargeType, amount, receipt, note, photo, chargeId }) {
   const formData = new FormData();
   formData.append('charge_type', chargeType);
   formData.append('amount', amount);
+  if (chargeId) formData.append('charge_id', chargeId); // idempotency key: a retry/double-tap is not billed twice
   if (receipt) formData.append('receipt', receipt);
   if (note) formData.append('note', note);
   if (photo) formData.append('receipt_photo', photo);
@@ -2153,7 +2154,6 @@ export async function apiAdminDeleteDeliverySlot(id) {
     method: 'DELETE',
   });
 }
-
 // ── Seller Product Variant Groups ──────────────────────────────────────────
 export async function apiSellerGetVariantGroups(params = {}) {
   const qs = new URLSearchParams();
@@ -2168,7 +2168,5 @@ export async function apiSellerCreateVariantGroup(payload) {
     json: payload,
   });
 }
-
-
 
 

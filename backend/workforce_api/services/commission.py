@@ -107,11 +107,40 @@ def is_in_promo_period(wallet) -> bool:
     return (timezone.now() - wallet.created_at).days < PROMO_PERIOD_DAYS
 
 
+def _live_rate(key: str, default: Decimal) -> Decimal:
+    """GT_COMMISSION_LIVE: commission rates can be changed without a deploy through the SuperAdmin
+    system settings (WorkforceSystemSetting keys SEVO_*_RATE, e.g. "0.12"); a missing, invalid or
+    out-of-range (outside 0..<1) value falls back to the env/settings default. Cached for 60 s."""
+    from django.core.cache import cache
+    ck = f"wf_comm_rate_{key}"
+    try:
+        hit = cache.get(ck)
+    except Exception:
+        hit = None
+    if hit is not None:
+        return Decimal(hit)
+    rate = default
+    try:
+        from workforce_api.models import WorkforceSystemSetting
+        row = WorkforceSystemSetting.objects.filter(key=key).first()
+        if row is not None:
+            v = Decimal(str(row.value).strip())
+            if v.is_finite() and Decimal("0") <= v < Decimal("1"):
+                rate = v
+    except Exception:
+        rate = default
+    try:
+        cache.set(ck, str(rate), 60)
+    except Exception:
+        pass
+    return rate
+
+
 def commission_rate_for(wallet, channel: str) -> Decimal:
     promo = is_in_promo_period(wallet)
     if channel == "PROVIDER_HEAD":
-        return PROVIDER_PROMO_RATE if promo else PROVIDER_STANDARD_RATE
-    return INDIVIDUAL_PROMO_RATE if promo else INDIVIDUAL_STANDARD_RATE
+        return _live_rate("SEVO_PROVIDER_PROMO_RATE", PROVIDER_PROMO_RATE) if promo else _live_rate("SEVO_PROVIDER_COMMISSION_RATE", PROVIDER_STANDARD_RATE)
+    return _live_rate("SEVO_INDIVIDUAL_PROMO_RATE", INDIVIDUAL_PROMO_RATE) if promo else _live_rate("SEVO_INDIVIDUAL_COMMISSION_RATE", INDIVIDUAL_STANDARD_RATE)
 
 
 def _extra_charges_total(service_request):
@@ -127,20 +156,8 @@ def _extra_charges_total(service_request):
     return total
 
 
+# settle_completed_job is atomic: the JOB_CREDIT and COMMISSION entries must commit together.
 @transaction.atomic
-def _extra_charges_total(service_request):
-    """Sum of APPLIED toll/parking entries the Customer app recorded (ServiceRequest.extra_charges)."""
-    total = Decimal("0.00")
-    items = getattr(service_request, "extra_charges", None)
-    for e in (items if isinstance(items, list) else []):
-        if isinstance(e, dict) and e.get("status") == "APPLIED":
-            try:
-                total += Decimal(str(e.get("amount") or 0))
-            except Exception:
-                pass
-    return total
-
-
 def settle_completed_job(service_request):
     """
     Idempotent: safe to call more than once for the same job (e.g. a retry
@@ -260,6 +277,7 @@ def settle_completed_job(service_request):
     )
     # Mirror earning into vendor_wallet.EmployeeWallet so the technician wallet dashboard reflects earnings
     if worker_performed is not None:
+        _mirror_sp = transaction.savepoint()
         try:
             from vendor_wallet.models import EmployeeWallet, EmployeeWalletTransaction
             from vendor_wallet.constants import (
@@ -313,6 +331,7 @@ def settle_completed_job(service_request):
                     },
                 )
         except Exception as ew_err:
+            transaction.savepoint_rollback(_mirror_sp)
             logger.warning("Could not mirror earning into EmployeeWallet for Job #%s: %s", service_request.id, ew_err)
 
     if worker_performed is not None:
@@ -328,6 +347,46 @@ def settle_completed_job(service_request):
             )
 
     return credit_entry
+
+
+def preview_job_payout(service_request):
+    """Read-only preview of what the assigned worker/vendor will be credited
+    for this job, using the SAME rules as settle_completed_job (settings-based
+    commission rate, insurance premium excluded, toll/parking reimbursed in
+    full). Creates nothing. Returns None when it cannot be determined (not a
+    logistics job, no assignee, zero fare)."""
+    try:
+        from workforce_api.services.automatic_dispatch import LOGISTICS_SERVICE_CATEGORIES
+        if (service_request.service_category or "").strip().lower() not in LOGISTICS_SERVICE_CATEGORIES:
+            return None
+        emp = service_request.assigned_employee
+        if emp is None:
+            return None
+        from workforce_api.models import WalletAccount, VendorTechnicianRelationship
+        tied = VendorTechnicianRelationship.objects.filter(
+            technician=emp, status=VendorTechnicianRelationship.Status.ACTIVE).exists() or bool(emp.company_id)
+        channel = "PROVIDER_HEAD" if tied else "INDIVIDUAL_WORKER"
+        if tied:
+            company = emp.company
+            wallet = WalletAccount.objects.filter(company=company, account_type=WalletAccount.AccountType.PROVIDER_HEAD).first() if company else None
+        else:
+            wallet = WalletAccount.objects.filter(employee=emp, account_type=WalletAccount.AccountType.INDIVIDUAL_WORKER).first()
+        fare = Decimal(str(service_request.total_amount or 0))
+        if getattr(service_request, "insurance_opted_in", False):
+            fare -= Decimal(str(service_request.insurance_premium or 0))
+        reimbursement = _extra_charges_total(service_request)
+        fare -= reimbursement
+        if fare <= 0:
+            return None
+        rate = commission_rate_for(wallet, channel)
+        commission = (fare * rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        return {
+            "gross_fare": str(fare), "commission_rate": str(rate), "commission": str(commission),
+            "reimbursement": str(reimbursement), "estimated_payout": str(fare - commission + reimbursement),
+        }
+    except Exception:
+        logger.exception("payout preview failed for job %s", getattr(service_request, "pk", None))
+        return None
 
 
 def release_due_holds() -> int:
