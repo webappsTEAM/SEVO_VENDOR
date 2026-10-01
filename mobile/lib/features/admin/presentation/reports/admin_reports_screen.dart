@@ -1,3 +1,6 @@
+import '../../../../shared/widgets/sevo/sevo_module_frame.dart';
+import '../../../../shared/widgets/sevo/sevo_module_art.dart';
+
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -7,10 +10,8 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../../../core/theme/app_theme.dart';
 import '../../../../shared/widgets/empty_state.dart';
-import '../../../../shared/widgets/workforce_app_bar.dart';
 import '../../domain/admin_report_data.dart';
 import '../admin_dashboard_providers.dart';
-import '../widgets/admin_drawer.dart';
 
 /// Admin Reports & Analytics Suite.
 /// Query real database aggregations with multi-dimensional filtering across workforce operations.
@@ -23,7 +24,8 @@ class AdminReportsScreen extends ConsumerStatefulWidget {
 
 class _AdminReportsScreenState extends ConsumerState<AdminReportsScreen> {
   String _selectedReportType = 'employee';
-  final TextEditingController _serviceFilterController = TextEditingController();
+  final TextEditingController _serviceFilterController =
+      TextEditingController();
   final TextEditingController _statusFilterController = TextEditingController();
   final TextEditingController _empFilterController = TextEditingController();
 
@@ -68,24 +70,29 @@ class _AdminReportsScreenState extends ConsumerState<AdminReportsScreen> {
     csvRows.add(columns.join(','));
 
     for (final row in data.rows) {
-      final line = columns.map((col) {
-        final val = row[col];
-        final str = (val?.toString() ?? '').replaceAll('"', '""');
-        return '"$str"';
-      }).join(',');
+      final line = columns
+          .map((col) {
+            final val = row[col];
+            final str = (val?.toString() ?? '').replaceAll('"', '""');
+            return '"$str"';
+          })
+          .join(',');
       csvRows.add(line);
     }
 
     final csvContent = csvRows.join('\n');
     try {
       final dir = await getTemporaryDirectory();
-      final file = File('${dir.path}/workforce_${_selectedReportType}_report.csv');
+      final file = File(
+        '${dir.path}/workforce_${_selectedReportType}_report.csv',
+      );
       await file.writeAsString(csvContent);
 
       await SharePlus.instance.share(
         ShareParams(
           files: [XFile(file.path, mimeType: 'text/csv')],
-          subject: 'CalServices Workforce ${_selectedReportType.toUpperCase()} Report',
+          subject:
+              'CalServices Workforce ${_selectedReportType.toUpperCase()} Report',
         ),
       );
     } catch (e) {
@@ -104,13 +111,9 @@ class _AdminReportsScreenState extends ConsumerState<AdminReportsScreen> {
   Widget build(BuildContext context) {
     final reportAsync = ref.watch(adminReportProvider(_activeParams));
 
-    return Scaffold(
-      appBar: const WorkforceAppBar(
-        titleText: 'Business Analytics & Reports',
-        showStatusSubBar: false,
-        showDrawerMenu: true,
-      ),
-      drawer: const AdminDrawer(),
+    return SevoModuleFrame(
+      module: SevoModule.reportsAudits,
+      title: 'Business Analytics & Reports',
       body: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(adminReportProvider(_activeParams));
@@ -126,7 +129,11 @@ class _AdminReportsScreenState extends ConsumerState<AdminReportsScreen> {
                 borderRadius: BorderRadius.circular(AppRadius.card),
                 border: Border.all(color: AppColors.border),
                 boxShadow: const [
-                  BoxShadow(color: Color(0x060A2540), blurRadius: 4, offset: Offset(0, 1.5)),
+                  BoxShadow(
+                    color: Color(0x060A2540),
+                    blurRadius: 4,
+                    offset: Offset(0, 1.5),
+                  ),
                 ],
               ),
               child: Column(
@@ -249,8 +256,11 @@ class _AdminReportsScreenState extends ConsumerState<AdminReportsScreen> {
                   // Filter Controls
                   Row(
                     children: [
-                      Icon(Icons.filter_list_rounded,
-                          size: 15, color: AppColors.textSecondary),
+                      Icon(
+                        Icons.filter_list_rounded,
+                        size: 15,
+                        color: AppColors.textSecondary,
+                      ),
                       SizedBox(width: 6),
                       Text(
                         'Query Filters',
@@ -296,7 +306,9 @@ class _AdminReportsScreenState extends ConsumerState<AdminReportsScreen> {
                         style: FilledButton.styleFrom(
                           backgroundColor: AppColors.textPrimary,
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 12),
+                            horizontal: 14,
+                            vertical: 12,
+                          ),
                           textStyle: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w800,
@@ -330,8 +342,10 @@ class _AdminReportsScreenState extends ConsumerState<AdminReportsScreen> {
                       SizedBox(height: 12),
                       Text(
                         'Executing database aggregation query...',
-                        style:
-                            TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textSecondary,
+                        ),
                       ),
                     ],
                   ),
@@ -346,14 +360,16 @@ class _AdminReportsScreenState extends ConsumerState<AdminReportsScreen> {
                 ),
                 child: Column(
                   children: [
-                    const Icon(Icons.error_outline_rounded,
-                        size: 28, color: Color(0xFFDC2626)),
+                    const Icon(
+                      Icons.error_outline_rounded,
+                      size: 28,
+                      color: Color(0xFFDC2626),
+                    ),
                     const SizedBox(height: 8),
                     Text(
                       'Failed to execute report query: $err',
                       textAlign: TextAlign.center,
-                      style: TextStyle(
-                          fontSize: 12, color: Color(0xFF991B1B)),
+                      style: TextStyle(fontSize: 12, color: Color(0xFF991B1B)),
                     ),
                     const SizedBox(height: 10),
                     OutlinedButton(
@@ -377,13 +393,17 @@ class _AdminReportsScreenState extends ConsumerState<AdminReportsScreen> {
                       // Report Summary Bar
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: AppSpacing.md, vertical: 10),
+                          horizontal: AppSpacing.md,
+                          vertical: 10,
+                        ),
                         decoration: BoxDecoration(
                           color: Color(0xFFF8FAFC),
-                          borderRadius:
-                              BorderRadius.vertical(top: Radius.circular(10)),
+                          borderRadius: BorderRadius.vertical(
+                            top: Radius.circular(10),
+                          ),
                           border: Border(
-                              bottom: BorderSide(color: AppColors.border)),
+                            bottom: BorderSide(color: AppColors.border),
+                          ),
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -404,7 +424,9 @@ class _AdminReportsScreenState extends ConsumerState<AdminReportsScreen> {
                             const SizedBox(width: 8),
                             Container(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 6, vertical: 2),
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
                               decoration: BoxDecoration(
                                 color: const Color(0xFFF1F5F9),
                                 borderRadius: BorderRadius.circular(4),
@@ -563,8 +585,10 @@ class _ReportRowCard extends StatelessWidget {
               if (row.containsKey('status')) ...[
                 const SizedBox(width: 6),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xFFEFF6FF),
                     borderRadius: BorderRadius.circular(4),
@@ -586,29 +610,31 @@ class _ReportRowCard extends StatelessWidget {
             spacing: 12,
             runSpacing: 4,
             children: row.entries
-                .where((e) =>
-                    e.key != 'status' &&
-                    e.key != 'name' &&
-                    e.key != 'request_id' &&
-                    e.key != 'employee_name')
+                .where(
+                  (e) =>
+                      e.key != 'status' &&
+                      e.key != 'name' &&
+                      e.key != 'request_id' &&
+                      e.key != 'employee_name',
+                )
                 .map((e) {
-              final formattedKey =
-                  e.key.replaceAll('_', ' ').toLowerCase();
-              final formattedVal = e.value == true
-                  ? 'Yes'
-                  : e.value == false
+                  final formattedKey = e.key.replaceAll('_', ' ').toLowerCase();
+                  final formattedVal = e.value == true
+                      ? 'Yes'
+                      : e.value == false
                       ? 'No'
                       : e.value?.toString() ?? '—';
 
-              return Text(
-                '$formattedKey: $formattedVal',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontFamily: 'monospace',
-                  color: AppColors.textSecondary,
-                ),
-              );
-            }).toList(),
+                  return Text(
+                    '$formattedKey: $formattedVal',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontFamily: 'monospace',
+                      color: AppColors.textSecondary,
+                    ),
+                  );
+                })
+                .toList(),
           ),
         ],
       ),

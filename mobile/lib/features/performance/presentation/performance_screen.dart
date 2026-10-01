@@ -1,3 +1,6 @@
+import '../../../shared/widgets/sevo/sevo_module_frame.dart';
+import '../../../shared/widgets/sevo/sevo_module_art.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -5,7 +8,6 @@ import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/async_value_view.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../../../shared/widgets/module_header_card.dart';
-import '../../../shared/widgets/workforce_app_bar.dart';
 import '../domain/performance_summary.dart';
 import 'performance_providers.dart';
 
@@ -18,12 +20,11 @@ class PerformanceScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final summaryAsync = ref.watch(performanceProvider);
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: const WorkforceAppBar(
-        titleText: 'Performance',
-        showBrand: false,
-      ),
+    return SevoModuleFrame(
+      module: SevoModule.scorecards,
+      title: 'Performance',
+      withDrawer: false,
+      transition: false,
       body: RefreshIndicator(
         onRefresh: () => ref.refresh(performanceProvider.future),
         child: AsyncValueView<PerformanceSummary>(
@@ -83,14 +84,18 @@ class _MetricsSection extends StatelessWidget {
       ),
       _MetricData(
         title: 'Average Rating',
-        value: metrics.averageRating > 0 ? '${metrics.averageRating.toStringAsFixed(1)} / 5.0' : '—',
+        value: metrics.averageRating > 0
+            ? '${metrics.averageRating.toStringAsFixed(1)} / 5.0'
+            : '—',
         change: '${metrics.feedbackSubmissionsCount} ratings recorded',
         icon: Icons.star_rounded,
         iconColor: const Color(0xFFF59E0B),
       ),
       _MetricData(
         title: 'CSAT Score',
-        value: metrics.csatScore > 0 ? '${_formatNumber(metrics.csatScore)}%' : '—',
+        value: metrics.csatScore > 0
+            ? '${_formatNumber(metrics.csatScore)}%'
+            : '—',
         change: '4★ & 5★ satisfaction share',
         icon: Icons.thumb_up_outlined,
         iconColor: const Color(0xFF10B981),
@@ -113,14 +118,21 @@ class _MetricsSection extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final crossAxisCount = constraints.maxWidth > 520 ? 3 : (constraints.maxWidth < 280 ? 1 : 2);
+        final crossAxisCount = constraints.maxWidth > 520
+            ? 3
+            : (constraints.maxWidth < 280 ? 1 : 2);
         return Wrap(
           spacing: AppSpacing.sm,
           runSpacing: AppSpacing.sm,
           children: [
             for (var i = 0; i < cards.length; i++)
               SizedBox(
-                width: _calculateCardWidth(constraints.maxWidth, crossAxisCount, i, cards.length),
+                width: _calculateCardWidth(
+                  constraints.maxWidth,
+                  crossAxisCount,
+                  i,
+                  cards.length,
+                ),
                 child: _MetricCardItem(data: cards[i]),
               ),
           ],
@@ -129,7 +141,12 @@ class _MetricsSection extends StatelessWidget {
     );
   }
 
-  double _calculateCardWidth(double totalWidth, int crossAxisCount, int index, int totalItems) {
+  double _calculateCardWidth(
+    double totalWidth,
+    int crossAxisCount,
+    int index,
+    int totalItems,
+  ) {
     const spacing = AppSpacing.sm;
     if (crossAxisCount == 1) {
       return totalWidth;
@@ -222,10 +239,7 @@ class _MetricCardItem extends StatelessWidget {
               data.change,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 10.5,
-                color: AppColors.textMuted,
-              ),
+              style: TextStyle(fontSize: 10.5, color: AppColors.textMuted),
             ),
           ],
         ),
@@ -254,22 +268,29 @@ class _RatingDistributionCard extends StatelessWidget {
         children: [
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.md),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.lg,
+              vertical: AppSpacing.md,
+            ),
             decoration: BoxDecoration(
               color: AppColors.background,
               border: Border(bottom: BorderSide(color: AppColors.border)),
             ),
             child: Row(
               children: [
-                const Icon(Icons.star_rounded, size: 16, color: Color(0xFFF59E0B)),
+                const Icon(
+                  Icons.star_rounded,
+                  size: 16,
+                  color: Color(0xFFF59E0B),
+                ),
                 const SizedBox(width: AppSpacing.sm),
                 Expanded(
                   child: Text(
                     'RATING DISTRIBUTION ($totalFeedback REVIEWS)',
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: AppColors.textPrimary,
-                          fontWeight: FontWeight.w800,
-                        ),
+                      color: AppColors.textPrimary,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
               ],
@@ -281,8 +302,7 @@ class _RatingDistributionCard extends StatelessWidget {
                 ? const EmptyState(
                     icon: Icons.star_border_rounded,
                     title: 'No customer ratings yet',
-                    message:
-                        'Ratings will be calculated automatically when customers review your completed service requests.',
+                    message: 'Ratings will be calculated automatically when customers review your completed service requests.',
                     compact: true,
                   )
                 : Column(
@@ -329,10 +349,18 @@ class _RatingBarRow extends StatelessWidget {
               children: [
                 Text(
                   '$star',
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, fontFamily: 'monospace'),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    fontFamily: 'monospace',
+                  ),
                 ),
                 const SizedBox(width: 2),
-                const Icon(Icons.star_rounded, size: 13, color: Color(0xFFF59E0B)),
+                const Icon(
+                  Icons.star_rounded,
+                  size: 13,
+                  color: Color(0xFFF59E0B),
+                ),
               ],
             ),
           ),
@@ -394,22 +422,29 @@ class _BenchmarkCard extends StatelessWidget {
         children: [
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.md),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.lg,
+              vertical: AppSpacing.md,
+            ),
             decoration: BoxDecoration(
               color: AppColors.background,
               border: Border(bottom: BorderSide(color: AppColors.border)),
             ),
             child: Row(
               children: [
-                Icon(Icons.military_tech_outlined, size: 16, color: AppColors.primary),
+                Icon(
+                  Icons.military_tech_outlined,
+                  size: 16,
+                  color: AppColors.primary,
+                ),
                 const SizedBox(width: AppSpacing.sm),
                 Expanded(
                   child: Text(
                     'WORKFORCE SERVICE QUALITY BENCHMARK',
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: AppColors.textPrimary,
-                          fontWeight: FontWeight.w800,
-                        ),
+                      color: AppColors.textPrimary,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
               ],
@@ -422,15 +457,13 @@ class _BenchmarkCard extends StatelessWidget {
               children: [
                 _BenchmarkItem(
                   title: 'Target CSAT Standard',
-                  description:
-                      'Maintain an average CSAT ≥ 85% to remain eligible for priority automated dispatching.',
+                  description: 'Maintain an average CSAT ≥ 85% to remain eligible for priority automated dispatching.',
                   highlightText: '85%',
                 ),
                 const SizedBox(height: AppSpacing.md),
                 const _BenchmarkItem(
                   title: 'Proof of Work Compliance',
-                  description:
-                      '100% of jobs require valid arrival GPS geofencing, customer work start OTP, and before/after photos.',
+                  description: '100% of jobs require valid arrival GPS geofencing, customer work start OTP, and before/after photos.',
                 ),
                 const SizedBox(height: AppSpacing.md),
                 Container(
@@ -509,7 +542,11 @@ class _BenchmarkItem extends StatelessWidget {
           else
             Text(
               description,
-              style: TextStyle(fontSize: 11, color: AppColors.textMuted, height: 1.35),
+              style: TextStyle(
+                fontSize: 11,
+                color: AppColors.textMuted,
+                height: 1.35,
+              ),
             ),
         ],
       ),
@@ -520,7 +557,11 @@ class _BenchmarkItem extends StatelessWidget {
     final parts = description.split(highlightText!);
     return RichText(
       text: TextSpan(
-        style: TextStyle(fontSize: 11, color: AppColors.textMuted, height: 1.35),
+        style: TextStyle(
+          fontSize: 11,
+          color: AppColors.textMuted,
+          height: 1.35,
+        ),
         children: [
           TextSpan(text: parts[0]),
           TextSpan(
@@ -540,10 +581,7 @@ class _BenchmarkItem extends StatelessWidget {
 // ── 4. Customer Feedback & Reviews ────────────────────────────────────────────
 
 class _FeedbackSection extends StatelessWidget {
-  const _FeedbackSection({
-    required this.feedbacks,
-    required this.onRefresh,
-  });
+  const _FeedbackSection({required this.feedbacks, required this.onRefresh});
 
   final List<JobFeedback> feedbacks;
   final VoidCallback onRefresh;
@@ -557,7 +595,10 @@ class _FeedbackSection extends StatelessWidget {
         children: [
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.sm),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.lg,
+              vertical: AppSpacing.sm,
+            ),
             decoration: BoxDecoration(
               color: AppColors.background,
               border: Border(bottom: BorderSide(color: AppColors.border)),
@@ -568,12 +609,17 @@ class _FeedbackSection extends StatelessWidget {
                 Expanded(
                   child: Row(
                     children: [
-                      Icon(Icons.forum_outlined, size: 16, color: AppColors.primary),
+                      Icon(
+                        Icons.forum_outlined,
+                        size: 16,
+                        color: AppColors.primary,
+                      ),
                       const SizedBox(width: AppSpacing.sm),
                       Expanded(
                         child: Text(
                           'CUSTOMER FEEDBACK & REVIEWS (${feedbacks.length})',
-                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(
                                 color: AppColors.textPrimary,
                                 fontWeight: FontWeight.w800,
                               ),
@@ -585,7 +631,10 @@ class _FeedbackSection extends StatelessWidget {
                 TextButton.icon(
                   onPressed: onRefresh,
                   style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                     visualDensity: VisualDensity.compact,
                   ),
                   icon: const Icon(Icons.refresh_rounded, size: 14),
@@ -600,8 +649,7 @@ class _FeedbackSection extends StatelessWidget {
               child: EmptyState(
                 icon: Icons.forum_outlined,
                 title: 'No customer feedback yet',
-                message:
-                    'Customer feedback will appear here as soon as clients review your completed work orders.',
+                message: 'Customer feedback will appear here as soon as clients review your completed work orders.',
                 compact: true,
               ),
             )
@@ -610,11 +658,10 @@ class _FeedbackSection extends StatelessWidget {
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               itemCount: feedbacks.length,
-              separatorBuilder: (context, index) => Divider(
-                height: 1,
-                color: AppColors.border,
-              ),
-              itemBuilder: (context, index) => _FeedbackItemTile(feedback: feedbacks[index]),
+              separatorBuilder: (context, index) =>
+                  Divider(height: 1, color: AppColors.border),
+              itemBuilder: (context, index) =>
+                  _FeedbackItemTile(feedback: feedbacks[index]),
             ),
         ],
       ),
@@ -630,7 +677,9 @@ class _FeedbackItemTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dateStr = _formatDate(feedback.createdAt);
-    final jobIdStr = feedback.requestId ?? (feedback.job != null ? 'SR-${feedback.job}' : 'Job');
+    final jobIdStr =
+        feedback.requestId ??
+        (feedback.job != null ? 'SR-${feedback.job}' : 'Job');
 
     return Padding(
       padding: const EdgeInsets.all(AppSpacing.lg),
@@ -644,19 +693,29 @@ class _FeedbackItemTile extends StatelessWidget {
                 children: List.generate(
                   5,
                   (i) => Icon(
-                    i < feedback.rating ? Icons.star_rounded : Icons.star_outline_rounded,
+                    i < feedback.rating
+                        ? Icons.star_rounded
+                        : Icons.star_outline_rounded,
                     size: 15,
-                    color: i < feedback.rating ? const Color(0xFFF59E0B) : const Color(0xFFCBD5E1),
+                    color: i < feedback.rating
+                        ? const Color(0xFFF59E0B)
+                        : const Color(0xFFCBD5E1),
                   ),
                 ),
               ),
               const SizedBox(width: 6),
               Text(
                 '${feedback.rating}.0',
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               const SizedBox(width: 6),
-              Text('•', style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+              Text(
+                '•',
+                style: TextStyle(color: AppColors.textMuted, fontSize: 12),
+              ),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
@@ -665,7 +724,10 @@ class _FeedbackItemTile extends StatelessWidget {
                       : 'Customer',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ],
@@ -688,7 +750,10 @@ class _FeedbackItemTile extends StatelessWidget {
               ),
               if (dateStr.isNotEmpty) ...[
                 const SizedBox(width: 6),
-                Text('•', style: TextStyle(color: AppColors.textMuted, fontSize: 10.5)),
+                Text(
+                  '•',
+                  style: TextStyle(color: AppColors.textMuted, fontSize: 10.5),
+                ),
                 const SizedBox(width: 6),
                 Text(
                   dateStr,

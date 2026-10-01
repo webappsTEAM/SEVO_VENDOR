@@ -1,3 +1,6 @@
+import '../../../../shared/widgets/sevo/sevo_module_frame.dart';
+import '../../../../shared/widgets/sevo/sevo_module_art.dart';
+
 import 'dart:async';
 
 import 'package:dio/dio.dart';
@@ -5,8 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:mobile/core/theme/app_theme.dart';
-import 'package:mobile/features/admin/presentation/widgets/admin_drawer.dart';
-import 'package:mobile/shared/widgets/workforce_app_bar.dart';
+
 import 'admin_monitoring_providers.dart';
 import 'widgets/executive_summary_section.dart';
 import 'widgets/index_performance_section.dart';
@@ -30,10 +32,12 @@ class AdminDatabaseEgressScreen extends ConsumerStatefulWidget {
   const AdminDatabaseEgressScreen({super.key});
 
   @override
-  ConsumerState<AdminDatabaseEgressScreen> createState() => _AdminDatabaseEgressScreenState();
+  ConsumerState<AdminDatabaseEgressScreen> createState() =>
+      _AdminDatabaseEgressScreenState();
 }
 
-class _AdminDatabaseEgressScreenState extends ConsumerState<AdminDatabaseEgressScreen>
+class _AdminDatabaseEgressScreenState
+    extends ConsumerState<AdminDatabaseEgressScreen>
     with WidgetsBindingObserver {
   Timer? _autoRefreshTimer;
   bool _isRefreshing = false;
@@ -109,15 +113,9 @@ class _AdminDatabaseEgressScreenState extends ConsumerState<AdminDatabaseEgressS
     final autoRefresh = ref.watch(adminMonitoringAutoRefreshProvider);
     final lastUpdated = ref.watch(adminMonitoringLastUpdatedProvider);
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: const WorkforceAppBar(
-        titleText: 'Database & Egress Monitoring',
-        showBrand: false,
-        showStatusSubBar: false,
-        showDrawerMenu: true,
-      ),
-      drawer: const AdminDrawer(),
+    return SevoModuleFrame(
+      module: SevoModule.databaseEgress,
+      title: 'Database & Egress Monitoring',
       body: RefreshIndicator(
         onRefresh: () => _handleRefresh(silent: false),
         child: ListView(
@@ -165,7 +163,10 @@ class _AdminDatabaseEgressScreenState extends ConsumerState<AdminDatabaseEgressS
                       const SizedBox(width: 8),
                       // Live Telemetry Badge
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 3.5,
+                        ),
                         decoration: BoxDecoration(
                           color: const Color(0xFFECFDF5),
                           borderRadius: BorderRadius.circular(999),
@@ -222,7 +223,11 @@ class _AdminDatabaseEgressScreenState extends ConsumerState<AdminDatabaseEgressS
                           children: [
                             Row(
                               children: [
-                                Icon(Icons.schedule_rounded, size: 12, color: AppColors.textSecondary),
+                                Icon(
+                                  Icons.schedule_rounded,
+                                  size: 12,
+                                  color: AppColors.textSecondary,
+                                ),
                                 const SizedBox(width: 4),
                                 Expanded(
                                   child: Text(
@@ -241,7 +246,12 @@ class _AdminDatabaseEgressScreenState extends ConsumerState<AdminDatabaseEgressS
                             const SizedBox(height: 2),
                             InkWell(
                               onTap: () {
-                                ref.read(adminMonitoringAutoRefreshProvider.notifier).state =
+                                ref
+                                        .read(
+                                          adminMonitoringAutoRefreshProvider
+                                              .notifier,
+                                        )
+                                        .state =
                                     !autoRefresh;
                               },
                               borderRadius: BorderRadius.circular(4),
@@ -249,20 +259,28 @@ class _AdminDatabaseEgressScreenState extends ConsumerState<AdminDatabaseEgressS
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Icon(
-                                    autoRefresh ? Icons.sync_rounded : Icons.sync_disabled_rounded,
+                                    autoRefresh
+                                        ? Icons.sync_rounded
+                                        : Icons.sync_disabled_rounded,
                                     size: 12,
-                                    color: autoRefresh ? const Color(0xFF059669) : AppColors.textMuted,
+                                    color: autoRefresh
+                                        ? const Color(0xFF059669)
+                                        : AppColors.textMuted,
                                   ),
                                   const SizedBox(width: 4),
                                   Flexible(
                                     child: Text(
-                                      autoRefresh ? 'Auto-refresh (60s)' : 'Auto-refresh off',
+                                      autoRefresh
+                                          ? 'Auto-refresh (60s)'
+                                          : 'Auto-refresh off',
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: TextStyle(
                                         fontSize: 10.5,
                                         fontWeight: FontWeight.w700,
-                                        color: autoRefresh ? const Color(0xFF059669) : AppColors.textMuted,
+                                        color: autoRefresh
+                                            ? const Color(0xFF059669)
+                                            : AppColors.textMuted,
                                       ),
                                     ),
                                   ),
@@ -276,17 +294,30 @@ class _AdminDatabaseEgressScreenState extends ConsumerState<AdminDatabaseEgressS
 
                       // Manual Refresh Button
                       OutlinedButton.icon(
-                        onPressed: _isRefreshing ? null : () => _handleRefresh(silent: false),
+                        onPressed: _isRefreshing
+                            ? null
+                            : () => _handleRefresh(silent: false),
                         icon: _isRefreshing
                             ? const SizedBox(
                                 width: 12,
                                 height: 12,
-                                child: CircularProgressIndicator(strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
                               )
                             : const Icon(Icons.refresh_rounded, size: 14),
-                        label: Text('Refresh', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+                        label: Text(
+                          'Refresh',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                         style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
                           minimumSize: Size.zero,
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         ),
@@ -311,7 +342,8 @@ class _AdminDatabaseEgressScreenState extends ConsumerState<AdminDatabaseEgressS
                     ],
                     selected: {viewMode},
                     onSelectionChanged: (set) {
-                      ref.read(adminMonitoringViewModeProvider.notifier).state = set.first;
+                      ref.read(adminMonitoringViewModeProvider.notifier).state =
+                          set.first;
                     },
                   ),
                 ],
@@ -328,7 +360,9 @@ class _AdminDatabaseEgressScreenState extends ConsumerState<AdminDatabaseEgressS
                 ),
               ),
               error: (err, stack) {
-                debugPrint('DatabaseEgressScreen Telemetry Error: $err\n$stack');
+                debugPrint(
+                  'DatabaseEgressScreen Telemetry Error: $err\n$stack',
+                );
                 String detail = err.toString();
                 if (err is DioException) {
                   final status = err.response?.statusCode;
@@ -345,17 +379,27 @@ class _AdminDatabaseEgressScreenState extends ConsumerState<AdminDatabaseEgressS
                   ),
                   child: Column(
                     children: [
-                      const Icon(Icons.error_outline_rounded, size: 40, color: Color(0xFFE11D48)),
+                      const Icon(
+                        Icons.error_outline_rounded,
+                        size: 40,
+                        color: Color(0xFFE11D48),
+                      ),
                       const SizedBox(height: AppSpacing.md),
                       Text(
                         'Monitoring data unavailable',
-                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         'Live database telemetry is not currently accessible to the mobile application or the service is temporarily offline.',
                         textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textMuted,
+                        ),
                       ),
                       const SizedBox(height: AppSpacing.sm),
                       Container(
@@ -380,7 +424,9 @@ class _AdminDatabaseEgressScreenState extends ConsumerState<AdminDatabaseEgressS
                         onPressed: () => _handleRefresh(silent: false),
                         icon: const Icon(Icons.refresh_rounded, size: 16),
                         label: Text('Retry'),
-                        style: FilledButton.styleFrom(backgroundColor: const Color(0xFF005965)),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFF005965),
+                        ),
                       ),
                     ],
                   ),

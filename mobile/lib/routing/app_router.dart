@@ -4,6 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../features/superadmin/providers/presentation/service_providers_screen.dart';
+import '../features/admin/presentation/estimations/admin_estimation_detail_screen.dart';
+import '../features/admin/presentation/estimations/admin_estimations_screen.dart';
+import '../features/admin/presentation/seller_applications/seller_applications_screen.dart';
+import '../features/admin/presentation/seller_applications/seller_application_detail_screen.dart';
+import '../features/admin/presentation/stock/admin_stock_screen.dart';
 import '../features/admin/presentation/admin_destination_screens.dart';
 import '../features/admin/presentation/admin_home_screen.dart';
 import '../features/admin/presentation/applications/admin_application_detail_screen.dart';
@@ -63,6 +69,18 @@ import '../features/superadmin/applications/presentation/superadmin_applications
 import '../features/superadmin/presentation/superadmin_dashboard_screen.dart';
 import '../features/superadmin/vendors/presentation/superadmin_vendor_directory_screen.dart';
 import '../features/superadmin/workforce/presentation/superadmin_workforce_roster_screen.dart';
+import '../features/seller/presentation/catalog_uploads/seller_catalog_uploads_screen.dart';
+import '../features/seller/presentation/categories/seller_categories_screen.dart';
+import '../features/seller/presentation/categories_approval/seller_categories_approval_screen.dart';
+import '../features/seller/presentation/claims/seller_claims_screen.dart';
+import '../features/seller/presentation/home/seller_home_screen.dart';
+import '../features/seller/presentation/coupons/seller_coupons_screen.dart';
+import '../features/seller/presentation/inventory/seller_inventory_screen.dart';
+import '../features/seller/presentation/orders/seller_orders_screen.dart';
+import '../features/seller/presentation/reports_quality/seller_reports_quality_screen.dart';
+import '../features/seller/presentation/returns/seller_returns_screen.dart';
+import '../features/seller/presentation/store_profile/seller_store_profile_screen.dart';
+import '../features/seller/presentation/warehouse/seller_warehouse_screen.dart';
 import '../shared/widgets/app_shell_scaffold.dart';
 import 'app_routes.dart';
 
@@ -173,7 +191,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
       // 2. Employee Accounts
       if (!user.isEmployee) {
-        return location == AppRoutes.employeeOnly ? null : AppRoutes.employeeOnly;
+        return location == AppRoutes.employeeOnly
+            ? null
+            : AppRoutes.employeeOnly;
       }
 
       switch (user.registrationStatus) {
@@ -181,10 +201,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           return _isEmployeeAppPath(location) ? null : AppRoutes.home;
         case 'submitted':
         case 'under_review':
-          return location == AppRoutes.pendingReview ? null : AppRoutes.pendingReview;
+          return location == AppRoutes.pendingReview
+              ? null
+              : AppRoutes.pendingReview;
         case 'correction_required':
           if (location == AppRoutes.onboardingWizard) return null;
-          return location == AppRoutes.correctionRequired ? null : AppRoutes.correctionRequired;
+          return location == AppRoutes.correctionRequired
+              ? null
+              : AppRoutes.correctionRequired;
         case 'rejected':
           return location == AppRoutes.rejected ? null : AppRoutes.rejected;
         default: // not_started, in_progress, or anything unrecognized
@@ -211,7 +235,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.createAccount,
         builder: (context, state) {
           final companyIdParam = state.uri.queryParameters['company_id'];
-          final companyId = companyIdParam != null ? int.tryParse(companyIdParam) : null;
+          final companyId = companyIdParam != null
+              ? int.tryParse(companyIdParam)
+              : null;
           return CreateAccountScreen(companyId: companyId);
         },
       ),
@@ -228,7 +254,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.onboardingWizard,
         builder: (context, state) {
           final stepParam = state.uri.queryParameters['step'];
-          final initialStep = stepParam != null ? int.tryParse(stepParam) : null;
+          final initialStep = stepParam != null
+              ? int.tryParse(stepParam)
+              : null;
           return OnboardingWizardScreen(initialStep: initialStep);
         },
       ),
@@ -264,9 +292,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.superAdminWorkforce,
         builder: (context, state) {
-          final vendorIdStr = state.uri.queryParameters['vendor_id'] ??
+          final vendorIdStr =
+              state.uri.queryParameters['vendor_id'] ??
               state.uri.queryParameters['company_id'];
-          final vendorId = vendorIdStr != null ? int.tryParse(vendorIdStr) : null;
+          final vendorId = vendorIdStr != null
+              ? int.tryParse(vendorIdStr)
+              : null;
           return SuperAdminWorkforceRosterScreen(initialVendorId: vendorId);
         },
       ),
@@ -292,7 +323,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.superAdminApplications,
         builder: (context, state) {
           final status = state.uri.queryParameters['status'];
-          return SuperAdminApplicationsScreen(initialStatusFilter: status);
+          return SuperAdminApplicationsScreen(
+            initialStatusFilter: status,
+            openChangeRequests:
+                state.uri.queryParameters['tab'] == 'change_requests',
+          );
         },
       ),
       GoRoute(
@@ -306,12 +341,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             '${AppRoutes.superAdminApplications}${state.uri.query.isNotEmpty ? '?${state.uri.query}' : ''}',
       ),
       GoRoute(
-        path: '/workforce/platform/providers',
-        builder: (context, state) => const AdminPlaceholderScreen(
-          title: 'Service Providers',
-          module: 'Platform Governance',
-          description: 'Service provider organizations, business entities, and tied workforce fleets',
-        ),
+        path: AppRoutes.superAdminServiceProviders,
+        builder: (context, state) => const ServiceProvidersScreen(),
+      ),
+      GoRoute(
+        path: '/workforce/admin/service-providers',
+        redirect: (context, state) => AppRoutes.superAdminServiceProviders,
       ),
       GoRoute(
         path: '/superadmin',
@@ -362,7 +397,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.adminApplications,
         builder: (context, state) {
           final status = state.uri.queryParameters['status'];
-          return AdminApplicationsScreen(statusFilter: status);
+          return AdminApplicationsScreen(
+            statusFilter: status,
+            openChangeRequests:
+                state.uri.queryParameters['tab'] == 'change_requests',
+          );
         },
       ),
       GoRoute(
@@ -379,7 +418,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/workforce/admin/applications/:id',
-        redirect: (context, state) => '/admin/applications/${state.pathParameters['id']}',
+        redirect: (context, state) =>
+            '/admin/applications/${state.pathParameters['id']}',
       ),
       GoRoute(
         path: AppRoutes.adminServices,
@@ -412,7 +452,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.adminDispatch,
         builder: (context, state) {
-          final jobId = state.uri.queryParameters['job_id'] ??
+          final jobId =
+              state.uri.queryParameters['job_id'] ??
               state.uri.queryParameters['jobId'];
           final tab = int.tryParse(state.uri.queryParameters['tab'] ?? '') ?? 0;
           return AdminDispatchScreen(jobId: jobId, initialTabIndex: tab);
@@ -425,9 +466,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: AppRoutes.adminLiveWorkforce,
-        builder: (context, state) => const AdminDispatchScreen(
-          initialTabIndex: 1,
-        ),
+        builder: (context, state) =>
+            const AdminDispatchScreen(initialTabIndex: 1),
       ),
       GoRoute(
         path: '/workforce/admin/operations',
@@ -542,6 +582,201 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/workforce/admin/monitoring/database-egress',
         redirect: (context, state) => AppRoutes.adminMonitoringDatabaseEgress,
+      ),
+      // Seller Hub Routes
+      GoRoute(
+        path: AppRoutes.sellerHome,
+        builder: (context, state) => const SellerHomeScreen(),
+      ),
+      GoRoute(
+        path: '/workforce/admin/seller/home',
+        redirect: (context, state) => AppRoutes.sellerHome,
+      ),
+      GoRoute(
+        path: '/workforce/seller/dashboard',
+        redirect: (context, state) => AppRoutes.sellerHome,
+      ),
+      GoRoute(
+        path: AppRoutes.sellerOrders,
+        builder: (context, state) => const SellerOrdersScreen(),
+      ),
+      GoRoute(
+        path: '/workforce/admin/seller/orders',
+        redirect: (context, state) => AppRoutes.sellerOrders,
+      ),
+      GoRoute(
+        path: '/workforce/admin/grocery-orders',
+        redirect: (context, state) => AppRoutes.sellerOrders,
+      ),
+      GoRoute(
+        path: '/admin/grocery-orders',
+        redirect: (context, state) => AppRoutes.sellerOrders,
+      ),
+      GoRoute(
+        path: AppRoutes.sellerReturns,
+        builder: (context, state) => const SellerReturnsScreen(),
+      ),
+      GoRoute(
+        path: '/workforce/admin/seller/returns',
+        redirect: (context, state) => AppRoutes.sellerReturns,
+      ),
+      GoRoute(
+        path: AppRoutes.sellerClaims,
+        builder: (context, state) => const SellerClaimsScreen(),
+      ),
+      GoRoute(
+        path: '/workforce/admin/seller/claims',
+        redirect: (context, state) => AppRoutes.sellerClaims,
+      ),
+      GoRoute(
+        path: AppRoutes.sellerInventory,
+        builder: (context, state) => const SellerInventoryScreen(),
+      ),
+      GoRoute(
+        path: '/workforce/admin/seller/inventory',
+        redirect: (context, state) => AppRoutes.sellerInventory,
+      ),
+      GoRoute(
+        path: '/workforce/admin/inventory',
+        redirect: (context, state) => AppRoutes.sellerInventory,
+      ),
+      GoRoute(
+        path: '/admin/inventory',
+        redirect: (context, state) => AppRoutes.sellerInventory,
+      ),
+      GoRoute(
+        path: AppRoutes.sellerCatalogUploads,
+        builder: (context, state) => const SellerCatalogUploadsScreen(),
+      ),
+      GoRoute(
+        path: '/workforce/admin/seller/catalog-uploads',
+        redirect: (context, state) => AppRoutes.sellerCatalogUploads,
+      ),
+      GoRoute(
+        path: AppRoutes.sellerCategories,
+        builder: (context, state) => const SellerCategoriesScreen(),
+      ),
+      GoRoute(
+        path: '/workforce/admin/seller/categories',
+        redirect: (context, state) => AppRoutes.sellerCategories,
+      ),
+      GoRoute(
+        path: AppRoutes.adminSellerApplications,
+        builder: (context, state) => SellerApplicationsScreen(
+          initialStatus: state.uri.queryParameters['status'] ?? 'all',
+        ),
+        routes: [
+          GoRoute(
+            path: ':id',
+            builder: (context, state) => SellerApplicationDetailScreen(
+              applicationId:
+                  int.tryParse(state.pathParameters['id'] ?? '') ?? 0,
+            ),
+          ),
+        ],
+      ),
+      GoRoute(
+        path: '/workforce/admin/seller-applications',
+        redirect: (context, state) => AppRoutes.adminSellerApplications,
+      ),
+      GoRoute(
+        path: '/workforce/admin/seller-applications/:id',
+        redirect: (context, state) =>
+            '${AppRoutes.adminSellerApplications}/${state.pathParameters['id']}',
+      ),
+      GoRoute(
+        path: AppRoutes.adminEstimations,
+        builder: (context, state) => const AdminEstimationsScreen(),
+        routes: [
+          GoRoute(
+            path: ':id',
+            builder: (context, state) => AdminEstimationDetailScreen(
+              leadId: int.tryParse(state.pathParameters['id'] ?? '') ?? 0,
+            ),
+          ),
+        ],
+      ),
+      GoRoute(
+        path: '/workforce/admin/estimations',
+        redirect: (context, state) => AppRoutes.adminEstimations,
+      ),
+      GoRoute(
+        path: '/workforce/vendor/estimations',
+        redirect: (context, state) => AppRoutes.adminEstimations,
+      ),
+      GoRoute(
+        path: AppRoutes.adminStock,
+        builder: (context, state) => const AdminStockScreen(),
+      ),
+      GoRoute(
+        path: '/workforce/admin/stock',
+        redirect: (context, state) => AppRoutes.adminStock,
+      ),
+      GoRoute(
+        path: AppRoutes.sellerCategoriesApproval,
+        builder: (context, state) => const SellerCategoriesApprovalScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.sellerCategoriesApprovalDetail,
+        builder: (context, state) => SellerApprovalProductsScreen(
+          sellerId: int.tryParse(state.pathParameters['sellerId'] ?? '') ?? 0,
+        ),
+      ),
+      GoRoute(
+        path: '/workforce/admin/seller/categories-approval',
+        redirect: (context, state) => AppRoutes.sellerCategoriesApproval,
+      ),
+      GoRoute(
+        path: AppRoutes.sellerWarehouse,
+        builder: (context, state) => const SellerWarehouseScreen(),
+      ),
+      GoRoute(
+        path: '/workforce/admin/seller/warehouse',
+        redirect: (context, state) => AppRoutes.sellerWarehouse,
+      ),
+      GoRoute(
+        path: '/workforce/admin/warehouse',
+        redirect: (context, state) => AppRoutes.sellerWarehouse,
+      ),
+      GoRoute(
+        path: AppRoutes.sellerCoupons,
+        builder: (context, state) => const SellerCouponsScreen(),
+      ),
+      GoRoute(
+        path: '/workforce/admin/seller/coupons',
+        redirect: (context, state) => AppRoutes.sellerCoupons,
+      ),
+      GoRoute(
+        path: '/workforce/admin/promotions',
+        redirect: (context, state) => AppRoutes.sellerCoupons,
+      ),
+      GoRoute(
+        path: '/admin/promotions',
+        redirect: (context, state) => AppRoutes.sellerCoupons,
+      ),
+      GoRoute(
+        path: AppRoutes.sellerReportsQuality,
+        builder: (context, state) => const SellerReportsQualityScreen(),
+      ),
+      GoRoute(
+        path: '/workforce/admin/seller/reports-quality',
+        redirect: (context, state) => AppRoutes.sellerReportsQuality,
+      ),
+      GoRoute(
+        path: AppRoutes.sellerStoreProfile,
+        builder: (context, state) => const SellerStoreProfileScreen(),
+      ),
+      GoRoute(
+        path: '/workforce/admin/seller/store-profile',
+        redirect: (context, state) => AppRoutes.sellerStoreProfile,
+      ),
+      GoRoute(
+        path: '/workforce/admin/store-profile',
+        redirect: (context, state) => AppRoutes.sellerStoreProfile,
+      ),
+      GoRoute(
+        path: '/admin/store-profile',
+        redirect: (context, state) => AppRoutes.sellerStoreProfile,
       ),
       // Employee Notifications Route (accessible via header bell and More screen)
       GoRoute(
@@ -669,7 +904,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                   GoRoute(
                     path: ':id',
                     builder: (context, state) {
-                      final id = int.tryParse(state.pathParameters['id'] ?? '') ?? -1;
+                      final id =
+                          int.tryParse(state.pathParameters['id'] ?? '') ?? -1;
                       return JobDetailScreen(jobId: id);
                     },
                   ),
@@ -721,7 +957,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                     routes: [
                       GoRoute(
                         path: 'security',
-                        builder: (context, state) => const AccountSecurityScreen(),
+                        builder: (context, state) =>
+                            const AccountSecurityScreen(),
                       ),
                       GoRoute(
                         path: 'appearance',
@@ -729,7 +966,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                       ),
                       GoRoute(
                         path: 'notifications',
-                        builder: (context, state) => const NotificationSettingsScreen(),
+                        builder: (context, state) =>
+                            const NotificationSettingsScreen(),
                       ),
                       GoRoute(
                         path: 'privacy',

@@ -1,3 +1,6 @@
+import '../../../shared/widgets/sevo/sevo_module_frame.dart';
+import '../../../shared/widgets/sevo/sevo_module_art.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -11,7 +14,6 @@ import 'package:mobile/features/finance/presentation/widgets/transaction_list_ti
 import 'package:mobile/routing/app_routes.dart';
 import 'package:mobile/shared/widgets/app_card.dart';
 import 'package:mobile/shared/widgets/module_header_card.dart';
-import 'package:mobile/shared/widgets/workforce_app_bar.dart';
 
 /// Main Technician Earnings & Wallet Screen.
 ///
@@ -57,23 +59,20 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
     final accountsAsync = ref.watch(payoutAccountsProvider);
     final eligibility = ref.watch(withdrawalEligibilityProvider);
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: const WorkforceAppBar(
-        titleText: 'My Wallet & Earnings',
-        showBrand: false,
-        showStatusSubBar: false,
-      ),
+    return SevoModuleFrame(
+      module: SevoModule.treasury,
+      title: 'My Wallet & Earnings',
+      withDrawer: false,
+      transition: false,
       body: RefreshIndicator(
         onRefresh: _handleRefresh,
         child: walletAsync.when(
           loading: () => const _WalletLoadingSkeleton(),
-          error: (err, _) => _WalletErrorView(
-            error: err.toString(),
-            onRetry: _handleRefresh,
-          ),
+          error: (err, _) =>
+              _WalletErrorView(error: err.toString(), onRetry: _handleRefresh),
           data: (wallet) {
-            final recentTransactions = transactionsAsync.valueOrNull?.results ?? [];
+            final recentTransactions =
+                transactionsAsync.valueOrNull?.results ?? [];
             final accounts = accountsAsync.valueOrNull ?? [];
 
             return ListView(
@@ -88,7 +87,8 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                 // ── Module Heading Card ──────────────────────────────────────
                 const ModuleHeaderCard(
                   title: 'Technician Earnings & Wallet',
-                  subtitle: 'Commission earnings, settlement releases & payouts',
+                  subtitle:
+                      'Commission earnings, settlement releases & payouts',
                   icon: Icons.account_balance_wallet_rounded,
                 ),
                 const SizedBox(height: AppSpacing.md),
@@ -111,27 +111,39 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                             : const Icon(Icons.refresh_rounded, size: 16),
                         label: const Text(
                           'Refresh',
-                          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13,
+                          ),
                         ),
                         style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 10),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
                         ),
                       ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: FilledButton.icon(
-                        onPressed: () => context.push(AppRoutes.earningsWithdrawals),
+                        onPressed: () =>
+                            context.push(AppRoutes.earningsWithdrawals),
                         icon: const Icon(Icons.arrow_outward_rounded, size: 16),
                         label: const Text(
                           'Withdraw Funds',
-                          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 13,
+                          ),
                         ),
                         style: FilledButton.styleFrom(
-                          backgroundColor: AppColors.primary, // SEVO Teal branding
+                          backgroundColor:
+                              AppColors.primary, // SEVO Teal branding
                           padding: const EdgeInsets.symmetric(vertical: 10),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
                         ),
                       ),
                     ),
@@ -146,11 +158,14 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                     Expanded(
                       child: _SummaryMetricCard(
                         title: 'Available Balance',
-                        amount: '₹${wallet.availableBalance.toStringAsFixed(2)}',
+                        amount:
+                            '₹${wallet.availableBalance.toStringAsFixed(2)}',
                         supportingText: 'Ready for withdrawal (min ₹5,000)',
                         icon: Icons.account_balance_wallet_rounded,
                         iconColor: AppColors.primary,
-                        accentBorderColor: AppColors.primary.withValues(alpha: 0.25),
+                        accentBorderColor: AppColors.primary.withValues(
+                          alpha: 0.25,
+                        ),
                         bgColor: AppColors.selectedTint,
                       ),
                     ),
@@ -162,7 +177,8 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                         supportingText: 'T+7 settlement hold',
                         icon: Icons.hourglass_top_rounded,
                         iconColor: const Color(0xFFD97706),
-                        accentBorderColor: const Color(0xFFF59E0B).withValues(alpha: 0.3),
+                        accentBorderColor: const Color(0xFFF59E0B)
+                            .withValues(alpha: 0.3),
                         bgColor: const Color(0xFFFFFBEB),
                       ),
                     ),
@@ -176,11 +192,13 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                     Expanded(
                       child: _SummaryMetricCard(
                         title: 'Lifetime Commission',
-                        amount: '₹${wallet.lifetimeEarnings.toStringAsFixed(2)}',
+                        amount:
+                            '₹${wallet.lifetimeEarnings.toStringAsFixed(2)}',
                         supportingText: 'Cumulative 60% earnings',
                         icon: Icons.trending_up_rounded,
                         iconColor: const Color(0xFF059669),
-                        accentBorderColor: const Color(0xFF10B981).withValues(alpha: 0.3),
+                        accentBorderColor: const Color(0xFF10B981)
+                            .withValues(alpha: 0.3),
                         bgColor: const Color(0xFFECFDF5),
                       ),
                     ),
@@ -192,7 +210,8 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                         supportingText: 'Disbursed to bank accounts',
                         icon: Icons.outbox_rounded,
                         iconColor: AppColors.primary,
-                        accentBorderColor: const Color(0xFF94A3B8).withValues(alpha: 0.3),
+                        accentBorderColor: const Color(0xFF94A3B8)
+                            .withValues(alpha: 0.3),
                         bgColor: const Color(0xFFF1F5F9),
                       ),
                     ),
@@ -241,11 +260,16 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                           ),
                           const SizedBox(width: 8),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
                             decoration: BoxDecoration(
                               color: const Color(0xFFEFF6FF),
                               borderRadius: BorderRadius.circular(4),
-                              border: Border.all(color: const Color(0xFFBFDBFE)),
+                              border: Border.all(
+                                color: const Color(0xFFBFDBFE),
+                              ),
                             ),
                             child: const Text(
                               '60% Tech Share',
@@ -271,14 +295,21 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                         const SizedBox(height: AppSpacing.md),
                         FilledButton.icon(
                           onPressed: () => RequestWithdrawalSheet.show(context),
-                          icon: const Icon(Icons.arrow_outward_rounded, size: 16),
+                          icon: const Icon(
+                            Icons.arrow_outward_rounded,
+                            size: 16,
+                          ),
                           label: Text(
-                              'Request Payout (₹${wallet.availableBalance.toStringAsFixed(2)})'),
+                            'Request Payout (₹${wallet.availableBalance.toStringAsFixed(2)})',
+                          ),
                           style: FilledButton.styleFrom(
                             backgroundColor: const Color(0xFF059669),
                             foregroundColor: Colors.white,
                             minimumSize: const Size.fromHeight(42),
-                            textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+                            textStyle: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 13,
+                            ),
                           ),
                         ),
                       ] else ...[
@@ -289,8 +320,9 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                             value: eligibility.progressRatio,
                             minHeight: 8,
                             backgroundColor: AppColors.border,
-                            valueColor:
-                                const AlwaysStoppedAnimation<Color>(Color(0xFF004E89)),
+                            valueColor: const AlwaysStoppedAnimation<Color>(
+                              Color(0xFF004E89),
+                            ),
                           ),
                         ),
                         const SizedBox(height: 8),
@@ -339,14 +371,23 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                     Expanded(
                       child: Row(
                         children: const [
-                          Icon(Icons.receipt_long_outlined, size: 16, color: Color(0xFF004E89)),
+                          Icon(
+                            Icons.receipt_long_outlined,
+                            size: 16,
+                            color: Color(0xFF004E89),
+                          ),
                           SizedBox(width: 6),
-                          Flexible(child: _SectionTitle(title: 'Recent Ledger Entries')),
+                          Flexible(
+                            child: _SectionTitle(
+                              title: 'Recent Ledger Entries',
+                            ),
+                          ),
                         ],
                       ),
                     ),
                     TextButton(
-                      onPressed: () => context.push(AppRoutes.earningsTransactions),
+                      onPressed: () =>
+                          context.push(AppRoutes.earningsTransactions),
                       style: TextButton.styleFrom(
                         padding: const EdgeInsets.symmetric(horizontal: 6),
                         minimumSize: Size.zero,
@@ -373,11 +414,18 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                         padding: const EdgeInsets.symmetric(vertical: 8),
                         child: Column(
                           children: [
-                            const Icon(Icons.receipt_long_outlined, size: 36, color: Color(0xFF94A3B8)),
+                            const Icon(
+                              Icons.receipt_long_outlined,
+                              size: 36,
+                              color: Color(0xFF94A3B8),
+                            ),
                             const SizedBox(height: 8),
                             const Text(
                               'No transactions recorded yet',
-                              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
+                              ),
                             ),
                             const SizedBox(height: 4),
                             Text(
@@ -395,10 +443,13 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                     ),
                   ),
                 ] else ...[
-                  ...recentTransactions.take(3).map(
+                  ...recentTransactions
+                      .take(3)
+                      .map(
                         (txn) => TransactionListTile(
                           transaction: txn,
-                          onTap: () => TransactionDetailSheet.show(context, txn),
+                          onTap: () =>
+                              TransactionDetailSheet.show(context, txn),
                         ),
                       ),
                 ],
@@ -411,9 +462,15 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                     Expanded(
                       child: Row(
                         children: const [
-                          Icon(Icons.account_balance_outlined, size: 16, color: Color(0xFF004E89)),
+                          Icon(
+                            Icons.account_balance_outlined,
+                            size: 16,
+                            color: Color(0xFF004E89),
+                          ),
                           SizedBox(width: 6),
-                          Flexible(child: _SectionTitle(title: 'Bank Accounts')),
+                          Flexible(
+                            child: _SectionTitle(title: 'Bank Accounts'),
+                          ),
                         ],
                       ),
                     ),
@@ -425,7 +482,11 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                           ref.invalidate(withdrawalEligibilityProvider);
                         }
                       },
-                      icon: const Icon(Icons.add_rounded, size: 16, color: Color(0xFF004E89)),
+                      icon: const Icon(
+                        Icons.add_rounded,
+                        size: 16,
+                        color: Color(0xFF004E89),
+                      ),
                       label: const Text(
                         'Add',
                         style: TextStyle(
@@ -446,19 +507,31 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
 
                 if (accounts.isEmpty) ...[
                   AppCard(
-                    padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 24,
+                      horizontal: 16,
+                    ),
                     child: Column(
                       children: [
-                        Icon(Icons.account_balance_outlined, size: 36, color: AppColors.textMuted),
+                        Icon(
+                          Icons.account_balance_outlined,
+                          size: 36,
+                          color: AppColors.textMuted,
+                        ),
                         const SizedBox(height: 8),
                         const Text(
                           'No bank accounts linked',
-                          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13.5,
+                          ),
                         ),
                         const SizedBox(height: 12),
                         FilledButton.icon(
                           onPressed: () async {
-                            final added = await AddBankAccountSheet.show(context);
+                            final added = await AddBankAccountSheet.show(
+                              context,
+                            );
                             if (added == true) {
                               ref.invalidate(payoutAccountsProvider);
                               ref.invalidate(withdrawalEligibilityProvider);
@@ -468,8 +541,13 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                           label: const Text('Add Bank Account'),
                           style: FilledButton.styleFrom(
                             backgroundColor: const Color(0xFF004E89),
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 10,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
                           ),
                         ),
                       ],
@@ -503,7 +581,8 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                                 const SizedBox(width: 10),
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Text(
                                         account.bankName,
@@ -576,9 +655,15 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                         ],
                       ),
                       const SizedBox(height: AppSpacing.sm),
-                      _policyBullet('Technicians receive 60% of gross payment on completed jobs.'),
-                      _policyBullet('Company retains 40% covering platform & GST obligations.'),
-                      _policyBullet('Settlements move from Pending to Available in 7 days (T+7).'),
+                      _policyBullet(
+                        'Technicians receive 60% of gross payment on completed jobs.',
+                      ),
+                      _policyBullet(
+                        'Company retains 40% covering platform & GST obligations.',
+                      ),
+                      _policyBullet(
+                        'Settlements move from Pending to Available in 7 days (T+7).',
+                      ),
                       _policyBullet('Minimum payout threshold: ₹5,000 INR.'),
                     ],
                   ),
@@ -785,10 +870,7 @@ class _WalletLoadingSkeleton extends StatelessWidget {
 }
 
 class _WalletErrorView extends StatelessWidget {
-  const _WalletErrorView({
-    required this.error,
-    required this.onRetry,
-  });
+  const _WalletErrorView({required this.error, required this.onRetry});
 
   final String error;
   final VoidCallback onRetry;

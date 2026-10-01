@@ -6,6 +6,7 @@ enum JobStatusFilter {
   all,
   newOffers,
   inProgress,
+  scheduled,
   completed,
   cancelled,
 }
@@ -21,6 +22,7 @@ class JobStatusFilterBar extends StatelessWidget {
     required this.allCount,
     required this.newOffersCount,
     required this.inProgressCount,
+    this.scheduledCount = 0,
     required this.completedCount,
     this.cancelledCount = 0,
   });
@@ -30,6 +32,7 @@ class JobStatusFilterBar extends StatelessWidget {
   final int allCount;
   final int newOffersCount;
   final int inProgressCount;
+  final int scheduledCount;
   final int completedCount;
   final int cancelledCount;
 
@@ -51,6 +54,11 @@ class JobStatusFilterBar extends StatelessWidget {
         filter: JobStatusFilter.inProgress,
         label: 'In Progress ($inProgressCount)',
         icon: Icons.play_arrow_rounded,
+      ),
+      _StatusFilterItem(
+        filter: JobStatusFilter.scheduled,
+        label: 'Scheduled ($scheduledCount)',
+        icon: Icons.schedule_rounded,
       ),
       _StatusFilterItem(
         filter: JobStatusFilter.completed,
@@ -105,7 +113,9 @@ class JobStatusFilterBar extends StatelessWidget {
                 Icon(
                   f.icon,
                   size: 19,
-                  color: isSelected ? const Color(0xFF005965) : AppColors.textSecondary,
+                  color: isSelected
+                      ? const Color(0xFF005965)
+                      : AppColors.textSecondary,
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -113,8 +123,12 @@ class JobStatusFilterBar extends StatelessWidget {
                     f.label,
                     style: TextStyle(
                       fontSize: 13.5,
-                      fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
-                      color: isSelected ? const Color(0xFF005965) : AppColors.textPrimary,
+                      fontWeight: isSelected
+                          ? FontWeight.w800
+                          : FontWeight.w500,
+                      color: isSelected
+                          ? const Color(0xFF005965)
+                          : AppColors.textPrimary,
                     ),
                   ),
                 ),
@@ -132,11 +146,7 @@ class JobStatusFilterBar extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           child: Row(
             children: [
-              Icon(
-                currentItem.icon,
-                size: 20,
-                color: const Color(0xFF005965),
-              ),
+              Icon(currentItem.icon, size: 20, color: const Color(0xFF005965)),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(

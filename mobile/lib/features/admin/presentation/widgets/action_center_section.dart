@@ -4,15 +4,13 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../routing/app_routes.dart';
 import '../../domain/admin_dashboard_metrics.dart';
+import '../../../../shared/widgets/home_dashboard_widgets.dart';
 import 'action_center_card.dart';
 
 /// ACTION CENTER Section:
 /// Displays the 4 operational queue cards requiring immediate attention.
 class ActionCenterSection extends StatelessWidget {
-  const ActionCenterSection({
-    super.key,
-    required this.data,
-  });
+  const ActionCenterSection({super.key, required this.data});
 
   final AdminDashboardData data;
 
@@ -21,37 +19,12 @@ class ActionCenterSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Section Header
-        Row(
-          children: [
-            Container(
-              width: 4,
-              height: 14,
-              decoration: BoxDecoration(
-                color: const Color(0xFFF59E0B),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              'ACTION CENTER',
-              style: TextStyle(
-                fontSize: 11.5,
-                fontWeight: FontWeight.w800,
-                color: AppColors.textSecondary,
-                letterSpacing: 0.8,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 2),
-        Text(
-          'Items requiring immediate operational attention',
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w400,
-            color: AppColors.textMuted,
-          ),
+        HomeSectionHeader(
+          accent: const Color(0xFF16A34A),
+          title: 'Action Center',
+          subtitle: 'Items requiring immediate operational attention',
+          linkLabel: 'View All',
+          onLink: () => context.push(AppRoutes.adminApplications),
         ),
         const SizedBox(height: AppSpacing.sm),
         // Adaptive Grid of 4 Cards
@@ -62,10 +35,9 @@ class ActionCenterSection extends StatelessWidget {
 
             final card1 = ActionCenterCard(
               title: 'Pending Applications',
-              description:
-                  'Technician registrations requiring document review',
+              description: 'Technician registrations requiring document review',
               count: data.pendingApplicationsCount,
-              icon: Icons.assignment_ind_outlined,
+              icon: Icons.assignment_rounded,
               badgeBgColor: AppColors.isDark
                   ? const Color(0xFF78350F).withValues(alpha: 0.35)
                   : const Color(0xFFFEF3C7),
@@ -83,10 +55,9 @@ class ActionCenterSection extends StatelessWidget {
 
             final card2 = ActionCenterCard(
               title: 'Active Technicians',
-              description:
-                  'Approved workforce field technicians',
+              description: 'Approved workforce field technicians',
               count: data.activeTechniciansCount,
-              icon: Icons.how_to_reg_outlined,
+              icon: Icons.how_to_reg_rounded,
               badgeBgColor: AppColors.isDark
                   ? const Color(0xFF064E3B).withValues(alpha: 0.35)
                   : const Color(0xFFDCFCE7),
@@ -104,35 +75,25 @@ class ActionCenterSection extends StatelessWidget {
 
             final card3 = ActionCenterCard(
               title: 'Jobs Awaiting Assignment',
-              description:
-                  'Customer bookings requiring technician dispatch',
+              description: 'Customer bookings requiring technician dispatch',
               count: data.unassignedJobsCount,
-              icon: Icons.send_outlined,
-              badgeBgColor: AppColors.isDark
-                  ? const Color(0xFF7C2D12).withValues(alpha: 0.35)
-                  : const Color(0xFFFFEDD5),
-              badgeTextColor: AppColors.isDark
-                  ? const Color(0xFFFDBA74)
-                  : const Color(0xFF9A3412),
-              iconBgColor: AppColors.isDark
-                  ? const Color(0xFF7C2D12).withValues(alpha: 0.2)
-                  : const Color(0xFFFFF7ED),
-              iconColor: AppColors.isDark
-                  ? const Color(0xFFFB923C)
-                  : const Color(0xFFEA580C),
+              icon: Icons.send_rounded,
+              badgeBgColor: const Color(0xFFDBEAFE),
+              badgeTextColor: const Color(0xFF1E3A8A),
+              iconBgColor: const Color(0xFFEFF6FF),
+              iconColor: const Color(0xFF2563EB),
               onTap: () => context.push(AppRoutes.adminDispatch),
             );
 
             final card4 = ActionCenterCard(
               title: 'Corrections Pending Resubmission',
-              description:
-                  'Technicians notified to re-upload flagged files',
+              description: 'Technicians notified to re-upload flagged files',
               count: data.correctionsPendingCount,
               icon: Icons.edit_note_rounded,
-              badgeBgColor: AppColors.surfaceMuted,
-              badgeTextColor: AppColors.textPrimary,
-              iconBgColor: AppColors.surfaceMuted,
-              iconColor: AppColors.textSecondary,
+              badgeBgColor: const Color(0xFFEDE9FE),
+              badgeTextColor: const Color(0xFF4C1D95),
+              iconBgColor: const Color(0xFFF5F3FF),
+              iconColor: const Color(0xFF7C3AED),
               onTap: () => context.push(
                 '${AppRoutes.adminApplications}?status=correction_required',
               ),

@@ -12,6 +12,7 @@ enum JobPresentationState {
   inProgress,
   completed,
   accepted,
+  scheduled,
   other,
 }
 
@@ -21,6 +22,7 @@ class JobPresentation {
     required this.displayStatus,
     required this.badgeStatus,
     required this.isOffer,
+    this.isScheduled = false,
     required this.isAccepted,
     required this.showOfferCountdown,
     required this.showCancellationCountdown,
@@ -33,6 +35,7 @@ class JobPresentation {
   final String displayStatus;
   final String badgeStatus;
   final bool isOffer;
+  final bool isScheduled;
   final bool isAccepted;
   final bool showOfferCountdown;
   final bool showCancellationCountdown;
@@ -42,15 +45,17 @@ class JobPresentation {
 }
 
 /// Port of getEmployeeJobPresentation() from the web app's
-/// utils/jobPresentation.js. Same three-branch structure:
+/// utils/jobPresentation.js. Same structure:
 /// 1. a pending offer (not yet accepted, not expired, not busy elsewhere)
 /// 2. authoritatively accepted by this technician (backend-confirmed)
-/// 3. anything else (historical/other)
+/// 3. future scheduled booking (is_scheduled_future)
+/// 4. anything else (historical/other)
 JobPresentation buildJobPresentation(Job job, {bool hasActiveJob = false}) {
   final status = job.status.toLowerCase();
 
   final isAcceptedByMe =
-      (job.isAcceptedByCurrentEmployee && !['completed', 'cancelled'].contains(status)) ||
+      (job.isAcceptedByCurrentEmployee &&
+          !['completed', 'cancelled'].contains(status)) ||
       (job.isAssignedToCurrentEmployee &&
           [
             'accepted',
@@ -92,9 +97,12 @@ JobPresentation buildJobPresentation(Job job, {bool hasActiveJob = false}) {
           isOffer: false,
           isAccepted: true,
           showOfferCountdown: false,
-          showCancellationCountdown: job.cancellationInfo?.cancellationDeadline != null,
+          showCancellationCountdown:
+              job.cancellationInfo?.cancellationDeadline != null,
           acceptedAt: job.acceptedAt ?? job.cancellationInfo?.acceptedAt,
-          cancellationDeadline: job.cancellationDeadline ?? job.cancellationInfo?.cancellationDeadline,
+          cancellationDeadline:
+              job.cancellationDeadline ??
+              job.cancellationInfo?.cancellationDeadline,
         );
       case 'arrived':
         return JobPresentation(
@@ -140,17 +148,37 @@ JobPresentation buildJobPresentation(Job job, {bool hasActiveJob = false}) {
           isOffer: false,
           isAccepted: true,
           showOfferCountdown: false,
-          showCancellationCountdown: job.cancellationInfo?.cancellationDeadline != null,
+          showCancellationCountdown:
+              job.cancellationInfo?.cancellationDeadline != null,
           acceptedAt: job.acceptedAt ?? job.cancellationInfo?.acceptedAt,
-          cancellationDeadline: job.cancellationDeadline ?? job.cancellationInfo?.cancellationDeadline,
+          cancellationDeadline:
+              job.cancellationDeadline ??
+              job.cancellationInfo?.cancellationDeadline,
         );
     }
   }
 
+  if (job.isScheduledFuture) {
+    return const JobPresentation(
+      state: JobPresentationState.scheduled,
+      displayStatus: 'Scheduled (Upcoming)',
+      badgeStatus: 'scheduled',
+      isOffer: false,
+      isScheduled: true,
+      isAccepted: false,
+      showOfferCountdown: false,
+      showCancellationCountdown: false,
+    );
+  }
+
   final label = status.replaceAll('_', ' ');
   return JobPresentation(
-    state: status == 'completed' ? JobPresentationState.completed : JobPresentationState.other,
-    displayStatus: label.isEmpty ? 'Unassigned' : (status == 'completed' ? 'Completed' : label),
+    state: status == 'completed'
+        ? JobPresentationState.completed
+        : JobPresentationState.other,
+    displayStatus: label.isEmpty
+        ? 'Unassigned'
+        : (status == 'completed' ? 'Completed' : label),
     badgeStatus: status == 'assigned' ? 'submitted' : status,
     isOffer: false,
     isAccepted: false,
@@ -164,7 +192,9 @@ JobPresentation buildJobPresentation(Job job, {bool hasActiveJob = false}) {
 /// hasActiveJob in EmployeeRuntimeContext.jsx).
 bool computeHasActiveJob(List<Job> jobs) {
   return jobs.any(
-    (j) => j.isAssignedToCurrentEmployee && kActiveQueueStatuses.contains(j.status.toLowerCase()),
+    (j) =>
+        j.isAssignedToCurrentEmployee &&
+        kActiveQueueStatuses.contains(j.status.toLowerCase()),
   );
 }
 

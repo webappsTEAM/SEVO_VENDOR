@@ -113,6 +113,25 @@ final mockCompletedJob = Job(
   canCancel: false,
 );
 
+final mockScheduledJob = Job(
+  id: 104,
+  requestId: '#MS4945',
+  serviceCategory: 'Appliance Repair',
+  serviceTitle: 'Washing Machine Drum Alignment',
+  status: 'assigned',
+  totalAmount: 850.0,
+  customerName: 'Suresh Raina',
+  phone: '+91 9776655443',
+  address: '77 Koramangala 4th Block, Bangalore',
+  preferredDate: '10 Oct 2026',
+  preferredTime: '04:00 PM',
+  isScheduledFuture: true,
+  isOffer: false,
+  isAcceptedByCurrentEmployee: false,
+  isAssignedToCurrentEmployee: true,
+  canCancel: false,
+);
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -125,7 +144,7 @@ void main() {
         authControllerProvider.overrideWith((ref) => FakeAuthController(mockUser)),
         employeeProfileProvider.overrideWith((ref) => Future.value(mockProfile)),
         activeJobsProvider.overrideWith(
-          (ref) => Future.value(activeJobs ?? [mockOfferJob, mockInProgressJob]),
+          (ref) => Future.value(activeJobs ?? [mockOfferJob, mockInProgressJob, mockScheduledJob]),
         ),
         completedJobsProvider.overrideWith(
           (ref) => Future.value(completedJobs ?? [mockCompletedJob]),
@@ -255,9 +274,35 @@ void main() {
 
       expect(find.text('Plumbing'), findsOneWidget);
       expect(find.text('₹1450.00'), findsOneWidget);
-      expect(find.text('Completed'), findsWidgets);
+      expect(find.text('Completed'), findsWidgets); // Status badge + Action pill
       expect(find.text('View Details'), findsOneWidget);
-      expect(find.text('Mark as Completed'), findsOneWidget);
+      expect(find.text('Mark as Completed'), findsNothing);
+    });
+
+    testWidgets('JobCard renders complete visual hierarchy for scheduled upcoming job', (tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            home: Scaffold(
+              body: SingleChildScrollView(
+                child: JobCard(job: mockScheduledJob),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('AC & Appliances'), findsOneWidget);
+      expect(find.text('₹850'), findsOneWidget);
+      expect(find.text('Scheduled'), findsOneWidget);
+      expect(find.textContaining('Washing Machine Drum Alignment'), findsOneWidget);
+      expect(find.textContaining('10 Oct 2026 • 04:00 PM'), findsOneWidget);
+      expect(find.text('Suresh Raina'), findsOneWidget);
+      expect(find.text('View Details'), findsOneWidget);
+      expect(find.text('Upcoming Job'), findsOneWidget);
+      // Scheduled jobs must NOT show accept/decline or continue job actions
+      expect(find.text('Accept • ₹850'), findsNothing);
+      expect(find.text('Continue Job'), findsNothing);
     });
   });
 
@@ -267,9 +312,9 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
 
-      expect(find.text('SE'), findsOneWidget);
+      expect(find.bySemanticsLabel('SEVO'), findsOneWidget); // official wordmark image
       expect(find.text('My Orders & Jobs'), findsOneWidget);
-      expect(find.textContaining('3 Jobs Available & Assigned'), findsOneWidget);
+      expect(find.textContaining('4 Jobs Available & Assigned'), findsOneWidget);
       expect(find.text('1 New Service Offer Available'), findsOneWidget);
       expect(find.byType(JobStatusFilterBar), findsOneWidget);
       expect(find.byType(JobCategoryFilterBar), findsOneWidget);
@@ -290,6 +335,7 @@ void main() {
       expect(find.textContaining('Water Heater Pipe Leak Repair'), findsOneWidget);
       expect(find.textContaining('Block Wall Construction'), findsNothing);
       expect(find.textContaining('Main Switchboard Repair'), findsNothing);
+      expect(find.textContaining('Washing Machine Drum Alignment'), findsNothing);
 
       // 2. Filter: In Progress (Tap status dropdown, select In Progress)
       await tester.tap(find.byType(JobStatusFilterBar));
@@ -300,8 +346,20 @@ void main() {
       expect(find.textContaining('Main Switchboard Repair'), findsOneWidget);
       expect(find.textContaining('Water Heater Pipe Leak Repair'), findsNothing);
       expect(find.textContaining('Block Wall Construction'), findsNothing);
+      expect(find.textContaining('Washing Machine Drum Alignment'), findsNothing);
 
-      // 3. Filter: New Offers (Tap status dropdown, select New Offers)
+      // 3. Filter: Scheduled (Tap status dropdown, select Scheduled)
+      await tester.tap(find.byType(JobStatusFilterBar));
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('Scheduled (1)').last);
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Washing Machine Drum Alignment'), findsOneWidget);
+      expect(find.textContaining('Main Switchboard Repair'), findsNothing);
+      expect(find.textContaining('Water Heater Pipe Leak Repair'), findsNothing);
+      expect(find.textContaining('Block Wall Construction'), findsNothing);
+
+      // 4. Filter: New Offers (Tap status dropdown, select New Offers)
       await tester.tap(find.byType(JobStatusFilterBar));
       await tester.pumpAndSettle();
       await tester.tap(find.textContaining('New Offers (1)').last);
@@ -309,22 +367,36 @@ void main() {
 
       expect(find.textContaining('Block Wall Construction'), findsOneWidget);
       expect(find.textContaining('Main Switchboard Repair'), findsNothing);
+      expect(find.textContaining('Washing Machine Drum Alignment'), findsNothing);
     });
 
-    testWidgets('JobsScreen category filter chips filter job list', (tester) async {
+    testWidgets('JobsScreen category filter dropdown shows all Web options with dynamic counts and filters job list', (tester) async {
       await tester.pumpWidget(buildJobsScreenTestWidget());
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
 
-      // Open category dropdown and tap Electrical
+      // Open category dropdown
       await tester.tap(find.byType(JobCategoryFilterBar));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Electrical').last);
+
+      // Verify Web category options and dynamic counts are present in popup menu
+      expect(find.textContaining('All Categories (4)'), findsWidgets);
+      expect(find.textContaining('Mini Truck'), findsWidgets);
+      expect(find.textContaining('Two-Wheeler'), findsWidgets);
+      expect(find.textContaining('Packers & Movers'), findsWidgets);
+      expect(find.textContaining('Electrical (1)'), findsWidgets);
+      expect(find.textContaining('AC & Appliances (1)'), findsWidgets);
+      expect(find.textContaining('Plumbing (1)'), findsWidgets);
+      expect(find.textContaining('Locks & Carpentry (1)'), findsWidgets);
+
+      // Tap Electrical (1)
+      await tester.tap(find.textContaining('Electrical (1)').last);
       await tester.pumpAndSettle();
 
       expect(find.textContaining('Main Switchboard Repair'), findsOneWidget);
       expect(find.textContaining('Block Wall Construction'), findsNothing);
       expect(find.textContaining('Water Heater Pipe Leak Repair'), findsNothing);
+      expect(find.textContaining('Washing Machine Drum Alignment'), findsNothing);
     });
 
     testWidgets('JobsScreen search filters by search query', (tester) async {

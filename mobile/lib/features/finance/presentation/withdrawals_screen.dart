@@ -1,3 +1,6 @@
+import '../../../shared/widgets/sevo/sevo_module_frame.dart';
+import '../../../shared/widgets/sevo/sevo_module_art.dart';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,7 +16,6 @@ import 'package:mobile/features/finance/presentation/widgets/withdrawal_card.dar
 import 'package:mobile/routing/app_routes.dart';
 import 'package:mobile/shared/widgets/app_card.dart';
 import 'package:mobile/shared/widgets/empty_state.dart';
-import 'package:mobile/shared/widgets/workforce_app_bar.dart';
 
 /// Payout Withdrawals tracking screen for technicians.
 ///
@@ -84,7 +86,9 @@ class _WithdrawalsScreenState extends ConsumerState<WithdrawalsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Withdrawal #${withdrawal.id} cancelled successfully.'),
+            content: Text(
+              'Withdrawal #${withdrawal.id} cancelled successfully.',
+            ),
             backgroundColor: const Color(0xFF059669),
           ),
         );
@@ -93,7 +97,9 @@ class _WithdrawalsScreenState extends ConsumerState<WithdrawalsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(describeDioError(e, fallback: 'Failed to cancel withdrawal.')),
+            content: Text(
+              describeDioError(e, fallback: 'Failed to cancel withdrawal.'),
+            ),
             backgroundColor: const Color(0xFFE11D48),
           ),
         );
@@ -107,13 +113,11 @@ class _WithdrawalsScreenState extends ConsumerState<WithdrawalsScreen> {
     final walletAsync = ref.watch(employeeWalletProvider);
     final availableBalance = walletAsync.valueOrNull?.availableBalance ?? 0.0;
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: const WorkforceAppBar(
-        titleText: 'Payouts & Withdrawals',
-        showBrand: false,
-        showStatusSubBar: false,
-      ),
+    return SevoModuleFrame(
+      module: SevoModule.withdrawals,
+      title: 'Payouts & Withdrawals',
+      withDrawer: false,
+      transition: false,
       body: RefreshIndicator(
         onRefresh: _handleRefresh,
         child: ListView(
@@ -140,7 +144,11 @@ class _WithdrawalsScreenState extends ConsumerState<WithdrawalsScreen> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.arrow_back_rounded, size: 16, color: AppColors.primary),
+                    Icon(
+                      Icons.arrow_back_rounded,
+                      size: 16,
+                      color: AppColors.primary,
+                    ),
                     const SizedBox(width: 4),
                     Text(
                       'Back to Wallet',
@@ -191,11 +199,19 @@ class _WithdrawalsScreenState extends ConsumerState<WithdrawalsScreen> {
                         : const Icon(Icons.refresh_rounded, size: 16),
                     label: const FittedBox(
                       fit: BoxFit.scaleDown,
-                      child: Text('Refresh', style: TextStyle(fontWeight: FontWeight.w700)),
+                      child: Text(
+                        'Refresh',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
                     ),
                     style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 10,
+                        horizontal: 4,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
                   ),
                 ),
@@ -206,12 +222,20 @@ class _WithdrawalsScreenState extends ConsumerState<WithdrawalsScreen> {
                     icon: const Icon(Icons.add_rounded, size: 16),
                     label: const FittedBox(
                       fit: BoxFit.scaleDown,
-                      child: Text('New Payout Request', style: TextStyle(fontWeight: FontWeight.w800)),
+                      child: Text(
+                        'New Payout Request',
+                        style: TextStyle(fontWeight: FontWeight.w800),
+                      ),
                     ),
                     style: FilledButton.styleFrom(
                       backgroundColor: AppColors.primary,
-                      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 10,
+                        horizontal: 4,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
                   ),
                 ),
@@ -225,7 +249,9 @@ class _WithdrawalsScreenState extends ConsumerState<WithdrawalsScreen> {
               decoration: BoxDecoration(
                 color: const Color(0xFFECFDF5),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
+                border: Border.all(
+                  color: const Color(0xFF10B981).withValues(alpha: 0.3),
+                ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -247,7 +273,10 @@ class _WithdrawalsScreenState extends ConsumerState<WithdrawalsScreen> {
                       ),
                       const SizedBox(width: 8),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(4),
@@ -278,7 +307,11 @@ class _WithdrawalsScreenState extends ConsumerState<WithdrawalsScreen> {
                   const SizedBox(height: 4),
                   Row(
                     children: const [
-                      Icon(Icons.bolt_rounded, size: 13, color: Color(0xFF059669)),
+                      Icon(
+                        Icons.bolt_rounded,
+                        size: 13,
+                        color: Color(0xFF059669),
+                      ),
                       SizedBox(width: 4),
                       Expanded(
                         child: Text(
@@ -336,17 +369,27 @@ class _WithdrawalsScreenState extends ConsumerState<WithdrawalsScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.error_outline_rounded, size: 40, color: Color(0xFFE11D48)),
+                      const Icon(
+                        Icons.error_outline_rounded,
+                        size: 40,
+                        color: Color(0xFFE11D48),
+                      ),
                       const SizedBox(height: AppSpacing.md),
                       const Text(
                         'Failed to load withdrawals',
-                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         err.toString(),
                         textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textMuted,
+                        ),
                       ),
                       const SizedBox(height: AppSpacing.md),
                       ElevatedButton.icon(
@@ -361,14 +404,16 @@ class _WithdrawalsScreenState extends ConsumerState<WithdrawalsScreen> {
               data: (withdrawals) {
                 if (withdrawals.isEmpty) {
                   return AppCard(
-                    padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 24,
+                      horizontal: 16,
+                    ),
                     child: Column(
                       children: [
                         const EmptyState(
                           icon: Icons.payments_outlined,
                           title: 'No withdrawal requests recorded',
-                          message:
-                              'When your balance reaches ₹5,000, you can request payouts directly here.',
+                          message: 'When your balance reaches ₹5,000, you can request payouts directly here.',
                         ),
                         const SizedBox(height: AppSpacing.md),
                         FilledButton.icon(
@@ -377,8 +422,13 @@ class _WithdrawalsScreenState extends ConsumerState<WithdrawalsScreen> {
                           label: const Text('New Payout Request'),
                           style: FilledButton.styleFrom(
                             backgroundColor: AppColors.primary,
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 10,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
                           ),
                         ),
                       ],

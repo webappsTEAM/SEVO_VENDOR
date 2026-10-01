@@ -1,3 +1,6 @@
+import '../../../../shared/widgets/sevo/sevo_module_frame.dart';
+import '../../../../shared/widgets/sevo/sevo_module_art.dart';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,10 +10,8 @@ import 'package:mobile/core/network/api_error.dart';
 import 'package:mobile/core/theme/app_theme.dart';
 import 'package:mobile/features/admin/presentation/finance/admin_finance_providers.dart';
 import 'package:mobile/features/admin/presentation/finance/widgets/admin_wallet_card.dart';
-import 'package:mobile/features/admin/presentation/widgets/admin_drawer.dart';
 import 'package:mobile/routing/app_routes.dart';
 import 'package:mobile/shared/widgets/empty_state.dart';
-import 'package:mobile/shared/widgets/workforce_app_bar.dart';
 
 /// Super Admin / Platform Treasury Screen: Technician Wallets & Financial Oversight.
 ///
@@ -47,14 +48,9 @@ class _AdminWalletsScreenState extends ConsumerState<AdminWalletsScreen> {
     final pendingPayoutsCount = ref.watch(adminPendingWithdrawalsCountProvider);
     final displayedCount = filteredWallets.length;
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: const WorkforceAppBar(
-        titleText: 'Vendor Wallets',
-        showStatusSubBar: false,
-        showDrawerMenu: true,
-      ),
-      drawer: const AdminDrawer(),
+    return SevoModuleFrame(
+      module: SevoModule.treasury,
+      title: 'Vendor Wallets',
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: _refresh,
@@ -84,7 +80,9 @@ class _AdminWalletsScreenState extends ConsumerState<AdminWalletsScreen> {
                     // Context Badge
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 2.5),
+                        horizontal: 8,
+                        vertical: 2.5,
+                      ),
                       decoration: BoxDecoration(
                         color: AppColors.surfaceMuted,
                         borderRadius: BorderRadius.circular(6),
@@ -232,8 +230,12 @@ class _AdminWalletsScreenState extends ConsumerState<AdminWalletsScreen> {
                         '₹${(summary?.totalDisbursed ?? 0.0).toStringAsFixed(2)}',
                     description: 'Lifetime payouts to technicians',
                     icon: Icons.check_circle_rounded,
-                    iconColor: AppColors.isDark ? const Color(0xFFA78BFA) : const Color(0xFF7C3AED),
-                    iconBgColor: AppColors.isDark ? const Color(0xFF4C1D95).withValues(alpha: 0.3) : const Color(0xFFF5F3FF),
+                    iconColor: AppColors.isDark
+                        ? const Color(0xFFA78BFA)
+                        : const Color(0xFF7C3AED),
+                    iconBgColor: AppColors.isDark
+                        ? const Color(0xFF4C1D95).withValues(alpha: 0.3)
+                        : const Color(0xFFF5F3FF),
                   );
 
                   if (constraints.maxWidth >= 600) {
@@ -328,17 +330,22 @@ class _AdminWalletsScreenState extends ConsumerState<AdminWalletsScreen> {
                       fontSize: 13,
                       color: AppColors.textMuted,
                     ),
-                    prefixIcon: Icon(Icons.search_rounded,
-                        size: 18, color: AppColors.textMuted),
+                    prefixIcon: Icon(
+                      Icons.search_rounded,
+                      size: 18,
+                      color: AppColors.textMuted,
+                    ),
                     suffixIcon: _searchController.text.isNotEmpty
                         ? IconButton(
                             icon: const Icon(Icons.clear_rounded, size: 16),
                             onPressed: () {
                               _searchController.clear();
                               ref
-                                  .read(
-                                      adminWalletSearchQueryProvider.notifier)
-                                  .state = '';
+                                      .read(
+                                        adminWalletSearchQueryProvider.notifier,
+                                      )
+                                      .state =
+                                  '';
                             },
                           )
                         : null,
@@ -356,51 +363,56 @@ class _AdminWalletsScreenState extends ConsumerState<AdminWalletsScreen> {
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Row(
-                  children: [
-                    {'id': 'ALL', 'label': 'All Statuses'},
-                    {'id': 'ACTIVE', 'label': 'Active'},
-                    {'id': 'LOCKED', 'label': 'Locked'},
-                    {'id': 'SUSPENDED', 'label': 'Suspended'},
-                  ].map((st) {
-                    final isSelected = currentStatusFilter == st['id'];
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: ChoiceChip(
-                        label: Text(
-                          st['label']!,
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            fontWeight: isSelected
-                                ? FontWeight.w800
-                                : FontWeight.w600,
+                  children:
+                      [
+                        {'id': 'ALL', 'label': 'All Statuses'},
+                        {'id': 'ACTIVE', 'label': 'Active'},
+                        {'id': 'LOCKED', 'label': 'Locked'},
+                        {'id': 'SUSPENDED', 'label': 'Suspended'},
+                      ].map((st) {
+                        final isSelected = currentStatusFilter == st['id'];
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 6),
+                          child: ChoiceChip(
+                            label: Text(
+                              st['label']!,
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: isSelected
+                                    ? FontWeight.w800
+                                    : FontWeight.w600,
+                              ),
+                            ),
+                            selected: isSelected,
+                            onSelected: (val) {
+                              if (val) {
+                                ref
+                                        .read(
+                                          adminWalletStatusFilterProvider
+                                              .notifier,
+                                        )
+                                        .state =
+                                    st['id']!;
+                              }
+                            },
+                            selectedColor: AppColors.primary,
+                            labelStyle: TextStyle(
+                              color: isSelected
+                                  ? Colors.white
+                                  : AppColors.textSecondary,
+                            ),
+                            backgroundColor: AppColors.surface,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              side: BorderSide(
+                                color: isSelected
+                                    ? AppColors.primary
+                                    : AppColors.border,
+                              ),
+                            ),
                           ),
-                        ),
-                        selected: isSelected,
-                        onSelected: (val) {
-                          if (val) {
-                            ref
-                                .read(adminWalletStatusFilterProvider.notifier)
-                                .state = st['id']!;
-                          }
-                        },
-                        selectedColor: AppColors.primary,
-                        labelStyle: TextStyle(
-                          color: isSelected
-                              ? Colors.white
-                              : AppColors.textSecondary,
-                        ),
-                        backgroundColor: AppColors.surface,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          side: BorderSide(
-                            color: isSelected
-                                ? AppColors.primary
-                                : AppColors.border,
-                          ),
-                        ),
-                      ),
-                    );
-                  }).toList(),
+                        );
+                      }).toList(),
                 ),
               ),
               const SizedBox(height: AppSpacing.md),
@@ -410,15 +422,16 @@ class _AdminWalletsScreenState extends ConsumerState<AdminWalletsScreen> {
                 loading: () => Center(
                   child: Padding(
                     padding: EdgeInsets.all(AppSpacing.xxl),
-                    child:
-                        CircularProgressIndicator(color: AppColors.primary),
+                    child: CircularProgressIndicator(color: AppColors.primary),
                   ),
                 ),
                 error: (error, stack) {
                   debugPrint('AdminWalletsScreen error: $error\n$stack');
                   final message = error is DioException
-                      ? describeDioError(error,
-                          fallback: 'Failed to load technician wallet data.')
+                      ? describeDioError(
+                          error,
+                          fallback: 'Failed to load technician wallet data.',
+                        )
                       : error.toString();
 
                   return Container(
@@ -430,8 +443,11 @@ class _AdminWalletsScreenState extends ConsumerState<AdminWalletsScreen> {
                     ),
                     child: Column(
                       children: [
-                        const Icon(Icons.error_outline_rounded,
-                            size: 36, color: Color(0xFFDC2626)),
+                        const Icon(
+                          Icons.error_outline_rounded,
+                          size: 36,
+                          color: Color(0xFFDC2626),
+                        ),
                         const SizedBox(height: 12),
                         Text(
                           'Failed to load technician wallet data',
@@ -467,7 +483,9 @@ class _AdminWalletsScreenState extends ConsumerState<AdminWalletsScreen> {
                   if (filteredWallets.isEmpty) {
                     return Container(
                       padding: const EdgeInsets.symmetric(
-                          vertical: 40, horizontal: 16),
+                        vertical: 40,
+                        horizontal: 16,
+                      ),
                       decoration: BoxDecoration(
                         color: AppColors.surface,
                         borderRadius: BorderRadius.circular(12),
@@ -475,8 +493,7 @@ class _AdminWalletsScreenState extends ConsumerState<AdminWalletsScreen> {
                       ),
                       child: const EmptyState(
                         icon: Icons.account_balance_wallet_outlined,
-                        title:
-                            'No technician wallets matched current search criteria.',
+                        title: 'No technician wallets matched current search criteria.',
                         message:
                             'Try clearing search or changing status filter.',
                       ),
@@ -490,8 +507,11 @@ class _AdminWalletsScreenState extends ConsumerState<AdminWalletsScreen> {
                         wallet: wallet,
                         onViewTransactions: () {
                           ref
-                              .read(adminSelectedTechnicianProvider.notifier)
-                              .state = wallet;
+                                  .read(
+                                    adminSelectedTechnicianProvider.notifier,
+                                  )
+                                  .state =
+                              wallet;
                           context.push(AppRoutes.adminFinanceTransactions);
                         },
                       );
@@ -582,10 +602,7 @@ class _FinancialMetricCard extends StatelessWidget {
                 ),
                 Text(
                   description,
-                  style: TextStyle(
-                    fontSize: 10.5,
-                    color: AppColors.textMuted,
-                  ),
+                  style: TextStyle(fontSize: 10.5, color: AppColors.textMuted),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),

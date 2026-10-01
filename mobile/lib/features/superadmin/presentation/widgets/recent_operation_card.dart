@@ -4,16 +4,17 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../routing/app_routes.dart';
 import '../../../../shared/widgets/empty_state.dart';
+import '../../../../shared/widgets/home_dashboard_widgets.dart';
 import '../../../../shared/widgets/status_chip.dart';
 import '../../../jobs/domain/job.dart';
 import '../../domain/superadmin_dashboard.dart';
 
-/// Clean, responsive mobile card representing a recent service operation / booking.
+const _teal = Color(0xFF005965);
+
+/// One dense row of the Recent Operations list: booking id, customer, service,
+/// location on the left; status, schedule and the Dispatch button on the right.
 class RecentOperationCard extends StatelessWidget {
-  const RecentOperationCard({
-    super.key,
-    required this.job,
-  });
+  const RecentOperationCard({super.key, required this.job});
 
   final Job job;
 
@@ -21,348 +22,243 @@ class RecentOperationCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final customer = job.customerName?.trim();
     final address = job.address?.trim();
-    final scheduledDate = job.preferredDate?.trim();
-    final scheduledTime = job.preferredTime?.trim();
+    final date = job.preferredDate?.trim();
+    final time = job.preferredTime?.trim();
+    final tech = job.technicianName?.trim();
 
-    String formattedSchedule = '—';
-    if (scheduledDate != null && scheduledDate.isNotEmpty) {
-      formattedSchedule = scheduledDate;
-      if (scheduledTime != null && scheduledTime.isNotEmpty) {
-        formattedSchedule += ' $scheduledTime';
-      }
+    var schedule = '—';
+    if (date != null && date.isNotEmpty) {
+      schedule = (time != null && time.isNotEmpty) ? '$date $time' : date;
     }
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppRadius.card),
-        border: Border.all(color: AppColors.border),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x040A2540),
-            blurRadius: 4,
-            offset: Offset(0, 1.5),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Top Row: Job ID Pill + Semantic Status Badge
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              crossAxisAlignment: CrossAxisAlignment.center,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEFF6FF),
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: const Color(0xFFBFDBFE), width: 0.8),
+                Text(
+                  job.requestId,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.isDark ? Colors.white : _teal,
+                    letterSpacing: 0.2,
                   ),
-                  child: Text(
-                    job.requestId,
+                ),
+                if (customer != null && customer.isNotEmpty)
+                  Text(
+                    customer,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w900,
-                      color: Color(0xFF005965),
-                      letterSpacing: 0.3,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
                     ),
+                  ),
+                const SizedBox(height: 4),
+                Text(
+                  job.displayTitle,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                    height: 1.25,
                   ),
                 ),
-                const SizedBox(width: 8),
-                StatusChip(status: job.status, dense: true),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Divider(height: 1, color: Color(0xFFF1F5F9)),
-            const SizedBox(height: 8),
-
-            // Customer Name
-            if (customer != null && customer.isNotEmpty) ...[
-              Row(
-                children: [
-                  Icon(
-                    Icons.person_outline_rounded,
-                    size: 15,
-                    color: AppColors.textSecondary,
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
+                if (tech != null && tech.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
                     child: Text(
-                      customer,
+                      'Technician: $tech',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-            ],
-
-            // Assigned Technician
-            if (job.technicianName != null && job.technicianName!.isNotEmpty) ...[
-              Row(
-                children: [
-                  const Icon(
-                    Icons.badge_outlined,
-                    size: 15,
-                    color: Color(0xFF059669),
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      'Technician: ${job.technicianName!}${job.technicianPhone != null && job.technicianPhone!.isNotEmpty ? " • ${job.technicianPhone!}" : ""}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
+                      style: const TextStyle(
+                        fontSize: 11.5,
                         fontWeight: FontWeight.w700,
                         color: Color(0xFF059669),
                       ),
                     ),
                   ),
-                ],
-              ),
-              const SizedBox(height: 4),
-            ],
-
-            // Service Title
-            Row(
-              children: [
-                const Icon(
-                  Icons.build_circle_outlined,
-                  size: 15,
-                  color: Color(0xFF005965),
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    job.displayTitle,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-
-            // Location Address
-            if (address != null && address.isNotEmpty) ...[
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+                if (address != null && address.isNotEmpty)
                   Padding(
-                    padding: EdgeInsets.only(top: 1),
-                    child: Icon(
-                      Icons.location_on_outlined,
-                      size: 14,
-                      color: AppColors.textMuted,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      address,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w400,
-                        color: AppColors.textSecondary,
-                        height: 1.25,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-            ],
-
-            // Scheduled Time
-            Row(
-              children: [
-                Icon(
-                  Icons.schedule_rounded,
-                  size: 14,
-                  color: AppColors.textMuted,
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    formattedSchedule,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 11.5,
-                      fontFamily: 'monospace',
-                      fontWeight: FontWeight.w500,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-
-            // Primary Action: Dispatch Button
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                InkWell(
-                  onTap: () => context.push(
-                    '${AppRoutes.adminDispatch}?job_id=${job.requestId}',
-                  ),
-                  borderRadius: BorderRadius.circular(6),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEFF6FF),
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: const Color(0xFFBFDBFE)),
-                    ),
+                    padding: const EdgeInsets.only(top: 4),
                     child: Row(
-                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'Dispatch',
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF005965),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 1),
+                          child: Icon(
+                            Icons.location_on_rounded,
+                            size: 13,
+                            color: AppColors.textMuted,
                           ),
                         ),
-                        SizedBox(width: 4),
-                        Icon(
-                          Icons.arrow_forward_rounded,
-                          size: 13,
-                          color: Color(0xFF005965),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            address,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 11,
+                              height: 1.25,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
                         ),
                       ],
                     ),
                   ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 118),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerRight,
+                  child: StatusChip(status: job.status, dense: true),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  schedule,
+                  textAlign: TextAlign.right,
+                  style: TextStyle(
+                    fontSize: 11,
+                    height: 1.25,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  height: 32,
+                  child: FilledButton(
+                    onPressed: () => context.push(
+                      '${AppRoutes.adminDispatch}?job_id=${job.requestId}',
+                    ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: _teal,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      minimumSize: const Size(0, 32),
+                      textStyle: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    child: const Text('Dispatch'),
+                  ),
                 ),
               ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 }
 
-/// RECENT OPERATIONS & SERVICE BOOKINGS Section:
-/// Displays the list of recent bookings or clean empty state.
-class SuperAdminRecentOperationsSection extends StatelessWidget {
-  const SuperAdminRecentOperationsSection({
+/// Recent Operations & Service Bookings: the header with a "View All Jobs"
+/// link and one card of dense rows, or an empty state. Shared by both homes.
+class RecentOperationsPanel extends StatelessWidget {
+  const RecentOperationsPanel({
     super.key,
-    required this.data,
+    required this.jobs,
+    required this.total,
+    required this.emptyTitle,
+    required this.emptyMessage,
   });
+
+  final List<Job> jobs;
+  final int total;
+  final String emptyTitle;
+  final String emptyMessage;
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = jobs.take(8).toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        HomeSectionHeader(
+          leading: Container(
+            width: 34,
+            height: 34,
+            decoration: const BoxDecoration(
+              color: _teal,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.schedule_rounded,
+              size: 19,
+              color: Colors.white,
+            ),
+          ),
+          title: 'Recent Operations & Service Bookings',
+          titleSuffix: '($total)',
+          linkLabel: 'View All Jobs',
+          onLink: () => context.push(AppRoutes.adminJobs),
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        if (rows.isEmpty)
+          EmptyState(
+            icon: Icons.assignment_outlined,
+            title: emptyTitle,
+            message: emptyMessage,
+          )
+        else
+          Container(
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: AppColors.border),
+              boxShadow: AppElevation.subtle,
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                for (var i = 0; i < rows.length; i++) ...[
+                  if (i > 0) Divider(height: 1, color: AppColors.border),
+                  RecentOperationCard(job: rows[i]),
+                ],
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// RECENT OPERATIONS & SERVICE BOOKINGS section of the Super Admin home.
+class SuperAdminRecentOperationsSection extends StatelessWidget {
+  const SuperAdminRecentOperationsSection({super.key, required this.data});
 
   final SuperAdminDashboardData data;
 
   @override
   Widget build(BuildContext context) {
-    final recentJobs = data.recentJobs;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Section Header Row
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Expanded(
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.business_center_outlined,
-                    size: 15,
-                    color: Color(0xFF005965),
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      'RECENT OPERATIONS & SERVICE BOOKINGS (${data.jobs.length})',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.textSecondary,
-                        letterSpacing: 0.8,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            InkWell(
-              onTap: () => context.push(AppRoutes.adminJobs),
-              borderRadius: BorderRadius.circular(4),
-              child: const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'View All Jobs',
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF005965),
-                      ),
-                    ),
-                    SizedBox(width: 2),
-                    Icon(
-                      Icons.arrow_forward_rounded,
-                      size: 13,
-                      color: Color(0xFF005965),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 2),
-        Text(
-          'Latest customer field work orders and fulfillment status',
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w400,
-            color: AppColors.textMuted,
-          ),
-        ),
-        const SizedBox(height: AppSpacing.sm),
-
-        // List of Recent Job Cards or Empty State
-        if (recentJobs.isEmpty)
-          const EmptyState(
-            icon: Icons.assignment_outlined,
-            title: 'No recent operations or service bookings found.',
-            message: 'New customer bookings and workforce activity will appear here.',
-          )
-        else
-          ...recentJobs.take(8).map((job) => RecentOperationCard(job: job)),
-      ],
+    return RecentOperationsPanel(
+      jobs: data.recentJobs,
+      total: data.jobs.length,
+      emptyTitle: 'No recent operations or service bookings found.',
+      emptyMessage:
+          'New customer bookings and workforce activity will appear here.',
     );
   }
 }

@@ -65,7 +65,7 @@ void main() {
     testWidgets('renders all 5 metric cards, benchmarks, and reviews when data is loaded', (
       WidgetTester tester,
     ) async {
-      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.physicalSize = const Size(1080, 6000);
       tester.view.devicePixelRatio = 2.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
@@ -130,7 +130,7 @@ void main() {
     testWidgets('renders empty states for ratings and reviews when no feedback exists', (
       WidgetTester tester,
     ) async {
-      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.physicalSize = const Size(1080, 6000);
       tester.view.devicePixelRatio = 2.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 

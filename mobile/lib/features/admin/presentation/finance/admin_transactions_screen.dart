@@ -1,13 +1,14 @@
+import '../../../../shared/widgets/sevo/sevo_module_frame.dart';
+import '../../../../shared/widgets/sevo/sevo_module_art.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:mobile/core/theme/app_theme.dart';
 import 'package:mobile/features/admin/presentation/finance/admin_finance_providers.dart';
-import 'package:mobile/features/admin/presentation/widgets/admin_drawer.dart';
 import 'package:mobile/features/finance/domain/wallet_transaction.dart';
 import 'package:mobile/features/finance/presentation/widgets/transaction_detail_sheet.dart';
 import 'package:mobile/shared/widgets/empty_state.dart';
-import 'package:mobile/shared/widgets/workforce_app_bar.dart';
 
 /// Super Admin / Platform Treasury: Transaction Ledger Screen.
 ///
@@ -110,7 +111,8 @@ class _AdminTransactionsScreenState
   Widget build(BuildContext context) {
     final walletsAsync = ref.watch(adminWalletsProvider);
     final wallets = walletsAsync.valueOrNull ?? [];
-    final selectedTechnician = ref.watch(adminSelectedTechnicianProvider) ??
+    final selectedTechnician =
+        ref.watch(adminSelectedTechnicianProvider) ??
         (wallets.isNotEmpty ? wallets.first : null);
 
     final transactionsAsync = selectedTechnician != null
@@ -124,14 +126,9 @@ class _AdminTransactionsScreenState
 
     final totalCount = transactionsAsync?.valueOrNull?.count ?? 0;
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: const WorkforceAppBar(
-        titleText: 'Financial Transactions',
-        showStatusSubBar: false,
-        showDrawerMenu: true,
-      ),
-      drawer: const AdminDrawer(),
+    return SevoModuleFrame(
+      module: SevoModule.transactions,
+      title: 'Financial Transactions',
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: _refresh,
@@ -251,8 +248,10 @@ class _AdminTransactionsScreenState
 
               // ── 2. Technician Selector ────────────────────────────────────
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: AppColors.surface,
                   borderRadius: BorderRadius.circular(10),
@@ -260,8 +259,11 @@ class _AdminTransactionsScreenState
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.person_outline_rounded,
-                        size: 18, color: Color(0xFF005965)),
+                    const Icon(
+                      Icons.person_outline_rounded,
+                      size: 18,
+                      color: Color(0xFF005965),
+                    ),
                     const SizedBox(width: 8),
                     Text(
                       'Technician: ',
@@ -276,8 +278,10 @@ class _AdminTransactionsScreenState
                         child: DropdownButton<int>(
                           isExpanded: true,
                           value: selectedTechnician?.employeeId,
-                          hint: Text('Select Technician',
-                              style: TextStyle(fontSize: 12.5)),
+                          hint: Text(
+                            'Select Technician',
+                            style: TextStyle(fontSize: 12.5),
+                          ),
                           items: wallets.map((w) {
                             return DropdownMenuItem<int>(
                               value: w.employeeId,
@@ -294,12 +298,16 @@ class _AdminTransactionsScreenState
                           }).toList(),
                           onChanged: (newId) {
                             if (newId != null) {
-                              final matched = wallets
-                                  .firstWhere((w) => w.employeeId == newId);
+                              final matched = wallets.firstWhere(
+                                (w) => w.employeeId == newId,
+                              );
                               ref
-                                  .read(
-                                      adminSelectedTechnicianProvider.notifier)
-                                  .state = matched;
+                                      .read(
+                                        adminSelectedTechnicianProvider
+                                            .notifier,
+                                      )
+                                      .state =
+                                  matched;
                               setState(() => _currentPage = 1);
                             }
                           },
@@ -374,30 +382,41 @@ class _AdminTransactionsScreenState
                             isSelected: _selectedType != null,
                             items: const [
                               DropdownMenuItem(
-                                  value: null, child: Text('All Types')),
+                                value: null,
+                                child: Text('All Types'),
+                              ),
                               DropdownMenuItem(
-                                  value: 'SERVICE_EARNING',
-                                  child: Text('Service Earning')),
+                                value: 'SERVICE_EARNING',
+                                child: Text('Service Earning'),
+                              ),
                               DropdownMenuItem(
-                                  value: 'PLATFORM_COMMISSION',
-                                  child: Text('Platform Commission')),
+                                value: 'PLATFORM_COMMISSION',
+                                child: Text('Platform Commission'),
+                              ),
                               DropdownMenuItem(
-                                  value: 'REFUND', child: Text('Refund')),
+                                value: 'REFUND',
+                                child: Text('Refund'),
+                              ),
                               DropdownMenuItem(
-                                  value: 'RECOVERY_DEBIT',
-                                  child: Text('Recovery Debit')),
+                                value: 'RECOVERY_DEBIT',
+                                child: Text('Recovery Debit'),
+                              ),
                               DropdownMenuItem(
-                                  value: 'WITHDRAWAL',
-                                  child: Text('Withdrawal')),
+                                value: 'WITHDRAWAL',
+                                child: Text('Withdrawal'),
+                              ),
                               DropdownMenuItem(
-                                  value: 'ADJUSTMENT_CREDIT',
-                                  child: Text('Adjustment Credit')),
+                                value: 'ADJUSTMENT_CREDIT',
+                                child: Text('Adjustment Credit'),
+                              ),
                               DropdownMenuItem(
-                                  value: 'ADJUSTMENT_DEBIT',
-                                  child: Text('Adjustment Debit')),
+                                value: 'ADJUSTMENT_DEBIT',
+                                child: Text('Adjustment Debit'),
+                              ),
                               DropdownMenuItem(
-                                  value: 'SETTLEMENT_RELEASE',
-                                  child: Text('Settlement Release')),
+                                value: 'SETTLEMENT_RELEASE',
+                                child: Text('Settlement Release'),
+                              ),
                             ],
                             onChanged: (val) {
                               setState(() => _selectedType = val);
@@ -409,17 +428,23 @@ class _AdminTransactionsScreenState
                           _DropdownFilterChip<String>(
                             label: _selectedDirection != null
                                 ? (_selectedDirection == 'CREDIT'
-                                    ? 'Credit'
-                                    : 'Debit')
+                                      ? 'Credit'
+                                      : 'Debit')
                                 : 'All Directions',
                             isSelected: _selectedDirection != null,
                             items: const [
                               DropdownMenuItem(
-                                  value: null, child: Text('All Directions')),
+                                value: null,
+                                child: Text('All Directions'),
+                              ),
                               DropdownMenuItem(
-                                  value: 'CREDIT', child: Text('Credit')),
+                                value: 'CREDIT',
+                                child: Text('Credit'),
+                              ),
                               DropdownMenuItem(
-                                  value: 'DEBIT', child: Text('Debit')),
+                                value: 'DEBIT',
+                                child: Text('Debit'),
+                              ),
                             ],
                             onChanged: (val) {
                               setState(() => _selectedDirection = val);
@@ -435,18 +460,25 @@ class _AdminTransactionsScreenState
                             isSelected: _selectedStatus != null,
                             items: const [
                               DropdownMenuItem(
-                                  value: null, child: Text('All Statuses')),
+                                value: null,
+                                child: Text('All Statuses'),
+                              ),
                               DropdownMenuItem(
-                                  value: 'COMPLETED',
-                                  child: Text('Completed')),
+                                value: 'COMPLETED',
+                                child: Text('Completed'),
+                              ),
                               DropdownMenuItem(
-                                  value: 'PENDING_SETTLEMENT',
-                                  child: Text('Pending Settlement')),
+                                value: 'PENDING_SETTLEMENT',
+                                child: Text('Pending Settlement'),
+                              ),
                               DropdownMenuItem(
-                                  value: 'REVERSED',
-                                  child: Text('Reversed')),
+                                value: 'REVERSED',
+                                child: Text('Reversed'),
+                              ),
                               DropdownMenuItem(
-                                  value: 'FAILED', child: Text('Failed')),
+                                value: 'FAILED',
+                                child: Text('Failed'),
+                              ),
                             ],
                             onChanged: (val) {
                               setState(() => _selectedStatus = val);
@@ -465,7 +497,9 @@ class _AdminTransactionsScreenState
                       backgroundColor: AppColors.textPrimary,
                       visualDensity: VisualDensity.compact,
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 8),
+                        horizontal: 14,
+                        vertical: 8,
+                      ),
                       textStyle: TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w700,
@@ -483,8 +517,9 @@ class _AdminTransactionsScreenState
                   loading: () => Center(
                     child: Padding(
                       padding: EdgeInsets.all(AppSpacing.xxl),
-                      child:
-                          CircularProgressIndicator(color: AppColors.textPrimary),
+                      child: CircularProgressIndicator(
+                        color: AppColors.textPrimary,
+                      ),
                     ),
                   ),
                   error: (error, stack) {
@@ -497,8 +532,11 @@ class _AdminTransactionsScreenState
                       ),
                       child: Column(
                         children: [
-                          const Icon(Icons.error_outline_rounded,
-                              size: 36, color: Color(0xFFDC2626)),
+                          const Icon(
+                            Icons.error_outline_rounded,
+                            size: 36,
+                            color: Color(0xFFDC2626),
+                          ),
                           const SizedBox(height: 12),
                           Text(
                             'Failed to load transactions.',
@@ -556,23 +594,24 @@ class _AdminTransactionsScreenState
                       }
                       if (_appliedSearchQuery.isNotEmpty) {
                         final query = _appliedSearchQuery;
-                        final matchesId = txn.id.toString().contains(query) ||
+                        final matchesId =
+                            txn.id.toString().contains(query) ||
                             'txn#${txn.id}'.contains(query);
-                        final matchesRef = txn.referenceId
-                                ?.toLowerCase()
-                                .contains(query) ??
+                        final matchesRef =
+                            txn.referenceId?.toLowerCase().contains(query) ??
                             false;
-                        final matchesDesc = txn.description
-                                ?.toLowerCase()
-                                .contains(query) ??
+                        final matchesDesc =
+                            txn.description?.toLowerCase().contains(query) ??
                             false;
-                        final matchesTech = selectedTechnician?.employeeName
+                        final matchesTech =
+                            selectedTechnician?.employeeName
                                 .toLowerCase()
                                 .contains(query) ??
                             false;
-                        final matchesEmpId = selectedTechnician?.employeeId
-                                .toString()
-                                .contains(query) ??
+                        final matchesEmpId =
+                            selectedTechnician?.employeeId.toString().contains(
+                              query,
+                            ) ??
                             false;
 
                         if (!matchesId &&
@@ -589,7 +628,9 @@ class _AdminTransactionsScreenState
                     if (filteredResults.isEmpty) {
                       return Container(
                         padding: const EdgeInsets.symmetric(
-                            vertical: 40, horizontal: 16),
+                          vertical: 40,
+                          horizontal: 16,
+                        ),
                         decoration: BoxDecoration(
                           color: AppColors.surface,
                           borderRadius: BorderRadius.circular(12),
@@ -598,8 +639,7 @@ class _AdminTransactionsScreenState
                         child: const EmptyState(
                           icon: Icons.receipt_long_outlined,
                           title: 'No transactions found',
-                          message:
-                              'No financial transactions match the current filter criteria.',
+                          message: 'No financial transactions match the current filter criteria.',
                         ),
                       );
                     }
@@ -654,19 +694,19 @@ class _AdminTransactionsScreenState
                             decoration: BoxDecoration(
                               color: AppColors.surface,
                               borderRadius: BorderRadius.circular(10),
-                              border:
-                                  Border.all(color: AppColors.border),
+                              border: Border.all(color: AppColors.border),
                             ),
                             child: Row(
-                              mainAxisAlignment:
-                                  MainAxisAlignment.spaceBetween,
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 OutlinedButton.icon(
                                   onPressed: _currentPage > 1
                                       ? () => setState(() => _currentPage--)
                                       : null,
-                                  icon: const Icon(Icons.arrow_back_rounded,
-                                      size: 15),
+                                  icon: const Icon(
+                                    Icons.arrow_back_rounded,
+                                    size: 15,
+                                  ),
                                   label: Text('Previous'),
                                   style: OutlinedButton.styleFrom(
                                     visualDensity: VisualDensity.compact,
@@ -684,8 +724,9 @@ class _AdminTransactionsScreenState
                                       ? () => setState(() => _currentPage++)
                                       : null,
                                   icon: const Icon(
-                                      Icons.arrow_forward_rounded,
-                                      size: 15),
+                                    Icons.arrow_forward_rounded,
+                                    size: 15,
+                                  ),
                                   label: Text('Next'),
                                   style: OutlinedButton.styleFrom(
                                     visualDensity: VisualDensity.compact,
@@ -842,8 +883,7 @@ class _TransactionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final isCredit = transaction.direction.toUpperCase() == 'CREDIT';
     final sign = isCredit ? '+' : '−';
-    final amountColor =
-        isCredit ? AppColors.successText : AppColors.errorText;
+    final amountColor = isCredit ? AppColors.successText : AppColors.errorText;
     final statusColor = _statusColor(transaction.status);
 
     return Container(
@@ -971,14 +1011,18 @@ class _TransactionCard extends StatelessWidget {
                       // Direction Badge
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 2),
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
                           color: isCredit
                               ? const Color(0xFFECFDF5)
                               : const Color(0xFFFFF1F2),
                           borderRadius: BorderRadius.circular(4),
                           border: Border.all(
-                            color: isCredit ? AppColors.successBorder : AppColors.errorBorder,
+                            color: isCredit
+                                ? AppColors.successBorder
+                                : AppColors.errorBorder,
                             width: 0.8,
                           ),
                         ),
@@ -987,7 +1031,9 @@ class _TransactionCard extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 9.5,
                             fontWeight: FontWeight.w800,
-                            color: isCredit ? AppColors.successText : AppColors.errorText,
+                            color: isCredit
+                                ? AppColors.successText
+                                : AppColors.errorText,
                           ),
                         ),
                       ),
@@ -995,7 +1041,9 @@ class _TransactionCard extends StatelessWidget {
                       // Status Badge
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 2),
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
                           color: statusColor.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(4),

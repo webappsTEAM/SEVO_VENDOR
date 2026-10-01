@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../../core/theme/app_theme.dart';
 import '../../../../routing/app_routes.dart';
-import '../../../../shared/widgets/async_value_view.dart';
-import '../../../../shared/widgets/workforce_app_bar.dart';
-import '../../../admin/presentation/widgets/admin_drawer.dart';
+import '../../../../shared/widgets/sevo/sevo_controls.dart';
+import '../../../../shared/widgets/sevo/sevo_module_art.dart';
+import '../../../../shared/widgets/sevo/sevo_module_scaffold.dart';
+import '../../../../shared/widgets/sevo/sevo_search_field.dart';
+import '../../../../shared/widgets/sevo/sevo_skeleton.dart';
+import '../../../../shared/widgets/sevo/sevo_state_views.dart';
 import '../data/superadmin_workforce_repository.dart';
 import '../domain/platform_relieving_request.dart';
 import '../domain/platform_worker.dart';
@@ -19,10 +21,7 @@ import 'widgets/workforce_summary_metrics.dart';
 
 /// Super Admin Platform Governance: Workforce Roster (Manage All Workforce - Solo & Tied).
 class SuperAdminWorkforceRosterScreen extends ConsumerStatefulWidget {
-  const SuperAdminWorkforceRosterScreen({
-    super.key,
-    this.initialVendorId,
-  });
+  const SuperAdminWorkforceRosterScreen({super.key, this.initialVendorId});
 
   final int? initialVendorId;
 
@@ -78,15 +77,15 @@ class _SuperAdminWorkforceRosterScreenState
     ref.read(workforceSearchQueryProvider.notifier).state = query.trim();
   }
 
-  void _openTieModal(PlatformWorker worker, List<PlatformVendorSummary> vendors) {
+  void _openTieModal(
+    PlatformWorker worker,
+    List<PlatformVendorSummary> vendors,
+  ) {
     showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => TieVendorBottomSheet(
-        worker: worker,
-        vendors: vendors,
-      ),
+      builder: (ctx) => TieVendorBottomSheet(worker: worker, vendors: vendors),
     );
   }
 
@@ -105,525 +104,157 @@ class _SuperAdminWorkforceRosterScreenState
     final selectedVendorId = ref.watch(workforceSelectedVendorIdProvider);
     final workforceAsync = ref.watch(platformWorkforceDataProvider);
 
-    return Scaffold(
-      appBar: const WorkforceAppBar(
-        titleText: 'Workforce Roster',
-        showStatusSubBar: false,
-        showDrawerMenu: true,
+    return SevoModuleScaffold(
+      module: SevoModule.workforceRoster,
+      title: 'Workforce Roster',
+      subtitle: 'Manage solo & tied technicians',
+      ready: !workforceAsync.isLoading,
+      onRefresh: () async {
+        ref.invalidate(platformWorkforceDataProvider);
+        await ref.read(platformWorkforceDataProvider.future);
+      },
+      heroTrailing: IconButton.filled(
+        icon: const Icon(Icons.refresh_rounded, size: 20),
+        color: Colors.white,
+        style: IconButton.styleFrom(
+          backgroundColor: Colors.white.withValues(alpha: 0.16),
+        ),
+        tooltip: 'Refresh Roster',
+        onPressed: () => ref.invalidate(platformWorkforceDataProvider),
       ),
-      drawer: const AdminDrawer(),
-      body: RefreshIndicator(
-        onRefresh: () async {
-          ref.invalidate(platformWorkforceDataProvider);
-          await ref.read(platformWorkforceDataProvider.future);
-        },
-        child: AsyncValueView<PlatformWorkforceOverviewData>(
-          value: workforceAsync,
-          errorMessage: 'Unable to load platform workforce roster',
+      heroBottom: selectedFilter == WorkforceFilterType.relievingAudits
+          ? null
+          : SevoSearchField(
+              controller: _searchController,
+              hint: 'Search name, ID, email or phone',
+              onChanged: _onSearchChanged,
+            ),
+      children: _body(workforceAsync, selectedFilter, selectedVendorId),
+    );
+  }
+
+  List<Widget> _body(
+    AsyncValue<PlatformWorkforceOverviewData> async,
+    WorkforceFilterType selectedFilter,
+    int? selectedVendorId,
+  ) {
+    if (async.hasError && !async.hasValue) {
+      return [
+        SevoErrorState(
+          message: 'Unable to load platform workforce roster',
           onRetry: () => ref.invalidate(platformWorkforceDataProvider),
-          builder: (context, data) {
-            final isAuditsTab =
-                selectedFilter == WorkforceFilterType.relievingAudits;
-
-            return ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.md,
-                AppSpacing.md,
-                AppSpacing.md,
-                AppSpacing.xxl,
-              ),
-              children: [
-                // ── 1. Header ───────────────────────────────────────────────
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 6,
-                                  vertical: 2,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF005965)
-                                      .withValues(alpha: 0.1),
-                                  borderRadius: BorderRadius.circular(4),
-                                  border: Border.all(
-                                    color: const Color(0xFF005965)
-                                        .withValues(alpha: 0.25),
-                                  ),
-                                ),
-                                child: Text(
-                                  'PLATFORM GOVERNANCE',
-                                  style: TextStyle(
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w900,
-                                    color: Color(0xFF005965),
-                                    letterSpacing: 0.6,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Workforce Oversight (Solo & Tied Workers)',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w900,
-                              color: AppColors.textPrimary,
-                              letterSpacing: -0.4,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'SEVO Platform Admin: Manage all technicians, directly tie solo workers to any vendor, audit resignations, and relieve workers.',
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w400,
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.refresh_rounded, size: 20),
-                      color: const Color(0xFF005965),
-                      tooltip: 'Refresh Roster',
-                      onPressed: () =>
-                          ref.invalidate(platformWorkforceDataProvider),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-
-                // ── Action: Manage Vendor Companies ─────────────────────────
-                Material(
-                  color: const Color(0xFFEFF6FF),
-                  borderRadius: BorderRadius.circular(AppRadius.card),
-                  child: InkWell(
-                    onTap: () => context.go(AppRoutes.superAdminVendors),
-                    borderRadius: BorderRadius.circular(AppRadius.card),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: AppSpacing.md,
-                        vertical: 10,
-                      ),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(AppRadius.card),
-                        border: Border.all(color: const Color(0xFFBFDBFE)),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: Color(0xFFDBEAFE),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.business_rounded,
-                              color: Color(0xFF1D4ED8),
-                              size: 18,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          const Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Manage Vendor Companies',
-                                  style: TextStyle(
-                                    color: Color(0xFF1E3A8A),
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                                SizedBox(height: 1),
-                                Text(
-                                  'View registered vendor directory and provider fleet sizes',
-                                  style: TextStyle(
-                                    color: Color(0xFF3B82F6),
-                                    fontSize: 10.5,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const Icon(
-                            Icons.arrow_forward_ios_rounded,
-                            color: Color(0xFF1D4ED8),
-                            size: 13,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 14),
-
-                // ── 2. Live Summary Metrics ─────────────────────────────────
-                WorkforceSummaryMetrics(
-                  data: data,
-                  selectedFilter: selectedFilter,
-                  onSelectFilter: (filter) {
-                    ref.read(workforceFilterTypeProvider.notifier).state =
-                        filter;
-                  },
-                ),
-                const SizedBox(height: 16),
-
-                // ── 3. Filter Tabs with Live Badges ─────────────────────────
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      _FilterTab(
-                        label: 'All Workforce',
-                        count: data.totalTechnicians,
-                        isSelected: selectedFilter == WorkforceFilterType.all,
-                        activeColor: const Color(0xFF005965),
-                        onTap: () => ref
-                            .read(workforceFilterTypeProvider.notifier)
-                            .state = WorkforceFilterType.all,
-                      ),
-                      const SizedBox(width: 6),
-                      _FilterTab(
-                        label: 'Solo Workers',
-                        count: data.soloWorkersCount,
-                        isSelected: selectedFilter == WorkforceFilterType.solo,
-                        activeColor: const Color(0xFF2563EB),
-                        onTap: () => ref
-                            .read(workforceFilterTypeProvider.notifier)
-                            .state = WorkforceFilterType.solo,
-                      ),
-                      const SizedBox(width: 6),
-                      _FilterTab(
-                        label: 'Tied Workers',
-                        count: data.tiedWorkersCount,
-                        isSelected: selectedFilter == WorkforceFilterType.tied,
-                        activeColor: const Color(0xFF059669),
-                        onTap: () => ref
-                            .read(workforceFilterTypeProvider.notifier)
-                            .state = WorkforceFilterType.tied,
-                      ),
-                      const SizedBox(width: 6),
-                      _FilterTab(
-                        label: 'Resignation Audits',
-                        count: data.pendingSevoAuditCount,
-                        isSelected: selectedFilter ==
-                            WorkforceFilterType.relievingAudits,
-                        activeColor: const Color(0xFF7C3AED),
-                        hasAlert: data.pendingSevoAuditCount > 0,
-                        onTap: () => ref
-                            .read(workforceFilterTypeProvider.notifier)
-                            .state = WorkforceFilterType.relievingAudits,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-
-                // ── 4. Search & Vendor Filter Controls ───────────────────────
-                if (!isAuditsTab) ...[
-                  // Search Bar
-                  Container(
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: AppColors.surface,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppColors.border),
-                    ),
-                    child: Row(
-                      children: [
-                        Padding(
-                          padding: EdgeInsets.only(left: 10, right: 6),
-                          child: Icon(
-                            Icons.search_rounded,
-                            size: 18,
-                            color: AppColors.textMuted,
-                          ),
-                        ),
-                        Expanded(
-                          child: TextField(
-                            controller: _searchController,
-                            style: TextStyle(
-                              fontSize: 12.5,
-                              color: AppColors.textPrimary,
-                            ),
-                            decoration: InputDecoration(
-                              hintText:
-                                  'Search by name, ID (EMP-...), email, phone...',
-                              hintStyle: TextStyle(
-                                fontSize: 12,
-                                color: AppColors.textMuted,
-                              ),
-                              border: InputBorder.none,
-                              isDense: true,
-                              contentPadding: EdgeInsets.zero,
-                            ),
-                            onChanged: _onSearchChanged,
-                          ),
-                        ),
-                        if (_searchController.text.isNotEmpty)
-                          IconButton(
-                            icon: const Icon(Icons.clear_rounded, size: 16),
-                            color: AppColors.textMuted,
-                            onPressed: () {
-                              _searchController.clear();
-                              _onSearchChanged('');
-                            },
-                          ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-
-                  // Vendor Filter Dropdown
-                  if (data.vendors.isNotEmpty)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      decoration: BoxDecoration(
-                        color: AppColors.surface,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: AppColors.border),
-                      ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<int?>(
-                          value: selectedVendorId,
-                          isExpanded: true,
-                          icon: Icon(Icons.arrow_drop_down_rounded, color: AppColors.textSecondary,
-                          ),
-                          hint: Row(
-                            children: [
-                              Icon(
-                                Icons.business_outlined,
-                                size: 14,
-                                color: AppColors.textSecondary,
-                              ),
-                              SizedBox(width: 6),
-                              Text(
-                                'Filter by Vendor (All Vendors)',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: AppColors.textSecondary,
-                                ),
-                              ),
-                            ],
-                          ),
-                          items: [
-                            const DropdownMenuItem<int?>(
-                              value: null,
-                              child: Text(
-                                'All Vendors',
-                                style: TextStyle(fontSize: 12),
-                              ),
-                            ),
-                            ...data.vendors.map(
-                              (v) => DropdownMenuItem<int?>(
-                                value: v.id,
-                                child: Text(
-                                  '${v.companyName} (${v.tiedWorkersCount} tied)',
-                                  style: TextStyle(fontSize: 12),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ),
-                          ],
-                          onChanged: (val) {
-                            ref
-                                .read(workforceSelectedVendorIdProvider.notifier)
-                                .state = val;
-                          },
-                        ),
-                      ),
-                    ),
-                  const SizedBox(height: 14),
-                ],
-
-                // ── 5. Main Roster Content List ─────────────────────────────
-                if (isAuditsTab) ...[
-                  // Relieving & Resignation Audits List
-                  if (data.relievingRequests.isEmpty)
-                    _EmptyRosterView(
-                      icon: Icons.check_circle_outline_rounded,
-                      title: 'No Pending Relieving Audits',
-                      subtitle:
-                          'All technician resignations and vendor clearances have been audited and resolved.',
-                      iconColor: const Color(0xFF059669),
-                    )
-                  else
-                    ...data.relievingRequests.map(
-                      (req) => RelievingAuditCard(
-                        request: req,
-                        onAudit: () => _openAuditModal(req),
-                      ),
-                    ),
-                ] else ...[
-                  // Personnel Workers List
-                  if (data.workers.isEmpty)
-                    _EmptyRosterView(
-                      icon: Icons.people_outline_rounded,
-                      title: 'No technicians found',
-                      subtitle:
-                          'No workers match your selected filter or search criteria.',
-                      iconColor: AppColors.textMuted,
-                    )
-                  else
-                    ...data.workers.map(
-                      (worker) => WorkerCard(
-                        worker: worker,
-                        onManageTie: () => _openTieModal(worker, data.vendors),
-                      ),
-                    ),
-                ],
-              ],
-            );
-          },
         ),
+      ];
+    }
+    if (!async.hasValue) return const [SevoListSkeleton(count: 3)];
+
+    final data = async.requireValue;
+    final isAuditsTab = selectedFilter == WorkforceFilterType.relievingAudits;
+    void select(WorkforceFilterType f) =>
+        ref.read(workforceFilterTypeProvider.notifier).state = f;
+
+    return [
+      SevoLinkCard(
+        title: 'Manage Vendor Companies',
+        subtitle: 'View registered vendor directory and provider fleet sizes',
+        icon: Icons.business_rounded,
+        tone: SevoTone.info,
+        onTap: () => context.go(AppRoutes.superAdminVendors),
       ),
-    );
-  }
-}
-
-class _FilterTab extends StatelessWidget {
-  const _FilterTab({
-    required this.label,
-    required this.count,
-    required this.isSelected,
-    required this.activeColor,
-    this.hasAlert = false,
-    required this.onTap,
-  });
-
-  final String label;
-  final int count;
-  final bool isSelected;
-  final Color activeColor;
-  final bool hasAlert;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: isSelected ? activeColor : Colors.white,
-      borderRadius: BorderRadius.circular(8),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6.5),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: isSelected ? activeColor : AppColors.border,
-              width: isSelected ? 1.2 : 1.0,
-            ),
+      const SizedBox(height: 12),
+      WorkforceSummaryMetrics(
+        data: data,
+        selectedFilter: selectedFilter,
+        onSelectFilter: select,
+      ),
+      const SizedBox(height: 14),
+      SevoFilterRow(
+        chips: [
+          SevoFilterChip(
+            label: 'All Workforce',
+            count: data.totalTechnicians,
+            selected: selectedFilter == WorkforceFilterType.all,
+            color: const Color(0xFF0D9488),
+            onTap: () => select(WorkforceFilterType.all),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                  color: isSelected ? Colors.white : AppColors.textSecondary,
-                ),
-              ),
-              const SizedBox(width: 5),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? Colors.white.withValues(alpha: 0.25)
-                      : (hasAlert
-                          ? const Color(0xFFFEE2E2)
-                          : const Color(0xFFF1F5F9)),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  '$count',
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    color: isSelected
-                        ? Colors.white
-                        : (hasAlert
-                            ? const Color(0xFFDC2626)
-                            : AppColors.textSecondary),
-                  ),
-                ),
-              ),
-            ],
+          SevoFilterChip(
+            label: 'Solo Workers',
+            count: data.soloWorkersCount,
+            selected: selectedFilter == WorkforceFilterType.solo,
+            color: const Color(0xFF2563EB),
+            onTap: () => select(WorkforceFilterType.solo),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _EmptyRosterView extends StatelessWidget {
-  const _EmptyRosterView({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.iconColor,
-  });
-
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final Color iconColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.lg,
-        vertical: AppSpacing.xxl,
-      ),
-      margin: const EdgeInsets.only(top: AppSpacing.md),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppRadius.card),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 40, color: iconColor),
-          const SizedBox(height: 12),
-          Text(
-            title,
-            style: TextStyle(
-              fontSize: 14.5,
-              fontWeight: FontWeight.w800,
-              color: AppColors.textPrimary,
-            ),
-            textAlign: TextAlign.center,
+          SevoFilterChip(
+            label: 'Tied Workers',
+            count: data.tiedWorkersCount,
+            selected: selectedFilter == WorkforceFilterType.tied,
+            color: const Color(0xFF059669),
+            onTap: () => select(WorkforceFilterType.tied),
           ),
-          const SizedBox(height: 4),
-          Text(
-            subtitle,
-            style: TextStyle(
-              fontSize: 12,
-              color: AppColors.textSecondary,
-              height: 1.3,
-            ),
-            textAlign: TextAlign.center,
+          SevoFilterChip(
+            label: 'Resignation Audits',
+            count: data.pendingSevoAuditCount,
+            selected: isAuditsTab,
+            color: const Color(0xFF7C3AED),
+            alert: data.pendingSevoAuditCount > 0,
+            onTap: () => select(WorkforceFilterType.relievingAudits),
           ),
         ],
       ),
-    );
+      const SizedBox(height: 8),
+      if (!isAuditsTab && data.vendors.isNotEmpty) ...[
+        SevoDropdownField<int?>(
+          value: selectedVendorId,
+          icon: Icons.business_outlined,
+          items: [
+            const DropdownMenuItem<int?>(
+              value: null,
+              child: Text('All Vendors'),
+            ),
+            for (final v in data.vendors)
+              DropdownMenuItem<int?>(
+                value: v.id,
+                child: Text(
+                  '${v.companyName} (${v.tiedWorkersCount} tied)',
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+          ],
+          onChanged: (val) =>
+              ref.read(workforceSelectedVendorIdProvider.notifier).state = val,
+        ),
+        const SizedBox(height: 14),
+      ],
+      if (isAuditsTab) ...[
+        if (data.relievingRequests.isEmpty)
+          const SevoEmptyState(
+            module: SevoModule.workforceRoster,
+            title: 'No Pending Relieving Audits',
+            message: 'All technician resignations and vendor clearances have been audited and resolved.',
+          )
+        else
+          for (var i = 0; i < data.relievingRequests.length; i++)
+            RelievingAuditCard(
+              index: i,
+              request: data.relievingRequests[i],
+              onAudit: () => _openAuditModal(data.relievingRequests[i]),
+            ),
+      ] else ...[
+        if (data.workers.isEmpty)
+          const SevoEmptyState(
+            module: SevoModule.workforceRoster,
+            title: 'No technicians found',
+            message:
+                'No workers match your selected filter or search criteria.',
+          )
+        else
+          for (var i = 0; i < data.workers.length; i++)
+            WorkerCard(
+              index: i,
+              worker: data.workers[i],
+              onManageTie: () => _openTieModal(data.workers[i], data.vendors),
+            ),
+      ],
+    ];
   }
 }

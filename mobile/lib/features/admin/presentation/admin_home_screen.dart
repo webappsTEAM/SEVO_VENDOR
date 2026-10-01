@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_theme.dart';
+import '../../../../shared/widgets/admin_greeting.dart';
+import '../../../../shared/widgets/app_fade_in.dart';
 import '../../../../shared/widgets/async_value_view.dart';
 import '../../../../shared/widgets/workforce_app_bar.dart';
 import '../domain/admin_dashboard_metrics.dart';
@@ -26,9 +28,9 @@ class AdminHomeScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: const WorkforceAppBar(
-        titleText: 'Admin Cockpit',
         showStatusSubBar: false,
         showDrawerMenu: true,
+        flatBottom: true,
       ),
       drawer: const AdminDrawer(),
       body: RefreshIndicator(
@@ -40,32 +42,53 @@ class AdminHomeScreen extends ConsumerWidget {
           value: dashboardAsync,
           onRetry: () => ref.invalidate(adminDashboardDataProvider),
           builder: (context, data) {
+            Widget pad(Widget child) => Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+              child: child,
+            );
             return ListView(
               physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.md,
-                AppSpacing.md,
-                AppSpacing.md,
-                AppSpacing.xxl,
-              ),
+              padding: const EdgeInsets.only(bottom: AppSpacing.xxl),
               children: [
-                // 1. Page Title & Primary Actions
-                AdminTitleSection(
-                  onRefresh: () => ref.invalidate(adminDashboardDataProvider),
-                  isRefreshing: dashboardAsync.isLoading,
+                // Teal greeting band, continuous with the app bar
+                const AppFadeIn(child: AdminGreeting()),
+                const SizedBox(height: AppSpacing.md),
+
+                // Workforce Operations Center card + primary actions
+                pad(
+                  AppFadeIn(
+                    index: 1,
+                    child: AdminTitleSection(
+                      onRefresh: () =>
+                          ref.invalidate(adminDashboardDataProvider),
+                      isRefreshing: dashboardAsync.isLoading,
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 20),
 
-                // 2. Action Center (4 Priority Operational Cards)
-                ActionCenterSection(data: data),
+                // Action Center
+                pad(
+                  AppFadeIn(index: 2, child: ActionCenterSection(data: data)),
+                ),
                 const SizedBox(height: 20),
 
-                // 3. Workforce Overview (5 Metric Cards)
-                WorkforceOverviewSection(data: data),
+                // Workforce Overview
+                pad(
+                  AppFadeIn(
+                    index: 3,
+                    child: WorkforceOverviewSection(data: data),
+                  ),
+                ),
                 const SizedBox(height: 20),
 
-                // 4. Recent Operations & Service Bookings
-                RecentOperationsSection(data: data),
+                // Recent Operations & Service Bookings
+                pad(
+                  AppFadeIn(
+                    index: 3,
+                    child: RecentOperationsSection(data: data),
+                  ),
+                ),
               ],
             );
           },

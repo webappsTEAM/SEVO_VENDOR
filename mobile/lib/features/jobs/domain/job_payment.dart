@@ -39,3 +39,33 @@ class JobPaymentInfo {
   bool get isPaid => paymentStatus == 'PAID';
   bool get isCashPending => paymentStatus == 'CASH_PENDING';
 }
+
+/// Result returned from POST /workforce/jobs/{id}/payment/collect/
+class CashCollectionResult {
+  const CashCollectionResult({
+    required this.message,
+    required this.paymentStatus,
+    this.amountDue,
+    this.amountReceived,
+    this.changeReturned,
+  });
+
+  factory CashCollectionResult.fromJson(Map<String, dynamic> json) {
+    return CashCollectionResult(
+      message: parseString(json['message']) ?? 'Cash collection recorded.',
+      paymentStatus: parseString(json['payment_status']) ?? 'CASH_PENDING',
+      amountDue: parseDouble(json['amount_due']),
+      amountReceived: parseDouble(json['amount_received']),
+      changeReturned: parseDouble(json['change_returned']),
+    );
+  }
+
+  final String message;
+  final String paymentStatus;
+  final double? amountDue;
+  final double? amountReceived;
+  final double? changeReturned;
+
+  bool get isPaid => paymentStatus.toUpperCase() == 'PAID';
+  bool get isCashPending => paymentStatus.toUpperCase() == 'CASH_PENDING';
+}

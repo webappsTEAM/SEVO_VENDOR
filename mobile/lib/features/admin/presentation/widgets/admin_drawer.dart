@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/theme/app_motion.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../routing/app_routes.dart';
+import '../../../../shared/widgets/sevo_brand_mark.dart';
 import '../../../../shared/widgets/workforce_avatar.dart';
 import '../../../auth/presentation/auth_controller.dart';
 
@@ -39,11 +41,13 @@ class AdminDrawer extends ConsumerStatefulWidget {
 class _AdminDrawerState extends ConsumerState<AdminDrawer> {
   // Super Admin Collapsible Group States
   bool _governanceExpanded = true;
+  bool _superAdminSellerHubExpanded = true;
   bool _operationsHubExpanded = true;
   bool _financeTreasuryExpanded = true;
   bool _telemetryAuditsExpanded = true;
 
   // Vendor Admin Collapsible Group States
+  bool _sellerHubExpanded = true;
   bool _workforceExpanded = true;
   bool _operationsExpanded = true;
   bool _financeExpanded = true;
@@ -54,7 +58,8 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
     final authState = ref.watch(authControllerProvider);
     final user = authState.user;
     final isSuperAdmin = user?.isSuperAdmin == true;
-    final displayName = user?.displayName ?? (isSuperAdmin ? 'Platform Admin' : 'Admin');
+    final displayName =
+        user?.displayName ?? (isSuperAdmin ? 'Platform Admin' : 'Admin');
     final initial = displayName.isNotEmpty ? displayName[0].toUpperCase() : 'A';
     final email = user?.email ?? '';
     final photoUrl = user?.avatar;
@@ -72,8 +77,13 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
           children: [
             // ── Drawer Header ──────────────────────────────────────────────
             Container(
-              padding: const EdgeInsets.all(AppSpacing.md),
-              decoration: BoxDecoration(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.md,
+                AppSpacing.md,
+                AppSpacing.md,
+                22,
+              ),
+              decoration: const BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
@@ -83,147 +93,94 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                     Color(0xFF028090), // Cyan Accent
                   ],
                 ),
-                border: Border(bottom: BorderSide(color: Color(0x33005965))),
+                borderRadius: BorderRadius.only(
+                  bottomLeft: Radius.circular(28),
+                  bottomRight: Radius.circular(28),
+                ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: Image.asset(
-                          'assets/images/sevo_logo.png',
-                          width: 36,
-                          height: 36,
-                          fit: BoxFit.contain,
-                          errorBuilder: (context, error, stackTrace) => Container(
-                            width: 36,
-                            height: 36,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF2563EB),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Center(
-                              child: Icon(
-                                Icons.handyman_rounded,
-                                color: Colors.white,
-                                size: 20,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              isSuperAdmin ? 'SEVO Platform' : 'SEVO',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 0.8,
-                              ),
-                            ),
-                            Container(
-                              margin: const EdgeInsets.only(top: 2),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
-                                vertical: 1.5,
-                              ),
-                              decoration: BoxDecoration(
-                                color: isSuperAdmin
-                                    ? const Color(0xFFD97706).withValues(alpha: 0.35)
-                                    : const Color(0xFF059669).withValues(alpha: 0.35),
-                                borderRadius: BorderRadius.circular(4),
-                                border: Border.all(
-                                  color: isSuperAdmin
-                                      ? const Color(0xFFFBBF24).withValues(alpha: 0.5)
-                                      : const Color(0xFF34D399).withValues(alpha: 0.5),
-                                  width: 0.6,
-                                ),
-                              ),
-                              child: Text(
-                                isSuperAdmin ? 'Superadmin Console' : 'WORKFORCE ADMIN',
-                                style: TextStyle(
-                                  color: isSuperAdmin
-                                      ? const Color(0xFFFDE68A)
-                                      : const Color(0xFF6EE7B7),
-                                  fontSize: 8.5,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 0.6,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                      const SevoBrandMark(size: 44),
+                      const SizedBox(width: 12),
+                      const SevoHeaderTitle(
+                        fontSize: 41,
+                      ), // ≈ the previous 24.7px-tall logo
                     ],
                   ),
                   const SizedBox(height: AppSpacing.md),
-                  Row(
-                    children: [
-                      WorkforceAvatar(
-                        imageUrl: photoUrl,
-                        name: displayName,
-                        initial: initial,
-                        radius: 19,
-                        fontSize: 14,
-                        backgroundColor: AppColors.surface.withValues(alpha: 0.15),
-                        foregroundColor: Colors.white,
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.22),
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              displayName,
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w800,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            if (email.isNotEmpty)
+                    ),
+                    child: Row(
+                      children: [
+                        WorkforceAvatar(
+                          imageUrl: photoUrl,
+                          name: displayName,
+                          initial: initial,
+                          radius: 24,
+                          fontSize: 18,
+                          backgroundColor: Colors.white.withValues(alpha: 0.18),
+                          foregroundColor: Colors.white,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
                               Text(
-                                email,
-                                style: TextStyle(
-                                  color: Color(0xFFBAE6FD),
-                                  fontSize: 11,
+                                displayName,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w800,
                                 ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
-                          ],
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 7,
-                          vertical: 2.5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFEF3C7),
-                          borderRadius: BorderRadius.circular(5),
-                          border: Border.all(color: const Color(0xFFFDE68A), width: 0.8),
-                        ),
-                        child: Text(
-                          isSuperAdmin ? 'SUPERADMIN' : 'ADMIN',
-                          style: TextStyle(
-                            color: Color(0xFF92400E),
-                            fontSize: 9.5,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 0.4,
+                              if (email.isNotEmpty)
+                                Text(
+                                  email,
+                                  style: const TextStyle(
+                                    color: Color(0xFFCFEDEA),
+                                    fontSize: 12,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              const SizedBox(height: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 9,
+                                  vertical: 3,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF16A34A),
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Text(
+                                  isSuperAdmin ? 'SUPERADMIN' : 'ADMIN',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 0.6,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -247,7 +204,8 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                       icon: Icons.dashboard_rounded,
                       label: 'Platform Dashboard',
                       route: AppRoutes.superAdminDashboard,
-                      isActive: currentLocation == AppRoutes.superAdminDashboard ||
+                      isActive:
+                          currentLocation == AppRoutes.superAdminDashboard ||
                           currentLocation == '/superadmin' ||
                           currentLocation == '/superadmin/home' ||
                           currentLocation == '/superadmin/dashboard' ||
@@ -266,16 +224,20 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                     _DrawerGroupHeader(
                       title: 'PLATFORM GOVERNANCE',
                       isExpanded: _governanceExpanded,
-                      onToggle: () =>
-                          setState(() => _governanceExpanded = !_governanceExpanded),
+                      onToggle: () => setState(
+                        () => _governanceExpanded = !_governanceExpanded,
+                      ),
                     ),
                     if (_governanceExpanded) ...[
                       _DrawerNavItem(
                         icon: Icons.business_rounded,
                         label: 'Vendor Directory',
                         route: AppRoutes.superAdminVendors,
-                        isActive: currentLocation.startsWith('/superadmin/vendors') ||
-                            currentLocation.startsWith('/workforce/platform/vendors') ||
+                        isActive:
+                            currentLocation.startsWith('/superadmin/vendors') ||
+                            currentLocation.startsWith(
+                              '/workforce/platform/vendors',
+                            ) ||
                             currentLocation.startsWith('/platform/vendors'),
                         onTap: () {
                           Navigator.of(context).pop();
@@ -287,8 +249,13 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                         iconColor: AppColors.primaryLight,
                         label: 'Workforce Roster',
                         route: AppRoutes.superAdminWorkforce,
-                        isActive: currentLocation.startsWith('/superadmin/workforce') ||
-                            currentLocation.startsWith('/workforce/platform/workforce') ||
+                        isActive:
+                            currentLocation.startsWith(
+                              '/superadmin/workforce',
+                            ) ||
+                            currentLocation.startsWith(
+                              '/workforce/platform/workforce',
+                            ) ||
                             currentLocation.startsWith('/platform/workforce'),
                         onTap: () {
                           Navigator.of(context).pop();
@@ -298,24 +265,50 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                       _DrawerNavItem(
                         icon: Icons.assignment_ind_rounded,
                         iconColor: const Color(0xFF2563EB),
-                        label: 'Applications Approval',
+                        label: 'Technician Applications',
                         route: AppRoutes.superAdminApplications,
-                        isActive: currentLocation.startsWith('/superadmin/applications') ||
-                            currentLocation.startsWith('/workforce/platform/applications') ||
-                            currentLocation.startsWith('/platform/applications'),
+                        isActive:
+                            currentLocation.startsWith(
+                              '/superadmin/applications',
+                            ) ||
+                            currentLocation.startsWith(
+                              '/workforce/platform/applications',
+                            ) ||
+                            currentLocation.startsWith(
+                              '/platform/applications',
+                            ),
                         onTap: () {
                           Navigator.of(context).pop();
                           context.go(AppRoutes.superAdminApplications);
                         },
                       ),
                       _DrawerNavItem(
-                        icon: Icons.domain_verification_rounded,
-                        label: 'Service Providers',
-                        route: '/workforce/platform/providers',
-                        isActive: currentLocation.startsWith('/workforce/platform/providers'),
+                        icon: Icons.storefront_rounded,
+                        iconColor: const Color(0xFF2563EB),
+                        label: 'Seller Applications',
+                        route: AppRoutes.adminSellerApplications,
+                        isActive:
+                            currentLocation.startsWith(
+                              '/admin/seller-applications',
+                            ) ||
+                            currentLocation.startsWith(
+                              '/workforce/admin/seller-applications',
+                            ),
                         onTap: () {
                           Navigator.of(context).pop();
-                          context.go('/workforce/platform/providers');
+                          context.go(AppRoutes.adminSellerApplications);
+                        },
+                      ),
+                      _DrawerNavItem(
+                        icon: Icons.domain_verification_rounded,
+                        label: 'Service Providers',
+                        route: AppRoutes.superAdminServiceProviders,
+                        isActive: currentLocation.startsWith(
+                          '/workforce/platform/providers',
+                        ),
+                        onTap: () {
+                          Navigator.of(context).pop();
+                          context.go(AppRoutes.superAdminServiceProviders);
                         },
                       ),
                     ],
@@ -324,26 +317,49 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                     Divider(height: 1),
                     const SizedBox(height: AppSpacing.xs),
 
-                    // 2. OPERATIONS HUB
+                    // 2. SELLER HUB
+                    _DrawerGroupHeader(
+                      title: 'SELLER HUB',
+                      isExpanded: _superAdminSellerHubExpanded,
+                      onToggle: () => setState(
+                        () => _superAdminSellerHubExpanded =
+                            !_superAdminSellerHubExpanded,
+                      ),
+                    ),
+                    if (_superAdminSellerHubExpanded) ...[
+                      ..._buildSellerHubItems(
+                        context,
+                        currentLocation,
+                        platformAdmin: true,
+                      ),
+                    ],
+
+                    const SizedBox(height: AppSpacing.sm),
+                    Divider(height: 1),
+                    const SizedBox(height: AppSpacing.xs),
+
+                    // 3. OPERATIONS HUB
                     _DrawerGroupHeader(
                       title: 'OPERATIONS HUB',
                       isExpanded: _operationsHubExpanded,
-                      onToggle: () =>
-                          setState(() => _operationsHubExpanded = !_operationsHubExpanded),
+                      onToggle: () => setState(
+                        () => _operationsHubExpanded = !_operationsHubExpanded,
+                      ),
                     ),
                     if (_operationsHubExpanded) ...[
                       _DrawerNavItem(
                         icon: Icons.calculate_rounded,
                         iconColor: AppColors.primaryLight,
                         label: 'AC Estimations',
-                        route: AppRoutes.estimates,
-                        isActive: currentLocation == AppRoutes.estimates ||
-                            currentLocation.startsWith('/estimates') ||
-                            currentLocation.startsWith('/more/estimates') ||
-                            currentLocation.startsWith('/admin/estimates'),
+                        route: AppRoutes.adminEstimations,
+                        isActive:
+                            currentLocation.startsWith('/admin/estimations') ||
+                            currentLocation.startsWith(
+                              '/workforce/admin/estimations',
+                            ),
                         onTap: () {
                           Navigator.of(context).pop();
-                          context.go(AppRoutes.estimates);
+                          context.go(AppRoutes.adminEstimations);
                         },
                       ),
                       _DrawerNavItem(
@@ -351,8 +367,11 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                         iconColor: const Color(0xFF2563EB),
                         label: 'Quotation Approvals',
                         route: AppRoutes.adminQuotationApprovals,
-                        isActive: currentLocation.startsWith('/admin/quotations') ||
-                            currentLocation.startsWith('/workforce/admin/quotations'),
+                        isActive:
+                            currentLocation.startsWith('/admin/quotations') ||
+                            currentLocation.startsWith(
+                              '/workforce/admin/quotations',
+                            ),
                         onTap: () {
                           Navigator.of(context).pop();
                           context.go(AppRoutes.adminQuotationApprovals);
@@ -363,8 +382,11 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                         iconColor: const Color(0xFF0D9488),
                         label: 'Invoices',
                         route: AppRoutes.adminInvoices,
-                        isActive: currentLocation.startsWith('/admin/invoices') ||
-                            currentLocation.startsWith('/workforce/admin/invoices'),
+                        isActive:
+                            currentLocation.startsWith('/admin/invoices') ||
+                            currentLocation.startsWith(
+                              '/workforce/admin/invoices',
+                            ),
                         onTap: () {
                           Navigator.of(context).pop();
                           context.go(AppRoutes.adminInvoices);
@@ -374,7 +396,8 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                         icon: Icons.work_rounded,
                         label: 'Field Jobs',
                         route: AppRoutes.adminJobs,
-                        isActive: currentLocation.startsWith('/admin/jobs') ||
+                        isActive:
+                            currentLocation.startsWith('/admin/jobs') ||
                             currentLocation.startsWith('/workforce/admin/jobs'),
                         onTap: () {
                           Navigator.of(context).pop();
@@ -386,9 +409,14 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                         iconColor: const Color(0xFF059669),
                         label: 'Dispatch Radar',
                         route: AppRoutes.adminDispatch,
-                        isActive: currentLocation.startsWith('/admin/dispatch') ||
-                            currentLocation.startsWith('/admin/live-workforce') ||
-                            currentLocation.startsWith('/workforce/admin/dispatch'),
+                        isActive:
+                            currentLocation.startsWith('/admin/dispatch') ||
+                            currentLocation.startsWith(
+                              '/admin/live-workforce',
+                            ) ||
+                            currentLocation.startsWith(
+                              '/workforce/admin/dispatch',
+                            ),
                         onTap: () {
                           Navigator.of(context).pop();
                           context.go(AppRoutes.adminDispatch);
@@ -398,8 +426,11 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                         icon: Icons.military_tech_rounded,
                         label: 'Skills Master',
                         route: AppRoutes.adminSkills,
-                        isActive: currentLocation.startsWith('/admin/skills') ||
-                            currentLocation.startsWith('/workforce/admin/skills'),
+                        isActive:
+                            currentLocation.startsWith('/admin/skills') ||
+                            currentLocation.startsWith(
+                              '/workforce/admin/skills',
+                            ),
                         onTap: () {
                           Navigator.of(context).pop();
                           context.go(AppRoutes.adminSkills);
@@ -408,13 +439,33 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                       _DrawerNavItem(
                         icon: Icons.price_change_rounded,
                         iconColor: const Color(0xFF7C3AED),
-                        label: 'Pricing Approval',
+                        label: 'Pricing & Approvals',
                         route: AppRoutes.adminPricingApprovals,
-                        isActive: currentLocation.startsWith('/admin/pricing-approvals') ||
-                            currentLocation.startsWith('/workforce/admin/pricing-approvals'),
+                        isActive:
+                            currentLocation.startsWith(
+                              '/admin/pricing-approvals',
+                            ) ||
+                            currentLocation.startsWith(
+                              '/workforce/admin/pricing-approvals',
+                            ),
                         onTap: () {
                           Navigator.of(context).pop();
                           context.go(AppRoutes.adminPricingApprovals);
+                        },
+                      ),
+                      _DrawerNavItem(
+                        icon: Icons.eco_rounded,
+                        iconColor: const Color(0xFF16A34A),
+                        label: 'Stock Management',
+                        route: AppRoutes.adminStock,
+                        isActive:
+                            currentLocation.startsWith('/admin/stock') ||
+                            currentLocation.startsWith(
+                              '/workforce/admin/stock',
+                            ),
+                        onTap: () {
+                          Navigator.of(context).pop();
+                          context.go(AppRoutes.adminStock);
                         },
                       ),
                       _DrawerNavItem(
@@ -422,8 +473,11 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                         iconColor: const Color(0xFFD97706),
                         label: 'Scorecards',
                         route: AppRoutes.adminScorecards,
-                        isActive: currentLocation.startsWith('/admin/scorecards') ||
-                            currentLocation.startsWith('/workforce/admin/scorecards') ||
+                        isActive:
+                            currentLocation.startsWith('/admin/scorecards') ||
+                            currentLocation.startsWith(
+                              '/workforce/admin/scorecards',
+                            ) ||
                             currentLocation.startsWith('/performance') ||
                             currentLocation.startsWith('/more/performance'),
                         onTap: () {
@@ -436,8 +490,13 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                         iconColor: const Color(0xFF059669),
                         label: 'Social Security',
                         route: AppRoutes.adminSocialSecurity,
-                        isActive: currentLocation.startsWith('/admin/social-security') ||
-                            currentLocation.startsWith('/workforce/admin/social-security'),
+                        isActive:
+                            currentLocation.startsWith(
+                              '/admin/social-security',
+                            ) ||
+                            currentLocation.startsWith(
+                              '/workforce/admin/social-security',
+                            ),
                         onTap: () {
                           Navigator.of(context).pop();
                           context.go(AppRoutes.adminSocialSecurity);
@@ -454,7 +513,9 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                       title: 'FINANCE & TREASURY',
                       isExpanded: _financeTreasuryExpanded,
                       onToggle: () => setState(
-                          () => _financeTreasuryExpanded = !_financeTreasuryExpanded),
+                        () => _financeTreasuryExpanded =
+                            !_financeTreasuryExpanded,
+                      ),
                     ),
                     if (_financeTreasuryExpanded) ...[
                       _DrawerNavItem(
@@ -462,8 +523,13 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                         iconColor: AppColors.primaryLight,
                         label: 'Platform Treasury',
                         route: AppRoutes.adminFinanceWallets,
-                        isActive: currentLocation.startsWith('/admin/finance/wallets') ||
-                            currentLocation.startsWith('/workforce/admin/finance/wallets'),
+                        isActive:
+                            currentLocation.startsWith(
+                              '/admin/finance/wallets',
+                            ) ||
+                            currentLocation.startsWith(
+                              '/workforce/admin/finance/wallets',
+                            ),
                         onTap: () {
                           Navigator.of(context).pop();
                           context.go(AppRoutes.adminFinanceWallets);
@@ -474,8 +540,13 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                         iconColor: const Color(0xFF0D9488),
                         label: 'Transactions',
                         route: AppRoutes.adminFinanceTransactions,
-                        isActive: currentLocation.startsWith('/admin/finance/transactions') ||
-                            currentLocation.startsWith('/workforce/admin/finance/transactions'),
+                        isActive:
+                            currentLocation.startsWith(
+                              '/admin/finance/transactions',
+                            ) ||
+                            currentLocation.startsWith(
+                              '/workforce/admin/finance/transactions',
+                            ),
                         onTap: () {
                           Navigator.of(context).pop();
                           context.go(AppRoutes.adminFinanceTransactions);
@@ -486,8 +557,13 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                         iconColor: const Color(0xFF059669),
                         label: 'Withdrawals',
                         route: AppRoutes.adminFinanceWithdrawals,
-                        isActive: currentLocation.startsWith('/admin/finance/withdrawals') ||
-                            currentLocation.startsWith('/workforce/admin/finance/withdrawals'),
+                        isActive:
+                            currentLocation.startsWith(
+                              '/admin/finance/withdrawals',
+                            ) ||
+                            currentLocation.startsWith(
+                              '/workforce/admin/finance/withdrawals',
+                            ),
                         onTap: () {
                           Navigator.of(context).pop();
                           context.go(AppRoutes.adminFinanceWithdrawals);
@@ -498,8 +574,13 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                         iconColor: const Color(0xFF6366F1),
                         label: 'Payout Accounts',
                         route: AppRoutes.adminFinanceBankAccounts,
-                        isActive: currentLocation.startsWith('/admin/finance/bank-accounts') ||
-                            currentLocation.startsWith('/workforce/admin/finance/bank-accounts'),
+                        isActive:
+                            currentLocation.startsWith(
+                              '/admin/finance/bank-accounts',
+                            ) ||
+                            currentLocation.startsWith(
+                              '/workforce/admin/finance/bank-accounts',
+                            ),
                         onTap: () {
                           Navigator.of(context).pop();
                           context.go(AppRoutes.adminFinanceBankAccounts);
@@ -516,7 +597,9 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                       title: 'TELEMETRY & AUDITS',
                       isExpanded: _telemetryAuditsExpanded,
                       onToggle: () => setState(
-                          () => _telemetryAuditsExpanded = !_telemetryAuditsExpanded),
+                        () => _telemetryAuditsExpanded =
+                            !_telemetryAuditsExpanded,
+                      ),
                     ),
                     if (_telemetryAuditsExpanded) ...[
                       _DrawerNavItem(
@@ -524,10 +607,13 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                         iconColor: const Color(0xFF0284C7),
                         label: 'Database & Egress',
                         route: AppRoutes.adminMonitoringDatabaseEgress,
-                        isActive: currentLocation
-                                .startsWith('/admin/monitoring/database-egress') ||
-                            currentLocation
-                                .startsWith('/workforce/admin/monitoring/database-egress'),
+                        isActive:
+                            currentLocation.startsWith(
+                              '/admin/monitoring/database-egress',
+                            ) ||
+                            currentLocation.startsWith(
+                              '/workforce/admin/monitoring/database-egress',
+                            ),
                         onTap: () {
                           Navigator.of(context).pop();
                           context.go(AppRoutes.adminMonitoringDatabaseEgress);
@@ -537,8 +623,11 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                         icon: Icons.bar_chart_rounded,
                         label: 'Reports & Audits',
                         route: AppRoutes.adminReports,
-                        isActive: currentLocation.startsWith('/admin/reports') ||
-                            currentLocation.startsWith('/workforce/admin/reports'),
+                        isActive:
+                            currentLocation.startsWith('/admin/reports') ||
+                            currentLocation.startsWith(
+                              '/workforce/admin/reports',
+                            ),
                         onTap: () {
                           Navigator.of(context).pop();
                           context.go(AppRoutes.adminReports);
@@ -553,7 +642,10 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                     // 0. COMPANY HEADER CARD
                     Container(
                       margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
                       decoration: BoxDecoration(
                         color: AppColors.isDark
                             ? AppColors.surfaceMuted
@@ -611,7 +703,8 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                       icon: Icons.home_rounded,
                       label: 'Company Home',
                       route: AppRoutes.adminHome,
-                      isActive: currentLocation == '/admin/home' ||
+                      isActive:
+                          currentLocation == '/admin/home' ||
                           currentLocation == '/workforce/admin' ||
                           currentLocation == AppRoutes.adminHome,
                       onTap: () {
@@ -624,20 +717,46 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                     Divider(height: 1),
                     const SizedBox(height: AppSpacing.xs),
 
-                    // 2. MY WORKFORCE GROUP
+                    // 2. SELLER HUB GROUP
+                    _DrawerGroupHeader(
+                      title: 'SELLER HUB',
+                      isExpanded: _sellerHubExpanded,
+                      onToggle: () => setState(
+                        () => _sellerHubExpanded = !_sellerHubExpanded,
+                      ),
+                    ),
+                    if (_sellerHubExpanded) ...[
+                      ..._buildSellerHubItems(
+                        context,
+                        currentLocation,
+                        platformAdmin: false,
+                      ),
+                    ],
+
+                    const SizedBox(height: AppSpacing.sm),
+                    Divider(height: 1),
+                    const SizedBox(height: AppSpacing.xs),
+
+                    // 3. MY WORKFORCE GROUP
                     _DrawerGroupHeader(
                       title: 'MY WORKFORCE',
                       isExpanded: _workforceExpanded,
-                      onToggle: () =>
-                          setState(() => _workforceExpanded = !_workforceExpanded),
+                      onToggle: () => setState(
+                        () => _workforceExpanded = !_workforceExpanded,
+                      ),
                     ),
                     if (_workforceExpanded) ...[
                       _DrawerNavItem(
                         icon: Icons.people_alt_rounded,
                         label: 'Tied Technicians',
                         route: AppRoutes.adminTiedTechnicians,
-                        isActive: currentLocation.startsWith('/admin/technician-network') ||
-                            currentLocation.startsWith('/workforce/admin/technician-network'),
+                        isActive:
+                            currentLocation.startsWith(
+                              '/admin/technician-network',
+                            ) ||
+                            currentLocation.startsWith(
+                              '/workforce/admin/technician-network',
+                            ),
                         onTap: () {
                           Navigator.of(context).pop();
                           context.go(AppRoutes.adminTiedTechnicians);
@@ -648,8 +767,13 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                         iconColor: const Color(0xFF2563EB),
                         label: 'Send Invitations',
                         route: AppRoutes.adminVendorInvitations,
-                        isActive: currentLocation.startsWith('/admin/vendor-invitations') ||
-                            currentLocation.startsWith('/workforce/admin/vendor-invitations'),
+                        isActive:
+                            currentLocation.startsWith(
+                              '/admin/vendor-invitations',
+                            ) ||
+                            currentLocation.startsWith(
+                              '/workforce/admin/vendor-invitations',
+                            ),
                         onTap: () {
                           Navigator.of(context).pop();
                           context.go(AppRoutes.adminVendorInvitations);
@@ -660,8 +784,11 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                         iconColor: AppColors.primaryLight,
                         label: 'Employee Roster',
                         route: AppRoutes.adminEmployees,
-                        isActive: currentLocation.startsWith('/admin/employees') ||
-                            currentLocation.startsWith('/workforce/admin/employees'),
+                        isActive:
+                            currentLocation.startsWith('/admin/employees') ||
+                            currentLocation.startsWith(
+                              '/workforce/admin/employees',
+                            ),
                         onTap: () {
                           Navigator.of(context).pop();
                           context.go(AppRoutes.adminEmployees);
@@ -672,11 +799,31 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                         iconColor: const Color(0xFF0D9488),
                         label: 'Applications',
                         route: AppRoutes.adminApplications,
-                        isActive: currentLocation.startsWith('/admin/applications') ||
-                            currentLocation.startsWith('/workforce/admin/applications'),
+                        isActive:
+                            currentLocation.startsWith('/admin/applications') ||
+                            currentLocation.startsWith(
+                              '/workforce/admin/applications',
+                            ),
                         onTap: () {
                           Navigator.of(context).pop();
                           context.go(AppRoutes.adminApplications);
+                        },
+                      ),
+                      _DrawerNavItem(
+                        icon: Icons.storefront_rounded,
+                        iconColor: const Color(0xFF2563EB),
+                        label: 'Seller Applications',
+                        route: AppRoutes.adminSellerApplications,
+                        isActive:
+                            currentLocation.startsWith(
+                              '/admin/seller-applications',
+                            ) ||
+                            currentLocation.startsWith(
+                              '/workforce/admin/seller-applications',
+                            ),
+                        onTap: () {
+                          Navigator.of(context).pop();
+                          context.go(AppRoutes.adminSellerApplications);
                         },
                       ),
                     ],
@@ -689,15 +836,17 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                     _DrawerGroupHeader(
                       title: 'OPERATIONS',
                       isExpanded: _operationsExpanded,
-                      onToggle: () =>
-                          setState(() => _operationsExpanded = !_operationsExpanded),
+                      onToggle: () => setState(
+                        () => _operationsExpanded = !_operationsExpanded,
+                      ),
                     ),
                     if (_operationsExpanded) ...[
                       _DrawerNavItem(
                         icon: Icons.work_rounded,
                         label: 'Field Jobs',
                         route: AppRoutes.adminJobs,
-                        isActive: currentLocation.startsWith('/admin/jobs') ||
+                        isActive:
+                            currentLocation.startsWith('/admin/jobs') ||
                             currentLocation.startsWith('/workforce/admin/jobs'),
                         onTap: () {
                           Navigator.of(context).pop();
@@ -709,9 +858,14 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                         iconColor: const Color(0xFF059669),
                         label: 'Dispatch Radar',
                         route: AppRoutes.adminDispatch,
-                        isActive: currentLocation.startsWith('/admin/dispatch') ||
-                            currentLocation.startsWith('/admin/live-workforce') ||
-                            currentLocation.startsWith('/workforce/admin/dispatch'),
+                        isActive:
+                            currentLocation.startsWith('/admin/dispatch') ||
+                            currentLocation.startsWith(
+                              '/admin/live-workforce',
+                            ) ||
+                            currentLocation.startsWith(
+                              '/workforce/admin/dispatch',
+                            ),
                         onTap: () {
                           Navigator.of(context).pop();
                           context.go(AppRoutes.adminDispatch);
@@ -722,9 +876,16 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                         iconColor: const Color(0xFF7C3AED),
                         label: 'Company Profile',
                         route: AppRoutes.adminProviderProfile,
-                        isActive: currentLocation.startsWith('/admin/provider-profile') ||
-                            currentLocation.startsWith('/workforce/admin/provider-profile') ||
-                            currentLocation.startsWith('/workforce/provider/profile'),
+                        isActive:
+                            currentLocation.startsWith(
+                              '/admin/provider-profile',
+                            ) ||
+                            currentLocation.startsWith(
+                              '/workforce/admin/provider-profile',
+                            ) ||
+                            currentLocation.startsWith(
+                              '/workforce/provider/profile',
+                            ),
                         onTap: () {
                           Navigator.of(context).pop();
                           context.go(AppRoutes.adminProviderProfile);
@@ -740,7 +901,8 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                     _DrawerGroupHeader(
                       title: 'FINANCE & LEDGER',
                       isExpanded: _financeExpanded,
-                      onToggle: () => setState(() => _financeExpanded = !_financeExpanded),
+                      onToggle: () =>
+                          setState(() => _financeExpanded = !_financeExpanded),
                     ),
                     if (_financeExpanded) ...[
                       _DrawerNavItem(
@@ -748,8 +910,13 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                         iconColor: AppColors.primaryLight,
                         label: 'Company Wallet',
                         route: AppRoutes.adminFinanceWallets,
-                        isActive: currentLocation.startsWith('/admin/finance/wallets') ||
-                            currentLocation.startsWith('/workforce/admin/finance/wallets'),
+                        isActive:
+                            currentLocation.startsWith(
+                              '/admin/finance/wallets',
+                            ) ||
+                            currentLocation.startsWith(
+                              '/workforce/admin/finance/wallets',
+                            ),
                         onTap: () {
                           Navigator.of(context).pop();
                           context.go(AppRoutes.adminFinanceWallets);
@@ -760,8 +927,13 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                         iconColor: const Color(0xFF0D9488),
                         label: 'Transactions',
                         route: AppRoutes.adminFinanceTransactions,
-                        isActive: currentLocation.startsWith('/admin/finance/transactions') ||
-                            currentLocation.startsWith('/workforce/admin/finance/transactions'),
+                        isActive:
+                            currentLocation.startsWith(
+                              '/admin/finance/transactions',
+                            ) ||
+                            currentLocation.startsWith(
+                              '/workforce/admin/finance/transactions',
+                            ),
                         onTap: () {
                           Navigator.of(context).pop();
                           context.go(AppRoutes.adminFinanceTransactions);
@@ -772,8 +944,13 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                         iconColor: const Color(0xFF059669),
                         label: 'Withdrawals',
                         route: AppRoutes.adminFinanceWithdrawals,
-                        isActive: currentLocation.startsWith('/admin/finance/withdrawals') ||
-                            currentLocation.startsWith('/workforce/admin/finance/withdrawals'),
+                        isActive:
+                            currentLocation.startsWith(
+                              '/admin/finance/withdrawals',
+                            ) ||
+                            currentLocation.startsWith(
+                              '/workforce/admin/finance/withdrawals',
+                            ),
                         onTap: () {
                           Navigator.of(context).pop();
                           context.go(AppRoutes.adminFinanceWithdrawals);
@@ -784,8 +961,13 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                         iconColor: const Color(0xFF6366F1),
                         label: 'Payout Accounts',
                         route: AppRoutes.adminFinanceBankAccounts,
-                        isActive: currentLocation.startsWith('/admin/finance/bank-accounts') ||
-                            currentLocation.startsWith('/workforce/admin/finance/bank-accounts'),
+                        isActive:
+                            currentLocation.startsWith(
+                              '/admin/finance/bank-accounts',
+                            ) ||
+                            currentLocation.startsWith(
+                              '/workforce/admin/finance/bank-accounts',
+                            ),
                         onTap: () {
                           Navigator.of(context).pop();
                           context.go(AppRoutes.adminFinanceBankAccounts);
@@ -801,8 +983,9 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                     _DrawerGroupHeader(
                       title: 'TELEMETRY',
                       isExpanded: _telemetryExpanded,
-                      onToggle: () =>
-                          setState(() => _telemetryExpanded = !_telemetryExpanded),
+                      onToggle: () => setState(
+                        () => _telemetryExpanded = !_telemetryExpanded,
+                      ),
                     ),
                     if (_telemetryExpanded) ...[
                       _DrawerNavItem(
@@ -810,10 +993,13 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                         iconColor: const Color(0xFF0284C7),
                         label: 'Database & Egress',
                         route: AppRoutes.adminMonitoringDatabaseEgress,
-                        isActive: currentLocation
-                                .startsWith('/admin/monitoring/database-egress') ||
-                            currentLocation
-                                .startsWith('/workforce/admin/monitoring/database-egress'),
+                        isActive:
+                            currentLocation.startsWith(
+                              '/admin/monitoring/database-egress',
+                            ) ||
+                            currentLocation.startsWith(
+                              '/workforce/admin/monitoring/database-egress',
+                            ),
                         onTap: () {
                           Navigator.of(context).pop();
                           context.go(AppRoutes.adminMonitoringDatabaseEgress);
@@ -824,8 +1010,11 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                         iconColor: AppColors.primaryLight,
                         label: 'Reports & Audits',
                         route: AppRoutes.adminReports,
-                        isActive: currentLocation.startsWith('/admin/reports') ||
-                            currentLocation.startsWith('/workforce/admin/reports'),
+                        isActive:
+                            currentLocation.startsWith('/admin/reports') ||
+                            currentLocation.startsWith(
+                              '/workforce/admin/reports',
+                            ),
                         onTap: () {
                           Navigator.of(context).pop();
                           context.go(AppRoutes.adminReports);
@@ -838,13 +1027,12 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
             ),
 
             // ── Drawer Footer: System Settings & Log Out ───────────────────
-            Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.sm,
-                vertical: AppSpacing.xs,
-              ),
-              decoration: BoxDecoration(
-                border: Border(top: BorderSide(color: AppColors.border)),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.sm,
+                AppSpacing.xs,
+                AppSpacing.sm,
+                AppSpacing.sm,
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -853,11 +1041,15 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                     icon: Icons.settings_rounded,
                     iconColor: AppColors.textSecondary,
                     label: 'System Settings',
-                    route: isSuperAdmin ? AppRoutes.adminSettings : AppRoutes.adminHome,
+                    route: isSuperAdmin
+                        ? AppRoutes.adminSettings
+                        : AppRoutes.adminHome,
                     isActive: isSuperAdmin
                         ? (currentLocation == AppRoutes.adminSettings ||
-                            currentLocation.startsWith('/admin/settings') ||
-                            currentLocation.startsWith('/workforce/admin/settings'))
+                              currentLocation.startsWith('/admin/settings') ||
+                              currentLocation.startsWith(
+                                '/workforce/admin/settings',
+                              ))
                         : false,
                     onTap: () {
                       Navigator.of(context).pop();
@@ -868,46 +1060,67 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
                       }
                     },
                   ),
-                  ListTile(
-                    dense: true,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(AppRadius.card),
-                    ),
-                    leading: const Icon(Icons.logout_rounded, color: Color(0xFFDC2626), size: 20),
-                    title: Text(
-                      'Log Out',
-                      style: TextStyle(
-                        color: Color(0xFFDC2626),
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13,
-                      ),
-                    ),
-                    onTap: () async {
-                      Navigator.of(context).pop();
-                      final confirmed = await showDialog<bool>(
-                        context: context,
-                        builder: (ctx) => AlertDialog(
-                          title: Text('Log Out'),
-                          content: Text('Are you sure you want to log out of Workforce?'),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.of(ctx).pop(false),
-                              child: Text('Cancel'),
+                  const SizedBox(height: 4),
+                  Material(
+                    color: AppColors.errorBg,
+                    borderRadius: BorderRadius.circular(14),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(14),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 10,
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.logout_rounded,
+                              color: Color(0xFFDC2626),
+                              size: 22,
                             ),
-                            FilledButton(
-                              style: FilledButton.styleFrom(
-                                backgroundColor: const Color(0xFFDC2626),
+                            const SizedBox(width: 14),
+                            const Text(
+                              'Log Out',
+                              style: TextStyle(
+                                color: Color(0xFFDC2626),
+                                fontWeight: FontWeight.w800,
+                                fontSize: 14,
                               ),
-                              onPressed: () => Navigator.of(ctx).pop(true),
-                              child: Text('Log Out'),
                             ),
                           ],
                         ),
-                      );
-                      if (confirmed == true) {
-                        await ref.read(authControllerProvider.notifier).logout();
-                      }
-                    },
+                      ),
+                      onTap: () async {
+                        Navigator.of(context).pop();
+                        final confirmed = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            title: Text('Log Out'),
+                            content: Text(
+                              'Are you sure you want to log out of Workforce?',
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.of(ctx).pop(false),
+                                child: Text('Cancel'),
+                              ),
+                              FilledButton(
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: const Color(0xFFDC2626),
+                                ),
+                                onPressed: () => Navigator.of(ctx).pop(true),
+                                child: Text('Log Out'),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (confirmed == true) {
+                          await ref
+                              .read(authControllerProvider.notifier)
+                              .logout();
+                        }
+                      },
+                    ),
                   ),
                 ],
               ),
@@ -916,6 +1129,207 @@ class _AdminDrawerState extends ConsumerState<AdminDrawer> {
         ),
       ),
     );
+  }
+
+  /// Seller Hub entries. Categories, Categories Approval and Warehouses are
+  /// platform-admin only, matching the Web vendor-admin sidebar.
+  List<Widget> _buildSellerHubItems(
+    BuildContext context,
+    String currentLocation, {
+    required bool platformAdmin,
+  }) {
+    return [
+      _DrawerNavItem(
+        icon: Icons.storefront_rounded,
+        iconColor: const Color(0xFF0D9488),
+        label: 'Home',
+        route: AppRoutes.sellerHome,
+        isActive:
+            currentLocation == AppRoutes.sellerHome ||
+            currentLocation.startsWith('/admin/seller/home') ||
+            currentLocation.startsWith('/workforce/admin/seller/home'),
+        onTap: () {
+          Navigator.of(context).pop();
+          context.go(AppRoutes.sellerHome);
+        },
+      ),
+      _DrawerNavItem(
+        icon: Icons.shopping_bag_rounded,
+        iconColor: const Color(0xFF2563EB),
+        label: 'Orders',
+        route: AppRoutes.sellerOrders,
+        isActive:
+            currentLocation == AppRoutes.sellerOrders ||
+            currentLocation.startsWith('/admin/seller/orders') ||
+            currentLocation.startsWith('/workforce/admin/seller/orders') ||
+            currentLocation.startsWith('/workforce/admin/grocery-orders') ||
+            currentLocation.startsWith('/admin/grocery-orders'),
+        onTap: () {
+          Navigator.of(context).pop();
+          context.go(AppRoutes.sellerOrders);
+        },
+      ),
+      _DrawerNavItem(
+        icon: Icons.assignment_return_rounded,
+        iconColor: const Color(0xFFDC2626),
+        label: 'Returns',
+        route: AppRoutes.sellerReturns,
+        isActive:
+            currentLocation == AppRoutes.sellerReturns ||
+            currentLocation.startsWith('/admin/seller/returns') ||
+            currentLocation.startsWith('/workforce/admin/seller/returns'),
+        onTap: () {
+          Navigator.of(context).pop();
+          context.go(AppRoutes.sellerReturns);
+        },
+      ),
+      _DrawerNavItem(
+        icon: Icons.gavel_rounded,
+        iconColor: const Color(0xFFD97706),
+        label: 'Claims',
+        route: AppRoutes.sellerClaims,
+        isActive:
+            currentLocation == AppRoutes.sellerClaims ||
+            currentLocation.startsWith('/admin/seller/claims') ||
+            currentLocation.startsWith('/workforce/admin/seller/claims'),
+        onTap: () {
+          Navigator.of(context).pop();
+          context.go(AppRoutes.sellerClaims);
+        },
+      ),
+      _DrawerNavItem(
+        icon: Icons.inventory_2_rounded,
+        iconColor: const Color(0xFF059669),
+        label: 'Inventory',
+        route: AppRoutes.sellerInventory,
+        isActive:
+            currentLocation == AppRoutes.sellerInventory ||
+            currentLocation.startsWith('/admin/seller/inventory') ||
+            currentLocation.startsWith('/workforce/admin/seller/inventory') ||
+            currentLocation.startsWith('/workforce/admin/inventory') ||
+            currentLocation.startsWith('/admin/inventory'),
+        onTap: () {
+          Navigator.of(context).pop();
+          context.go(AppRoutes.sellerInventory);
+        },
+      ),
+      _DrawerNavItem(
+        icon: Icons.cloud_upload_rounded,
+        iconColor: const Color(0xFF6366F1),
+        label: 'Catalog Uploads',
+        route: AppRoutes.sellerCatalogUploads,
+        isActive:
+            currentLocation == AppRoutes.sellerCatalogUploads ||
+            currentLocation.startsWith('/admin/seller/catalog-uploads') ||
+            currentLocation.startsWith(
+              '/workforce/admin/seller/catalog-uploads',
+            ),
+        onTap: () {
+          Navigator.of(context).pop();
+          context.go(AppRoutes.sellerCatalogUploads);
+        },
+      ),
+      if (platformAdmin) ...[
+        _DrawerNavItem(
+          icon: Icons.category_rounded,
+          iconColor: const Color(0xFF8B5CF6),
+          label: 'Categories',
+          route: AppRoutes.sellerCategories,
+          isActive:
+              currentLocation == AppRoutes.sellerCategories ||
+              (currentLocation.startsWith('/admin/seller/categories') &&
+                  !currentLocation.startsWith(
+                    AppRoutes.sellerCategoriesApproval,
+                  )),
+          onTap: () {
+            Navigator.of(context).pop();
+            context.go(AppRoutes.sellerCategories);
+          },
+        ),
+        _DrawerNavItem(
+          icon: Icons.fact_check_rounded,
+          iconColor: const Color(0xFF0284C7),
+          label: 'Categories Approval',
+          route: AppRoutes.sellerCategoriesApproval,
+          isActive:
+              currentLocation == AppRoutes.sellerCategoriesApproval ||
+              currentLocation.startsWith('/admin/seller/categories-approval') ||
+              currentLocation.startsWith(
+                '/workforce/admin/seller/categories-approval',
+              ),
+          onTap: () {
+            Navigator.of(context).pop();
+            context.go(AppRoutes.sellerCategoriesApproval);
+          },
+        ),
+        _DrawerNavItem(
+          icon: Icons.warehouse_rounded,
+          iconColor: const Color(0xFFEA580C),
+          label: 'Warehouses',
+          route: AppRoutes.sellerWarehouse,
+          isActive:
+              currentLocation == AppRoutes.sellerWarehouse ||
+              currentLocation.startsWith('/admin/seller/warehouse') ||
+              currentLocation.startsWith('/workforce/admin/seller/warehouse') ||
+              currentLocation.startsWith('/workforce/admin/warehouse') ||
+              currentLocation.startsWith('/admin/warehouse'),
+          onTap: () {
+            Navigator.of(context).pop();
+            context.go(AppRoutes.sellerWarehouse);
+          },
+        ),
+      ],
+      _DrawerNavItem(
+        icon: Icons.local_offer_rounded,
+        iconColor: const Color(0xFFEC4899),
+        label: 'Coupons',
+        route: AppRoutes.sellerCoupons,
+        isActive:
+            currentLocation == AppRoutes.sellerCoupons ||
+            currentLocation.startsWith('/admin/seller/coupons') ||
+            currentLocation.startsWith('/workforce/admin/seller/coupons') ||
+            currentLocation.startsWith('/workforce/admin/promotions') ||
+            currentLocation.startsWith('/admin/promotions'),
+        onTap: () {
+          Navigator.of(context).pop();
+          context.go(AppRoutes.sellerCoupons);
+        },
+      ),
+      _DrawerNavItem(
+        icon: Icons.insights_rounded,
+        iconColor: const Color(0xFF10B981),
+        label: 'Reports & Quality',
+        route: AppRoutes.sellerReportsQuality,
+        isActive:
+            currentLocation == AppRoutes.sellerReportsQuality ||
+            currentLocation.startsWith('/admin/seller/reports-quality') ||
+            currentLocation.startsWith(
+              '/workforce/admin/seller/reports-quality',
+            ),
+        onTap: () {
+          Navigator.of(context).pop();
+          context.go(AppRoutes.sellerReportsQuality);
+        },
+      ),
+      _DrawerNavItem(
+        icon: Icons.store_rounded,
+        iconColor: const Color(0xFF0D9488),
+        label: 'Store Profile',
+        route: AppRoutes.sellerStoreProfile,
+        isActive:
+            currentLocation == AppRoutes.sellerStoreProfile ||
+            currentLocation.startsWith('/admin/seller/store-profile') ||
+            currentLocation.startsWith(
+              '/workforce/admin/seller/store-profile',
+            ) ||
+            currentLocation.startsWith('/workforce/admin/store-profile') ||
+            currentLocation.startsWith('/admin/store-profile'),
+        onTap: () {
+          Navigator.of(context).pop();
+          context.go(AppRoutes.sellerStoreProfile);
+        },
+      ),
+    ];
   }
 }
 
@@ -934,25 +1348,30 @@ class _DrawerGroupHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onToggle,
-      borderRadius: BorderRadius.circular(6),
+      borderRadius: BorderRadius.circular(8),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        padding: const EdgeInsets.fromLTRB(10, 10, 10, 6),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
               title,
               style: TextStyle(
-                fontSize: 10.5,
+                fontSize: 11.5,
                 fontWeight: FontWeight.w800,
-                color: AppColors.textMuted,
-                letterSpacing: 0.8,
+                color: AppColors.textSecondary,
+                letterSpacing: 1.1,
               ),
             ),
-            Icon(
-              isExpanded ? Icons.keyboard_arrow_down_rounded : Icons.keyboard_arrow_right_rounded,
-              size: 16,
-              color: AppColors.textMuted,
+            AnimatedRotation(
+              turns: isExpanded ? 0 : -0.25,
+              duration: AppMotion.resolve(AppMotion.normal),
+              curve: AppMotion.curve,
+              child: Icon(
+                Icons.keyboard_arrow_down_rounded,
+                size: 18,
+                color: AppColors.textMuted,
+              ),
             ),
           ],
         ),
@@ -961,6 +1380,8 @@ class _DrawerGroupHeader extends StatelessWidget {
   }
 }
 
+/// A menu row: tinted rounded icon tile, label and chevron. The active route
+/// gets a soft teal wash.
 class _DrawerNavItem extends StatelessWidget {
   const _DrawerNavItem({
     required this.icon,
@@ -980,42 +1401,50 @@ class _DrawerNavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final effectiveIconColor = isActive
-        ? AppColors.primary
-        : (iconColor ?? (AppColors.isDark ? AppColors.textSecondary : AppColors.textSecondary));
+    final base = iconColor ?? AppColors.primaryAccent;
 
     return Container(
-      margin: const EdgeInsets.symmetric(vertical: 1.5),
+      margin: const EdgeInsets.symmetric(vertical: 2),
       child: Material(
-        color: isActive ? AppColors.primary.withValues(alpha: 0.15) : Colors.transparent,
-        borderRadius: BorderRadius.circular(8),
+        color: isActive ? AppColors.selectedTint : Colors.transparent,
+        borderRadius: BorderRadius.circular(16),
         child: InkWell(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(16),
           onTap: onTap,
-          child: Container(
-            decoration: isActive
-                ? BoxDecoration(
-                    borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(8),
-                      bottomLeft: Radius.circular(8),
-                    ),
-                    border: Border(left: BorderSide(color: AppColors.primary, width: 3.5)),
-                  )
-                : null,
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
             child: Row(
               children: [
-                Icon(icon, color: effectiveIconColor, size: 20),
-                const SizedBox(width: 10),
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: base.withValues(alpha: isActive ? 0.20 : 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(icon, color: base, size: 20),
+                ),
+                const SizedBox(width: 14),
                 Expanded(
                   child: Text(
                     label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: isActive ? FontWeight.w800 : FontWeight.w600,
-                      color: isActive ? AppColors.primary : AppColors.textPrimary,
+                      fontSize: 14,
+                      fontWeight: isActive ? FontWeight.w800 : FontWeight.w700,
+                      color: isActive
+                          ? AppColors.selectedOnTint
+                          : AppColors.textPrimary,
                     ),
                   ),
+                ),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 22,
+                  color: isActive
+                      ? AppColors.selectedOnTint
+                      : AppColors.textMuted,
                 ),
               ],
             ),

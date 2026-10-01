@@ -124,6 +124,9 @@ void main() {
   }
 
   testWidgets('AdminWalletsScreen renders metrics and technician cards', (tester) async {
+      tester.view.physicalSize = const Size(800, 3000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
     await tester.pumpWidget(
       createTestWidget(
         const AdminWalletsScreen(),
@@ -148,6 +151,9 @@ void main() {
   });
 
   testWidgets('AdminWithdrawalsScreen renders payout requests and action buttons', (tester) async {
+      tester.view.physicalSize = const Size(800, 3000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
     await tester.pumpWidget(
       createTestWidget(
         const AdminWithdrawalsScreen(),
@@ -167,6 +173,9 @@ void main() {
   });
 
   testWidgets('AdminBankAccountsScreen renders masked account number, Add Account buttons, and verify button', (tester) async {
+      tester.view.physicalSize = const Size(800, 3000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
     await tester.pumpWidget(
       createTestWidget(
         const AdminBankAccountsScreen(),
@@ -188,6 +197,9 @@ void main() {
   });
 
   testWidgets('AdminBankAccountsScreen renders empty state with prominent Add Account button and security note', (tester) async {
+      tester.view.physicalSize = const Size(800, 3000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
     await tester.pumpWidget(
       createTestWidget(
         const AdminBankAccountsScreen(),
@@ -207,6 +219,9 @@ void main() {
   });
 
   testWidgets('Tapping Add Account opens AdminAddBankAccountSheet and validates fields', (tester) async {
+      tester.view.physicalSize = const Size(800, 3000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
     await tester.pumpWidget(
       createTestWidget(
         const AdminBankAccountsScreen(),
@@ -254,6 +269,9 @@ void main() {
   });
 
   testWidgets('AdminTransactionsScreen renders transaction audit rows', (tester) async {
+      tester.view.physicalSize = const Size(800, 3000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
     await tester.pumpWidget(
       createTestWidget(
         const AdminTransactionsScreen(),

@@ -1,14 +1,15 @@
+import '../../../../shared/widgets/sevo/sevo_module_frame.dart';
+import '../../../../shared/widgets/sevo/sevo_module_art.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_theme.dart';
 import '../../../../shared/widgets/empty_state.dart';
-import '../../../../shared/widgets/workforce_app_bar.dart';
 import '../../data/admin_dashboard_api.dart';
 import '../../domain/admin_application.dart';
 import '../../domain/skill.dart';
 import '../admin_dashboard_providers.dart';
-import '../widgets/admin_drawer.dart';
 
 /// Admin Workforce Skills & Verification Matrix Screen.
 /// Displays master skill catalog with search, categorization, and action modals
@@ -39,13 +40,9 @@ class _AdminSkillsScreenState extends ConsumerState<AdminSkillsScreen> {
     final skillsAsync = ref.watch(adminSkillsProvider);
     final techniciansAsync = ref.watch(adminApplicationsListProvider(null));
 
-    return Scaffold(
-      appBar: const WorkforceAppBar(
-        titleText: 'Skills & Capabilities',
-        showStatusSubBar: false,
-        showDrawerMenu: true,
-      ),
-      drawer: const AdminDrawer(),
+    return SevoModuleFrame(
+      module: SevoModule.skills,
+      title: 'Skills & Capabilities',
       body: skillsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (err, _) => Center(
@@ -54,9 +51,16 @@ class _AdminSkillsScreenState extends ConsumerState<AdminSkillsScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.error_outline_rounded, color: Color(0xFFDC2626), size: 40),
+                const Icon(
+                  Icons.error_outline_rounded,
+                  color: Color(0xFFDC2626),
+                  size: 40,
+                ),
                 const SizedBox(height: 12),
-                Text('Failed to load skills catalog: $err', textAlign: TextAlign.center),
+                Text(
+                  'Failed to load skills catalog: $err',
+                  textAlign: TextAlign.center,
+                ),
                 const SizedBox(height: 16),
                 FilledButton(
                   onPressed: () => ref.invalidate(adminSkillsProvider),
@@ -77,7 +81,8 @@ class _AdminSkillsScreenState extends ConsumerState<AdminSkillsScreen> {
           // Filter skills
           final filtered = allSkills.where((sk) {
             final term = _searchTerm.toLowerCase().trim();
-            final matchesSearch = term.isEmpty ||
+            final matchesSearch =
+                term.isEmpty ||
                 sk.name.toLowerCase().contains(term) ||
                 (sk.description ?? '').toLowerCase().contains(term) ||
                 sk.category.toLowerCase().contains(term);
@@ -117,7 +122,9 @@ class _AdminSkillsScreenState extends ConsumerState<AdminSkillsScreen> {
                             : const Color(0xFFE6F4F1),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Icon(Icons.military_tech_rounded, color: AppColors.primaryLight,
+                      child: Icon(
+                        Icons.military_tech_rounded,
+                        color: AppColors.primaryLight,
                         size: 24,
                       ),
                     ),
@@ -191,9 +198,17 @@ class _AdminSkillsScreenState extends ConsumerState<AdminSkillsScreen> {
                     _currentPage = 1;
                   }),
                   decoration: InputDecoration(
-                    hintText: 'Search skills catalog (${allSkills.length} skills)...',
-                    hintStyle: TextStyle(fontSize: 13, color: AppColors.textMuted),
-                    prefixIcon: Icon(Icons.search_rounded, size: 20, color: AppColors.textSecondary),
+                    hintText:
+                        'Search skills catalog (${allSkills.length} skills)...',
+                    hintStyle: TextStyle(
+                      fontSize: 13,
+                      color: AppColors.textMuted,
+                    ),
+                    prefixIcon: Icon(
+                      Icons.search_rounded,
+                      size: 20,
+                      color: AppColors.textSecondary,
+                    ),
                     suffixIcon: _searchTerm.isNotEmpty
                         ? IconButton(
                             icon: const Icon(Icons.clear_rounded, size: 18),
@@ -208,7 +223,10 @@ class _AdminSkillsScreenState extends ConsumerState<AdminSkillsScreen> {
                         : null,
                     filled: true,
                     fillColor: AppColors.surface,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(AppRadius.input),
                       borderSide: BorderSide(color: AppColors.border),
@@ -226,21 +244,31 @@ class _AdminSkillsScreenState extends ConsumerState<AdminSkillsScreen> {
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     children: [
-                      _categoryChip('All Categories', _selectedCategory == 'ALL', () {
-                        setState(() {
-                          _selectedCategory = 'ALL';
-                          _currentPage = 1;
-                        });
-                      }),
-                      ...categoryList.map((cat) => Padding(
-                            padding: const EdgeInsets.only(left: 6),
-                            child: _categoryChip(cat, _selectedCategory == cat, () {
+                      _categoryChip(
+                        'All Categories',
+                        _selectedCategory == 'ALL',
+                        () {
+                          setState(() {
+                            _selectedCategory = 'ALL';
+                            _currentPage = 1;
+                          });
+                        },
+                      ),
+                      ...categoryList.map(
+                        (cat) => Padding(
+                          padding: const EdgeInsets.only(left: 6),
+                          child: _categoryChip(
+                            cat,
+                            _selectedCategory == cat,
+                            () {
                               setState(() {
                                 _selectedCategory = cat;
                                 _currentPage = 1;
                               });
-                            }),
-                          )),
+                            },
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -260,7 +288,10 @@ class _AdminSkillsScreenState extends ConsumerState<AdminSkillsScreen> {
 
                   // Pagination Bar
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
                     decoration: BoxDecoration(
                       color: AppColors.surface,
                       borderRadius: BorderRadius.circular(AppRadius.card),
@@ -271,9 +302,13 @@ class _AdminSkillsScreenState extends ConsumerState<AdminSkillsScreen> {
                       children: [
                         OutlinedButton.icon(
                           onPressed: safePage > 1
-                              ? () => setState(() => _currentPage = safePage - 1)
+                              ? () =>
+                                    setState(() => _currentPage = safePage - 1)
                               : null,
-                          icon: const Icon(Icons.chevron_left_rounded, size: 18),
+                          icon: const Icon(
+                            Icons.chevron_left_rounded,
+                            size: 18,
+                          ),
                           label: Text('Prev'),
                           style: OutlinedButton.styleFrom(
                             visualDensity: VisualDensity.compact,
@@ -290,7 +325,8 @@ class _AdminSkillsScreenState extends ConsumerState<AdminSkillsScreen> {
                         ),
                         OutlinedButton(
                           onPressed: safePage < totalPages
-                              ? () => setState(() => _currentPage = safePage + 1)
+                              ? () =>
+                                    setState(() => _currentPage = safePage + 1)
                               : null,
                           style: OutlinedButton.styleFrom(
                             visualDensity: VisualDensity.compact,
@@ -327,15 +363,15 @@ class _AdminSkillsScreenState extends ConsumerState<AdminSkillsScreen> {
         decoration: BoxDecoration(
           color: isSelected
               ? (AppColors.isDark
-                  ? const Color(0xFF003B46).withValues(alpha: 0.5)
-                  : const Color(0xFFE6F4F1))
+                    ? const Color(0xFF003B46).withValues(alpha: 0.5)
+                    : const Color(0xFFE6F4F1))
               : AppColors.surfaceMuted,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: isSelected
                 ? (AppColors.isDark
-                    ? const Color(0xFF028090).withValues(alpha: 0.5)
-                    : const Color(0xFFB2DFDB))
+                      ? const Color(0xFF028090).withValues(alpha: 0.5)
+                      : const Color(0xFFB2DFDB))
                 : AppColors.border,
             width: isSelected ? 1.5 : 1.0,
           ),
@@ -346,7 +382,9 @@ class _AdminSkillsScreenState extends ConsumerState<AdminSkillsScreen> {
             fontSize: 11.5,
             fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
             color: isSelected
-                ? (AppColors.isDark ? const Color(0xFF6EE7B7) : AppColors.peacockBlue)
+                ? (AppColors.isDark
+                      ? const Color(0xFF6EE7B7)
+                      : AppColors.peacockBlue)
                 : AppColors.textSecondary,
           ),
         ),
@@ -364,7 +402,9 @@ class _AdminSkillsScreenState extends ConsumerState<AdminSkillsScreen> {
       isScrollControlled: true,
       backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.card)),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(AppRadius.card),
+        ),
       ),
       builder: (ctx) => Padding(
         padding: EdgeInsets.only(
@@ -379,7 +419,11 @@ class _AdminSkillsScreenState extends ConsumerState<AdminSkillsScreen> {
           children: [
             Text(
               'Add New Master Skill',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: AppColors.textPrimary,
+              ),
             ),
             const SizedBox(height: 12),
             TextField(
@@ -416,14 +460,18 @@ class _AdminSkillsScreenState extends ConsumerState<AdminSkillsScreen> {
                 final category = categoryCtrl.text.trim();
                 if (name.isEmpty || category.isEmpty) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Please provide skill name and category.')),
+                    const SnackBar(
+                      content: Text('Please provide skill name and category.'),
+                    ),
                   );
                   return;
                 }
                 final messenger = ScaffoldMessenger.of(context);
                 Navigator.of(ctx).pop();
                 try {
-                  await ref.read(adminDashboardApiProvider).createSkill(
+                  await ref
+                      .read(adminDashboardApiProvider)
+                      .createSkill(
                         name: name,
                         category: category,
                         description: descCtrl.text.trim(),
@@ -467,7 +515,9 @@ class _AdminSkillsScreenState extends ConsumerState<AdminSkillsScreen> {
   ) {
     if (skills.isEmpty || techs.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No skills or technicians available to assign.')),
+        const SnackBar(
+          content: Text('No skills or technicians available to assign.'),
+        ),
       );
       return;
     }
@@ -481,7 +531,9 @@ class _AdminSkillsScreenState extends ConsumerState<AdminSkillsScreen> {
       isScrollControlled: true,
       backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.card)),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(AppRadius.card),
+        ),
       ),
       builder: (ctx) => StatefulBuilder(
         builder: (sheetCtx, setSheetState) => Padding(
@@ -497,7 +549,11 @@ class _AdminSkillsScreenState extends ConsumerState<AdminSkillsScreen> {
             children: [
               Text(
                 'Assign & Verify Skill for Technician',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.textPrimary,
+                ),
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<int>(
@@ -508,11 +564,15 @@ class _AdminSkillsScreenState extends ConsumerState<AdminSkillsScreen> {
                   border: OutlineInputBorder(),
                 ),
                 items: techs
-                    .map((t) => DropdownMenuItem<int>(
-                          value: t.id,
-                          child: Text('${t.name ?? 'Technician'} (${t.employeeId ?? 'ID'})',
-                              overflow: TextOverflow.ellipsis),
-                        ))
+                    .map(
+                      (t) => DropdownMenuItem<int>(
+                        value: t.id,
+                        child: Text(
+                          '${t.name ?? 'Technician'} (${t.employeeId ?? 'ID'})',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    )
                     .toList(),
                 onChanged: (val) {
                   if (val != null) setSheetState(() => selectedEmpId = val);
@@ -528,10 +588,15 @@ class _AdminSkillsScreenState extends ConsumerState<AdminSkillsScreen> {
                 ),
                 items: skills
                     .take(50) // reasonable display subset
-                    .map((s) => DropdownMenuItem<int>(
-                          value: s.id,
-                          child: Text('${s.name} (${s.category})', overflow: TextOverflow.ellipsis),
-                        ))
+                    .map(
+                      (s) => DropdownMenuItem<int>(
+                        value: s.id,
+                        child: Text(
+                          '${s.name} (${s.category})',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    )
                     .toList(),
                 onChanged: (val) {
                   if (val != null) setSheetState(() => selectedSkillId = val);
@@ -547,8 +612,14 @@ class _AdminSkillsScreenState extends ConsumerState<AdminSkillsScreen> {
                 ),
                 items: const [
                   DropdownMenuItem(value: 'BEGINNER', child: Text('Beginner')),
-                  DropdownMenuItem(value: 'INTERMEDIATE', child: Text('Intermediate (Standard)')),
-                  DropdownMenuItem(value: 'EXPERT', child: Text('Expert / Specialist')),
+                  DropdownMenuItem(
+                    value: 'INTERMEDIATE',
+                    child: Text('Intermediate (Standard)'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'EXPERT',
+                    child: Text('Expert / Specialist'),
+                  ),
                 ],
                 onChanged: (val) {
                   if (val != null) setSheetState(() => proficiency = val);
@@ -560,7 +631,9 @@ class _AdminSkillsScreenState extends ConsumerState<AdminSkillsScreen> {
                   final messenger = ScaffoldMessenger.of(context);
                   Navigator.of(ctx).pop();
                   try {
-                    await ref.read(adminDashboardApiProvider).assignSkill(
+                    await ref
+                        .read(adminDashboardApiProvider)
+                        .assignSkill(
                           employeeId: selectedEmpId,
                           skillId: selectedSkillId,
                           proficiencyLevel: proficiency,
@@ -568,7 +641,9 @@ class _AdminSkillsScreenState extends ConsumerState<AdminSkillsScreen> {
                     if (mounted) {
                       messenger.showSnackBar(
                         const SnackBar(
-                          content: Text('Skill verified & assigned to technician successfully!'),
+                          content: Text(
+                            'Skill verified & assigned to technician successfully!',
+                          ),
                           backgroundColor: Color(0xFF059669),
                         ),
                       );
@@ -613,7 +688,11 @@ class _AdminSkillCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: AppColors.border),
         boxShadow: const [
-          BoxShadow(color: Color(0x06000000), blurRadius: 4, offset: Offset(0, 1)),
+          BoxShadow(
+            color: Color(0x06000000),
+            blurRadius: 4,
+            offset: Offset(0, 1),
+          ),
         ],
       ),
       child: Row(
@@ -627,7 +706,9 @@ class _AdminSkillCard extends StatelessWidget {
                   : const Color(0xFFE6F4F1),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(Icons.military_tech_rounded, color: AppColors.primaryLight,
+            child: Icon(
+              Icons.military_tech_rounded,
+              color: AppColors.primaryLight,
               size: 20,
             ),
           ),
@@ -652,7 +733,10 @@ class _AdminSkillCard extends StatelessWidget {
                       ),
                     ),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
                       decoration: BoxDecoration(
                         color: AppColors.surfaceMuted,
                         borderRadius: BorderRadius.circular(4),

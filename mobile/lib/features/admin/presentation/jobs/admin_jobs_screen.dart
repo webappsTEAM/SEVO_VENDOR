@@ -1,3 +1,6 @@
+import '../../../../shared/widgets/sevo/sevo_module_frame.dart';
+import '../../../../shared/widgets/sevo/sevo_module_art.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,10 +9,9 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../../routing/app_routes.dart';
 import '../../../../shared/widgets/empty_state.dart';
 import '../../../../shared/widgets/status_chip.dart';
-import '../../../../shared/widgets/workforce_app_bar.dart';
 import '../../../jobs/domain/job.dart';
+import '../../data/admin_dashboard_api.dart';
 import '../admin_dashboard_providers.dart';
-import '../widgets/admin_drawer.dart';
 
 /// Admin Operations: Customer Jobs & Field Work Orders.
 /// Provides real-time lifecycle tracking across booking, dispatch, execution,
@@ -28,6 +30,48 @@ class _AdminJobsScreenState extends ConsumerState<AdminJobsScreen> {
   static const int _pageSize = 12;
 
   final TextEditingController _searchController = TextEditingController();
+  int? _approvingJobId;
+
+  /// Web "Approve & Complete": marks a proof-submitted job COMPLETED.
+  Future<void> _approveProof(Job job) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        content: Text(
+          'Approve service proof and mark Job #${job.id} as COMPLETED?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Approve'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    setState(() => _approvingJobId = job.id);
+    try {
+      await ref
+          .read(adminDashboardApiProvider)
+          .transitionJob(job.id, 'completed');
+      ref.invalidate(adminJobsListProvider(null));
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to complete job: $e'),
+            backgroundColor: const Color(0xFFDC2626),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _approvingJobId = null);
+    }
+  }
 
   @override
   void dispose() {
@@ -40,13 +84,9 @@ class _AdminJobsScreenState extends ConsumerState<AdminJobsScreen> {
     // Watches authoritative jobs list
     final jobsAsync = ref.watch(adminJobsListProvider(null));
 
-    return Scaffold(
-      appBar: const WorkforceAppBar(
-        titleText: 'Admin Jobs & Bookings',
-        showStatusSubBar: false,
-        showDrawerMenu: true,
-      ),
-      drawer: const AdminDrawer(),
+    return SevoModuleFrame(
+      module: SevoModule.fieldJobs,
+      title: 'Admin Jobs & Bookings',
       body: jobsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (err, _) => Center(
@@ -55,11 +95,16 @@ class _AdminJobsScreenState extends ConsumerState<AdminJobsScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.error_outline_rounded,
-                    color: Color(0xFFDC2626), size: 40),
+                const Icon(
+                  Icons.error_outline_rounded,
+                  color: Color(0xFFDC2626),
+                  size: 40,
+                ),
                 const SizedBox(height: 12),
-                Text('Failed to load customer jobs: $err',
-                    textAlign: TextAlign.center),
+                Text(
+                  'Failed to load customer jobs: $err',
+                  textAlign: TextAlign.center,
+                ),
                 const SizedBox(height: 16),
                 FilledButton(
                   onPressed: () => ref.invalidate(adminJobsListProvider(null)),
@@ -79,7 +124,8 @@ class _AdminJobsScreenState extends ConsumerState<AdminJobsScreen> {
             final addr = (job.address ?? '').toLowerCase();
             final statusStr = job.status.toLowerCase();
 
-            final matchesSearch = term.isEmpty ||
+            final matchesSearch =
+                term.isEmpty ||
                 reqId.contains(term) ||
                 custName.contains(term) ||
                 service.contains(term) ||
@@ -89,7 +135,8 @@ class _AdminJobsScreenState extends ConsumerState<AdminJobsScreen> {
             // Filter logic matching the operational specifications
             bool matchesStatus = true;
             if (_statusFilter == 'ASSIGNED_QUEUED') {
-              matchesStatus = statusStr == 'assigned' ||
+              matchesStatus =
+                  statusStr == 'assigned' ||
                   statusStr == 'unassigned' ||
                   statusStr == 'new_request' ||
                   statusStr == 'confirmed' ||
@@ -98,13 +145,17 @@ class _AdminJobsScreenState extends ConsumerState<AdminJobsScreen> {
             } else if (_statusFilter == 'ACCEPTED') {
               matchesStatus = statusStr == 'accepted';
             } else if (_statusFilter == 'ON_THE_WAY') {
-              matchesStatus = statusStr == 'on_the_way' ||
+              matchesStatus =
+                  statusStr == 'on_the_way' ||
                   statusStr == 'en_route' ||
                   statusStr == 'arrived';
             } else if (_statusFilter == 'IN_PROGRESS') {
               matchesStatus = statusStr == 'in_progress';
+            } else if (_statusFilter == 'PROOF_SUBMITTED') {
+              matchesStatus = statusStr == 'proof_submitted';
             } else if (_statusFilter == 'COMPLETED') {
-              matchesStatus = statusStr == 'completed' || statusStr == 'cancelled';
+              matchesStatus =
+                  statusStr == 'completed' || statusStr == 'cancelled';
             }
 
             return matchesSearch && matchesStatus;
@@ -115,8 +166,9 @@ class _AdminJobsScreenState extends ConsumerState<AdminJobsScreen> {
           final safePage = _currentPage.clamp(1, totalPages);
           final startIndex = totalCount == 0 ? 0 : (safePage - 1) * _pageSize;
           final endIndex = (startIndex + _pageSize).clamp(0, totalCount);
-          final pageItems =
-              totalCount == 0 ? <Job>[] : filtered.sublist(startIndex, endIndex);
+          final pageItems = totalCount == 0
+              ? <Job>[]
+              : filtered.sublist(startIndex, endIndex);
 
           return RefreshIndicator(
             onRefresh: () async {
@@ -195,11 +247,17 @@ class _AdminJobsScreenState extends ConsumerState<AdminJobsScreen> {
                       });
                     },
                     decoration: InputDecoration(
-                      hintText: 'Search by ID, customer, service, or address...',
+                      hintText:
+                          'Search by ID, customer, service, or address...',
                       hintStyle: TextStyle(
-                          fontSize: 12.5, color: AppColors.textMuted),
-                      prefixIcon: Icon(Icons.search_rounded,
-                          size: 20, color: AppColors.textSecondary),
+                        fontSize: 12.5,
+                        color: AppColors.textMuted,
+                      ),
+                      prefixIcon: Icon(
+                        Icons.search_rounded,
+                        size: 20,
+                        color: AppColors.textSecondary,
+                      ),
                       suffixIcon: _searchTerm.isNotEmpty
                           ? IconButton(
                               icon: const Icon(Icons.clear_rounded, size: 18),
@@ -213,8 +271,10 @@ class _AdminJobsScreenState extends ConsumerState<AdminJobsScreen> {
                             )
                           : null,
                       border: InputBorder.none,
-                      contentPadding:
-                          const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+                      contentPadding: const EdgeInsets.symmetric(
+                        vertical: 12,
+                        horizontal: 12,
+                      ),
                     ),
                   ),
                 ),
@@ -226,50 +286,82 @@ class _AdminJobsScreenState extends ConsumerState<AdminJobsScreen> {
                   physics: const BouncingScrollPhysics(),
                   child: Row(
                     children: [
-                      _buildFilterChip('All Statuses', _statusFilter == 'ALL', () {
-                        setState(() {
-                          _statusFilter = 'ALL';
-                          _currentPage = 1;
-                        });
-                      }),
+                      _buildFilterChip(
+                        'All Statuses',
+                        _statusFilter == 'ALL',
+                        () {
+                          setState(() {
+                            _statusFilter = 'ALL';
+                            _currentPage = 1;
+                          });
+                        },
+                      ),
                       const SizedBox(width: 6),
                       _buildFilterChip(
-                          'Assigned / Queued', _statusFilter == 'ASSIGNED_QUEUED', () {
-                        setState(() {
-                          _statusFilter = 'ASSIGNED_QUEUED';
-                          _currentPage = 1;
-                        });
-                      }),
-                      const SizedBox(width: 6),
-                      _buildFilterChip('Accepted', _statusFilter == 'ACCEPTED', () {
-                        setState(() {
-                          _statusFilter = 'ACCEPTED';
-                          _currentPage = 1;
-                        });
-                      }),
+                        'Assigned / Queued',
+                        _statusFilter == 'ASSIGNED_QUEUED',
+                        () {
+                          setState(() {
+                            _statusFilter = 'ASSIGNED_QUEUED';
+                            _currentPage = 1;
+                          });
+                        },
+                      ),
                       const SizedBox(width: 6),
                       _buildFilterChip(
-                          'On The Way', _statusFilter == 'ON_THE_WAY', () {
-                        setState(() {
-                          _statusFilter = 'ON_THE_WAY';
-                          _currentPage = 1;
-                        });
-                      }),
+                        'Accepted',
+                        _statusFilter == 'ACCEPTED',
+                        () {
+                          setState(() {
+                            _statusFilter = 'ACCEPTED';
+                            _currentPage = 1;
+                          });
+                        },
+                      ),
                       const SizedBox(width: 6),
                       _buildFilterChip(
-                          'In Progress', _statusFilter == 'IN_PROGRESS', () {
-                        setState(() {
-                          _statusFilter = 'IN_PROGRESS';
-                          _currentPage = 1;
-                        });
-                      }),
+                        'On The Way',
+                        _statusFilter == 'ON_THE_WAY',
+                        () {
+                          setState(() {
+                            _statusFilter = 'ON_THE_WAY';
+                            _currentPage = 1;
+                          });
+                        },
+                      ),
                       const SizedBox(width: 6),
-                      _buildFilterChip('Completed', _statusFilter == 'COMPLETED', () {
-                        setState(() {
-                          _statusFilter = 'COMPLETED';
-                          _currentPage = 1;
-                        });
-                      }),
+                      _buildFilterChip(
+                        'In Progress',
+                        _statusFilter == 'IN_PROGRESS',
+                        () {
+                          setState(() {
+                            _statusFilter = 'IN_PROGRESS';
+                            _currentPage = 1;
+                          });
+                        },
+                      ),
+                      const SizedBox(width: 6),
+                      _buildFilterChip(
+                        'Proof Submitted (Review & Approve)',
+                        _statusFilter == 'PROOF_SUBMITTED',
+                        () {
+                          setState(() {
+                            _statusFilter = 'PROOF_SUBMITTED';
+                            _currentPage = 1;
+                          });
+                        },
+                      ),
+                      const SizedBox(width: 6),
+                      _buildFilterChip(
+                        'Completed',
+                        _statusFilter == 'COMPLETED',
+                        () {
+                          setState(() {
+                            _statusFilter = 'COMPLETED';
+                            _currentPage = 1;
+                          });
+                        },
+                      ),
                     ],
                   ),
                 ),
@@ -278,7 +370,10 @@ class _AdminJobsScreenState extends ConsumerState<AdminJobsScreen> {
                 // ── Records Count Summary ────────────────────────────────────
                 if (totalCount > 0)
                   Padding(
-                    padding: const EdgeInsets.only(bottom: AppSpacing.xs, left: 2),
+                    padding: const EdgeInsets.only(
+                      bottom: AppSpacing.xs,
+                      left: 2,
+                    ),
                     child: Text(
                       'Showing ${startIndex + 1} to $endIndex of $totalCount records',
                       style: TextStyle(
@@ -297,14 +392,22 @@ class _AdminJobsScreenState extends ConsumerState<AdminJobsScreen> {
                     message: 'No service bookings match the selected filters.',
                   )
                 else ...[
-                  ...pageItems.map((job) => _AdminJobCard(job: job)),
+                  ...pageItems.map(
+                    (job) => _AdminJobCard(
+                      job: job,
+                      busy: _approvingJobId == job.id,
+                      onApproveProof: () => _approveProof(job),
+                    ),
+                  ),
 
                   const SizedBox(height: AppSpacing.md),
 
                   // ── Mobile Pagination Bar ──────────────────────────────────
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
                     decoration: BoxDecoration(
                       color: AppColors.surface,
                       borderRadius: BorderRadius.circular(AppRadius.card),
@@ -315,9 +418,13 @@ class _AdminJobsScreenState extends ConsumerState<AdminJobsScreen> {
                       children: [
                         OutlinedButton.icon(
                           onPressed: safePage > 1
-                              ? () => setState(() => _currentPage = safePage - 1)
+                              ? () =>
+                                    setState(() => _currentPage = safePage - 1)
                               : null,
-                          icon: const Icon(Icons.chevron_left_rounded, size: 18),
+                          icon: const Icon(
+                            Icons.chevron_left_rounded,
+                            size: 18,
+                          ),
                           label: Text('Prev'),
                           style: OutlinedButton.styleFrom(
                             visualDensity: VisualDensity.compact,
@@ -334,7 +441,8 @@ class _AdminJobsScreenState extends ConsumerState<AdminJobsScreen> {
                         ),
                         OutlinedButton(
                           onPressed: safePage < totalPages
-                              ? () => setState(() => _currentPage = safePage + 1)
+                              ? () =>
+                                    setState(() => _currentPage = safePage + 1)
                               : null,
                           style: OutlinedButton.styleFrom(
                             visualDensity: VisualDensity.compact,
@@ -390,9 +498,17 @@ class _AdminJobsScreenState extends ConsumerState<AdminJobsScreen> {
 
 /// Clean responsive mobile card representing a Customer Job & Field Work Order.
 class _AdminJobCard extends StatelessWidget {
-  const _AdminJobCard({required this.job});
+  const _AdminJobCard({
+    required this.job,
+    required this.onApproveProof,
+    this.busy = false,
+  });
 
   final Job job;
+
+  /// Web "Approve & Complete" for jobs with submitted service proof.
+  final VoidCallback onApproveProof;
+  final bool busy;
 
   @override
   Widget build(BuildContext context) {
@@ -440,13 +556,18 @@ class _AdminJobCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Top Row: Job ID Pill + Status Badge
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              crossAxisAlignment: CrossAxisAlignment.center,
+            // Top Row: Job ID Pill + type badge + Status Badge (wraps on
+            // narrow screens / large font scales).
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 2.5,
+                  ),
                   decoration: BoxDecoration(
                     color: AppColors.infoBg,
                     borderRadius: BorderRadius.circular(6),
@@ -460,12 +581,35 @@ class _AdminJobCard extends StatelessWidget {
                       fontFamily: 'monospace',
                       fontSize: 13,
                       fontWeight: FontWeight.w900,
-                      color: AppColors.isDark ? const Color(0xFF38BDF8) : const Color(0xFF005965),
+                      color: AppColors.isDark
+                          ? const Color(0xFF38BDF8)
+                          : const Color(0xFF005965),
                       letterSpacing: 0.3,
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: job.isEstimation
+                        ? const Color(0xFFFEF3C7)
+                        : const Color(0xFFEFF6FF),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    job.isEstimation ? 'ESTIMATION' : 'SERVICE',
+                    style: TextStyle(
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w900,
+                      color: job.isEstimation
+                          ? const Color(0xFF92400E)
+                          : const Color(0xFF1E40AF),
+                    ),
+                  ),
+                ),
                 StatusChip(status: job.status, dense: true),
               ],
             ),
@@ -501,7 +645,8 @@ class _AdminJobCard extends StatelessWidget {
             ],
 
             // Assigned Technician
-            if (job.technicianName != null && job.technicianName!.isNotEmpty) ...[
+            if (job.technicianName != null &&
+                job.technicianName!.isNotEmpty) ...[
               Row(
                 children: [
                   const Icon(
@@ -640,17 +785,70 @@ class _AdminJobCard extends StatelessWidget {
             const SizedBox(height: 12),
 
             // Bottom Actions Bar
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
+            Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 0,
+              runSpacing: 6,
               children: [
-                if (['assigned', 'accepted', 'on_the_way', 'arrived', 'in_progress', 'completed']
-                    .contains(job.status.toLowerCase())) ...[
+                if (job.status.toLowerCase() == 'proof_submitted') ...[
+                  FilledButton.icon(
+                    onPressed: busy ? null : onApproveProof,
+                    icon: busy
+                        ? const SizedBox(
+                            width: 13,
+                            height: 13,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.check_circle_rounded, size: 14),
+                    label: const Text('Approve & Complete'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF059669),
+                      visualDensity: VisualDensity.compact,
+                      textStyle: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                if (job.isEstimation) ...[
+                  OutlinedButton(
+                    onPressed: () => context.go(AppRoutes.adminEstimations),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF92400E),
+                      backgroundColor: const Color(0xFFFFFBEB),
+                      side: const BorderSide(color: Color(0xFFFDE68A)),
+                      visualDensity: VisualDensity.compact,
+                      textStyle: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    child: const Text('Estimation'),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                if ([
+                  'assigned',
+                  'accepted',
+                  'on_the_way',
+                  'arrived',
+                  'in_progress',
+                  'completed',
+                ].contains(job.status.toLowerCase())) ...[
                   OutlinedButton.icon(
                     onPressed: () {
                       context.push('/jobs/${job.id}');
                     },
-                    icon: Icon(Icons.navigation_outlined,
-                        size: 13, color: AppColors.successText),
+                    icon: Icon(
+                      Icons.navigation_outlined,
+                      size: 13,
+                      color: AppColors.successText,
+                    ),
                     label: Text('Track'),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: AppColors.successText,
@@ -658,7 +856,9 @@ class _AdminJobCard extends StatelessWidget {
                       backgroundColor: AppColors.successBg,
                       visualDensity: VisualDensity.compact,
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 6),
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
                       textStyle: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
@@ -671,9 +871,7 @@ class _AdminJobCard extends StatelessWidget {
                 // Dispatch Action Button
                 FilledButton.icon(
                   onPressed: () {
-                    context.go(
-                      '${AppRoutes.adminDispatch}?jobId=${job.id}',
-                    );
+                    context.go('${AppRoutes.adminDispatch}?jobId=${job.id}');
                   },
                   icon: const Icon(Icons.send_rounded, size: 14),
                   label: Text('Dispatch'),
@@ -681,8 +879,10 @@ class _AdminJobCard extends StatelessWidget {
                     backgroundColor: const Color(0xFF005965),
                     foregroundColor: Colors.white,
                     visualDensity: VisualDensity.compact,
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 6,
+                    ),
                     textStyle: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w800,

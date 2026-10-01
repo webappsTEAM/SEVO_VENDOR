@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mobile/core/theme/app_theme.dart';
+import 'package:mobile/shared/widgets/sevo_brand_mark.dart';
 import 'package:mobile/features/admin/presentation/widgets/admin_drawer.dart';
 import 'package:mobile/features/auth/domain/auth_user.dart';
 import 'package:mobile/features/auth/presentation/auth_controller.dart';
@@ -55,7 +56,7 @@ void main() {
 
   group('Super Admin Drawer Tests', () {
     testWidgets('1. Displays SEVO Platform / Superadmin Console branding & all sections', (tester) async {
-      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.physicalSize = const Size(800, 2400);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
@@ -73,6 +74,18 @@ void main() {
           GoRoute(path: AppRoutes.superAdminWorkforce, builder: (c, s) => const Scaffold()),
           GoRoute(path: AppRoutes.superAdminApplications, builder: (c, s) => const Scaffold()),
           GoRoute(path: '/workforce/platform/providers', builder: (c, s) => const Scaffold()),
+          GoRoute(path: AppRoutes.sellerHome, builder: (c, s) => const Scaffold()),
+          GoRoute(path: AppRoutes.sellerOrders, builder: (c, s) => const Scaffold()),
+          GoRoute(path: AppRoutes.sellerReturns, builder: (c, s) => const Scaffold()),
+          GoRoute(path: AppRoutes.sellerClaims, builder: (c, s) => const Scaffold()),
+          GoRoute(path: AppRoutes.sellerInventory, builder: (c, s) => const Scaffold()),
+          GoRoute(path: AppRoutes.sellerCatalogUploads, builder: (c, s) => const Scaffold()),
+          GoRoute(path: AppRoutes.sellerCategories, builder: (c, s) => const Scaffold()),
+          GoRoute(path: AppRoutes.sellerCategoriesApproval, builder: (c, s) => const Scaffold()),
+          GoRoute(path: AppRoutes.sellerWarehouse, builder: (c, s) => const Scaffold()),
+          GoRoute(path: AppRoutes.sellerCoupons, builder: (c, s) => const Scaffold()),
+          GoRoute(path: AppRoutes.sellerReportsQuality, builder: (c, s) => const Scaffold()),
+          GoRoute(path: AppRoutes.sellerStoreProfile, builder: (c, s) => const Scaffold()),
           GoRoute(path: AppRoutes.estimates, builder: (c, s) => const Scaffold()),
           GoRoute(path: AppRoutes.adminQuotationApprovals, builder: (c, s) => const Scaffold()),
           GoRoute(path: AppRoutes.adminInvoices, builder: (c, s) => const Scaffold()),
@@ -110,8 +123,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // 1. TOP Identity
-      expect(find.text('SEVO Platform'), findsOneWidget);
-      expect(find.text('Superadmin Console'), findsOneWidget);
+      expect(find.byType(SevoHeaderTitle), findsOneWidget);
       expect(find.text('Platform Superadmin'), findsOneWidget);
       expect(find.text('SUPERADMIN'), findsOneWidget);
       expect(find.text('Platform Dashboard'), findsOneWidget);
@@ -120,10 +132,25 @@ void main() {
       expect(find.text('PLATFORM GOVERNANCE'), findsOneWidget);
       expect(find.text('Vendor Directory'), findsOneWidget);
       expect(find.text('Workforce Roster'), findsOneWidget);
-      expect(find.text('Applications Approval'), findsOneWidget);
+      expect(find.text('Technician Applications'), findsOneWidget);
       expect(find.text('Service Providers'), findsOneWidget);
 
-      // 3. OPERATIONS HUB (9 modules in exact order)
+      // 3. SELLER HUB (12 modules)
+      expect(find.text('SELLER HUB'), findsOneWidget);
+      expect(find.text('Home'), findsOneWidget);
+      expect(find.text('Orders'), findsOneWidget);
+      expect(find.text('Returns'), findsOneWidget);
+      expect(find.text('Claims'), findsOneWidget);
+      expect(find.text('Inventory'), findsOneWidget);
+      expect(find.text('Catalog Uploads'), findsOneWidget);
+      expect(find.text('Categories'), findsOneWidget);
+      expect(find.text('Categories Approval'), findsOneWidget);
+      expect(find.text('Warehouses'), findsOneWidget);
+      expect(find.text('Coupons'), findsOneWidget);
+      expect(find.text('Reports & Quality'), findsOneWidget);
+      expect(find.text('Store Profile'), findsOneWidget);
+
+      // 4. OPERATIONS HUB (9 modules in exact order)
       expect(find.text('OPERATIONS HUB'), findsOneWidget);
       expect(find.text('AC Estimations'), findsOneWidget);
       expect(find.text('Quotation Approvals'), findsOneWidget);
@@ -131,33 +158,29 @@ void main() {
       expect(find.text('Field Jobs'), findsOneWidget);
       expect(find.text('Dispatch Radar'), findsOneWidget);
       expect(find.text('Skills Master'), findsOneWidget);
-      expect(find.text('Pricing Approval'), findsOneWidget);
+      expect(find.text('Pricing & Approvals'), findsOneWidget);
       expect(find.text('Scorecards'), findsOneWidget);
       expect(find.text('Social Security'), findsOneWidget);
 
-      // Scroll to see remaining sections
-      await tester.drag(find.byType(ListView), const Offset(0, -300));
-      await tester.pumpAndSettle();
-
-      // 4. FINANCE & TREASURY
+      // 5. FINANCE & TREASURY
       expect(find.text('FINANCE & TREASURY'), findsOneWidget);
       expect(find.text('Platform Treasury'), findsOneWidget);
       expect(find.text('Transactions'), findsOneWidget);
       expect(find.text('Withdrawals'), findsOneWidget);
       expect(find.text('Payout Accounts'), findsOneWidget);
 
-      // 5. TELEMETRY & AUDITS
+      // 6. TELEMETRY & AUDITS
       expect(find.text('TELEMETRY & AUDITS'), findsOneWidget);
       expect(find.text('Database & Egress'), findsOneWidget);
       expect(find.text('Reports & Audits'), findsOneWidget);
 
-      // 6. BOTTOM
+      // 7. BOTTOM
       expect(find.text('System Settings'), findsOneWidget);
       expect(find.text('Log Out'), findsOneWidget);
     });
 
     testWidgets('2. Navigation to AC Estimations and other modules works from Super Admin drawer', (tester) async {
-      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.physicalSize = const Size(800, 2400);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
@@ -172,7 +195,7 @@ void main() {
             ),
           ),
           GoRoute(
-            path: AppRoutes.estimates,
+            path: AppRoutes.adminEstimations,
             builder: (context, state) => const Scaffold(
               drawer: AdminDrawer(),
               body: Text('AC Estimations View'),
@@ -259,7 +282,7 @@ void main() {
       tester.state<ScaffoldState>(find.byType(Scaffold)).openDrawer();
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Pricing Approval'));
+      await tester.tap(find.text('Pricing & Approvals'));
       await tester.pumpAndSettle();
 
       expect(find.text('Pricing Approvals View'), findsOneWidget);
@@ -459,8 +482,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Vendor Admin branding
-      expect(find.text('SEVO'), findsOneWidget);
-      expect(find.text('WORKFORCE ADMIN'), findsOneWidget);
+      expect(find.byType(SevoHeaderTitle), findsOneWidget);
       expect(find.text('ADMIN'), findsOneWidget);
 
       // Vendor Admin navigation structure
@@ -483,7 +505,7 @@ void main() {
       expect(find.text('PLATFORM GOVERNANCE'), findsNothing);
       expect(find.text('Vendor Directory'), findsNothing);
       expect(find.text('Workforce Roster'), findsNothing);
-      expect(find.text('Applications Approval'), findsNothing);
+      expect(find.text('Technician Applications'), findsNothing);
       expect(find.text('Platform Treasury'), findsNothing);
     });
   });
@@ -536,8 +558,7 @@ void main() {
 
         FlutterError.onError = originalOnError;
         expect(caughtDetails, isNull, reason: caughtDetails?.summary.toString());
-        expect(find.text('SEVO Platform'), findsOneWidget);
-        expect(find.text('Superadmin Console'), findsOneWidget);
+        expect(find.byType(SevoHeaderTitle), findsOneWidget);
       });
     }
   });
@@ -650,6 +671,194 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Workforce Operations Center Dashboard'), findsOneWidget);
+    });
+  });
+
+  group('Seller Hub in Admin Drawer Navigation Tests', () {
+    testWidgets('1. Vendor Admin drawer renders the vendor Seller Hub modules', (tester) async {
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      final router = GoRouter(
+        initialLocation: AppRoutes.adminHome,
+        routes: [
+          GoRoute(
+            path: AppRoutes.adminHome,
+            builder: (context, state) => const Scaffold(
+              drawer: AdminDrawer(),
+              body: Text('Vendor Admin Home'),
+            ),
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            authControllerProvider.overrideWith((ref) => FakeAuthController(vendorAdminUser)),
+          ],
+          child: MaterialApp.router(
+            routerConfig: router,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      tester.state<ScaffoldState>(find.byType(Scaffold)).openDrawer();
+      await tester.pumpAndSettle();
+
+      expect(find.text('SELLER HUB'), findsOneWidget);
+      expect(find.text('Home'), findsOneWidget);
+      expect(find.text('Orders'), findsOneWidget);
+      expect(find.text('Returns'), findsOneWidget);
+      expect(find.text('Claims'), findsOneWidget);
+      expect(find.text('Inventory'), findsOneWidget);
+      expect(find.text('Catalog Uploads'), findsOneWidget);
+      // Platform-admin only on the Web sidebar.
+      expect(find.text('Categories'), findsNothing);
+      expect(find.text('Categories Approval'), findsNothing);
+      expect(find.text('Warehouses'), findsNothing);
+      expect(find.text('Coupons'), findsOneWidget);
+      expect(find.text('Reports & Quality'), findsOneWidget);
+      expect(find.text('Store Profile'), findsOneWidget);
+    });
+
+    testWidgets('2. Navigation to Seller Hub modules works from Vendor Admin drawer', (tester) async {
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      final router = GoRouter(
+        initialLocation: AppRoutes.adminHome,
+        routes: [
+          GoRoute(
+            path: AppRoutes.adminHome,
+            builder: (context, state) => const Scaffold(
+              drawer: AdminDrawer(),
+              body: Text('Vendor Admin Home'),
+            ),
+          ),
+          GoRoute(
+            path: AppRoutes.sellerHome,
+            builder: (context, state) => const Scaffold(
+              drawer: AdminDrawer(),
+              body: Text('Seller Home View'),
+            ),
+          ),
+          GoRoute(
+            path: AppRoutes.sellerOrders,
+            builder: (context, state) => const Scaffold(
+              drawer: AdminDrawer(),
+              body: Text('Seller Orders View'),
+            ),
+          ),
+          GoRoute(
+            path: AppRoutes.sellerInventory,
+            builder: (context, state) => const Scaffold(
+              drawer: AdminDrawer(),
+              body: Text('Seller Inventory View'),
+            ),
+          ),
+          GoRoute(
+            path: AppRoutes.sellerStoreProfile,
+            builder: (context, state) => const Scaffold(
+              drawer: AdminDrawer(),
+              body: Text('Seller Store Profile View'),
+            ),
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            authControllerProvider.overrideWith((ref) => FakeAuthController(vendorAdminUser)),
+          ],
+          child: MaterialApp.router(
+            routerConfig: router,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Open drawer & tap Home
+      tester.state<ScaffoldState>(find.byType(Scaffold)).openDrawer();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Home'));
+      await tester.pumpAndSettle();
+      expect(find.text('Seller Home View'), findsOneWidget);
+
+      // Open drawer & tap Orders
+      tester.state<ScaffoldState>(find.byType(Scaffold)).openDrawer();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Orders'));
+      await tester.pumpAndSettle();
+      expect(find.text('Seller Orders View'), findsOneWidget);
+
+      // Open drawer & tap Inventory
+      tester.state<ScaffoldState>(find.byType(Scaffold)).openDrawer();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Inventory'));
+      await tester.pumpAndSettle();
+      expect(find.text('Seller Inventory View'), findsOneWidget);
+
+      // Open drawer & tap Store Profile
+      tester.state<ScaffoldState>(find.byType(Scaffold)).openDrawer();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Store Profile'));
+      await tester.pumpAndSettle();
+      expect(find.text('Seller Store Profile View'), findsOneWidget);
+    });
+
+    testWidgets('3. Collapsible toggle for SELLER HUB hides and reveals 12 modules', (tester) async {
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      final router = GoRouter(
+        initialLocation: AppRoutes.adminHome,
+        routes: [
+          GoRoute(
+            path: AppRoutes.adminHome,
+            builder: (context, state) => const Scaffold(
+              drawer: AdminDrawer(),
+              body: Text('Vendor Admin Home'),
+            ),
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            authControllerProvider.overrideWith((ref) => FakeAuthController(vendorAdminUser)),
+          ],
+          child: MaterialApp.router(
+            routerConfig: router,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      tester.state<ScaffoldState>(find.byType(Scaffold)).openDrawer();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Store Profile'), findsOneWidget);
+
+      // Collapse SELLER HUB
+      await tester.tap(find.text('SELLER HUB'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Store Profile'), findsNothing);
+      expect(find.text('Catalog Uploads'), findsNothing);
+
+      // Expand SELLER HUB
+      await tester.tap(find.text('SELLER HUB'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Store Profile'), findsOneWidget);
+      expect(find.text('Catalog Uploads'), findsOneWidget);
     });
   });
 }

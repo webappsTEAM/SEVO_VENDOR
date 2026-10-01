@@ -1,13 +1,14 @@
+import '../../../../shared/widgets/sevo/sevo_module_frame.dart';
+import '../../../../shared/widgets/sevo/sevo_module_art.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_theme.dart';
 import '../../../../shared/widgets/app_card.dart';
 import '../../../../shared/widgets/empty_state.dart';
-import '../../../../shared/widgets/workforce_app_bar.dart';
 import '../../data/admin_dashboard_api.dart';
 import '../../domain/admin_social_security_registration.dart';
-import '../widgets/admin_drawer.dart';
 import 'admin_social_security_providers.dart';
 
 /// Super Admin / SEVO Platform Social Security Compliance Screen.
@@ -94,8 +95,7 @@ class _AdminSocialSecurityScreenState
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-                'Registration recorded for ${reg.employeeName}.'),
+            content: Text('Registration recorded for ${reg.employeeName}.'),
             backgroundColor: const Color(0xFF059669),
           ),
         );
@@ -143,14 +143,9 @@ class _AdminSocialSecurityScreenState
     final registrationsAsync = ref.watch(adminSocialSecurityListProvider);
     final totalCount = registrationsAsync.valueOrNull?.length ?? 0;
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: const WorkforceAppBar(
-        titleText: 'Social Security & Insurance',
-        showStatusSubBar: false,
-        showDrawerMenu: true,
-      ),
-      drawer: const AdminDrawer(),
+    return SevoModuleFrame(
+      module: SevoModule.socialSecurity,
+      title: 'Social Security & Insurance',
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: _refresh,
@@ -264,8 +259,11 @@ class _AdminSocialSecurityScreenState
                   children: [
                     Row(
                       children: [
-                        Icon(Icons.info_outline_rounded,
-                            size: 17, color: AppColors.infoText),
+                        Icon(
+                          Icons.info_outline_rounded,
+                          size: 17,
+                          color: AppColors.infoText,
+                        ),
                         SizedBox(width: 8),
                         Expanded(
                           child: Text(
@@ -327,9 +325,12 @@ class _AdminSocialSecurityScreenState
                         onSelected: (val) {
                           if (val) {
                             ref
-                                .read(adminSocialSecurityStatusFilterProvider
-                                    .notifier)
-                                .state = st['id']!;
+                                    .read(
+                                      adminSocialSecurityStatusFilterProvider
+                                          .notifier,
+                                    )
+                                    .state =
+                                st['id']!;
                           }
                         },
                         selectedColor: AppColors.primary,
@@ -405,7 +406,9 @@ class _AdminSocialSecurityScreenState
                   if (registrations.isEmpty) {
                     return AppCard(
                       padding: const EdgeInsets.symmetric(
-                          vertical: 40, horizontal: 16),
+                        vertical: 40,
+                        horizontal: 16,
+                      ),
                       child: const EmptyState(
                         icon: Icons.assignment_outlined,
                         title: 'No individual worker registrations to show.',
@@ -499,8 +502,10 @@ class _RegistrationCard extends StatelessWidget {
                 ),
               ),
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 2.5,
+                ),
                 decoration: BoxDecoration(
                   color: statusBg,
                   borderRadius: BorderRadius.circular(6),

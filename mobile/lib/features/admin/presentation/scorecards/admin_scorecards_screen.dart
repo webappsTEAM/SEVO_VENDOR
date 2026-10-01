@@ -1,12 +1,13 @@
+import '../../../../shared/widgets/sevo/sevo_module_frame.dart';
+import '../../../../shared/widgets/sevo/sevo_module_art.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_theme.dart';
 import '../../../../shared/widgets/app_card.dart';
 import '../../../../shared/widgets/empty_state.dart';
-import '../../../../shared/widgets/workforce_app_bar.dart';
 import '../../domain/admin_scorecard.dart';
-import '../widgets/admin_drawer.dart';
 import 'admin_scorecards_providers.dart';
 
 /// Super Admin / SEVO Platform Scorecards Screen.
@@ -40,7 +41,9 @@ class _AdminScorecardsScreenState extends ConsumerState<AdminScorecardsScreen> {
       case 'SILVER':
         return AppColors.surfaceMuted;
       case 'BRONZE':
-        return AppColors.isDark ? const Color(0xFF7C2D12).withValues(alpha: 0.35) : const Color(0xFFFFEDD5);
+        return AppColors.isDark
+            ? const Color(0xFF7C2D12).withValues(alpha: 0.35)
+            : const Color(0xFFFFEDD5);
       case 'UNRATED':
       default:
         return AppColors.surfaceMuted;
@@ -54,7 +57,9 @@ class _AdminScorecardsScreenState extends ConsumerState<AdminScorecardsScreen> {
       case 'SILVER':
         return AppColors.textSecondary;
       case 'BRONZE':
-        return AppColors.isDark ? const Color(0xFFFB923C) : const Color(0xFF9A3412);
+        return AppColors.isDark
+            ? const Color(0xFFFB923C)
+            : const Color(0xFF9A3412);
       case 'UNRATED':
       default:
         return AppColors.textMuted;
@@ -68,14 +73,9 @@ class _AdminScorecardsScreenState extends ConsumerState<AdminScorecardsScreen> {
     final currentTier = ref.watch(adminScorecardsTierFilterProvider);
     final totalCount = allScorecardsAsync.valueOrNull?.length ?? 0;
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: const WorkforceAppBar(
-        titleText: 'Technician Scorecards',
-        showStatusSubBar: false,
-        showDrawerMenu: true,
-      ),
-      drawer: const AdminDrawer(),
+    return SevoModuleFrame(
+      module: SevoModule.scorecards,
+      title: 'Technician Scorecards',
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: _refresh,
@@ -197,7 +197,9 @@ class _AdminScorecardsScreenState extends ConsumerState<AdminScorecardsScreen> {
                 child: TextField(
                   controller: _searchController,
                   onChanged: (val) {
-                    ref.read(adminScorecardsSearchQueryProvider.notifier).state =
+                    ref
+                            .read(adminScorecardsSearchQueryProvider.notifier)
+                            .state =
                         val;
                   },
                   style: TextStyle(fontSize: 13, color: AppColors.textPrimary),
@@ -207,17 +209,23 @@ class _AdminScorecardsScreenState extends ConsumerState<AdminScorecardsScreen> {
                       fontSize: 13,
                       color: AppColors.textMuted,
                     ),
-                    prefixIcon: Icon(Icons.search_rounded,
-                        size: 18, color: AppColors.textMuted),
+                    prefixIcon: Icon(
+                      Icons.search_rounded,
+                      size: 18,
+                      color: AppColors.textMuted,
+                    ),
                     suffixIcon: _searchController.text.isNotEmpty
                         ? IconButton(
                             icon: const Icon(Icons.clear_rounded, size: 16),
                             onPressed: () {
                               _searchController.clear();
                               ref
-                                  .read(
-                                      adminScorecardsSearchQueryProvider.notifier)
-                                  .state = '';
+                                      .read(
+                                        adminScorecardsSearchQueryProvider
+                                            .notifier,
+                                      )
+                                      .state =
+                                  '';
                             },
                           )
                         : null,
@@ -235,52 +243,57 @@ class _AdminScorecardsScreenState extends ConsumerState<AdminScorecardsScreen> {
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Row(
-                  children: [
-                    {'id': 'ALL', 'label': 'All Tiers'},
-                    {'id': 'GOLD', 'label': 'Gold'},
-                    {'id': 'SILVER', 'label': 'Silver'},
-                    {'id': 'BRONZE', 'label': 'Bronze'},
-                    {'id': 'UNRATED', 'label': 'Unrated'},
-                  ].map((tier) {
-                    final isSelected = currentTier == tier['id'];
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: ChoiceChip(
-                        label: Text(
-                          tier['label']!,
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            fontWeight: isSelected
-                                ? FontWeight.w800
-                                : FontWeight.w600,
+                  children:
+                      [
+                        {'id': 'ALL', 'label': 'All Tiers'},
+                        {'id': 'GOLD', 'label': 'Gold'},
+                        {'id': 'SILVER', 'label': 'Silver'},
+                        {'id': 'BRONZE', 'label': 'Bronze'},
+                        {'id': 'UNRATED', 'label': 'Unrated'},
+                      ].map((tier) {
+                        final isSelected = currentTier == tier['id'];
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 6),
+                          child: ChoiceChip(
+                            label: Text(
+                              tier['label']!,
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: isSelected
+                                    ? FontWeight.w800
+                                    : FontWeight.w600,
+                              ),
+                            ),
+                            selected: isSelected,
+                            onSelected: (val) {
+                              if (val) {
+                                ref
+                                        .read(
+                                          adminScorecardsTierFilterProvider
+                                              .notifier,
+                                        )
+                                        .state =
+                                    tier['id']!;
+                              }
+                            },
+                            selectedColor: AppColors.primary,
+                            labelStyle: TextStyle(
+                              color: isSelected
+                                  ? Colors.white
+                                  : AppColors.textSecondary,
+                            ),
+                            backgroundColor: AppColors.surface,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              side: BorderSide(
+                                color: isSelected
+                                    ? AppColors.primary
+                                    : AppColors.border,
+                              ),
+                            ),
                           ),
-                        ),
-                        selected: isSelected,
-                        onSelected: (val) {
-                          if (val) {
-                            ref
-                                .read(adminScorecardsTierFilterProvider.notifier)
-                                .state = tier['id']!;
-                          }
-                        },
-                        selectedColor: AppColors.primary,
-                        labelStyle: TextStyle(
-                          color: isSelected
-                              ? Colors.white
-                              : AppColors.textSecondary,
-                        ),
-                        backgroundColor: AppColors.surface,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          side: BorderSide(
-                            color: isSelected
-                                ? AppColors.primary
-                                : AppColors.border,
-                          ),
-                        ),
-                      ),
-                    );
-                  }).toList(),
+                        );
+                      }).toList(),
                 ),
               ),
               const SizedBox(height: AppSpacing.md),
@@ -336,7 +349,9 @@ class _AdminScorecardsScreenState extends ConsumerState<AdminScorecardsScreen> {
                   if (scorecards.isEmpty) {
                     return AppCard(
                       padding: const EdgeInsets.symmetric(
-                          vertical: 40, horizontal: 16),
+                        vertical: 40,
+                        horizontal: 16,
+                      ),
                       child: const EmptyState(
                         icon: Icons.score_outlined,
                         title: 'No employees found for this company yet.',
@@ -424,8 +439,10 @@ class _ScorecardCard extends StatelessWidget {
                 ),
               ),
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 2.5,
+                ),
                 decoration: BoxDecoration(
                   color: tierBg,
                   borderRadius: BorderRadius.circular(6),
@@ -474,8 +491,11 @@ class _ScorecardCard extends StatelessWidget {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.star_rounded,
-                                size: 14, color: Color(0xFFEAB308)),
+                            const Icon(
+                              Icons.star_rounded,
+                              size: 14,
+                              color: Color(0xFFEAB308),
+                            ),
                             const SizedBox(width: 3),
                             Text(
                               scorecard.averageRating > 0
@@ -602,10 +622,7 @@ class _ScorecardCard extends StatelessWidget {
               if (scorecard.lastRecalculatedAt != null)
                 Text(
                   'Updated ${scorecard.lastRecalculatedAt!.day.toString().padLeft(2, '0')}/${scorecard.lastRecalculatedAt!.month.toString().padLeft(2, '0')}/${scorecard.lastRecalculatedAt!.year}',
-                  style: TextStyle(
-                    fontSize: 10.5,
-                    color: AppColors.textMuted,
-                  ),
+                  style: TextStyle(fontSize: 10.5, color: AppColors.textMuted),
                 ),
             ],
           ),

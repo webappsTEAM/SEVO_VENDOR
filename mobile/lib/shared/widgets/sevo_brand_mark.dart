@@ -28,7 +28,11 @@ class SevoBrandMark extends StatelessWidget {
             color: Colors.white.withValues(alpha: 0.15),
             borderRadius: BorderRadius.circular(radius),
           ),
-          child: Icon(Icons.handyman_rounded, size: size * 0.55, color: Colors.white),
+          child: Icon(
+            Icons.handyman_rounded,
+            size: size * 0.55,
+            color: Colors.white,
+          ),
         ),
       ),
     );
@@ -37,9 +41,10 @@ class SevoBrandMark extends StatelessWidget {
 
 /// Standard SEVO branded header title used across all screens.
 ///
-/// Features:
-/// - Prominent stylized 'SEVO' logo text with cyan gradient 'V' matching the Jobs screen
-/// - Clean brand presence across all AppBars
+/// Shows the official wordmark (`sevo_name_white.png`): geometric letters with
+/// the E drawn as three rounded bars whose middle bar is SEVO green. Sized from
+/// [fontSize] so existing call sites keep their proportions. If the asset is
+/// unavailable it falls back to plain text.
 class SevoHeaderTitle extends StatelessWidget {
   const SevoHeaderTitle({
     super.key,
@@ -59,15 +64,23 @@ class SevoHeaderTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final sub = subtitle ?? moduleName;
+    // The artwork is 5.4:1. 0.6 × fontSize keeps the wordmark in proportion with
+    // a ~20px page title (fontSize 22 → 13px tall, ~71px wide).
+    final height = fontSize * 0.6;
     return Column(
       crossAxisAlignment: crossAxisAlignment,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'SE',
+        Semantics(
+          label: 'SEVO',
+          child: Image.asset(
+            'assets/images/sevo_name_white.png',
+            height: height,
+            fit: BoxFit.contain,
+            filterQuality: FilterQuality.high,
+            excludeFromSemantics: true,
+            errorBuilder: (context, error, stackTrace) => Text(
+              'SEVO',
               textScaler: TextScaler.noScaling,
               style: TextStyle(
                 fontSize: fontSize,
@@ -77,34 +90,7 @@ class SevoHeaderTitle extends StatelessWidget {
                 height: 1.05,
               ),
             ),
-            ShaderMask(
-              shaderCallback: (bounds) => const LinearGradient(
-                colors: [Color(0xFF00F5D4), Color(0xFF00BBF9)],
-              ).createShader(bounds),
-              child: Text(
-                'V',
-                textScaler: TextScaler.noScaling,
-                style: TextStyle(
-                  fontSize: fontSize,
-                  fontWeight: FontWeight.w900,
-                  color: Colors.white,
-                  letterSpacing: 1.0,
-                  height: 1.05,
-                ),
-              ),
-            ),
-            Text(
-              'O',
-              textScaler: TextScaler.noScaling,
-              style: TextStyle(
-                fontSize: fontSize,
-                fontWeight: FontWeight.w900,
-                color: Colors.white,
-                letterSpacing: 1.0,
-                height: 1.05,
-              ),
-            ),
-          ],
+          ),
         ),
         if (sub != null && sub.trim().isNotEmpty) ...[
           const SizedBox(height: 1),

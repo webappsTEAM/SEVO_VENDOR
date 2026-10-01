@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../support/dev_shot.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/features/admin/domain/admin_wallet.dart';
@@ -107,6 +108,9 @@ void main() {
     testWidgets(
         'renders header context badge, title, subtitle, refresh, and dynamic Manage Payouts count',
         (tester) async {
+      tester.view.physicalSize = const Size(800, 3000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
       await tester.pumpWidget(buildTestWidget());
       await tester.pumpAndSettle();
 
@@ -129,6 +133,9 @@ void main() {
 
     testWidgets('renders all 4 financial metric cards with correct live values',
         (tester) async {
+      tester.view.physicalSize = const Size(800, 3000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
       await tester.pumpWidget(buildTestWidget());
       await tester.pumpAndSettle();
 
@@ -156,6 +163,9 @@ void main() {
     testWidgets(
         'renders main section title with dynamic count and transactions link',
         (tester) async {
+      tester.view.physicalSize = const Size(800, 3000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
       await tester.pumpWidget(buildTestWidget());
       await tester.pumpAndSettle();
 
@@ -165,6 +175,9 @@ void main() {
 
     testWidgets('renders status filter chips and filters wallet list on select',
         (tester) async {
+      tester.view.physicalSize = const Size(800, 3000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
       await tester.pumpWidget(buildTestWidget());
       await tester.pumpAndSettle();
 
@@ -209,6 +222,9 @@ void main() {
 
     testWidgets('filters wallet list by search query (name & technician ID)',
         (tester) async {
+      tester.view.physicalSize = const Size(800, 3000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
       await tester.pumpWidget(buildTestWidget());
       await tester.pumpAndSettle();
 
@@ -255,6 +271,9 @@ void main() {
     testWidgets(
         'renders wallet cards with correct details, balances, and action buttons',
         (tester) async {
+      tester.view.physicalSize = const Size(800, 3000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
       await tester.pumpWidget(buildTestWidget());
       await tester.pumpAndSettle();
 
@@ -276,6 +295,9 @@ void main() {
     testWidgets(
         'tapping View Details opens wallet detail modal bottom sheet with financial breakdown',
         (tester) async {
+      tester.view.physicalSize = const Size(800, 3000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
       await tester.pumpWidget(buildTestWidget());
       await tester.pumpAndSettle();
 
@@ -312,6 +334,9 @@ void main() {
     testWidgets(
         'shows exact empty state when wallet list is empty from backend',
         (tester) async {
+      tester.view.physicalSize = const Size(800, 3000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
       await tester.pumpWidget(buildTestWidget(wallets: []));
       await tester.pumpAndSettle();
 
@@ -328,6 +353,9 @@ void main() {
 
     testWidgets('shows error state with retry button on failure',
         (tester) async {
+      tester.view.physicalSize = const Size(800, 3000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
       await tester.pumpWidget(buildTestWidget(
         error: Exception('Failed to connect to Treasury API'),
       ));
@@ -359,4 +387,11 @@ void main() {
       });
     }
   });
+
+  testWidgets('dev screenshots', (tester) async {
+    await loadShotFonts();
+    shotSurface(tester, width: 360, height: 1700);
+    await tester.pumpWidget(buildTestWidget());
+    await shoot(tester, 'wallets_360');
+  }, skip: !shotsEnabled);
 }

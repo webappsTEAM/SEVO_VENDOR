@@ -1,11 +1,12 @@
+import '../../../shared/widgets/sevo/sevo_module_frame.dart';
+import '../../../shared/widgets/sevo/sevo_module_art.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/app_card.dart';
 import '../../../shared/widgets/empty_state.dart';
-import '../../../shared/widgets/workforce_app_bar.dart';
-import '../../admin/presentation/widgets/admin_drawer.dart';
 import '../../auth/presentation/auth_controller.dart';
 import 'estimates_providers.dart';
 import 'widgets/quote_card.dart';
@@ -44,15 +45,11 @@ class _EstimatesScreenState extends ConsumerState<EstimatesScreen> {
     final user = ref.watch(authControllerProvider).user;
     final isAdmin = user?.isAdmin == true;
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: WorkforceAppBar(
-        titleText: 'AC Estimations',
-        showBrand: false,
-        showStatusSubBar: false,
-        showDrawerMenu: isAdmin,
-      ),
-      drawer: isAdmin ? const AdminDrawer() : null,
+    return SevoModuleFrame(
+      module: SevoModule.estimations,
+      title: 'AC Estimations',
+      withDrawer: isAdmin,
+      transition: isAdmin,
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: () async {
@@ -73,11 +70,18 @@ class _EstimatesScreenState extends ConsumerState<EstimatesScreen> {
                   onTap: () => Navigator.of(context).pop(),
                   borderRadius: BorderRadius.circular(6),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 4,
+                      horizontal: 2,
+                    ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: const [
-                        Icon(Icons.arrow_back_rounded, size: 16, color: AppColors.primary),
+                        Icon(
+                          Icons.arrow_back_rounded,
+                          size: 16,
+                          color: AppColors.primary,
+                        ),
                         SizedBox(width: 4),
                         Text(
                           'Back',
@@ -99,7 +103,10 @@ class _EstimatesScreenState extends ConsumerState<EstimatesScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 7,
+                      vertical: 2.5,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFFEFF6FF),
                       borderRadius: BorderRadius.circular(5),
@@ -124,11 +131,18 @@ class _EstimatesScreenState extends ConsumerState<EstimatesScreen> {
                     },
                     borderRadius: BorderRadius.circular(6),
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 3,
+                      ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: const [
-                          Icon(Icons.refresh_rounded, size: 15, color: AppColors.primary),
+                          Icon(
+                            Icons.refresh_rounded,
+                            size: 15,
+                            color: AppColors.primary,
+                          ),
                           SizedBox(width: 4),
                           Text(
                             'Refresh',
@@ -168,7 +182,10 @@ class _EstimatesScreenState extends ConsumerState<EstimatesScreen> {
 
               // ── Responsive Metrics Summary Strip ────────────────────────────
               AppCard(
-                padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 10,
+                  horizontal: 8,
+                ),
                 child: Row(
                   children: [
                     _SummaryStat(
@@ -211,24 +228,37 @@ class _EstimatesScreenState extends ConsumerState<EstimatesScreen> {
                     child: TextField(
                       controller: _searchController,
                       onChanged: (val) {
-                        ref.read(estimatesSearchQueryProvider.notifier).state = val.trim();
+                        ref.read(estimatesSearchQueryProvider.notifier).state =
+                            val.trim();
                       },
                       decoration: InputDecoration(
                         hintText: 'Search customer, ID, brand ...',
-                        hintStyle: TextStyle(fontSize: 12, color: AppColors.textMuted),
+                        hintStyle: TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textMuted,
+                        ),
                         prefixIcon: const Icon(Icons.search_rounded, size: 18),
                         suffixIcon: _searchController.text.isNotEmpty
                             ? IconButton(
                                 icon: const Icon(Icons.clear_rounded, size: 16),
                                 onPressed: () {
                                   _searchController.clear();
-                                  ref.read(estimatesSearchQueryProvider.notifier).state = '';
+                                  ref
+                                          .read(
+                                            estimatesSearchQueryProvider
+                                                .notifier,
+                                          )
+                                          .state =
+                                      '';
                                 },
                               )
                             : null,
                         filled: true,
                         fillColor: Colors.white,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 9,
+                        ),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(10),
                           borderSide: BorderSide(color: AppColors.border),
@@ -239,7 +269,10 @@ class _EstimatesScreenState extends ConsumerState<EstimatesScreen> {
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(10),
-                          borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+                          borderSide: const BorderSide(
+                            color: AppColors.primary,
+                            width: 1.5,
+                          ),
                         ),
                       ),
                     ),
@@ -258,7 +291,8 @@ class _EstimatesScreenState extends ConsumerState<EstimatesScreen> {
                         if (picked != null) {
                           final formatted =
                               '${picked.day.toString().padLeft(2, '0')}/${picked.month.toString().padLeft(2, '0')}/${picked.year}';
-                          ref.read(estimatesDateFilterProvider.notifier).state = formatted;
+                          ref.read(estimatesDateFilterProvider.notifier).state =
+                              formatted;
                         }
                       },
                       borderRadius: BorderRadius.circular(10),
@@ -303,7 +337,13 @@ class _EstimatesScreenState extends ConsumerState<EstimatesScreen> {
                             if (selectedDate != null)
                               GestureDetector(
                                 onTap: () {
-                                  ref.read(estimatesDateFilterProvider.notifier).state = null;
+                                  ref
+                                          .read(
+                                            estimatesDateFilterProvider
+                                                .notifier,
+                                          )
+                                          .state =
+                                      null;
                                 },
                                 child: const Icon(
                                   Icons.close_rounded,
@@ -333,14 +373,21 @@ class _EstimatesScreenState extends ConsumerState<EstimatesScreen> {
                           tab['label']!,
                           style: TextStyle(
                             fontSize: 12,
-                            fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                            color: isSelected ? Colors.white : AppColors.textPrimary,
+                            fontWeight: isSelected
+                                ? FontWeight.w800
+                                : FontWeight.w600,
+                            color: isSelected
+                                ? Colors.white
+                                : AppColors.textPrimary,
                           ),
                         ),
                         selected: isSelected,
                         onSelected: (selected) {
                           if (selected) {
-                            ref.read(estimatesFilterTabProvider.notifier).state = tab['id']!;
+                            ref
+                                    .read(estimatesFilterTabProvider.notifier)
+                                    .state =
+                                tab['id']!;
                           }
                         },
                         selectedColor: AppColors.primary,
@@ -348,7 +395,9 @@ class _EstimatesScreenState extends ConsumerState<EstimatesScreen> {
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8),
                           side: BorderSide(
-                            color: isSelected ? AppColors.primary : AppColors.border,
+                            color: isSelected
+                                ? AppColors.primary
+                                : AppColors.border,
                           ),
                         ),
                       ),
@@ -390,7 +439,10 @@ class _EstimatesScreenState extends ConsumerState<EstimatesScreen> {
                         Text(
                           err.toString(),
                           textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textMuted,
+                          ),
                         ),
                         const SizedBox(height: AppSpacing.md),
                         ElevatedButton.icon(
@@ -405,14 +457,16 @@ class _EstimatesScreenState extends ConsumerState<EstimatesScreen> {
                 data: (quotes) {
                   if (quotes.isEmpty) {
                     return AppCard(
-                      padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 16),
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 32,
+                        horizontal: 16,
+                      ),
                       child: Column(
                         children: const [
                           EmptyState(
                             icon: Icons.air_rounded,
                             title: 'No Estimation Leads Found',
-                            message:
-                                'No matching AC inspection requests found for current filter criteria.',
+                            message: 'No matching AC inspection requests found for current filter criteria.',
                           ),
                         ],
                       ),
@@ -420,7 +474,9 @@ class _EstimatesScreenState extends ConsumerState<EstimatesScreen> {
                   }
 
                   return Column(
-                    children: quotes.map((quote) => QuoteCard(quote: quote)).toList(),
+                    children: quotes
+                        .map((quote) => QuoteCard(quote: quote))
+                        .toList(),
                   );
                 },
               ),

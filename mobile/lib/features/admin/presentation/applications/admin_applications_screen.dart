@@ -18,9 +18,16 @@ import '../widgets/admin_drawer.dart';
 /// 1. Onboarding Applications (with status & service filters, dossier cards)
 /// 2. Profile Change Requests (with decision modal for field modifications)
 class AdminApplicationsScreen extends ConsumerStatefulWidget {
-  const AdminApplicationsScreen({super.key, this.statusFilter});
+  const AdminApplicationsScreen({
+    super.key,
+    this.statusFilter,
+    this.openChangeRequests = false,
+  });
 
   final String? statusFilter;
+
+  /// Opens on the Profile Change Requests tab (`?tab=change_requests`).
+  final bool openChangeRequests;
 
   @override
   ConsumerState<AdminApplicationsScreen> createState() =>
@@ -43,7 +50,11 @@ class _AdminApplicationsScreenState
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(
+      length: 2,
+      vsync: this,
+      initialIndex: widget.openChangeRequests ? 1 : 0,
+    );
     _statusFilter = widget.statusFilter?.toLowerCase() ?? 'all';
   }
 
@@ -72,7 +83,12 @@ class _AdminApplicationsScreenState
           // ── Header Title & Subtitle ────────────────────────────────────────
           Container(
             color: AppColors.surface,
-            padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.md,
+              AppSpacing.md,
+              AppSpacing.md,
+              0,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -126,7 +142,10 @@ class _AdminApplicationsScreenState
                   unselectedLabelColor: AppColors.textSecondary,
                   indicatorColor: AppColors.primary,
                   indicatorWeight: 3,
-                  labelStyle: TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+                  labelStyle: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                  ),
                   tabs: [
                     Tab(
                       child: Row(
@@ -148,8 +167,11 @@ class _AdminApplicationsScreenState
                           Text('Change Requests'),
                           const SizedBox(width: 6),
                           changeRequestsAsync.maybeWhen(
-                            data: (list) => _countBadge(list.where((c) => c.isPending).length,
-                                color: AppColors.warningBg, textColor: AppColors.warningText),
+                            data: (list) => _countBadge(
+                              list.where((c) => c.isPending).length,
+                              color: AppColors.warningBg,
+                              textColor: AppColors.warningText,
+                            ),
                             orElse: () => const SizedBox.shrink(),
                           ),
                         ],
@@ -198,7 +220,9 @@ class _AdminApplicationsScreenState
   }
 
   // ── Tab 1: Applications ────────────────────────────────────────────────────
-  Widget _buildApplicationsTab(AsyncValue<List<AdminApplication>> applicationsAsync) {
+  Widget _buildApplicationsTab(
+    AsyncValue<List<AdminApplication>> applicationsAsync,
+  ) {
     return applicationsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (err, _) => Center(
@@ -208,7 +232,8 @@ class _AdminApplicationsScreenState
             Text('Failed to load applications: $err'),
             const SizedBox(height: 12),
             FilledButton(
-              onPressed: () => ref.invalidate(adminApplicationsListProvider(null)),
+              onPressed: () =>
+                  ref.invalidate(adminApplicationsListProvider(null)),
               child: Text('Retry'),
             ),
           ],
@@ -230,7 +255,8 @@ class _AdminApplicationsScreenState
           final name = (app.name ?? '').toLowerCase();
           final empId = (app.employeeId ?? '').toLowerCase();
           final phone = (app.phone ?? '').toLowerCase();
-          final matchesSearch = term.isEmpty ||
+          final matchesSearch =
+              term.isEmpty ||
               name.contains(term) ||
               empId.contains(term) ||
               phone.contains(term);
@@ -253,7 +279,9 @@ class _AdminApplicationsScreenState
           // Service filter
           bool matchesService = true;
           if (_selectedService != 'ALL') {
-            matchesService = app.allRequestedServices.any((s) => s.name == _selectedService);
+            matchesService = app.allRequestedServices.any(
+              (s) => s.name == _selectedService,
+            );
           }
 
           return matchesSearch && matchesStatus && matchesService;
@@ -285,8 +313,15 @@ class _AdminApplicationsScreenState
                 }),
                 decoration: InputDecoration(
                   hintText: 'Search candidate name, ID, or phone...',
-                  hintStyle: TextStyle(fontSize: 13, color: AppColors.textMuted),
-                  prefixIcon: Icon(Icons.search_rounded, size: 20, color: AppColors.textSecondary),
+                  hintStyle: TextStyle(
+                    fontSize: 13,
+                    color: AppColors.textMuted,
+                  ),
+                  prefixIcon: Icon(
+                    Icons.search_rounded,
+                    size: 20,
+                    color: AppColors.textSecondary,
+                  ),
                   suffixIcon: _searchTerm.isNotEmpty
                       ? IconButton(
                           icon: const Icon(Icons.clear_rounded, size: 18),
@@ -301,7 +336,10 @@ class _AdminApplicationsScreenState
                       : null,
                   filled: true,
                   fillColor: AppColors.surface,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(AppRadius.input),
                     borderSide: BorderSide(color: AppColors.border),
@@ -333,19 +371,27 @@ class _AdminApplicationsScreenState
                       });
                     }),
                     const SizedBox(width: 6),
-                    _statusChip('Under Review', _statusFilter == 'under_review', () {
-                      setState(() {
-                        _statusFilter = 'under_review';
-                        _currentPage = 1;
-                      });
-                    }),
+                    _statusChip(
+                      'Under Review',
+                      _statusFilter == 'under_review',
+                      () {
+                        setState(() {
+                          _statusFilter = 'under_review';
+                          _currentPage = 1;
+                        });
+                      },
+                    ),
                     const SizedBox(width: 6),
-                    _statusChip('Correction Required', _statusFilter == 'correction_required', () {
-                      setState(() {
-                        _statusFilter = 'correction_required';
-                        _currentPage = 1;
-                      });
-                    }),
+                    _statusChip(
+                      'Correction Required',
+                      _statusFilter == 'correction_required',
+                      () {
+                        setState(() {
+                          _statusFilter = 'correction_required';
+                          _currentPage = 1;
+                        });
+                      },
+                    ),
                     const SizedBox(width: 6),
                     _statusChip('Approved', _statusFilter == 'approved', () {
                       setState(() {
@@ -360,26 +406,55 @@ class _AdminApplicationsScreenState
                         _currentPage = 1;
                       });
                     }),
-                    const SizedBox(width: 12),
-                    // Service Selector Button
-                    OutlinedButton.icon(
-                      onPressed: () => _openServiceSelectorSheet(serviceList),
-                      icon: const Icon(Icons.filter_list_rounded, size: 16),
-                      label: Text(
-                        _selectedService == 'ALL' ? 'Filter by Service' : _selectedService,
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        backgroundColor: _selectedService != 'ALL' ? AppColors.infoBg : AppColors.surface,
-                        side: BorderSide(
-                          color: _selectedService != 'ALL' ? AppColors.primary : AppColors.border,
-                        ),
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        visualDensity: VisualDensity.compact,
-                      ),
-                    ),
                   ],
                 ),
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              DropdownButtonFormField<String>(
+                key: ValueKey(
+                  'service-$_selectedService-${serviceList.length}',
+                ),
+                initialValue:
+                    _selectedService == 'ALL' ||
+                        serviceList.contains(_selectedService)
+                    ? _selectedService
+                    : 'ALL',
+                isExpanded: true,
+                icon: const Icon(Icons.keyboard_arrow_down_rounded),
+                decoration: InputDecoration(
+                  labelText: 'Service',
+                  prefixIcon: const Icon(Icons.filter_list_rounded, size: 20),
+                  isDense: true,
+                  filled: true,
+                  fillColor: AppColors.surface,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.input),
+                    borderSide: BorderSide(color: AppColors.border),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.input),
+                    borderSide: BorderSide(color: AppColors.border),
+                  ),
+                ),
+                items: [
+                  const DropdownMenuItem(
+                    value: 'ALL',
+                    child: Text('All Services'),
+                  ),
+                  for (final name in serviceList)
+                    DropdownMenuItem(
+                      value: name,
+                      child: Text(name, overflow: TextOverflow.ellipsis),
+                    ),
+                ],
+                onChanged: (v) => setState(() {
+                  _selectedService = v ?? 'ALL';
+                  _currentPage = 1;
+                }),
               ),
               const SizedBox(height: AppSpacing.md),
 
@@ -391,17 +466,22 @@ class _AdminApplicationsScreenState
                   message: 'Try changing the status or service filter.',
                 )
               else ...[
-                ...pageItems.map((app) => _AdminApplicationCard(
-                      app: app,
-                      onReviewDossier: () =>
-                          context.push('/admin/applications/${app.id}'),
-                    )),
+                ...pageItems.map(
+                  (app) => _AdminApplicationCard(
+                    app: app,
+                    onReviewDossier: () =>
+                        context.push('/admin/applications/${app.id}'),
+                  ),
+                ),
 
                 const SizedBox(height: AppSpacing.md),
 
                 // Pagination Bar
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                   decoration: BoxDecoration(
                     color: AppColors.surface,
                     borderRadius: BorderRadius.circular(AppRadius.card),
@@ -484,93 +564,10 @@ class _AdminApplicationsScreenState
     );
   }
 
-  void _openServiceSelectorSheet(List<String> services) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.card)),
-      ),
-      builder: (ctx) => DraggableScrollableSheet(
-        initialChildSize: 0.6,
-        maxChildSize: 0.85,
-        minChildSize: 0.35,
-        expand: false,
-        builder: (sheetCtx, scrollController) => Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(AppSpacing.md),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Filter by Service',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
-                  ),
-                  if (_selectedService != 'ALL')
-                    TextButton(
-                      onPressed: () {
-                        setState(() {
-                          _selectedService = 'ALL';
-                          _currentPage = 1;
-                        });
-                        Navigator.of(ctx).pop();
-                      },
-                      child: Text('Clear Filter'),
-                    ),
-                ],
-              ),
-            ),
-            Divider(height: 1),
-            Expanded(
-              child: ListView.builder(
-                controller: scrollController,
-                itemCount: services.length + 1,
-                itemBuilder: (context, idx) {
-                  if (idx == 0) {
-                    return ListTile(
-                      dense: true,
-                      title: Text('All Services', style: TextStyle(fontWeight: FontWeight.w700)),
-                      trailing: _selectedService == 'ALL'
-                          ? const Icon(Icons.check_rounded, color: AppColors.primary)
-                          : null,
-                      onTap: () {
-                        setState(() {
-                          _selectedService = 'ALL';
-                          _currentPage = 1;
-                        });
-                        Navigator.of(ctx).pop();
-                      },
-                    );
-                  }
-                  final serviceName = services[idx - 1];
-                  final isSel = _selectedService == serviceName;
-                  return ListTile(
-                    dense: true,
-                    title: Text(serviceName, style: TextStyle(fontWeight: isSel ? FontWeight.w800 : FontWeight.w500)),
-                    trailing: isSel
-                        ? const Icon(Icons.check_rounded, color: AppColors.primary)
-                        : null,
-                    onTap: () {
-                      setState(() {
-                        _selectedService = serviceName;
-                        _currentPage = 1;
-                      });
-                      Navigator.of(ctx).pop();
-                    },
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   // ── Tab 2: Profile Change Requests ─────────────────────────────────────────
-  Widget _buildChangeRequestsTab(AsyncValue<List<AdminChangeRequest>> changeRequestsAsync) {
+  Widget _buildChangeRequestsTab(
+    AsyncValue<List<AdminChangeRequest>> changeRequestsAsync,
+  ) {
     return changeRequestsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (err, _) => Center(
@@ -626,14 +623,24 @@ class _AdminApplicationsScreenState
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Technician: ${cr.employeeName ?? 'Employee'} (${cr.employeeId ?? ''})',
-                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+            Text(
+              'Technician: ${cr.employeeName ?? 'Employee'} (${cr.employeeId ?? ''})',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+            ),
             const SizedBox(height: 8),
-            Text('Current Value: ${cr.oldValue ?? '—'}',
-                style: TextStyle(color: AppColors.textSecondary, fontSize: 12.5)),
+            Text(
+              'Current Value: ${cr.oldValue ?? '—'}',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 12.5),
+            ),
             const SizedBox(height: 2),
-            Text('Requested Value: ${cr.newValue ?? '—'}',
-                style: TextStyle(fontWeight: FontWeight.w800, color: AppColors.primary, fontSize: 13)),
+            Text(
+              'Requested Value: ${cr.newValue ?? '—'}',
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                color: AppColors.primary,
+                fontSize: 13,
+              ),
+            ),
             const SizedBox(height: 14),
             TextField(
               controller: notesController,
@@ -652,11 +659,15 @@ class _AdminApplicationsScreenState
             child: Text('Cancel'),
           ),
           OutlinedButton(
-            style: OutlinedButton.styleFrom(foregroundColor: const Color(0xFFDC2626)),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFFDC2626),
+            ),
             onPressed: () async {
               Navigator.of(dlgCtx).pop();
               try {
-                await ref.read(adminDashboardApiProvider).decideChangeRequest(
+                await ref
+                    .read(adminDashboardApiProvider)
+                    .decideChangeRequest(
                       crId: cr.id,
                       action: 'reject',
                       notes: notesController.text.trim(),
@@ -670,7 +681,10 @@ class _AdminApplicationsScreenState
               } catch (e) {
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Failed: $e'), backgroundColor: const Color(0xFFDC2626)),
+                    SnackBar(
+                      content: Text('Failed: $e'),
+                      backgroundColor: const Color(0xFFDC2626),
+                    ),
                   );
                 }
               }
@@ -678,11 +692,15 @@ class _AdminApplicationsScreenState
             child: Text('Reject'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: const Color(0xFF059669)),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF059669),
+            ),
             onPressed: () async {
               Navigator.of(dlgCtx).pop();
               try {
-                await ref.read(adminDashboardApiProvider).decideChangeRequest(
+                await ref
+                    .read(adminDashboardApiProvider)
+                    .decideChangeRequest(
                       crId: cr.id,
                       action: 'approve',
                       notes: notesController.text.trim(),
@@ -690,13 +708,18 @@ class _AdminApplicationsScreenState
                 ref.invalidate(adminChangeRequestsProvider);
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Change request approved successfully!')),
+                    const SnackBar(
+                      content: Text('Change request approved successfully!'),
+                    ),
                   );
                 }
               } catch (e) {
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Failed: $e'), backgroundColor: const Color(0xFFDC2626)),
+                    SnackBar(
+                      content: Text('Failed: $e'),
+                      backgroundColor: const Color(0xFFDC2626),
+                    ),
                   );
                 }
               }
@@ -732,7 +755,11 @@ class _AdminApplicationCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: AppColors.border),
         boxShadow: const [
-          BoxShadow(color: Color(0x060A2540), blurRadius: 4, offset: Offset(0, 1.5)),
+          BoxShadow(
+            color: Color(0x060A2540),
+            blurRadius: 4,
+            offset: Offset(0, 1.5),
+          ),
         ],
       ),
       child: Column(
@@ -757,7 +784,11 @@ class _AdminApplicationCard extends StatelessWidget {
                   children: [
                     Text(
                       app.name ?? 'Technician #${app.id}',
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textPrimary,
+                      ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -765,7 +796,10 @@ class _AdminApplicationCard extends StatelessWidget {
                     Row(
                       children: [
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 5,
+                            vertical: 1,
+                          ),
                           decoration: BoxDecoration(
                             color: AppColors.surfaceMuted,
                             borderRadius: BorderRadius.circular(4),
@@ -809,11 +843,19 @@ class _AdminApplicationCard extends StatelessWidget {
             children: [
               Text(
                 'Services: ',
-                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.textSecondary),
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textSecondary,
+                ),
               ),
               Text(
                 '${app.allRequestedServices.length} Selected',
-                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: AppColors.primary),
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.primary,
+                ),
               ),
             ],
           ),
@@ -829,24 +871,42 @@ class _AdminApplicationCard extends StatelessWidget {
           // Documents & Recency
           Row(
             children: [
-              Icon(Icons.description_outlined, size: 14, color: AppColors.textSecondary),
+              Icon(
+                Icons.description_outlined,
+                size: 14,
+                color: AppColors.textSecondary,
+              ),
               const SizedBox(width: 4),
               Text(
                 'Documents: ${app.uploadedDocumentsCount} Uploaded',
-                style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary, fontWeight: FontWeight.w600),
+                style: TextStyle(
+                  fontSize: 11.5,
+                  color: AppColors.textSecondary,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
               if (app.pendingDocumentsCount > 0) ...[
                 const SizedBox(width: 8),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 1.5,
+                  ),
                   decoration: BoxDecoration(
                     color: AppColors.warningBg,
                     borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: AppColors.warningBorder, width: 0.8),
+                    border: Border.all(
+                      color: AppColors.warningBorder,
+                      width: 0.8,
+                    ),
                   ),
                   child: Text(
                     '${app.pendingDocumentsCount} Pending',
-                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.warningText),
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.warningText,
+                    ),
                   ),
                 ),
               ],
@@ -864,7 +924,10 @@ class _AdminApplicationCard extends StatelessWidget {
               onTap: onReviewDossier,
               borderRadius: BorderRadius.circular(6),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
                 decoration: BoxDecoration(
                   color: AppColors.infoBg,
                   borderRadius: BorderRadius.circular(6),
@@ -882,7 +945,11 @@ class _AdminApplicationCard extends StatelessWidget {
                       ),
                     ),
                     SizedBox(width: 4),
-                    Icon(Icons.arrow_forward_rounded, size: 13, color: AppColors.primary),
+                    Icon(
+                      Icons.arrow_forward_rounded,
+                      size: 13,
+                      color: AppColors.primary,
+                    ),
                   ],
                 ),
               ),
@@ -913,7 +980,11 @@ class _AdminChangeRequestCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: AppColors.border),
         boxShadow: const [
-          BoxShadow(color: Color(0x060A2540), blurRadius: 4, offset: Offset(0, 1.5)),
+          BoxShadow(
+            color: Color(0x060A2540),
+            blurRadius: 4,
+            offset: Offset(0, 1.5),
+          ),
         ],
       ),
       child: Column(
@@ -925,7 +996,11 @@ class _AdminChangeRequestCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   changeRequest.displayField,
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.textPrimary,
+                  ),
                 ),
               ),
               StatusChip(status: changeRequest.status, dense: true),
@@ -950,21 +1025,48 @@ class _AdminChangeRequestCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Current', style: TextStyle(fontSize: 10, color: AppColors.textMuted)),
-                      Text(changeRequest.oldValue ?? '—',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                      Text(
+                        'Current',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: AppColors.textMuted,
+                        ),
+                      ),
+                      Text(
+                        changeRequest.oldValue ?? '—',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ],
                   ),
                 ),
-                Icon(Icons.arrow_forward_rounded, size: 16, color: AppColors.textMuted),
+                Icon(
+                  Icons.arrow_forward_rounded,
+                  size: 16,
+                  color: AppColors.textMuted,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Requested', style: TextStyle(fontSize: 10, color: AppColors.textMuted)),
-                      Text(changeRequest.newValue ?? '—',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.primary)),
+                      Text(
+                        'Requested',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: AppColors.textMuted,
+                        ),
+                      ),
+                      Text(
+                        changeRequest.newValue ?? '—',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.primary,
+                        ),
+                      ),
                     ],
                   ),
                 ),

@@ -90,5 +90,27 @@ void main() {
       expect(presentation.state, equals(JobPresentationState.completed));
       expect(presentation.isAccepted, isFalse);
     });
+
+    test('identifies scheduled future job', () {
+      final job = Job(
+        id: 6,
+        requestId: 'REQ-006',
+        status: 'assigned',
+        isScheduledFuture: true,
+        isOffer: false,
+        isAcceptedByCurrentEmployee: false,
+        isAssignedToCurrentEmployee: true,
+        canCancel: false,
+      );
+
+      final presentation = buildJobPresentation(job, hasActiveJob: false);
+
+      expect(presentation.state, equals(JobPresentationState.scheduled));
+      expect(presentation.isScheduled, isTrue);
+      expect(presentation.isOffer, isFalse);
+      expect(presentation.isAccepted, isFalse);
+      expect(presentation.displayStatus, equals('Scheduled (Upcoming)'));
+      expect(presentation.badgeStatus, equals('scheduled'));
+    });
   });
 }

@@ -63,7 +63,10 @@ class AdminDashboardApi {
   }
 
   /// Rejects an applicant's dossier.
-  Future<Map<String, dynamic>> rejectApplication(int id, {String reason = ''}) async {
+  Future<Map<String, dynamic>> rejectApplication(
+    int id, {
+    String reason = '',
+  }) async {
     final response = await _dio.post(
       '/workforce/admin/applications/$id/reject/',
       data: {'reason': reason},
@@ -74,7 +77,10 @@ class AdminDashboardApi {
   }
 
   /// Requests correction for an applicant's dossier.
-  Future<Map<String, dynamic>> requestCorrection(int id, {required String notes}) async {
+  Future<Map<String, dynamic>> requestCorrection(
+    int id, {
+    required String notes,
+  }) async {
     final response = await _dio.post(
       '/workforce/admin/applications/$id/request-correction/',
       data: {'notes': notes},
@@ -208,10 +214,7 @@ class AdminDashboardApi {
   }) async {
     final response = await _dio.post(
       '/workforce/dispatch/assign/',
-      data: {
-        'job_id': jobId,
-        'employee_id': employeeId,
-      },
+      data: {'job_id': jobId, 'employee_id': employeeId},
       options: _adminReqOptions,
     );
     final data = response.data;
@@ -361,7 +364,9 @@ class AdminDashboardApi {
   }
 
   /// Creates a new authorized location.
-  Future<Map<String, dynamic>> createLocation(Map<String, dynamic> payload) async {
+  Future<Map<String, dynamic>> createLocation(
+    Map<String, dynamic> payload,
+  ) async {
     final response = await _dio.post(
       '/workforce/time-tracking/locations/',
       data: payload,
@@ -394,7 +399,10 @@ class AdminDashboardApi {
   }
 
   /// Toggles an authorized location active / inactive.
-  Future<Map<String, dynamic>> toggleLocationActive(int id, bool isActive) async {
+  Future<Map<String, dynamic>> toggleLocationActive(
+    int id,
+    bool isActive,
+  ) async {
     return updateLocation(id, {'is_active': isActive});
   }
 
@@ -413,10 +421,7 @@ class AdminDashboardApi {
     required String type,
     Map<String, dynamic>? queryParams,
   }) async {
-    final params = <String, dynamic>{
-      'type': type,
-      ...?queryParams,
-    };
+    final params = <String, dynamic>{'type': type, ...?queryParams};
     final response = await _dio.get(
       '/workforce/reports/',
       queryParameters: params,
@@ -451,6 +456,48 @@ class AdminDashboardApi {
     return data is List ? data : const [];
   }
 
+  /// Read-only dispatch radar (Web `apiGetDispatchRadar`). `status` is a
+  /// Web filter key (`all`, `offered`, `searching`, ...).
+  Future<Map<String, dynamic>> fetchDispatchRadar({
+    int? jobId,
+    String status = 'all',
+    String search = '',
+  }) async {
+    final params = <String, dynamic>{
+      'job_id': ?jobId,
+      if (status != 'all') 'status': status,
+      if (search.trim().isNotEmpty) 'search': search.trim(),
+    };
+    final response = await _dio.get(
+      '/workforce/admin/dispatch-radar/',
+      queryParameters: params.isEmpty ? null : params,
+      options: _adminReqOptions,
+    );
+    final data = response.data;
+    return data is Map<String, dynamic> ? data : const <String, dynamic>{};
+  }
+
+  /// Moves a job to [status] (Web `apiTransitionJob`), e.g. `completed`
+  /// to approve submitted service proof.
+  Future<void> transitionJob(int jobId, String status) async {
+    await _dio.post(
+      '/workforce/jobs/$jobId/transition/',
+      data: {'status': status},
+      options: _adminReqOptions,
+    );
+  }
+
+  /// Full quotation history (Web "All Quotations & History" tab).
+  Future<List<dynamic>> fetchAllQuotes() async {
+    final response = await _dio.get(
+      '/workforce/quotes/',
+      options: _adminReqOptions,
+    );
+    final data = response.data;
+    if (data is Map && data['results'] is List) return data['results'] as List;
+    return data is List ? data : const [];
+  }
+
   /// Decides on an accepted quotation awaiting SEVO admin approval.
   Future<Map<String, dynamic>> adminReviewQuote(
     int quoteId, {
@@ -460,11 +507,7 @@ class AdminDashboardApi {
   }) async {
     final response = await _dio.post(
       '/workforce/quotes/$quoteId/admin-review/',
-      data: {
-        'action': action,
-        'notes': notes,
-        'reason': reason,
-      },
+      data: {'action': action, 'notes': notes, 'reason': reason},
       options: _adminReqOptions,
     );
     final data = response.data;
@@ -480,11 +523,7 @@ class AdminDashboardApi {
   }) async {
     final response = await _dio.post(
       '/workforce/quotes/$quoteId/pre-send-review/',
-      data: {
-        'action': action,
-        'notes': notes,
-        'reason': reason,
-      },
+      data: {'action': action, 'notes': notes, 'reason': reason},
       options: _adminReqOptions,
     );
     final data = response.data;
@@ -494,10 +533,7 @@ class AdminDashboardApi {
   // ── Commercial Invoices ─────────────────────────────────────────────────────
 
   /// Fetches commercial invoices scoped to the caller.
-  Future<List<dynamic>> fetchInvoices({
-    String? search,
-    String? status,
-  }) async {
+  Future<List<dynamic>> fetchInvoices({String? search, String? status}) async {
     final params = <String, dynamic>{
       if (search != null && search.isNotEmpty) 'search': search,
       if (status != null && status.isNotEmpty) 'status': status,
@@ -521,6 +557,15 @@ class AdminDashboardApi {
     return data is Map<String, dynamic> ? data : const <String, dynamic>{};
   }
 
+  /// Official tax invoice PDF (`/workforce/invoices/<id>/pdf/`).
+  Future<List<int>> downloadInvoicePdf(int id) async {
+    final response = await _dio.get<List<int>>(
+      '/workforce/invoices/$id/pdf/',
+      options: _adminReqOptions.copyWith(responseType: ResponseType.bytes),
+    );
+    return response.data ?? const [];
+  }
+
   /// Records a manual or offline payment against an invoice.
   Future<Map<String, dynamic>> recordInvoicePayment(
     int id, {
@@ -530,11 +575,7 @@ class AdminDashboardApi {
   }) async {
     final response = await _dio.post(
       '/workforce/invoices/$id/payments/',
-      data: {
-        'amount': amount,
-        'method': method,
-        'reference': reference,
-      },
+      data: {'amount': amount, 'method': method, 'reference': reference},
       options: _adminReqOptions,
     );
     final data = response.data;
@@ -709,4 +750,3 @@ class AdminDashboardApi {
 final adminDashboardApiProvider = Provider<AdminDashboardApi>((ref) {
   return AdminDashboardApi(ref.watch(apiClientProvider));
 });
-

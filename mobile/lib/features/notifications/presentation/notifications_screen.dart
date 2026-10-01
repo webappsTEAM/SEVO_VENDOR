@@ -1,10 +1,12 @@
+import '../../../shared/widgets/sevo/sevo_module_frame.dart';
+import '../../../shared/widgets/sevo/sevo_module_art.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/async_value_view.dart';
 import '../../../shared/widgets/empty_state.dart';
-import '../../../shared/widgets/workforce_app_bar.dart';
 import '../domain/app_notification.dart';
 import 'notifications_providers.dart';
 
@@ -12,7 +14,8 @@ class NotificationsScreen extends ConsumerStatefulWidget {
   const NotificationsScreen({super.key});
 
   @override
-  ConsumerState<NotificationsScreen> createState() => _NotificationsScreenState();
+  ConsumerState<NotificationsScreen> createState() =>
+      _NotificationsScreenState();
 }
 
 class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
@@ -60,7 +63,9 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not mark all as read. Please try again.')),
+          const SnackBar(
+            content: Text('Could not mark all as read. Please try again.'),
+          ),
         );
       }
     } finally {
@@ -82,13 +87,19 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Deleted $count ${count == 1 ? 'notification' : 'notifications'}')),
+          SnackBar(
+            content: Text(
+              'Deleted $count ${count == 1 ? 'notification' : 'notifications'}',
+            ),
+          ),
         );
       }
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not delete selected notifications.')),
+          const SnackBar(
+            content: Text('Could not delete selected notifications.'),
+          ),
         );
       }
     } finally {
@@ -105,9 +116,9 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
         _selectedIds.remove(id);
       });
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Notification removed')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Notification removed')));
       }
     } catch (_) {
       if (mounted) {
@@ -126,7 +137,9 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
       context: context,
       builder: (dialogCtx) => AlertDialog(
         title: const Text('Clear All Notifications?'),
-        content: const Text('Are you sure you want to clear all notifications?'),
+        content: const Text(
+          'Are you sure you want to clear all notifications?',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogCtx).pop(false),
@@ -159,7 +172,9 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
       } catch (_) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Could not clear notifications. Please try again.')),
+            const SnackBar(
+              content: Text('Could not clear notifications. Please try again.'),
+            ),
           );
         }
       } finally {
@@ -172,12 +187,12 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
   Widget build(BuildContext context) {
     final asyncNotifications = ref.watch(notificationsProvider);
 
-    return Scaffold(
-      appBar: const WorkforceAppBar(
-        titleText: 'Notifications',
-        showBrand: false,
-        showNotifications: false,
-      ),
+    return SevoModuleFrame(
+      module: SevoModule.reportsAudits,
+      title: 'Notifications',
+      withDrawer: false,
+      transition: false,
+      showNotifications: false,
       body: RefreshIndicator(
         onRefresh: () => ref.refresh(notificationsProvider.future),
         child: AsyncValueView<NotificationsResult>(
@@ -213,7 +228,9 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
               children: [
                 // Top notification header matching design
                 _NotificationHeader(
-                  title: _isSelectionMode ? 'Select Notifications' : 'Notifications',
+                  title: _isSelectionMode
+                      ? 'Select Notifications'
+                      : 'Notifications',
                   countText: _isSelectionMode
                       ? '${_selectedIds.length} of $count selected'
                       : '$count ${count == 1 ? 'notification' : 'notifications'}',
@@ -223,13 +240,18 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                             key: const Key('toggle_select_all_button'),
                             onPressed: () => _toggleSelectAll(items),
                             style: TextButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: AppSpacing.xs,
+                              ),
                               minimumSize: Size.zero,
                               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                             ),
                             child: Text(
                               isAllSelected ? 'Deselect All' : 'Select All',
-                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ),
                           const SizedBox(width: AppSpacing.xs),
@@ -237,13 +259,18 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                             key: const Key('cancel_selection_button'),
                             onPressed: () => _toggleSelectMode(items),
                             style: TextButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: AppSpacing.xs,
+                              ),
                               minimumSize: Size.zero,
                               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                             ),
                             child: const Text(
                               'Cancel',
-                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ),
                         ]
@@ -251,17 +278,33 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                           TextButton.icon(
                             key: const Key('select_mode_button'),
                             onPressed: () => _toggleSelectMode(items),
-                            icon: const Icon(Icons.check_box_outlined, size: 15),
-                            label: const Text('Select', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                            icon: const Icon(
+                              Icons.check_box_outlined,
+                              size: 15,
+                            ),
+                            label: const Text(
+                              'Select',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                             style: TextButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs, vertical: AppSpacing.xs),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: AppSpacing.xs,
+                                vertical: AppSpacing.xs,
+                              ),
                               minimumSize: Size.zero,
                               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                             ),
                           ),
                           PopupMenuButton<_HeaderMenuAction>(
                             key: const Key('notification_header_menu'),
-                            icon: Icon(Icons.more_vert, size: 20, color: AppColors.textSecondary),
+                            icon: Icon(
+                              Icons.more_vert,
+                              size: 20,
+                              color: AppColors.textSecondary,
+                            ),
                             padding: EdgeInsets.zero,
                             onSelected: (action) {
                               switch (action) {
@@ -281,9 +324,16 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Icon(Icons.done_all_rounded, size: 18, color: AppColors.primary),
+                                    Icon(
+                                      Icons.done_all_rounded,
+                                      size: 18,
+                                      color: AppColors.primary,
+                                    ),
                                     const SizedBox(width: AppSpacing.sm),
-                                    const Text('Mark All as Read', style: TextStyle(fontSize: 13)),
+                                    const Text(
+                                      'Mark All as Read',
+                                      style: TextStyle(fontSize: 13),
+                                    ),
                                   ],
                                 ),
                               ),
@@ -293,9 +343,19 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Icon(Icons.delete_sweep_outlined, size: 18, color: AppColors.error.base),
+                                    Icon(
+                                      Icons.delete_sweep_outlined,
+                                      size: 18,
+                                      color: AppColors.error.base,
+                                    ),
                                     const SizedBox(width: AppSpacing.sm),
-                                    Text('Clear All', style: TextStyle(fontSize: 13, color: AppColors.error.base)),
+                                    Text(
+                                      'Clear All',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: AppColors.error.base,
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ),
@@ -308,10 +368,15 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                 if (_isSelectionMode)
                   Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.md,
+                      vertical: AppSpacing.sm,
+                    ),
                     decoration: BoxDecoration(
                       color: AppColors.surfaceMuted,
-                      border: Border(bottom: BorderSide(color: AppColors.border)),
+                      border: Border(
+                        bottom: BorderSide(color: AppColors.border),
+                      ),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -328,18 +393,31 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                         ),
                         FilledButton.icon(
                           key: const Key('delete_selected_button'),
-                          onPressed: _selectedIds.isEmpty ? null : _deleteSelected,
-                          icon: const Icon(Icons.delete_outline_rounded, size: 15),
+                          onPressed: _selectedIds.isEmpty
+                              ? null
+                              : _deleteSelected,
+                          icon: const Icon(
+                            Icons.delete_outline_rounded,
+                            size: 15,
+                          ),
                           label: Text(
-                            _selectedIds.isEmpty ? 'Delete Selected' : 'Delete Selected (${_selectedIds.length})',
-                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                            _selectedIds.isEmpty
+                                ? 'Delete Selected'
+                                : 'Delete Selected (${_selectedIds.length})',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                           style: FilledButton.styleFrom(
                             backgroundColor: AppColors.error.base,
                             foregroundColor: Colors.white,
                             disabledBackgroundColor: AppColors.border,
                             disabledForegroundColor: AppColors.textMuted,
-                            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: AppSpacing.sm,
+                              vertical: AppSpacing.xs,
+                            ),
                             minimumSize: Size.zero,
                           ),
                         ),
@@ -350,9 +428,13 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                 // Notification items list
                 Expanded(
                   child: ListView.separated(
-                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.md,
+                      vertical: AppSpacing.sm,
+                    ),
                     itemCount: count,
-                    separatorBuilder: (context, index) => const SizedBox(height: AppSpacing.sm),
+                    separatorBuilder: (context, index) =>
+                        const SizedBox(height: AppSpacing.sm),
                     itemBuilder: (context, index) {
                       final notification = items[index];
                       final isSelected = _selectedIds.contains(notification.id);
@@ -362,17 +444,24 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                         notification: notification,
                         isSelectionMode: _isSelectionMode,
                         isSelected: isSelected,
-                        onToggleSelect: () => _toggleSelectItem(notification.id),
+                        onToggleSelect: () =>
+                            _toggleSelectItem(notification.id),
                         onTap: () async {
                           if (_isSelectionMode) {
                             _toggleSelectItem(notification.id);
                           } else if (!notification.isRead) {
                             try {
-                              await ref.read(notificationsProvider.notifier).markAsRead(notification.id);
+                              await ref
+                                  .read(notificationsProvider.notifier)
+                                  .markAsRead(notification.id);
                             } catch (_) {
                               if (context.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('Could not mark as read. Please try again.')),
+                                  const SnackBar(
+                                    content: Text(
+                                      'Could not mark as read. Please try again.',
+                                    ),
+                                  ),
                                 );
                               }
                             }
@@ -392,10 +481,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
   }
 }
 
-enum _HeaderMenuAction {
-  markAllRead,
-  clearAll,
-}
+enum _HeaderMenuAction { markAllRead, clearAll }
 
 class _NotificationHeader extends StatelessWidget {
   const _NotificationHeader({
@@ -412,7 +498,12 @@ class _NotificationHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.sm, AppSpacing.sm, AppSpacing.sm),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.sm,
+        AppSpacing.sm,
+        AppSpacing.sm,
+      ),
       decoration: BoxDecoration(
         color: AppColors.surface,
         border: Border(bottom: BorderSide(color: AppColors.border)),
@@ -450,10 +541,7 @@ class _NotificationHeader extends StatelessWidget {
             ),
           ),
           if (actions.isNotEmpty)
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: actions,
-            ),
+            Row(mainAxisSize: MainAxisSize.min, children: actions),
         ],
       ),
     );
@@ -482,19 +570,28 @@ class _NotificationCard extends StatelessWidget {
     final t = (type ?? '').toLowerCase();
     final lowerTitle = title.toLowerCase();
 
-    if (t.contains('job') || t.contains('dispatch') || lowerTitle.contains('job')) {
+    if (t.contains('job') ||
+        t.contains('dispatch') ||
+        lowerTitle.contains('job')) {
       return Icons.work_outline_rounded;
     }
     if (t.contains('schedule') || lowerTitle.contains('schedule')) {
       return Icons.calendar_today_outlined;
     }
-    if (t.contains('document') || t.contains('compliance') || lowerTitle.contains('document')) {
+    if (t.contains('document') ||
+        t.contains('compliance') ||
+        lowerTitle.contains('document')) {
       return Icons.description_outlined;
     }
-    if (t.contains('wallet') || t.contains('payout') || t.contains('pay') || lowerTitle.contains('payout')) {
+    if (t.contains('wallet') ||
+        t.contains('payout') ||
+        t.contains('pay') ||
+        lowerTitle.contains('payout')) {
       return Icons.account_balance_wallet_outlined;
     }
-    if (t.contains('alert') || lowerTitle.contains('warning') || lowerTitle.contains('urgent')) {
+    if (t.contains('alert') ||
+        lowerTitle.contains('warning') ||
+        lowerTitle.contains('urgent')) {
       return Icons.warning_amber_rounded;
     }
     return Icons.notifications_outlined;
@@ -506,16 +603,19 @@ class _NotificationCard extends StatelessWidget {
     final cardBorderColor = isSelected
         ? AppColors.primary
         : isUnread
-            ? AppColors.info.tintBorder
-            : AppColors.border;
+        ? AppColors.info.tintBorder
+        : AppColors.border;
 
     final cardBgColor = isSelected
         ? AppColors.info.tint.withValues(alpha: 0.7)
         : isUnread
-            ? AppColors.info.tint.withValues(alpha: 0.3)
-            : AppColors.surface;
+        ? AppColors.info.tint.withValues(alpha: 0.3)
+        : AppColors.surface;
 
-    final typeIcon = _getIconForType(notification.notificationType, notification.title);
+    final typeIcon = _getIconForType(
+      notification.notificationType,
+      notification.title,
+    );
 
     return Material(
       color: Colors.transparent,
@@ -528,7 +628,10 @@ class _NotificationCard extends StatelessWidget {
           decoration: BoxDecoration(
             color: cardBgColor,
             borderRadius: BorderRadius.circular(AppRadius.cardStandard),
-            border: Border.all(color: cardBorderColor, width: isSelected ? 1.5 : 1.0),
+            border: Border.all(
+              color: cardBorderColor,
+              width: isSelected ? 1.5 : 1.0,
+            ),
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -543,7 +646,9 @@ class _NotificationCard extends StatelessWidget {
                     child: Checkbox(
                       value: isSelected,
                       onChanged: (_) => onToggleSelect(),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(4),
+                      ),
                       activeColor: AppColors.primary,
                       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
@@ -555,17 +660,23 @@ class _NotificationCard extends StatelessWidget {
                 width: 34,
                 height: 34,
                 decoration: BoxDecoration(
-                  color: isUnread ? AppColors.info.tint : AppColors.surfaceMuted,
+                  color: isUnread
+                      ? AppColors.info.tint
+                      : AppColors.surfaceMuted,
                   borderRadius: BorderRadius.circular(AppRadius.button),
                   border: Border.all(
-                    color: isUnread ? AppColors.info.tintBorder : AppColors.border,
+                    color: isUnread
+                        ? AppColors.info.tintBorder
+                        : AppColors.border,
                   ),
                 ),
                 child: Center(
                   child: Icon(
                     typeIcon,
                     size: 17,
-                    color: isUnread ? AppColors.primary : AppColors.textSecondary,
+                    color: isUnread
+                        ? AppColors.primary
+                        : AppColors.textSecondary,
                   ),
                 ),
               ),
@@ -597,7 +708,9 @@ class _NotificationCard extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               fontSize: 13,
-                              fontWeight: isUnread ? FontWeight.w800 : FontWeight.w600,
+                              fontWeight: isUnread
+                                  ? FontWeight.w800
+                                  : FontWeight.w600,
                               color: AppColors.textPrimary,
                             ),
                           ),
@@ -611,7 +724,9 @@ class _NotificationCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 12,
-                        color: isUnread ? AppColors.textPrimary : AppColors.textSecondary,
+                        color: isUnread
+                            ? AppColors.textPrimary
+                            : AppColors.textSecondary,
                         height: 1.35,
                       ),
                     ),
@@ -624,14 +739,20 @@ class _NotificationCard extends StatelessWidget {
                             _relativeTime(notification.createdAt),
                             style: TextStyle(
                               fontSize: 11,
-                              fontWeight: isUnread ? FontWeight.w600 : FontWeight.w400,
-                              color: isUnread ? AppColors.primary : AppColors.textMuted,
+                              fontWeight: isUnread
+                                  ? FontWeight.w600
+                                  : FontWeight.w400,
+                              color: isUnread
+                                  ? AppColors.primary
+                                  : AppColors.textMuted,
                             ),
                           ),
                         ),
                         if (!isSelectionMode)
                           InkWell(
-                            key: Key('delete_single_notification_${notification.id}'),
+                            key: Key(
+                              'delete_single_notification_${notification.id}',
+                            ),
                             onTap: onDelete,
                             borderRadius: BorderRadius.circular(4),
                             child: Padding(

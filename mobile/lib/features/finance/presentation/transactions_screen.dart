@@ -1,3 +1,6 @@
+import '../../../shared/widgets/sevo/sevo_module_frame.dart';
+import '../../../shared/widgets/sevo/sevo_module_art.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -8,7 +11,6 @@ import 'package:mobile/features/finance/presentation/widgets/transaction_detail_
 import 'package:mobile/features/finance/presentation/widgets/transaction_list_tile.dart';
 import 'package:mobile/routing/app_routes.dart';
 import 'package:mobile/shared/widgets/empty_state.dart';
-import 'package:mobile/shared/widgets/workforce_app_bar.dart';
 
 /// Transactions Ledger screen for technician financial history.
 ///
@@ -49,7 +51,9 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.card)),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(AppRadius.card),
+        ),
       ),
       builder: (ctx) => const _TransactionFilterSheet(),
     );
@@ -59,15 +63,16 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   Widget build(BuildContext context) {
     final filter = ref.watch(transactionFilterProvider);
     final transactionsAsync = ref.watch(walletTransactionsProvider);
-    final isFiltered = filter.type != 'ALL' || filter.status != 'ALL' || filter.direction != 'ALL';
+    final isFiltered =
+        filter.type != 'ALL' ||
+        filter.status != 'ALL' ||
+        filter.direction != 'ALL';
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: const WorkforceAppBar(
-        titleText: 'Ledger & Transactions',
-        showBrand: false,
-        showStatusSubBar: false,
-      ),
+    return SevoModuleFrame(
+      module: SevoModule.transactions,
+      title: 'Ledger & Transactions',
+      withDrawer: false,
+      transition: false,
       body: Column(
         children: [
           // ── Header / Breadcrumb & Title Area ───────────────────────────
@@ -93,11 +98,18 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                   },
                   borderRadius: BorderRadius.circular(6),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 4,
+                      horizontal: 2,
+                    ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.arrow_back_rounded, size: 16, color: AppColors.primary),
+                        Icon(
+                          Icons.arrow_back_rounded,
+                          size: 16,
+                          color: AppColors.primary,
+                        ),
                         const SizedBox(width: 4),
                         Text(
                           'Back to Wallet',
@@ -152,7 +164,9 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                               ? const SizedBox(
                                   width: 16,
                                   height: 16,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
                                 )
                               : const Icon(Icons.refresh_rounded),
                           tooltip: 'Refresh',
@@ -161,12 +175,17 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                         Badge(
                           isLabelVisible: isFiltered,
                           backgroundColor: AppColors.primary,
-                          label: const Text('•', style: TextStyle(fontSize: 10)),
+                          label: const Text(
+                            '•',
+                            style: TextStyle(fontSize: 10),
+                          ),
                           child: IconButton(
                             onPressed: () => _showFilterSheet(context),
                             icon: const Icon(Icons.tune_rounded),
                             tooltip: 'Filter',
-                            color: isFiltered ? AppColors.primary : AppColors.textSecondary,
+                            color: isFiltered
+                                ? AppColors.primary
+                                : AppColors.textSecondary,
                           ),
                         ),
                       ],
@@ -183,50 +202,77 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                       _QuickFilterChip(
                         label: 'All Types',
                         isSelected: filter.type == 'ALL',
-                        onSelected: () => ref.read(transactionFilterProvider.notifier).state =
-                            filter.copyWith(type: 'ALL', page: 1),
+                        onSelected: () =>
+                            ref.read(transactionFilterProvider.notifier).state =
+                                filter.copyWith(type: 'ALL', page: 1),
                       ),
                       const SizedBox(width: 6),
                       _QuickFilterChip(
                         label: 'Service Earnings (60%)',
                         isSelected: filter.type == 'SERVICE_EARNING',
-                        onSelected: () => ref.read(transactionFilterProvider.notifier).state =
-                            filter.copyWith(type: 'SERVICE_EARNING', page: 1),
+                        onSelected: () =>
+                            ref
+                                .read(transactionFilterProvider.notifier)
+                                .state = filter.copyWith(
+                              type: 'SERVICE_EARNING',
+                              page: 1,
+                            ),
                       ),
                       const SizedBox(width: 6),
                       _QuickFilterChip(
                         label: 'Settlement Release (T+7)',
                         isSelected: filter.type == 'SETTLEMENT_RELEASE',
-                        onSelected: () => ref.read(transactionFilterProvider.notifier).state =
-                            filter.copyWith(type: 'SETTLEMENT_RELEASE', page: 1),
+                        onSelected: () =>
+                            ref
+                                .read(transactionFilterProvider.notifier)
+                                .state = filter.copyWith(
+                              type: 'SETTLEMENT_RELEASE',
+                              page: 1,
+                            ),
                       ),
                       const SizedBox(width: 6),
                       _QuickFilterChip(
                         label: 'Withdrawals',
                         isSelected: filter.type == 'WITHDRAWAL',
-                        onSelected: () => ref.read(transactionFilterProvider.notifier).state =
-                            filter.copyWith(type: 'WITHDRAWAL', page: 1),
+                        onSelected: () =>
+                            ref.read(transactionFilterProvider.notifier).state =
+                                filter.copyWith(type: 'WITHDRAWAL', page: 1),
                       ),
                       const SizedBox(width: 6),
                       _QuickFilterChip(
                         label: 'Withdrawal Reversals',
                         isSelected: filter.type == 'WITHDRAWAL_REVERSAL',
-                        onSelected: () => ref.read(transactionFilterProvider.notifier).state =
-                            filter.copyWith(type: 'WITHDRAWAL_REVERSAL', page: 1),
+                        onSelected: () =>
+                            ref
+                                .read(transactionFilterProvider.notifier)
+                                .state = filter.copyWith(
+                              type: 'WITHDRAWAL_REVERSAL',
+                              page: 1,
+                            ),
                       ),
                       const SizedBox(width: 6),
                       _QuickFilterChip(
                         label: 'Admin Credits',
                         isSelected: filter.type == 'ADJUSTMENT_CREDIT',
-                        onSelected: () => ref.read(transactionFilterProvider.notifier).state =
-                            filter.copyWith(type: 'ADJUSTMENT_CREDIT', page: 1),
+                        onSelected: () =>
+                            ref
+                                .read(transactionFilterProvider.notifier)
+                                .state = filter.copyWith(
+                              type: 'ADJUSTMENT_CREDIT',
+                              page: 1,
+                            ),
                       ),
                       const SizedBox(width: 6),
                       _QuickFilterChip(
                         label: 'Admin Debits',
                         isSelected: filter.type == 'ADJUSTMENT_DEBIT',
-                        onSelected: () => ref.read(transactionFilterProvider.notifier).state =
-                            filter.copyWith(type: 'ADJUSTMENT_DEBIT', page: 1),
+                        onSelected: () =>
+                            ref
+                                .read(transactionFilterProvider.notifier)
+                                .state = filter.copyWith(
+                              type: 'ADJUSTMENT_DEBIT',
+                              page: 1,
+                            ),
                       ),
                     ],
                   ),
@@ -239,11 +285,18 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
           // ── Active Filter Bar (when filters applied) ───────────────────
           if (isFiltered)
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 6),
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.md,
+                vertical: 6,
+              ),
               color: const Color(0xFFEFF6FF),
               child: Row(
                 children: [
-                  const Icon(Icons.filter_list_rounded, size: 14, color: Color(0xFF004E89)),
+                  const Icon(
+                    Icons.filter_list_rounded,
+                    size: 14,
+                    color: Color(0xFF004E89),
+                  ),
                   const SizedBox(width: 6),
                   Expanded(
                     child: SingleChildScrollView(
@@ -256,15 +309,26 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                               child: Chip(
                                 label: Text(
                                   _filterLabelForType(filter.type),
-                                  style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700),
+                                  style: const TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
-                                deleteIcon: const Icon(Icons.close_rounded, size: 12),
+                                deleteIcon: const Icon(
+                                  Icons.close_rounded,
+                                  size: 12,
+                                ),
                                 onDeleted: () {
-                                  ref.read(transactionFilterProvider.notifier).state =
-                                      filter.copyWith(type: 'ALL', page: 1);
+                                  ref
+                                      .read(transactionFilterProvider.notifier)
+                                      .state = filter.copyWith(
+                                    type: 'ALL',
+                                    page: 1,
+                                  );
                                 },
                                 padding: EdgeInsets.zero,
-                                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                materialTapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
                               ),
                             ),
                           if (filter.status != 'ALL')
@@ -273,30 +337,54 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                               child: Chip(
                                 label: Text(
                                   _filterLabelForStatus(filter.status),
-                                  style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700),
+                                  style: const TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
-                                deleteIcon: const Icon(Icons.close_rounded, size: 12),
+                                deleteIcon: const Icon(
+                                  Icons.close_rounded,
+                                  size: 12,
+                                ),
                                 onDeleted: () {
-                                  ref.read(transactionFilterProvider.notifier).state =
-                                      filter.copyWith(status: 'ALL', page: 1);
+                                  ref
+                                      .read(transactionFilterProvider.notifier)
+                                      .state = filter.copyWith(
+                                    status: 'ALL',
+                                    page: 1,
+                                  );
                                 },
                                 padding: EdgeInsets.zero,
-                                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                materialTapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
                               ),
                             ),
                           if (filter.direction != 'ALL')
                             Chip(
                               label: Text(
-                                filter.direction == 'CREDIT' ? 'Credits (+)' : 'Debits (-)',
-                                style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700),
+                                filter.direction == 'CREDIT'
+                                    ? 'Credits (+)'
+                                    : 'Debits (-)',
+                                style: const TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
-                              deleteIcon: const Icon(Icons.close_rounded, size: 12),
+                              deleteIcon: const Icon(
+                                Icons.close_rounded,
+                                size: 12,
+                              ),
                               onDeleted: () {
-                                ref.read(transactionFilterProvider.notifier).state =
-                                    filter.copyWith(direction: 'ALL', page: 1);
+                                ref
+                                    .read(transactionFilterProvider.notifier)
+                                    .state = filter.copyWith(
+                                  direction: 'ALL',
+                                  page: 1,
+                                );
                               },
                               padding: EdgeInsets.zero,
-                              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              materialTapTargetSize:
+                                  MaterialTapTargetSize.shrinkWrap,
                             ),
                         ],
                       ),
@@ -314,7 +402,11 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                     ),
                     child: const Text(
                       'Clear',
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF004E89)),
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF004E89),
+                      ),
                     ),
                   ),
                 ],
@@ -333,17 +425,27 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.error_outline_rounded, size: 40, color: Color(0xFFE11D48)),
+                        const Icon(
+                          Icons.error_outline_rounded,
+                          size: 40,
+                          color: Color(0xFFE11D48),
+                        ),
                         const SizedBox(height: AppSpacing.md),
                         const Text(
                           'Failed to load transactions',
-                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           err.toString(),
                           textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textMuted,
+                          ),
                         ),
                         const SizedBox(height: AppSpacing.md),
                         ElevatedButton.icon(
@@ -364,7 +466,9 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                       children: [
                         EmptyState(
                           icon: Icons.receipt_long_outlined,
-                          title: isFiltered ? 'No Matches Found' : 'No Transactions Recorded',
+                          title: isFiltered
+                              ? 'No Matches Found'
+                              : 'No Transactions Recorded',
                           message: isFiltered
                               ? 'No ledger records found matching your filters.'
                               : 'No transactions recorded yet. Complete customer jobs to earn commission.',
@@ -374,7 +478,11 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                           Center(
                             child: TextButton.icon(
                               onPressed: () {
-                                ref.read(transactionFilterProvider.notifier).state =
+                                ref
+                                        .read(
+                                          transactionFilterProvider.notifier,
+                                        )
+                                        .state =
                                     const TransactionFilterState();
                               },
                               icon: const Icon(Icons.clear_rounded, size: 16),
@@ -388,19 +496,23 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
 
                   return ListView.builder(
                     padding: const EdgeInsets.all(AppSpacing.md),
-                    itemCount: transactions.length + (response.totalPages > 1 ? 1 : 0),
+                    itemCount:
+                        transactions.length + (response.totalPages > 1 ? 1 : 0),
                     itemBuilder: (context, index) {
                       if (index < transactions.length) {
                         final txn = transactions[index];
                         return TransactionListTile(
                           transaction: txn,
-                          onTap: () => TransactionDetailSheet.show(context, txn),
+                          onTap: () =>
+                              TransactionDetailSheet.show(context, txn),
                         );
                       }
 
                       // Pagination Controls
                       return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+                        padding: const EdgeInsets.symmetric(
+                          vertical: AppSpacing.md,
+                        ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
@@ -408,8 +520,13 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                               icon: const Icon(Icons.chevron_left_rounded),
                               onPressed: response.page > 1
                                   ? () {
-                                      ref.read(transactionFilterProvider.notifier).state =
-                                          filter.copyWith(page: response.page - 1);
+                                      ref
+                                          .read(
+                                            transactionFilterProvider.notifier,
+                                          )
+                                          .state = filter.copyWith(
+                                        page: response.page - 1,
+                                      );
                                     }
                                   : null,
                             ),
@@ -425,8 +542,13 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                               icon: const Icon(Icons.chevron_right_rounded),
                               onPressed: response.page < response.totalPages
                                   ? () {
-                                      ref.read(transactionFilterProvider.notifier).state =
-                                          filter.copyWith(page: response.page + 1);
+                                      ref
+                                          .read(
+                                            transactionFilterProvider.notifier,
+                                          )
+                                          .state = filter.copyWith(
+                                        page: response.page + 1,
+                                      );
                                     }
                                   : null,
                             ),
@@ -482,10 +604,12 @@ class _TransactionFilterSheet extends ConsumerStatefulWidget {
   const _TransactionFilterSheet();
 
   @override
-  ConsumerState<_TransactionFilterSheet> createState() => _TransactionFilterSheetState();
+  ConsumerState<_TransactionFilterSheet> createState() =>
+      _TransactionFilterSheetState();
 }
 
-class _TransactionFilterSheetState extends ConsumerState<_TransactionFilterSheet> {
+class _TransactionFilterSheetState
+    extends ConsumerState<_TransactionFilterSheet> {
   late String _selectedType;
   late String _selectedStatus;
   late String _selectedDirection;
@@ -656,7 +780,8 @@ class _TransactionFilterSheetState extends ConsumerState<_TransactionFilterSheet
                     color: isSelected ? Colors.white : AppColors.textSecondary,
                   ),
                   onSelected: (selected) {
-                    if (selected) setState(() => _selectedDirection = d['value']!);
+                    if (selected)
+                      setState(() => _selectedDirection = d['value']!);
                   },
                 );
               }).toList(),
@@ -681,8 +806,9 @@ class _TransactionFilterSheetState extends ConsumerState<_TransactionFilterSheet
                   flex: 2,
                   child: FilledButton(
                     onPressed: () {
-                      ref.read(transactionFilterProvider.notifier).state =
-                          TransactionFilterState(
+                      ref
+                          .read(transactionFilterProvider.notifier)
+                          .state = TransactionFilterState(
                         type: _selectedType,
                         status: _selectedStatus,
                         direction: _selectedDirection,

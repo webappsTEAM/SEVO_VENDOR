@@ -3,12 +3,151 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:mobile/core/theme/app_theme.dart';
+import 'package:mobile/features/admin/data/admin_dashboard_api.dart';
 import 'package:mobile/features/admin/domain/admin_dashboard_metrics.dart';
 import 'package:mobile/features/admin/domain/eligible_technician.dart';
 import 'package:mobile/features/admin/domain/fleet_member.dart';
 import 'package:mobile/features/admin/presentation/admin_dashboard_providers.dart';
 import 'package:mobile/features/admin/presentation/dispatch/admin_dispatch_screen.dart';
 import 'package:mobile/features/jobs/domain/job.dart';
+
+class FakeAdminDashboardApi implements AdminDashboardApi {
+  @override
+  Future<Map<String, dynamic>> fetchDispatchRadar({int? jobId, String? status, String? search}) async {
+    return {
+      'summary': {
+        'total_active': 1,
+        'searching': 0,
+        'offered': 0,
+        'assigned': 1,
+        'en_route': 0,
+        'in_progress': 0,
+        'completed_today': 1,
+      },
+      'jobs': [
+        {
+          'id': 6980,
+          'reference': 'PA6980',
+          'service': 'Ceiling (Site Consultation)',
+          'status_label': 'COMPLETED',
+          'scheduled_date': '2026-09-29',
+          'scheduled_time': '11:00 AM',
+          'created_at': '2026-09-29T10:03:30.000Z',
+          'customer_name': 'Admin s',
+          'address': '05, Bagalur Rd, KCC Nagar, Nallur, Tamil Nadu 635109, India',
+          'assigned_technician_name': 'Ramesh Komaru · EMP #8539',
+          'timeline': [
+            {
+              'title': 'Booking Created',
+              'description': 'Booking #PA6980 created for Ceiling (Site Consultation).',
+              'timestamp': '2026-09-29T10:03:30.000Z',
+              'actor': 'Admin s',
+              'badge': 'info',
+            },
+            {
+              'title': 'Dispatch Started (Attempt #1)',
+              'description': 'Searching eligible technicians for paintings.',
+              'timestamp': '2026-09-29T10:03:32.000Z',
+              'actor': 'Dispatch Engine',
+              'badge': 'info',
+            },
+            {
+              'title': 'Candidates Evaluated (Attempt #1)',
+              'description': 'Discovered 1 eligible ranked technician(s).',
+              'timestamp': '2026-09-29T10:03:34.000Z',
+              'actor': 'Dispatch Engine',
+              'badge': 'info',
+            },
+            {
+              'title': 'Offer Sent → Ramesh Komaru · EMP #8539',
+              'description': 'Exclusive offer #16034 delivered (Score: 81.3).',
+              'timestamp': '2026-09-29T10:03:34.000Z',
+              'actor': 'Dispatch Engine',
+              'badge': 'info',
+            },
+            {
+              'title': 'Job Accepted by Ramesh Komaru · EMP #8539',
+              'description': 'Ramesh Komaru · EMP #8539 accepted booking #PA6980.',
+              'timestamp': '2026-09-29T10:04:00.000Z',
+              'actor': 'Ramesh Komaru · EMP #8539',
+              'badge': 'success',
+            },
+          ],
+          'candidate_evaluations': [
+            {
+              'rank': 1,
+              'technician_name': 'Ramesh Komaru · EMP #8539',
+              'distance_km': 0.0,
+              'score': 81.3,
+              'result': 'ACCEPTED',
+            }
+          ],
+        }
+      ],
+      'selected_job': {
+        'id': 6980,
+        'reference': 'PA6980',
+        'service': 'Ceiling (Site Consultation)',
+        'status_label': 'COMPLETED',
+        'scheduled_date': '2026-09-29',
+        'scheduled_time': '11:00 AM',
+        'created_at': '2026-09-29T10:03:30.000Z',
+        'customer_name': 'Admin s',
+        'address': '05, Bagalur Rd, KCC Nagar, Nallur, Tamil Nadu 635109, India',
+        'assigned_technician_name': 'Ramesh Komaru · EMP #8539',
+        'timeline': [
+          {
+            'title': 'Booking Created',
+            'description': 'Booking #PA6980 created for Ceiling (Site Consultation).',
+            'timestamp': '2026-09-29T10:03:30.000Z',
+            'actor': 'Admin s',
+            'badge': 'info',
+          },
+          {
+            'title': 'Dispatch Started (Attempt #1)',
+            'description': 'Searching eligible technicians for paintings.',
+            'timestamp': '2026-09-29T10:03:32.000Z',
+            'actor': 'Dispatch Engine',
+            'badge': 'info',
+          },
+          {
+            'title': 'Candidates Evaluated (Attempt #1)',
+            'description': 'Discovered 1 eligible ranked technician(s).',
+            'timestamp': '2026-09-29T10:03:34.000Z',
+            'actor': 'Dispatch Engine',
+            'badge': 'info',
+          },
+          {
+            'title': 'Offer Sent → Ramesh Komaru · EMP #8539',
+            'description': 'Exclusive offer #16034 delivered (Score: 81.3).',
+            'timestamp': '2026-09-29T10:03:34.000Z',
+            'actor': 'Dispatch Engine',
+            'badge': 'info',
+          },
+          {
+            'title': 'Job Accepted by Ramesh Komaru · EMP #8539',
+            'description': 'Ramesh Komaru · EMP #8539 accepted booking #PA6980.',
+            'timestamp': '2026-09-29T10:04:00.000Z',
+            'actor': 'Ramesh Komaru · EMP #8539',
+            'badge': 'success',
+          },
+        ],
+        'candidate_evaluations': [
+          {
+            'rank': 1,
+            'technician_name': 'Ramesh Komaru · EMP #8539',
+            'distance_km': 0.0,
+            'score': 81.3,
+            'result': 'ACCEPTED',
+          }
+        ],
+      },
+    };
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
 
 void main() {
   setUp(() {
@@ -96,6 +235,7 @@ void main() {
     List<Job>? jobs,
     List<FleetMember>? fleet,
     List<EligibleTechnician>? candidates,
+    String? jobId,
   }) {
     final dashboardData = AdminDashboardData(
       fleet: fleet ?? sampleFleet,
@@ -104,6 +244,7 @@ void main() {
 
     return ProviderScope(
       overrides: [
+        adminDashboardApiProvider.overrideWithValue(FakeAdminDashboardApi()),
         adminDashboardDataProvider.overrideWith((ref) => Future.value(dashboardData)),
         adminFleetListProvider.overrideWith((ref) => Future.value(fleet ?? sampleFleet)),
         adminPendingExtensionsProvider.overrideWith((ref) => Future.value([])),
@@ -113,8 +254,8 @@ void main() {
           (ref) => Future.value(candidates ?? sampleCandidates),
         ),
       ],
-      child: const MaterialApp(
-        home: AdminDispatchScreen(),
+      child: MaterialApp(
+        home: AdminDispatchScreen(jobId: jobId),
       ),
     );
   }
@@ -156,7 +297,7 @@ void main() {
       tester.view.devicePixelRatio = 1.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
-      await tester.pumpWidget(buildTestWidget());
+      await tester.pumpWidget(buildTestWidget(jobId: 'PA5259'));
       await tester.pumpAndSettle();
 
       expect(find.text('1. Customer Service Requests (1)'), findsOneWidget);
@@ -174,7 +315,7 @@ void main() {
       tester.view.devicePixelRatio = 1.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
-      await tester.pumpWidget(buildTestWidget());
+      await tester.pumpWidget(buildTestWidget(jobId: 'PA5259'));
       await tester.pumpAndSettle();
 
       // Geo-Dispatch monitor header
@@ -207,6 +348,48 @@ void main() {
       expect(find.textContaining('Online & Available Presence'), findsOneWidget);
       expect(find.textContaining('Not On Leave'), findsOneWidget);
       expect(find.textContaining('Single-Job Concurrency Free'), findsOneWidget);
+    });
+
+    testWidgets('renders Selected Job Control Tower with header, timeline, and candidate evaluation snapshot matching Web', (
+      WidgetTester tester,
+    ) async {
+      tester.view.physicalSize = const Size(800, 2500);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      await tester.pumpWidget(buildTestWidget());
+      await tester.pumpAndSettle();
+
+      // 1. Header Card Details
+      expect(find.text('JOB #PA6980'), findsOneWidget);
+      expect(find.text('COMPLETED'), findsWidgets);
+      expect(find.text('Ceiling (Site Consultation)'), findsWidgets);
+      expect(find.text('Assigned: Ramesh Komaru · EMP #8539'), findsOneWidget);
+      expect(find.textContaining('05, Bagalur Rd'), findsOneWidget);
+      expect(find.text('Admin s'), findsWidgets);
+
+      // 2. DISPATCH JOURNEY Vertical Timeline
+      expect(find.text('DISPATCH JOURNEY'), findsOneWidget);
+      expect(find.text('5 events'), findsOneWidget);
+      expect(find.text('Booking Created'), findsOneWidget);
+      expect(find.text('Dispatch Started (Attempt #1)'), findsOneWidget);
+      expect(find.text('Candidates Evaluated (Attempt #1)'), findsOneWidget);
+      expect(find.text('Offer Sent → Ramesh Komaru · EMP #8539'), findsOneWidget);
+      expect(find.text('Job Accepted by Ramesh Komaru · EMP #8539'), findsOneWidget);
+      expect(find.textContaining('Dispatch Engine'), findsWidgets);
+
+      // 3. CANDIDATE EVALUATION SNAPSHOT Table
+      expect(find.text('CANDIDATE EVALUATION SNAPSHOT'), findsOneWidget);
+      expect(find.text('Captured at Dispatch Moment'), findsOneWidget);
+      expect(find.text('RANK'), findsOneWidget);
+      expect(find.text('TECHNICIAN'), findsOneWidget);
+      expect(find.text('DISTANCE'), findsOneWidget);
+      expect(find.text('SCORE'), findsOneWidget);
+      expect(find.text('RESULT'), findsOneWidget);
+      expect(find.text('Ramesh Komaru · EMP #8539'), findsWidgets);
+      expect(find.text('0.0 km'), findsOneWidget);
+      expect(find.text('81.3'), findsWidgets);
+      expect(find.text('ACCEPTED'), findsWidgets);
     });
   });
 

@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_theme.dart';
 import '../../../../routing/app_routes.dart';
+import '../../../../shared/widgets/home_dashboard_widgets.dart';
 import '../../domain/superadmin_dashboard.dart';
 
 /// Single compact action card for items requiring operational attention.
@@ -32,22 +33,26 @@ class ActionCenterCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(color: AppColors.surface,
+    return Material(
+      color: Colors.transparent,
       borderRadius: BorderRadius.circular(AppRadius.card),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(AppRadius.card),
-        child: Container(
+        child: Ink(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(AppRadius.card),
-            border: Border.all(color: AppColors.border),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x040A2540),
-                blurRadius: 4,
-                offset: Offset(0, 1.5),
-              ),
-            ],
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                AppColors.isDark ? AppColors.surface : iconBgColor,
+                AppColors.surface,
+              ],
+            ),
+            border: Border.all(
+              color: AppColors.isDark ? AppColors.border : badgeBgColor,
+            ),
           ),
           padding: const EdgeInsets.all(AppSpacing.md),
           child: Column(
@@ -59,26 +64,29 @@ class ActionCenterCard extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Container(
-                    width: 32,
-                    height: 32,
+                    width: 38,
+                    height: 38,
                     decoration: BoxDecoration(
-                      color: iconBgColor,
-                      borderRadius: BorderRadius.circular(8),
+                      color: iconColor.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(12),
                     ),
                     child: Center(
-                      child: Icon(icon, size: 17, color: iconColor),
+                      child: Icon(icon, size: 20, color: iconColor),
                     ),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: badgeBgColor,
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(14),
                     ),
                     child: Text(
                       '$count',
                       style: TextStyle(
-                        fontSize: 14,
+                        fontSize: 15,
                         fontWeight: FontWeight.w900,
                         color: badgeTextColor,
                       ),
@@ -133,10 +141,7 @@ class ActionCenterCard extends StatelessWidget {
 
 /// Action Center section rendering the 4 operational queues.
 class SuperAdminActionCenterSection extends StatelessWidget {
-  const SuperAdminActionCenterSection({
-    super.key,
-    required this.data,
-  });
+  const SuperAdminActionCenterSection({super.key, required this.data});
 
   final SuperAdminDashboardData data;
 
@@ -145,37 +150,12 @@ class SuperAdminActionCenterSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Section Header
-        Row(
-          children: [
-            Container(
-              width: 4,
-              height: 14,
-              decoration: BoxDecoration(
-                color: const Color(0xFFF59E0B),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              'ACTION CENTER',
-              style: TextStyle(
-                fontSize: 11.5,
-                fontWeight: FontWeight.w800,
-                color: AppColors.textSecondary,
-                letterSpacing: 0.8,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 2),
-        Text(
-          'Items requiring immediate operational attention',
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w400,
-            color: AppColors.textMuted,
-          ),
+        HomeSectionHeader(
+          accent: const Color(0xFF16A34A),
+          title: 'Action Center',
+          subtitle: 'Items requiring immediate operational attention',
+          linkLabel: 'View All',
+          onLink: () => context.push(AppRoutes.superAdminApplications),
         ),
         const SizedBox(height: AppSpacing.sm),
         // Adaptive Grid for 4 Action Cards
@@ -188,7 +168,7 @@ class SuperAdminActionCenterSection extends StatelessWidget {
               title: 'Pending Applications',
               description: 'Technician registrations requiring document review',
               count: data.pendingApplicationsCount,
-              icon: Icons.assignment_ind_outlined,
+              icon: Icons.assignment_rounded,
               badgeBgColor: const Color(0xFFFEF3C7),
               badgeTextColor: const Color(0xFF92400E),
               iconBgColor: const Color(0xFFFFFBEB),
@@ -200,7 +180,7 @@ class SuperAdminActionCenterSection extends StatelessWidget {
               title: 'Active Technicians',
               description: 'Approved workforce field technicians',
               count: data.activeTechniciansCount,
-              icon: Icons.engineering_outlined,
+              icon: Icons.how_to_reg_rounded,
               badgeBgColor: const Color(0xFFECFDF5),
               badgeTextColor: const Color(0xFF065F46),
               iconBgColor: const Color(0xFFF0FDF4),
@@ -212,11 +192,11 @@ class SuperAdminActionCenterSection extends StatelessWidget {
               title: 'Jobs Awaiting Assignment',
               description: 'Customer bookings requiring technician dispatch',
               count: data.jobsAwaitingAssignmentCount,
-              icon: Icons.send_outlined,
-              badgeBgColor: const Color(0xFFFFEDD5),
-              badgeTextColor: const Color(0xFF9A3412),
-              iconBgColor: const Color(0xFFFFF7ED),
-              iconColor: const Color(0xFFEA580C),
+              icon: Icons.send_rounded,
+              badgeBgColor: const Color(0xFFDBEAFE),
+              badgeTextColor: const Color(0xFF1E3A8A),
+              iconBgColor: const Color(0xFFEFF6FF),
+              iconColor: const Color(0xFF2563EB),
               onTap: () => context.push(AppRoutes.adminDispatch),
             );
 
@@ -225,10 +205,10 @@ class SuperAdminActionCenterSection extends StatelessWidget {
               description: 'Technicians notified to re-upload flagged files',
               count: data.correctionsPendingCount,
               icon: Icons.edit_note_rounded,
-              badgeBgColor: const Color(0xFFF1F5F9),
-              badgeTextColor: AppColors.textSecondary,
-              iconBgColor: const Color(0xFFF8FAFC),
-              iconColor: AppColors.textSecondary,
+              badgeBgColor: const Color(0xFFEDE9FE),
+              badgeTextColor: const Color(0xFF4C1D95),
+              iconBgColor: const Color(0xFFF5F3FF),
+              iconColor: const Color(0xFF7C3AED),
               onTap: () => context.push(
                 '${AppRoutes.superAdminApplications}?status=correction_required',
               ),

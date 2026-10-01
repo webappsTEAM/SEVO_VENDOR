@@ -1,14 +1,15 @@
+import '../../../../shared/widgets/sevo/sevo_module_frame.dart';
+import '../../../../shared/widgets/sevo/sevo_module_art.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_theme.dart';
 import '../../../../shared/widgets/empty_state.dart';
 import '../../../../shared/widgets/status_chip.dart';
-import '../../../../shared/widgets/workforce_app_bar.dart';
 import '../../data/admin_dashboard_api.dart';
 import '../../domain/vendor_invitation.dart';
 import '../admin_dashboard_providers.dart';
-import '../widgets/admin_drawer.dart';
 
 /// Admin Vendor Invitations Screen.
 /// Enables service providers to send, monitor, and manage direct invitations to technicians.
@@ -55,7 +56,9 @@ class _AdminVendorInvitationsScreenState
             child: Text('Keep Invitation'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFDC2626)),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFDC2626),
+            ),
             onPressed: () => Navigator.of(ctx).pop(true),
             child: Text('Cancel Invite'),
           ),
@@ -97,16 +100,13 @@ class _AdminVendorInvitationsScreenState
   @override
   Widget build(BuildContext context) {
     final statusFilter = _selectedStatus == 'ALL' ? null : _selectedStatus;
-    final invitationsAsync =
-        ref.watch(adminVendorInvitationsProvider(statusFilter));
+    final invitationsAsync = ref.watch(
+      adminVendorInvitationsProvider(statusFilter),
+    );
 
-    return Scaffold(
-      appBar: const WorkforceAppBar(
-        titleText: 'Send Invitations',
-        showStatusSubBar: false,
-        showDrawerMenu: true,
-      ),
-      drawer: const AdminDrawer(),
+    return SevoModuleFrame(
+      module: SevoModule.invitations,
+      title: 'Send Invitations',
       body: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(adminVendorInvitationsProvider);
@@ -131,7 +131,10 @@ class _AdminVendorInvitationsScreenState
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 2.5,
+                        ),
                         decoration: BoxDecoration(
                           color: const Color(0xFFEFF6FF),
                           borderRadius: BorderRadius.circular(5),
@@ -148,8 +151,13 @@ class _AdminVendorInvitationsScreenState
                         ),
                       ),
                       IconButton(
-                        onPressed: () => ref.invalidate(adminVendorInvitationsProvider),
-                        icon: const Icon(Icons.refresh_rounded, size: 20, color: Color(0xFF005965)),
+                        onPressed: () =>
+                            ref.invalidate(adminVendorInvitationsProvider),
+                        icon: const Icon(
+                          Icons.refresh_rounded,
+                          size: 20,
+                          color: Color(0xFF005965),
+                        ),
                         tooltip: 'Refresh Invitations',
                         visualDensity: VisualDensity.compact,
                       ),
@@ -180,9 +188,17 @@ class _AdminVendorInvitationsScreenState
                     style: FilledButton.styleFrom(
                       backgroundColor: const Color(0xFF005965),
                       foregroundColor: Colors.white,
-                      textStyle: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      textStyle: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 8,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
                   ),
                 ],
@@ -226,16 +242,24 @@ class _AdminVendorInvitationsScreenState
                 ),
                 child: Column(
                   children: [
-                    const Icon(Icons.error_outline_rounded, color: Color(0xFFDC2626), size: 36),
+                    const Icon(
+                      Icons.error_outline_rounded,
+                      color: Color(0xFFDC2626),
+                      size: 36,
+                    ),
                     const SizedBox(height: 8),
                     Text(
                       'Failed to load invitations: $err',
                       textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 12.5, color: Color(0xFF991B1B)),
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: Color(0xFF991B1B),
+                      ),
                     ),
                     const SizedBox(height: 12),
                     FilledButton.icon(
-                      onPressed: () => ref.invalidate(adminVendorInvitationsProvider),
+                      onPressed: () =>
+                          ref.invalidate(adminVendorInvitationsProvider),
                       icon: const Icon(Icons.refresh_rounded, size: 16),
                       label: Text('Retry'),
                     ),
@@ -315,15 +339,17 @@ class _AdminVendorInvitationsScreenState
                   ),
                 ),
               ),
-              StatusChip(
-                status: invite.status,
-              ),
+              StatusChip(status: invite.status),
             ],
           ),
           const SizedBox(height: 8),
           Row(
             children: [
-              const Icon(Icons.mail_rounded, size: 16, color: Color(0xFF005965)),
+              const Icon(
+                Icons.mail_rounded,
+                size: 16,
+                color: Color(0xFF005965),
+              ),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
@@ -339,15 +365,23 @@ class _AdminVendorInvitationsScreenState
               ),
             ],
           ),
-          if (invite.technicianName != null && invite.technicianName!.isNotEmpty) ...[
+          if (invite.technicianName != null &&
+              invite.technicianName!.isNotEmpty) ...[
             const SizedBox(height: 4),
             Row(
               children: [
-                Icon(Icons.person_outline_rounded, size: 14, color: AppColors.textSecondary),
+                Icon(
+                  Icons.person_outline_rounded,
+                  size: 14,
+                  color: AppColors.textSecondary,
+                ),
                 const SizedBox(width: 4),
                 Text(
                   invite.technicianName!,
-                  style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    color: AppColors.textSecondary,
+                  ),
                 ),
               ],
             ),
@@ -391,7 +425,11 @@ class _AdminVendorInvitationsScreenState
                       )
                     : TextButton.icon(
                         onPressed: () => _handleCancelInvite(invite),
-                        icon: const Icon(Icons.close_rounded, size: 14, color: Color(0xFFDC2626)),
+                        icon: const Icon(
+                          Icons.close_rounded,
+                          size: 14,
+                          color: Color(0xFFDC2626),
+                        ),
                         label: Text(
                           'Cancel',
                           style: TextStyle(
@@ -506,7 +544,11 @@ class _SendInviteSheetState extends ConsumerState<_SendInviteSheet> {
             const SizedBox(height: 12),
             Text(
               'Technician Email *',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textSecondary),
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textSecondary,
+              ),
             ),
             const SizedBox(height: 4),
             TextFormField(
@@ -517,28 +559,39 @@ class _SendInviteSheetState extends ConsumerState<_SendInviteSheet> {
                 prefixIcon: const Icon(Icons.email_outlined, size: 18),
                 filled: true,
                 fillColor: const Color(0xFFF8FAFC),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
               ),
               validator: (v) {
-                if (v == null || v.trim().isEmpty) return 'Please enter an email address';
-                if (!v.contains('@') || !v.contains('.')) return 'Please enter a valid email';
+                if (v == null || v.trim().isEmpty)
+                  return 'Please enter an email address';
+                if (!v.contains('@') || !v.contains('.'))
+                  return 'Please enter a valid email';
                 return null;
               },
             ),
             const SizedBox(height: 12),
             Text(
               'Invitation Message / Note (Optional)',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textSecondary),
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textSecondary,
+              ),
             ),
             const SizedBox(height: 4),
             TextFormField(
               controller: _messageController,
               maxLines: 2,
               decoration: InputDecoration(
-                hintText: 'We would like to invite you to join our service team.',
+                hintText:
+                    'We would like to invite you to join our service team.',
                 filled: true,
                 fillColor: const Color(0xFFF8FAFC),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
               ),
             ),
             const SizedBox(height: 16),
@@ -551,13 +604,18 @@ class _SendInviteSheetState extends ConsumerState<_SendInviteSheet> {
                     ? const SizedBox(
                         width: 16,
                         height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
                       )
                     : const Icon(Icons.send_rounded, size: 16),
                 label: Text(_isSending ? 'Sending...' : 'Send Invitation'),
                 style: FilledButton.styleFrom(
                   backgroundColor: const Color(0xFF005965),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
                 ),
               ),
             ),

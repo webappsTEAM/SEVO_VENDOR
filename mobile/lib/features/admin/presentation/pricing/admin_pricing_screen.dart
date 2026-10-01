@@ -1,13 +1,14 @@
+import '../../../../shared/widgets/sevo/sevo_module_frame.dart';
+import '../../../../shared/widgets/sevo/sevo_module_art.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_theme.dart';
 import '../../../../shared/widgets/app_card.dart';
 import '../../../../shared/widgets/empty_state.dart';
-import '../../../../shared/widgets/workforce_app_bar.dart';
 import '../../data/admin_dashboard_api.dart';
 import '../../domain/admin_pricing_policy.dart';
-import '../widgets/admin_drawer.dart';
 import 'admin_pricing_providers.dart';
 
 /// Super Admin / SEVO Platform Pricing & Approval Rules Screen.
@@ -32,14 +33,9 @@ class _AdminPricingApprovalsScreenState
   Widget build(BuildContext context) {
     final policiesAsync = ref.watch(adminPricingPoliciesProvider);
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      appBar: const WorkforceAppBar(
-        titleText: 'Service Catalog & Pricing',
-        showStatusSubBar: false,
-        showDrawerMenu: true,
-      ),
-      drawer: const AdminDrawer(),
+    return SevoModuleFrame(
+      module: SevoModule.pricing,
+      title: 'Service Catalog & Pricing',
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: _refresh,
@@ -145,7 +141,9 @@ class _AdminPricingApprovalsScreenState
                 loading: () => Center(
                   child: Padding(
                     padding: EdgeInsets.all(AppSpacing.xxl),
-                    child: CircularProgressIndicator(color: AppColors.textPrimary),
+                    child: CircularProgressIndicator(
+                      color: AppColors.textPrimary,
+                    ),
                   ),
                 ),
                 error: (err, _) => AppCard(
@@ -191,11 +189,14 @@ class _AdminPricingApprovalsScreenState
                   if (policies.isEmpty) {
                     return AppCard(
                       padding: const EdgeInsets.symmetric(
-                          vertical: 40, horizontal: 16),
+                        vertical: 40,
+                        horizontal: 16,
+                      ),
                       child: const EmptyState(
                         icon: Icons.price_change_outlined,
                         title: 'No pricing policies found.',
-                        message: 'No service category pricing policies configured.',
+                        message:
+                            'No service category pricing policies configured.',
                       ),
                     );
                   }
@@ -297,7 +298,8 @@ class _CategoryPricingPolicyCardState
   }
 
   Future<void> _saveChanges() async {
-    final advance = double.tryParse(_advancePercentController.text.trim()) ?? 100.0;
+    final advance =
+        double.tryParse(_advancePercentController.text.trim()) ?? 100.0;
     if (advance < 0 || advance > 100) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -311,8 +313,9 @@ class _CategoryPricingPolicyCardState
     setState(() => _isSaving = true);
     try {
       final thresholdText = _thresholdController.text.trim();
-      final double? thresholdVal =
-          thresholdText.isEmpty ? null : double.tryParse(thresholdText);
+      final double? thresholdVal = thresholdText.isEmpty
+          ? null
+          : double.tryParse(thresholdText);
 
       final payload = <String, dynamic>{
         'consultation_fee_mode': _feeMode,
@@ -332,7 +335,9 @@ class _CategoryPricingPolicyCardState
       await api.updatePricingPolicy(widget.policy.id, payload);
 
       if (mounted) {
-        widget.onSaved('${widget.policy.effectiveTitle} policy updated successfully.');
+        widget.onSaved(
+          '${widget.policy.effectiveTitle} policy updated successfully.',
+        );
       }
     } catch (e) {
       if (mounted) {
@@ -398,8 +403,10 @@ class _CategoryPricingPolicyCardState
               ),
               if (widget.policy.isActive)
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xFFECFDF5),
                     borderRadius: BorderRadius.circular(20),
@@ -408,8 +415,11 @@ class _CategoryPricingPolicyCardState
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.check_circle_rounded,
-                          size: 12, color: Color(0xFF059669)),
+                      Icon(
+                        Icons.check_circle_rounded,
+                        size: 12,
+                        color: Color(0xFF059669),
+                      ),
                       SizedBox(width: 4),
                       Text(
                         'Policy active',
@@ -443,8 +453,10 @@ class _CategoryPricingPolicyCardState
             isExpanded: true,
             decoration: const InputDecoration(
               border: OutlineInputBorder(),
-              contentPadding:
-                  EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              contentPadding: EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 10,
+              ),
             ),
             items: const [
               DropdownMenuItem(
@@ -457,8 +469,10 @@ class _CategoryPricingPolicyCardState
               ),
               DropdownMenuItem(
                 value: 'DISTANCE_BAND',
-                child: Text('Free within radius, fee beyond',
-                    style: TextStyle(fontSize: 13)),
+                child: Text(
+                  'Free within radius, fee beyond',
+                  style: TextStyle(fontSize: 13),
+                ),
               ),
             ],
             onChanged: (val) {
@@ -471,8 +485,9 @@ class _CategoryPricingPolicyCardState
           if (_feeMode == 'FLAT') ...[
             TextField(
               controller: _feeAmountController,
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
               decoration: const InputDecoration(
                 labelText: 'Fee amount (₹)',
                 border: OutlineInputBorder(),
@@ -486,8 +501,9 @@ class _CategoryPricingPolicyCardState
                 Expanded(
                   child: TextField(
                     controller: _freeRadiusController,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                     decoration: const InputDecoration(
                       labelText: 'Free within (km)',
                       border: OutlineInputBorder(),
@@ -499,8 +515,9 @@ class _CategoryPricingPolicyCardState
                 Expanded(
                   child: TextField(
                     controller: _beyondRadiusController,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                     decoration: const InputDecoration(
                       labelText: 'Fee beyond that (₹)',
                       border: OutlineInputBorder(),
@@ -584,7 +601,10 @@ class _CategoryPricingPolicyCardState
                     SizedBox(height: 2),
                     Text(
                       'Off by default — customer-supplied material voids the workmanship warranty.',
-                      style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textSecondary,
+                      ),
                     ),
                   ],
                 ),
@@ -593,7 +613,8 @@ class _CategoryPricingPolicyCardState
               Switch.adaptive(
                 value: _allowCustomerMaterials,
                 activeTrackColor: const Color(0xFF7C3AED),
-                onChanged: (val) => setState(() => _allowCustomerMaterials = val),
+                onChanged: (val) =>
+                    setState(() => _allowCustomerMaterials = val),
               ),
             ],
           ),
@@ -618,10 +639,7 @@ class _CategoryPricingPolicyCardState
               style: FilledButton.styleFrom(
                 backgroundColor: AppColors.textPrimary,
                 padding: const EdgeInsets.symmetric(vertical: 11),
-                textStyle: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                ),
+                textStyle: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
               ),
             ),
           ),

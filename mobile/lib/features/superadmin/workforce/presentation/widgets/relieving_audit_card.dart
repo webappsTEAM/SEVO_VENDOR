@@ -1,156 +1,136 @@
 import 'package:flutter/material.dart';
 
 import '../../../../../core/theme/app_theme.dart';
+import '../../../../../shared/widgets/sevo/sevo_animated_card.dart';
+import '../../../../../shared/widgets/sevo/sevo_controls.dart';
+import '../../../../../shared/widgets/sevo/sevo_typography.dart';
 import '../../domain/platform_relieving_request.dart';
 
-/// Card widget displaying a single resignation / relieving audit record in the queue.
+/// A resignation / relieving request awaiting (or past) the SEVO audit.
 class RelievingAuditCard extends StatelessWidget {
   const RelievingAuditCard({
     super.key,
     required this.request,
     required this.onAudit,
+    this.index = 0,
   });
 
   final PlatformRelievingRequest request;
   final VoidCallback onAudit;
+  final int index;
+
+  static const _violet = Color(0xFF7C3AED);
 
   @override
   Widget build(BuildContext context) {
     final initial = request.technicianName.isNotEmpty
         ? request.technicianName[0].toUpperCase()
         : 'T';
-    final isVendorApproved = request.isPendingSevoAudit;
-    final isCompleted = request.isCompleted;
+    final needsAudit = request.isPendingSevoAudit;
+    final completed = request.isCompleted;
+    final cleared = request.vendorSettlementNotes != null;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppRadius.card),
-        border: Border.all(
-          color: isVendorApproved
-              ? const Color(0xFFDDD6FE)
-              : AppColors.border,
-          width: isVendorApproved ? 1.4 : 1.0,
-        ),
-        boxShadow: [
-          if (isVendorApproved)
-            BoxShadow(
-              color: const Color(0xFF7C3AED).withValues(alpha: 0.08),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
-            )
-          else
-            const BoxShadow(
-              color: Color(0x040A2540),
-              blurRadius: 4,
-              offset: Offset(0, 1.5),
-            ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // ── Header Row: Technician + Status ─────────────────────────────
-          Padding(
-            padding: const EdgeInsets.all(AppSpacing.md),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                CircleAvatar(
-                  radius: 19,
-                  backgroundColor: const Color(0xFFF3E8FF),
-                  child: Text(
-                    initial,
-                    style: TextStyle(
-                      color: Color(0xFF7C3AED),
-                      fontWeight: FontWeight.w800,
-                      fontSize: 14,
+    return SevoAnimatedCard(
+      index: index,
+      margin: const EdgeInsets.only(bottom: 14),
+      child: Container(
+        decoration: needsAudit
+            ? BoxDecoration(
+                borderRadius: BorderRadius.circular(AppRadius.card),
+                border: Border.all(
+                  color: _violet.withValues(alpha: 0.45),
+                  width: 1.4,
+                ),
+              )
+            : null,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Technician + status ────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+              child: Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [Color(0xFF8B5CF6), Color(0xFF6D28D9)],
+                      ),
+                      borderRadius: BorderRadius.circular(13),
+                    ),
+                    child: Center(
+                      child: Text(
+                        initial,
+                        style: const TextStyle(
+                          fontFamily: SevoText.family,
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        request.technicianName,
-                        style: TextStyle(
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.textPrimary,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          request.technicianName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: SevoText.cardTitle,
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Req #${request.id} • ${request.vendorName}',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.textSecondary,
+                        const SizedBox(height: 2),
+                        Text(
+                          'Req #${request.id} • ${request.vendorName}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: SevoText.meta,
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(width: 6),
-                _AuditStatusBadge(status: request.status),
-              ],
+                  const SizedBox(width: 8),
+                  _statusBadge(request.status),
+                ],
+              ),
             ),
-          ),
 
-          // ── Resignation Details & Category ──────────────────────────────
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-            child: Container(
+            // ── Resignation reason ─────────────────────────────────────
+            Container(
               width: double.infinity,
-              padding: const EdgeInsets.all(AppSpacing.sm),
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
-                borderRadius: BorderRadius.circular(8),
+                color: AppColors.surfaceMuted,
+                borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: AppColors.border),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Flexible(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFE0E7FF),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            request.reasonDisplay ?? request.reasonCategory,
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF3730A3),
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                        child: SevoBadge(
+                          label:
+                              request.reasonDisplay ?? request.reasonCategory,
+                          tone: SevoTone.info,
                         ),
                       ),
                       if (request.desiredRelievingDate != null) ...[
-                        const SizedBox(width: 6),
-                        Text(
-                          'Effective: ${request.desiredRelievingDate}',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: AppColors.textSecondary,
-                            fontWeight: FontWeight.w500,
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            'Effective: ${request.desiredRelievingDate}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: SevoText.caption,
                           ),
                         ),
                       ],
@@ -158,209 +138,141 @@ class RelievingAuditCard extends StatelessWidget {
                   ),
                   if (request.resignationNotes != null &&
                       request.resignationNotes!.isNotEmpty) ...[
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 8),
                     Text(
                       '"${request.resignationNotes}"',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontStyle: FontStyle.italic,
-                        color: AppColors.textSecondary,
-                      ),
-                      maxLines: 2,
+                      maxLines: 3,
                       overflow: TextOverflow.ellipsis,
+                      style: SevoText.caption.copyWith(
+                        fontStyle: FontStyle.italic,
+                        color: AppColors.bodyText,
+                      ),
                     ),
                   ],
                 ],
               ),
             ),
-          ),
 
-          // ── Vendor Dues Settlement Status ────────────────────────────────
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              AppSpacing.md,
-              AppSpacing.sm,
-              AppSpacing.md,
-              0,
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  request.vendorSettlementNotes != null
-                      ? Icons.check_circle_rounded
-                      : Icons.hourglass_top_rounded,
-                  size: 13,
-                  color: request.vendorSettlementNotes != null
-                      ? const Color(0xFF059669)
-                      : const Color(0xFFD97706),
-                ),
-                const SizedBox(width: 5),
-                Expanded(
-                  child: Text(
-                    request.vendorSettlementNotes != null
-                        ? 'Vendor Clearance: ${request.vendorSettlementNotes}'
-                        : 'Awaiting Vendor Dues Clearance & Signoff',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                      color: request.vendorSettlementNotes != null
-                          ? const Color(0xFF065F46)
-                          : const Color(0xFF92400E),
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+            // ── Vendor dues ────────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    cleared
+                        ? Icons.check_circle_rounded
+                        : Icons.hourglass_top_rounded,
+                    size: 16,
+                    color: cleared
+                        ? AppColors.successText
+                        : AppColors.warningText,
                   ),
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: AppSpacing.sm),
-          Divider(height: 1, color: Color(0xFFF1F5F9)),
-
-          // ── Action Footer ────────────────────────────────────────────────
-          Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.md,
-              vertical: AppSpacing.xs + 2,
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                // Contact info
-                Flexible(
-                  child: Text(
-                    request.technicianPhone.isNotEmpty
-                        ? request.technicianPhone
-                        : request.technicianEmail,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: AppColors.textSecondary,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                // Action Button
-                if (isVendorApproved)
-                  FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF7C3AED),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      minimumSize: Size.zero,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(6),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      cleared
+                          ? 'Vendor Clearance: ${request.vendorSettlementNotes}'
+                          : 'Awaiting Vendor Dues Clearance & Signoff',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: SevoText.caption.copyWith(
+                        color: cleared
+                            ? AppColors.successText
+                            : AppColors.warningText,
                       ),
                     ),
-                    icon: const Icon(Icons.verified_user_rounded, size: 13),
-                    label: Text(
-                      'Audit & Clear',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    onPressed: onAudit,
-                  )
-                else if (isCompleted)
-                  Text(
-                    'Relieved (Solo Active)',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF059669),
-                    ),
-                  )
-                else
-                  Text(
-                    'Vendor Pending',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textMuted,
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 12),
+            Divider(height: 1, color: AppColors.border),
+
+            // ── Contact + action ───────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      request.technicianPhone.isNotEmpty
+                          ? request.technicianPhone
+                          : request.technicianEmail,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: SevoText.caption,
                     ),
                   ),
-              ],
+                  const SizedBox(width: 8),
+                  if (needsAudit)
+                    FilledButton.icon(
+                      onPressed: onAudit,
+                      icon: const Icon(Icons.verified_user_rounded, size: 16),
+                      label: Text(
+                        'Audit & Clear',
+                        style: SevoText.button.copyWith(color: Colors.white),
+                      ),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: _violet,
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        minimumSize: const Size(0, 36),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    )
+                  else if (completed)
+                    Text(
+                      'Relieved (Solo Active)',
+                      style: SevoText.badge.copyWith(
+                        color: AppColors.successText,
+                      ),
+                    )
+                  else
+                    Text(
+                      'Vendor Pending',
+                      style: SevoText.badge.copyWith(
+                        color: AppColors.textMuted,
+                      ),
+                    ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
-}
 
-class _AuditStatusBadge extends StatelessWidget {
-  const _AuditStatusBadge({required this.status});
-
-  final String status;
-
-  @override
-  Widget build(BuildContext context) {
-    Color bg;
-    Color text;
-    Color border;
-    String label;
-    IconData icon;
-
+  Widget _statusBadge(String status) {
     switch (status.toUpperCase()) {
       case 'VENDOR_APPROVED':
-        bg = const Color(0xFFF5F3FF);
-        text = const Color(0xFF6D28D9);
-        border = const Color(0xFFDDD6FE);
-        label = 'AUDIT REQUIRED';
-        icon = Icons.gavel_rounded;
-        break;
+        return const SevoBadge(
+          label: 'AUDIT REQUIRED',
+          tone: SevoTone.violet,
+          icon: Icons.gavel_rounded,
+        );
       case 'COMPLETED':
-        bg = const Color(0xFFECFDF5);
-        text = const Color(0xFF047857);
-        border = const Color(0xFFA7F3D0);
-        label = 'RELIEVED';
-        icon = Icons.check_circle_rounded;
-        break;
+        return const SevoBadge(
+          label: 'RELIEVED',
+          tone: SevoTone.success,
+          icon: Icons.check_circle_rounded,
+        );
       case 'SEVO_APPROVED':
-        bg = const Color(0xFFEFF6FF);
-        text = const Color(0xFF1D4ED8);
-        border = const Color(0xFFBFDBFE);
-        label = 'APPROVED';
-        icon = Icons.shield_rounded;
-        break;
+        return const SevoBadge(
+          label: 'APPROVED',
+          tone: SevoTone.info,
+          icon: Icons.shield_rounded,
+        );
       default:
-        bg = const Color(0xFFFFFBEB);
-        text = const Color(0xFFB45309);
-        border = const Color(0xFFFDE68A);
-        label = 'REQUESTED';
-        icon = Icons.hourglass_empty_rounded;
+        return const SevoBadge(
+          label: 'REQUESTED',
+          tone: SevoTone.warning,
+          icon: Icons.hourglass_empty_rounded,
+        );
     }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: border, width: 0.8),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 10, color: text),
-          const SizedBox(width: 3),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 9,
-              fontWeight: FontWeight.w900,
-              color: text,
-              letterSpacing: 0.3,
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }

@@ -2,7 +2,12 @@ import '../../../core/utils/json_parsing.dart';
 
 /// Mirrors `active_offer` inside a job, from WorkforceJobSerializer.
 class JobOffer {
-  const JobOffer({this.status, this.offeredAt, this.expiresAt, required this.isExpired});
+  const JobOffer({
+    this.status,
+    this.offeredAt,
+    this.expiresAt,
+    required this.isExpired,
+  });
 
   factory JobOffer.fromJson(Map<String, dynamic> json) {
     return JobOffer(
@@ -54,12 +59,14 @@ class JobCartItem {
 
   factory JobCartItem.fromJson(Map<String, dynamic> json) {
     return JobCartItem(
-      name: parseString(json['name']) ??
+      name:
+          parseString(json['name']) ??
           parseString(json['title']) ??
           parseString(json['service_name']) ??
           'Service Item',
       description: parseString(json['description']),
-      selectedOption: parseString(json['selectedOption']) ??
+      selectedOption:
+          parseString(json['selectedOption']) ??
           parseString(json['option']) ??
           parseString(json['variant']),
       quantity: parseInt(json['quantity']),
@@ -96,10 +103,12 @@ class Job {
     this.totalAmount,
     this.paymentStatus,
     this.paymentMethod,
+    this.jobType,
     this.activeOffer,
     this.cancellationInfo,
     this.cartData = const [],
     this.createdAt,
+    this.isScheduledFuture = false,
     required this.isOffer,
     required this.isAcceptedByCurrentEmployee,
     required this.isAssignedToCurrentEmployee,
@@ -111,7 +120,7 @@ class Job {
     this.technicianPhone,
     this.technicianEmail,
     this.technicianId,
-      
+
     this.isLogistics = false,
     this.dropAddress,
     this.dropLatitude,
@@ -127,59 +136,85 @@ class Job {
     final activeOfferJson = json['active_offer'];
     final cancellationJson = json['cancellation_info'];
     final cartJson = json['cart_data'];
+    final paymentJson = json['payment'];
+    final paymentMap = paymentJson is Map<String, dynamic> ? paymentJson : null;
+    final paymentAmountDue = paymentMap != null
+        ? parseDouble(paymentMap['amount_due'])
+        : parseDouble(json['amount_due']);
+    final parsedTotalAmount = parseDouble(json['total_amount']);
+    final resolvedTotalAmount =
+        (paymentAmountDue != null && paymentAmountDue > 0)
+        ? paymentAmountDue
+        : ((parsedTotalAmount != null && parsedTotalAmount > 0)
+              ? parsedTotalAmount
+              : (paymentAmountDue ?? parsedTotalAmount));
+    final parsedPaymentStatus =
+        parseString(json['payment_status']) ??
+        (paymentMap != null ? parseString(paymentMap['payment_status']) : null);
+    final parsedPaymentMethod =
+        parseString(json['payment_method']) ??
+        (paymentMap != null ? parseString(paymentMap['payment_method']) : null);
 
     final techJson = json['technician'] is Map<String, dynamic>
         ? json['technician'] as Map<String, dynamic>
         : (json['assigned_technician'] is Map<String, dynamic>
-            ? json['assigned_technician'] as Map<String, dynamic>
-            : (json['assigned_employee'] is Map<String, dynamic>
-                ? json['assigned_employee'] as Map<String, dynamic>
-                : null));
+              ? json['assigned_technician'] as Map<String, dynamic>
+              : (json['assigned_employee'] is Map<String, dynamic>
+                    ? json['assigned_employee'] as Map<String, dynamic>
+                    : null));
 
-    final techUserJson = techJson != null && techJson['user'] is Map<String, dynamic>
+    final techUserJson =
+        techJson != null && techJson['user'] is Map<String, dynamic>
         ? techJson['user'] as Map<String, dynamic>
         : null;
 
-    final parsedTechName = parseString(json['technician_name']) ??
+    final parsedTechName =
+        parseString(json['technician_name']) ??
         parseString(json['assigned_technician_name']) ??
         parseString(json['assigned_employee_name']) ??
         (techJson != null
             ? (parseString(techJson['name']) ??
-                parseString(techJson['full_name']) ??
-                (techUserJson != null
-                    ? (parseString(techUserJson['full_name']) ??
-                        (techUserJson['first_name'] != null
-                            ? '${techUserJson['first_name']} ${techUserJson['last_name'] ?? ''}'.trim()
-                            : null))
-                    : null) ??
-                parseString(techJson['employee_id']))
+                  parseString(techJson['full_name']) ??
+                  (techUserJson != null
+                      ? (parseString(techUserJson['full_name']) ??
+                            (techUserJson['first_name'] != null
+                                ? '${techUserJson['first_name']} ${techUserJson['last_name'] ?? ''}'
+                                      .trim()
+                                : null))
+                      : null) ??
+                  parseString(techJson['employee_id']))
             : null);
 
-    final parsedTechPhone = parseString(json['technician_phone']) ??
+    final parsedTechPhone =
+        parseString(json['technician_phone']) ??
         parseString(json['assigned_technician_phone']) ??
         parseString(json['assigned_employee_phone']) ??
         (techJson != null
             ? (parseString(techJson['phone']) ??
-                parseString(techJson['phone_number']) ??
-                parseString(techJson['mobile_number']) ??
-                parseString(techJson['mobile']) ??
-                (techUserJson != null
-                    ? (parseString(techUserJson['mobile_number']) ??
-                        parseString(techUserJson['phone_number']) ??
-                        parseString(techUserJson['phone']) ??
-                        parseString(techUserJson['mobile']))
-                    : null))
+                  parseString(techJson['phone_number']) ??
+                  parseString(techJson['mobile_number']) ??
+                  parseString(techJson['mobile']) ??
+                  (techUserJson != null
+                      ? (parseString(techUserJson['mobile_number']) ??
+                            parseString(techUserJson['phone_number']) ??
+                            parseString(techUserJson['phone']) ??
+                            parseString(techUserJson['mobile']))
+                      : null))
             : null);
 
-    final parsedTechEmail = parseString(json['technician_email']) ??
+    final parsedTechEmail =
+        parseString(json['technician_email']) ??
         parseString(json['assigned_technician_email']) ??
         parseString(json['assigned_employee_email']) ??
         (techJson != null
             ? (parseString(techJson['email']) ??
-                (techUserJson != null ? parseString(techUserJson['email']) : null))
+                  (techUserJson != null
+                      ? parseString(techUserJson['email'])
+                      : null))
             : null);
 
-    final parsedTechId = parseInt(json['technician_id']) ??
+    final parsedTechId =
+        parseInt(json['technician_id']) ??
         parseInt(json['assigned_technician_id']) ??
         parseInt(json['assigned_employee_id']) ??
         (techJson != null ? parseInt(techJson['id']) : null);
@@ -187,7 +222,8 @@ class Job {
     return Job(
       id: parseInt(json['id']) ?? 0,
       requestId: parseString(json['request_id']) ?? '#${json['id']}',
-      customerName: parseString(json['customer_name']) ??
+      customerName:
+          parseString(json['customer_name']) ??
           parseString(json['customer_display_name']),
       phone: parseString(json['phone']),
       email: parseString(json['email']),
@@ -203,9 +239,10 @@ class Job {
       distanceKm: parseDouble(json['distance_km']),
       preferredDate: parseString(json['preferred_date']),
       preferredTime: parseString(json['preferred_time']),
-      totalAmount: parseDouble(json['total_amount']),
-      paymentStatus: parseString(json['payment_status']),
-      paymentMethod: parseString(json['payment_method']),
+      totalAmount: resolvedTotalAmount,
+      paymentStatus: parsedPaymentStatus,
+      paymentMethod: parsedPaymentMethod,
+      jobType: json['job_type']?.toString(),
       activeOffer: activeOfferJson is Map<String, dynamic>
           ? JobOffer.fromJson(activeOfferJson)
           : null,
@@ -213,17 +250,25 @@ class Job {
           ? JobCancellationInfo.fromJson(cancellationJson)
           : null,
       cartData: cartJson is List
-          ? cartJson.whereType<Map<String, dynamic>>().map(JobCartItem.fromJson).toList()
+          ? cartJson
+                .whereType<Map<String, dynamic>>()
+                .map(JobCartItem.fromJson)
+                .toList()
           : const [],
       createdAt: parseDateTime(json['created_at']),
+      isScheduledFuture: parseBool(json['is_scheduled_future']),
       isOffer: parseBool(json['is_offer']),
-      isAcceptedByCurrentEmployee: parseBool(json['is_accepted_by_current_employee']),
-      isAssignedToCurrentEmployee: parseBool(json['is_assigned_to_current_employee']),
+      isAcceptedByCurrentEmployee: parseBool(
+        json['is_accepted_by_current_employee'],
+      ),
+      isAssignedToCurrentEmployee: parseBool(
+        json['is_assigned_to_current_employee'],
+      ),
       acceptedAt: parseDateTime(json['accepted_at']),
       cancellationDeadline: parseDateTime(json['cancellation_deadline']),
       offerExpiresAt: parseDateTime(json['offer_expires_at']),
       canCancel: parseBool(json['can_cancel']),
-           technicianName: parsedTechName,
+      technicianName: parsedTechName,
       technicianPhone: parsedTechPhone,
       technicianEmail: parsedTechEmail,
       technicianId: parsedTechId,
@@ -261,10 +306,20 @@ class Job {
   final double? totalAmount;
   final String? paymentStatus;
   final String? paymentMethod;
+
+  /// `SERVICE` or `ESTIMATION` (Web Field Jobs badge).
+  final String? jobType;
+
+  /// Web rule: estimation job type, or a quotation / inspection status.
+  bool get isEstimation =>
+      jobType?.toUpperCase() == 'ESTIMATION' ||
+      status.contains('quotation') ||
+      status.contains('inspection');
   final JobOffer? activeOffer;
   final JobCancellationInfo? cancellationInfo;
   final List<JobCartItem> cartData;
   final DateTime? createdAt;
+  final bool isScheduledFuture;
   final bool isOffer;
   final bool isAcceptedByCurrentEmployee;
   final bool isAssignedToCurrentEmployee;
@@ -308,7 +363,8 @@ class Job {
 
   /// The service name shown in the UI — falls back through the fields the
   /// backend may leave blank depending on how the request was created.
-  String get displayTitle => serviceTitle ?? issueTitle ?? serviceCategory ?? 'Service Request';
+  String get displayTitle =>
+      serviceTitle ?? issueTitle ?? serviceCategory ?? 'Service Request';
 
   bool get hasCoordinates => latitude != null && longitude != null;
 
@@ -329,4 +385,3 @@ const List<String> kActiveQueueStatuses = [
   'in_progress',
   'proof_submitted',
 ];
-

@@ -8,6 +8,8 @@ import '../../features/jobs/presentation/jobs_providers.dart';
 import '../../features/notifications/presentation/notifications_providers.dart';
 import '../../features/profile/presentation/profile_providers.dart';
 import '../../routing/app_routes.dart';
+import 'admin_greeting.dart' show adminHeaderGradient;
+import 'sevo/sevo_app_bar_actions.dart';
 import 'sevo_brand_mark.dart';
 import 'theme_toggle_button.dart';
 import 'workforce_avatar.dart';
@@ -27,6 +29,7 @@ class WorkforceAppBar extends ConsumerWidget implements PreferredSizeWidget {
     this.showAvatar = true,
     this.showStatusSubBar = false,
     this.showDrawerMenu = false,
+    this.flatBottom = false,
     this.onSearchPressed,
   });
 
@@ -37,12 +40,15 @@ class WorkforceAppBar extends ConsumerWidget implements PreferredSizeWidget {
   final bool showAvatar;
   final bool showStatusSubBar;
   final bool showDrawerMenu;
+
+  /// Square bottom edge and a horizontal gradient, so a teal band placed right
+  /// under the bar (the admin greeting) reads as one continuous header.
+  final bool flatBottom;
   final VoidCallback? onSearchPressed;
 
   @override
-  Size get preferredSize => Size.fromHeight(
-        kToolbarHeight + (showStatusSubBar ? 36.0 : 0.0),
-      );
+  Size get preferredSize =>
+      Size.fromHeight(kToolbarHeight + (showStatusSubBar ? 36.0 : 0.0));
 
   void _defaultSearchAction(BuildContext context) {
     showSearchDialog(context);
@@ -54,7 +60,9 @@ class WorkforceAppBar extends ConsumerWidget implements PreferredSizeWidget {
       isScrollControlled: true,
       backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.card)),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(AppRadius.card),
+        ),
       ),
       builder: (ctx) => const _QuickSearchSheet(),
     );
@@ -71,7 +79,9 @@ class WorkforceAppBar extends ConsumerWidget implements PreferredSizeWidget {
     // watching it unconditionally fired that request on every screen using
     // this AppBar (including all admin screens, where the value is unused
     // and the same endpoint is already the slow one being loaded).
-    final hasActiveJob = showStatusSubBar ? ref.watch(hasActiveJobProvider) : false;
+    final hasActiveJob = showStatusSubBar
+        ? ref.watch(hasActiveJobProvider)
+        : false;
     final isOnline = profileAsync.valueOrNull?.isOnline ?? false;
 
     final displayName = user?.displayName ?? 'Tech';
@@ -82,17 +92,21 @@ class WorkforceAppBar extends ConsumerWidget implements PreferredSizeWidget {
       backgroundColor: Colors.transparent,
       elevation: 0,
       flexibleSpace: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF003B46), // Deep rich teal
-              Color(0xFF005965), // Teal
-              Color(0xFF028090), // Cyan/Teal accent
-            ],
-          ),
-          borderRadius: BorderRadius.vertical(bottom: Radius.circular(22)),
+        decoration: BoxDecoration(
+          gradient: flatBottom
+              ? adminHeaderGradient
+              : const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Color(0xFF003B46), // Deep rich teal
+                    Color(0xFF005965), // Teal
+                    Color(0xFF028090), // Cyan/Teal accent
+                  ],
+                ),
+          borderRadius: flatBottom
+              ? null
+              : const BorderRadius.vertical(bottom: Radius.circular(22)),
         ),
       ),
       titleSpacing: showDrawerMenu ? 0 : AppSpacing.md,
@@ -105,9 +119,14 @@ class WorkforceAppBar extends ConsumerWidget implements PreferredSizeWidget {
               ),
             )
           : null,
-      title: (titleText != null && !showBrand) || (titleText != null && titleText!.isNotEmpty)
+      title: titleText == 'SEVO'
+          ? const SevoHeaderTitle(fontSize: 22)
+          : (titleText != null && !showBrand) ||
+                (titleText != null && titleText!.isNotEmpty)
           ? Text(
               titleText!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
@@ -116,37 +135,27 @@ class WorkforceAppBar extends ConsumerWidget implements PreferredSizeWidget {
             )
           : const SevoHeaderTitle(fontSize: 22),
       actions: [
-        const ThemeToggleButton(),
+        const ThemeToggleButton(index: 0),
         if (showSearch)
-          IconButton(
-            icon: const Icon(Icons.search_rounded, size: 22, color: Colors.white),
+          SevoGlassButton(
+            index: 1,
             tooltip: 'Search Jobs',
-            visualDensity: VisualDensity.compact,
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
             onPressed: onSearchPressed ?? () => _defaultSearchAction(context),
+            child: const Icon(
+              Icons.search_rounded,
+              size: 21,
+              color: Colors.white,
+            ),
           ),
         if (showNotifications)
-          IconButton(
-            icon: unreadCount > 0
-                ? Badge(
-                    label: Text(
-                      unreadCount > 99 ? '99+' : '$unreadCount',
-                      style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold),
-                    ),
-                    backgroundColor: const Color(0xFFEF4444),
-                    child: const Icon(Icons.notifications_outlined, size: 22, color: Colors.white),
-                  )
-                : const Icon(Icons.notifications_outlined, size: 22, color: Colors.white),
-            tooltip: 'Notifications',
-            visualDensity: VisualDensity.compact,
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+          SevoBellButton(
+            index: 2,
+            unread: unreadCount,
             onPressed: () => context.push(AppRoutes.notifications),
           ),
         if (showAvatar)
           Padding(
-            padding: const EdgeInsets.only(left: 4, right: AppSpacing.md),
+            padding: const EdgeInsets.only(left: 6, right: AppSpacing.md - 2),
             child: PopupMenuButton<String>(
               tooltip: 'Profile & Account',
               offset: const Offset(0, 48),
@@ -156,10 +165,7 @@ class WorkforceAppBar extends ConsumerWidget implements PreferredSizeWidget {
               surfaceTintColor: Colors.transparent,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
-                side: BorderSide(
-                  color: AppColors.border,
-                  width: 1.0,
-                ),
+                side: BorderSide(color: AppColors.border, width: 1.0),
               ),
               constraints: const BoxConstraints(minWidth: 220, maxWidth: 260),
               onSelected: (value) async {
@@ -185,9 +191,7 @@ class WorkforceAppBar extends ConsumerWidget implements PreferredSizeWidget {
                       ),
                       content: Text(
                         'Are you sure you want to sign out of Workforce?',
-                        style: TextStyle(
-                          color: AppColors.textSecondary,
-                        ),
+                        style: TextStyle(color: AppColors.textSecondary),
                       ),
                       actions: [
                         TextButton(
@@ -220,7 +224,10 @@ class WorkforceAppBar extends ConsumerWidget implements PreferredSizeWidget {
                 return [
                   PopupMenuItem<String>(
                     enabled: false,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
                     child: Row(
                       children: [
                         Expanded(
@@ -237,16 +244,29 @@ class WorkforceAppBar extends ConsumerWidget implements PreferredSizeWidget {
                         ),
                         const SizedBox(width: 8),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 2.5,
+                          ),
                           decoration: BoxDecoration(
                             color: isAdmin
-                                ? (AppColors.isDark ? const Color(0xFF78350F).withValues(alpha: 0.4) : const Color(0xFFFEF3C7))
-                                : (AppColors.isDark ? const Color(0xFF1E3A8A).withValues(alpha: 0.4) : const Color(0xFFEFF6FF)),
+                                ? (AppColors.isDark
+                                      ? const Color(0xFF78350F)
+                                            .withValues(alpha: 0.4)
+                                      : const Color(0xFFFEF3C7))
+                                : (AppColors.isDark
+                                      ? const Color(0xFF1E3A8A)
+                                            .withValues(alpha: 0.4)
+                                      : const Color(0xFFEFF6FF)),
                             borderRadius: BorderRadius.circular(6),
                             border: Border.all(
                               color: isAdmin
-                                  ? (AppColors.isDark ? const Color(0xFFD97706) : const Color(0xFFFDE68A))
-                                  : (AppColors.isDark ? const Color(0xFF3B82F6) : const Color(0xFFBFDBFE)),
+                                  ? (AppColors.isDark
+                                        ? const Color(0xFFD97706)
+                                        : const Color(0xFFFDE68A))
+                                  : (AppColors.isDark
+                                        ? const Color(0xFF3B82F6)
+                                        : const Color(0xFFBFDBFE)),
                               width: 0.8,
                             ),
                           ),
@@ -257,8 +277,12 @@ class WorkforceAppBar extends ConsumerWidget implements PreferredSizeWidget {
                               fontWeight: FontWeight.w800,
                               letterSpacing: 0.4,
                               color: isAdmin
-                                  ? (AppColors.isDark ? const Color(0xFFFBBF24) : const Color(0xFF92400E))
-                                  : (AppColors.isDark ? const Color(0xFF60A5FA) : const Color(0xFF1E40AF)),
+                                  ? (AppColors.isDark
+                                        ? const Color(0xFFFBBF24)
+                                        : const Color(0xFF92400E))
+                                  : (AppColors.isDark
+                                        ? const Color(0xFF60A5FA)
+                                        : const Color(0xFF1E40AF)),
                             ),
                           ),
                         ),
@@ -268,7 +292,10 @@ class WorkforceAppBar extends ConsumerWidget implements PreferredSizeWidget {
                   const PopupMenuDivider(height: 1),
                   PopupMenuItem<String>(
                     value: 'profile',
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 4,
+                    ),
                     child: Row(
                       children: [
                         Icon(
@@ -290,7 +317,10 @@ class WorkforceAppBar extends ConsumerWidget implements PreferredSizeWidget {
                   ),
                   PopupMenuItem<String>(
                     value: 'settings',
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 4,
+                    ),
                     child: Row(
                       children: [
                         Icon(
@@ -335,16 +365,17 @@ class WorkforceAppBar extends ConsumerWidget implements PreferredSizeWidget {
                   ),
                 ];
               },
-              child: WorkforceAvatar(
-                imageUrl: photoUrl,
-                name: displayName,
-                initial: initial,
-                radius: 16,
-                borderColor: Colors.white.withValues(alpha: 0.8),
-                borderWidth: 1.5,
-                backgroundColor: const Color(0xFF1E293B),
-                foregroundColor: Colors.white,
-                fontSize: 13,
+              child: SevoAvatarRing(
+                index: 3,
+                child: WorkforceAvatar(
+                  imageUrl: photoUrl,
+                  name: displayName,
+                  initial: initial,
+                  radius: MediaQuery.sizeOf(context).width < 360 ? 12 : 14,
+                  backgroundColor: const Color(0xFF1E293B),
+                  foregroundColor: Colors.white,
+                  fontSize: 12,
+                ),
               ),
             ),
           ),
@@ -363,10 +394,7 @@ class WorkforceAppBar extends ConsumerWidget implements PreferredSizeWidget {
 }
 
 class _StatusSubBar extends StatelessWidget {
-  const _StatusSubBar({
-    required this.hasActiveJob,
-    required this.isOnline,
-  });
+  const _StatusSubBar({required this.hasActiveJob, required this.isOnline});
 
   final bool hasActiveJob;
   final bool isOnline;
@@ -383,12 +411,17 @@ class _StatusSubBar extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 6),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: 6,
+      ),
       decoration: BoxDecoration(
         color: const Color(0xFF002830).withValues(alpha: 0.75),
         border: Border(
           top: BorderSide(color: Colors.white.withValues(alpha: 0.12)),
-          bottom: BorderSide(color: const Color(0xFF005965).withValues(alpha: 0.3)),
+          bottom: BorderSide(
+            color: const Color(0xFF005965).withValues(alpha: 0.3),
+          ),
         ),
       ),
       child: Row(
@@ -414,7 +447,9 @@ class _StatusSubBar extends StatelessWidget {
             style: TextStyle(
               fontSize: 10,
               fontWeight: FontWeight.w700,
-              color: Color(0xFFBAE6FD), // Sky-200 for maximum readability on Peacock
+              color: Color(
+                0xFFBAE6FD,
+              ), // Sky-200 for maximum readability on Peacock
               letterSpacing: 0.5,
             ),
           ),
@@ -484,10 +519,18 @@ class _QuickSearchSheetState extends ConsumerState<_QuickSearchSheet> {
             children: [
               Text(
                 'Search Jobs & Requests',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.textPrimary,
+                ),
               ),
               IconButton(
-                icon: Icon(Icons.close, size: 20, color: AppColors.textSecondary),
+                icon: Icon(
+                  Icons.close,
+                  size: 20,
+                  color: AppColors.textSecondary,
+                ),
                 onPressed: () => Navigator.of(context).pop(),
                 visualDensity: VisualDensity.compact,
               ),
@@ -519,7 +562,9 @@ class _QuickSearchSheetState extends ConsumerState<_QuickSearchSheet> {
               padding: const EdgeInsets.symmetric(vertical: 24),
               child: Center(
                 child: Text(
-                  _query.isEmpty ? 'No active jobs found.' : 'No results matching "$_query"',
+                  _query.isEmpty
+                      ? 'No active jobs found.'
+                      : 'No results matching "$_query"',
                   style: TextStyle(fontSize: 13, color: AppColors.textMuted),
                 ),
               ),
@@ -538,10 +583,18 @@ class _QuickSearchSheetState extends ConsumerState<_QuickSearchSheet> {
                     dense: true,
                     title: Text(
                       '${job.requestId} — ${job.displayTitle}',
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                     subtitle: job.address != null
-                        ? Text(job.address!, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11))
+                        ? Text(
+                            job.address!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 11),
+                          )
                         : null,
                     trailing: const Icon(Icons.chevron_right, size: 18),
                     onTap: () {

@@ -1,9 +1,10 @@
+import '../../../../shared/widgets/sevo/sevo_module_frame.dart';
+import '../../../../shared/widgets/sevo/sevo_module_art.dart';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_theme.dart';
-import '../../../../shared/widgets/workforce_app_bar.dart';
-import '../widgets/admin_drawer.dart';
 
 /// Admin System Settings Screen.
 /// Accessible from the bottom of the Admin Navigation Drawer.
@@ -12,13 +13,9 @@ class AdminSettingsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: const WorkforceAppBar(
-        titleText: 'System Settings',
-        showStatusSubBar: false,
-        showDrawerMenu: true,
-      ),
-      drawer: const AdminDrawer(),
+    return SevoModuleFrame(
+      module: SevoModule.systemSettings,
+      title: 'System Settings',
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.md),
         children: [
@@ -34,7 +31,10 @@ class AdminSettingsScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 2.5,
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xFFF1F5F9),
                     borderRadius: BorderRadius.circular(5),
@@ -76,7 +76,8 @@ class AdminSettingsScreen extends StatelessWidget {
             icon: Icons.lock_outline_rounded,
             iconColor: const Color(0xFF2563EB),
             title: 'Account & Security',
-            subtitle: 'Password, authentication, sessions & administrative access',
+            subtitle:
+                'Password, authentication, sessions & administrative access',
             onTap: () => context.push('/more/settings/security'),
           ),
           const SizedBox(height: AppSpacing.sm),
@@ -92,7 +93,8 @@ class AdminSettingsScreen extends StatelessWidget {
             icon: Icons.notifications_outlined,
             iconColor: const Color(0xFFD97706),
             title: 'Notifications & Alerts',
-            subtitle: 'Dispatch alarms, dossier alerts & operational subscriptions',
+            subtitle:
+                'Dispatch alarms, dossier alerts & operational subscriptions',
             onTap: () => context.push('/more/settings/notifications'),
           ),
           const SizedBox(height: AppSpacing.sm),
@@ -100,7 +102,8 @@ class AdminSettingsScreen extends StatelessWidget {
             icon: Icons.shield_outlined,
             iconColor: const Color(0xFF059669),
             title: 'Privacy & Data Governance',
-            subtitle: 'Data egress policies, audit exports & organization compliance',
+            subtitle:
+                'Data egress policies, audit exports & organization compliance',
             onTap: () => context.push('/more/settings/privacy'),
           ),
           const SizedBox(height: AppSpacing.lg),

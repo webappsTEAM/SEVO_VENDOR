@@ -3,9 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mobile/core/theme/app_theme.dart';
-import 'package:mobile/features/admin/presentation/widgets/admin_drawer.dart';
-import 'package:mobile/shared/widgets/async_value_view.dart';
-import 'package:mobile/shared/widgets/workforce_app_bar.dart';
+import 'package:mobile/shared/widgets/sevo/sevo_controls.dart';
+import 'package:mobile/shared/widgets/sevo/sevo_module_art.dart';
+import 'package:mobile/shared/widgets/sevo/sevo_module_scaffold.dart';
+import 'package:mobile/shared/widgets/sevo/sevo_search_field.dart';
+import 'package:mobile/shared/widgets/sevo/sevo_skeleton.dart';
+import 'package:mobile/shared/widgets/sevo/sevo_state_views.dart';
 
 import '../data/superadmin_applications_repository.dart';
 import '../domain/platform_application.dart';
@@ -24,9 +27,13 @@ class SuperAdminApplicationsScreen extends ConsumerStatefulWidget {
   const SuperAdminApplicationsScreen({
     super.key,
     this.initialStatusFilter,
+    this.openChangeRequests = false,
   });
 
   final String? initialStatusFilter;
+
+  /// Opens on the Profile Change Requests section (`?tab=change_requests`).
+  final bool openChangeRequests;
 
   @override
   ConsumerState<SuperAdminApplicationsScreen> createState() =>
@@ -40,6 +47,12 @@ class _SuperAdminApplicationsScreenState
   @override
   void initState() {
     super.initState();
+    if (widget.openChangeRequests) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ref.read(superAdminSelectedSectionProvider.notifier).state =
+            SuperAdminApplicationsSection.profileChangeRequests;
+      });
+    }
     if (widget.initialStatusFilter != null &&
         widget.initialStatusFilter!.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -50,7 +63,8 @@ class _SuperAdminApplicationsScreenState
 
   void _applyInitialFilter(String status) {
     final normalized = status.toLowerCase().trim();
-    PlatformApplicationStatusFilter filter = PlatformApplicationStatusFilter.all;
+    PlatformApplicationStatusFilter filter =
+        PlatformApplicationStatusFilter.all;
 
     if (normalized == 'submitted' || normalized == 'pending') {
       filter = PlatformApplicationStatusFilter.pending;
@@ -96,8 +110,9 @@ class _SuperAdminApplicationsScreenState
             Expanded(child: Text(message)),
           ],
         ),
-        backgroundColor:
-            isError ? const Color(0xFFDC2626) : const Color(0xFF059669),
+        backgroundColor: isError
+            ? const Color(0xFFDC2626)
+            : const Color(0xFF059669),
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 4),
       ),
@@ -142,7 +157,8 @@ class _SuperAdminApplicationsScreenState
           .read(superAdminApplicationsRepositoryProvider)
           .approveApplication(app.id);
       await _refreshApplications();
-      final msg = res['message'] ??
+      final msg =
+          res['message'] ??
           '${app.name ?? "Technician"} has been approved for platform onboarding.';
       _showFeedback(msg);
     } catch (e) {
@@ -173,7 +189,8 @@ class _SuperAdminApplicationsScreenState
           .read(superAdminApplicationsRepositoryProvider)
           .rejectApplication(app.id, reason: reason);
       await _refreshApplications();
-      final msg = res['message'] ??
+      final msg =
+          res['message'] ??
           'Application for ${app.name ?? "Technician"} has been rejected.';
       _showFeedback(msg);
     } catch (e) {
@@ -201,7 +218,8 @@ class _SuperAdminApplicationsScreenState
           .read(superAdminApplicationsRepositoryProvider)
           .requestCorrection(app.id, notes: notes);
       await _refreshApplications();
-      final msg = res['message'] ??
+      final msg =
+          res['message'] ??
           'Correction instructions sent to ${app.name ?? "Technician"}.';
       _showFeedback(msg);
     } catch (e) {
@@ -235,7 +253,9 @@ class _SuperAdminApplicationsScreenState
         },
         onOpenFullDossier: () {
           Navigator.of(ctx).pop();
-          context.push('/admin/applications/${app.id}').then((_) => _refreshApplications());
+          context
+              .push('/admin/applications/${app.id}')
+              .then((_) => _refreshApplications());
         },
         onDossierUpdated: () => _refreshApplications(),
       ),
@@ -254,14 +274,11 @@ class _SuperAdminApplicationsScreenState
     try {
       final res = await ref
           .read(superAdminApplicationsRepositoryProvider)
-          .decideChangeRequest(
-            crId: crId,
-            action: action,
-            notes: notes,
-          );
+          .decideChangeRequest(crId: crId, action: action, notes: notes);
       ref.invalidate(superAdminChangeRequestsListProvider);
       final isApprove = action.toUpperCase() == 'APPROVE';
-      final msg = res['message'] ??
+      final msg =
+          res['message'] ??
           (isApprove
               ? 'Change request approved successfully.'
               : 'Change request rejected.');
@@ -372,8 +389,10 @@ class _SuperAdminApplicationsScreenState
                 const SizedBox(height: 8),
                 Container(
                   width: double.infinity,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
                     color: AppColors.surfaceMuted,
                     borderRadius: BorderRadius.circular(6),
@@ -458,603 +477,229 @@ class _SuperAdminApplicationsScreenState
   @override
   Widget build(BuildContext context) {
     final applicationsAsync = ref.watch(superAdminApplicationsListProvider);
-    final metrics = ref.watch(superAdminApplicationMetricsProvider);
     final selectedSection = ref.watch(superAdminSelectedSectionProvider);
-    final selectedFilter = ref.watch(applicationStatusFilterProvider);
-    final filteredApplications =
-        ref.watch(filteredSuperAdminApplicationsProvider);
-    final pendingCRCount =
-        ref.watch(superAdminPendingChangeRequestsCountProvider);
+    final isOnboarding =
+        selectedSection == SuperAdminApplicationsSection.onboardingApplications;
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: const WorkforceAppBar(
-        titleText: 'Partner Applications',
-        showStatusSubBar: false,
-        showDrawerMenu: true,
+    return SevoModuleScaffold(
+      module: SevoModule.technicianApplications,
+      title: 'Technician Applications',
+      subtitle: 'Review onboarding & profile changes',
+      ready: !applicationsAsync.isLoading,
+      onRefresh: _refreshApplications,
+      heroTrailing: IconButton.filled(
+        icon: const Icon(Icons.refresh_rounded, size: 20),
+        color: Colors.white,
+        style: IconButton.styleFrom(
+          backgroundColor: Colors.white.withValues(alpha: 0.16),
+        ),
+        tooltip: 'Refresh Applications',
+        onPressed: _refreshApplications,
       ),
-      drawer: const AdminDrawer(),
-      body: RefreshIndicator(
-        onRefresh: _refreshApplications,
-        child: AsyncValueView<List<AdminApplication>>(
-          value: applicationsAsync,
-          errorMessage: 'Unable to load technician applications',
+      heroBottom: isOnboarding
+          ? SevoSearchField(
+              controller: _searchController,
+              hint: 'Search name, ID, email or mobile',
+              onChanged: _onSearchChanged,
+            )
+          : null,
+      children: _body(applicationsAsync, selectedSection),
+    );
+  }
+
+  List<Widget> _body(
+    AsyncValue<List<AdminApplication>> async,
+    SuperAdminApplicationsSection selectedSection,
+  ) {
+    if (async.hasError && !async.hasValue) {
+      return [
+        SevoErrorState(
+          message: 'Unable to load technician applications',
           onRetry: _refreshApplications,
-          builder: (context, allApps) {
-            return ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.md,
-                AppSpacing.md,
-                AppSpacing.md,
-                AppSpacing.xxl,
-              ),
-              children: [
-                // ── 1. Header ───────────────────────────────────────────────
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 6,
-                                  vertical: 2,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: AppColors.primary
-                                      .withValues(alpha: 0.1),
-                                  borderRadius: BorderRadius.circular(4),
-                                  border: Border.all(
-                                    color: AppColors.primary
-                                        .withValues(alpha: 0.25),
-                                  ),
-                                ),
-                                child: Text(
-                                  'PLATFORM GOVERNANCE',
-                                  style: TextStyle(
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w900,
-                                    color: AppColors.primary,
-                                    letterSpacing: 0.6,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Applications Approval',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w900,
-                              color: AppColors.textPrimary,
-                              letterSpacing: -0.4,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'SEVO Platform Admin: Review technician onboarding applications, verify submitted documents, and manage approval decisions across the platform.',
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w400,
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.refresh_rounded, size: 20),
-                      color: AppColors.primary,
-                      tooltip: 'Refresh Applications',
-                      onPressed: _refreshApplications,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-
-                // ── 2. Top-Level Section Tabs ───────────────────────────────
-                _buildTopSectionTabs(
-                  selectedSection: selectedSection,
-                  onboardingCount: allApps.length,
-                  pendingCRCount: pendingCRCount,
-                ),
-                const SizedBox(height: 14),
-
-                // ── 3. Content Sections ─────────────────────────────────────
-                if (selectedSection ==
-                    SuperAdminApplicationsSection.onboardingApplications) ...[
-                  // Summary Metrics
-                  ApplicationMetrics(
-                    metrics: metrics,
-                    selectedFilter: selectedFilter,
-                    onSelectFilter: (PlatformApplicationStatusFilter filter) {
-                      ref
-                          .read(applicationStatusFilterProvider.notifier)
-                          .state = filter;
-                    },
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Filter Chips with Badges
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        _FilterTab(
-                          label: 'All Applications',
-                          count: metrics.totalCount,
-                          isSelected: selectedFilter ==
-                              PlatformApplicationStatusFilter.all,
-                          activeColor: AppColors.primary,
-                          onTap: () => ref
-                              .read(applicationStatusFilterProvider.notifier)
-                              .state = PlatformApplicationStatusFilter.all,
-                        ),
-                        const SizedBox(width: 6),
-                        _FilterTab(
-                          label: 'Pending',
-                          count: metrics.pendingCount,
-                          isSelected: selectedFilter ==
-                              PlatformApplicationStatusFilter.pending,
-                          activeColor: const Color(0xFFD97706),
-                          onTap: () => ref
-                              .read(applicationStatusFilterProvider.notifier)
-                              .state = PlatformApplicationStatusFilter.pending,
-                        ),
-                        const SizedBox(width: 6),
-                        _FilterTab(
-                          label: 'Under Review',
-                          count: metrics.underReviewCount,
-                          isSelected: selectedFilter ==
-                              PlatformApplicationStatusFilter.underReview,
-                          activeColor: const Color(0xFF2563EB),
-                          onTap: () => ref
-                              .read(applicationStatusFilterProvider.notifier)
-                              .state =
-                              PlatformApplicationStatusFilter.underReview,
-                        ),
-                        const SizedBox(width: 6),
-                        _FilterTab(
-                          label: 'Approved',
-                          count: metrics.approvedCount,
-                          isSelected: selectedFilter ==
-                              PlatformApplicationStatusFilter.approved,
-                          activeColor: const Color(0xFF059669),
-                          onTap: () => ref
-                              .read(applicationStatusFilterProvider.notifier)
-                              .state = PlatformApplicationStatusFilter.approved,
-                        ),
-                        const SizedBox(width: 6),
-                        _FilterTab(
-                          label: 'Corrections Required',
-                          count: metrics.correctionsRequiredCount,
-                          isSelected: selectedFilter ==
-                              PlatformApplicationStatusFilter
-                                  .correctionsRequired,
-                          activeColor: const Color(0xFFEA580C),
-                          onTap: () => ref
-                              .read(applicationStatusFilterProvider.notifier)
-                              .state =
-                              PlatformApplicationStatusFilter
-                                  .correctionsRequired,
-                        ),
-                        const SizedBox(width: 6),
-                        _FilterTab(
-                          label: 'Rejected',
-                          count: metrics.rejectedCount,
-                          isSelected: selectedFilter ==
-                              PlatformApplicationStatusFilter.rejected,
-                          activeColor: const Color(0xFFDC2626),
-                          onTap: () => ref
-                              .read(applicationStatusFilterProvider.notifier)
-                              .state = PlatformApplicationStatusFilter.rejected,
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Search Bar
-                  Container(
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: AppColors.surface,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppColors.border),
-                    ),
-                    child: Row(
-                      children: [
-                        Padding(
-                          padding: EdgeInsets.only(left: 10, right: 6),
-                          child: Icon(
-                            Icons.search_rounded,
-                            size: 18,
-                            color: AppColors.textMuted,
-                          ),
-                        ),
-                        Expanded(
-                          child: TextField(
-                            controller: _searchController,
-                            style: TextStyle(
-                              fontSize: 12.5,
-                              color: AppColors.textPrimary,
-                            ),
-                            decoration: InputDecoration(
-                              hintText:
-                                  'Search by technician name, ID, email, or mobile number...',
-                              hintStyle: TextStyle(
-                                fontSize: 12,
-                                color: AppColors.textMuted,
-                              ),
-                              border: InputBorder.none,
-                              isDense: true,
-                              contentPadding: EdgeInsets.zero,
-                            ),
-                            onChanged: _onSearchChanged,
-                          ),
-                        ),
-                        if (_searchController.text.isNotEmpty)
-                          IconButton(
-                            icon: const Icon(Icons.clear_rounded, size: 16),
-                            color: AppColors.textMuted,
-                            onPressed: () {
-                              _searchController.clear();
-                              _onSearchChanged('');
-                            },
-                          ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-
-                  // Applications List
-                  if (filteredApplications.isEmpty)
-                    _EmptyApplicationsView(
-                      selectedFilter: selectedFilter,
-                      hasSearch: _searchController.text.isNotEmpty,
-                    )
-                  else
-                    ...filteredApplications.map(
-                      (app) => ApplicationCard(
-                        application: app,
-                        onViewDetail: () => _openApplicationDetail(app),
-                      ),
-                    ),
-                ] else ...[
-                  // Section 2: Profile Change Requests View
-                  _buildProfileChangeRequestsSection(),
-                ],
-              ],
-            );
-          },
         ),
-      ),
+      ];
+    }
+    if (!async.hasValue) return const [SevoListSkeleton(count: 3)];
+
+    final allApps = async.requireValue;
+    final metrics = ref.watch(superAdminApplicationMetricsProvider);
+    final selectedFilter = ref.watch(applicationStatusFilterProvider);
+    final filteredApplications = ref.watch(
+      filteredSuperAdminApplicationsProvider,
     );
-  }
+    final pendingCRCount = ref.watch(
+      superAdminPendingChangeRequestsCountProvider,
+    );
+    final isOnboarding =
+        selectedSection == SuperAdminApplicationsSection.onboardingApplications;
+    void setFilter(PlatformApplicationStatusFilter f) =>
+        ref.read(applicationStatusFilterProvider.notifier).state = f;
+    void setSection(SuperAdminApplicationsSection v) =>
+        ref.read(superAdminSelectedSectionProvider.notifier).state = v;
 
-  // ── Top Navigation Tabs Builder ───────────────────────────────────────────
-
-  Widget _buildTopSectionTabs({
-    required SuperAdminApplicationsSection selectedSection,
-    required int onboardingCount,
-    required int pendingCRCount,
-  }) {
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        _SectionTabButton(
-          label: 'Onboarding Applications ($onboardingCount)',
-          isSelected: selectedSection ==
+    return [
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          SevoFilterChip(
+            label: 'Onboarding Applications (${allApps.length})',
+            selected: isOnboarding,
+            onTap: () => setSection(
               SuperAdminApplicationsSection.onboardingApplications,
-          onTap: () {
-            ref.read(superAdminSelectedSectionProvider.notifier).state =
-                SuperAdminApplicationsSection.onboardingApplications;
-          },
-        ),
-        _SectionTabButton(
-          label: '🔒 Profile Change Requests ($pendingCRCount Pending)',
-          isSelected: selectedSection ==
-              SuperAdminApplicationsSection.profileChangeRequests,
-          onTap: () {
-            ref.read(superAdminSelectedSectionProvider.notifier).state =
-                SuperAdminApplicationsSection.profileChangeRequests;
-          },
-        ),
-      ],
-    );
-  }
-
-  // ── Profile Change Requests Section ───────────────────────────────────────
-
-  Widget _buildProfileChangeRequestsSection() {
-    final changeRequestsAsync = ref.watch(superAdminChangeRequestsListProvider);
-
-    return AsyncValueView<List<AdminChangeRequest>>(
-      value: changeRequestsAsync,
-      errorMessage: 'Unable to load profile change requests',
-      onRetry: () async {
-        ref.invalidate(superAdminChangeRequestsListProvider);
-        await ref.read(superAdminChangeRequestsListProvider.future);
-      },
-      builder: (context, changeRequests) {
-        if (changeRequests.isEmpty) {
-          return const _EmptyProfileChangeRequestsView();
-        }
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            ...changeRequests.map(
-              (cr) => ProfileChangeRequestCard(
-                changeRequest: cr,
-                onDecide: () => _openDecideChangeRequestModal(cr),
-              ),
             ),
+          ),
+          SevoFilterChip(
+            label: '🔒 Profile Change Requests ($pendingCRCount Pending)',
+            selected: !isOnboarding,
+            onTap: () =>
+                setSection(SuperAdminApplicationsSection.profileChangeRequests),
+          ),
+        ],
+      ),
+      const SizedBox(height: 12),
+      if (isOnboarding) ...[
+        ApplicationMetrics(
+          metrics: metrics,
+          selectedFilter: selectedFilter,
+          onSelectFilter: setFilter,
+        ),
+        const SizedBox(height: 14),
+        SevoFilterRow(
+          chips: [
+            for (final f in _statusChips(metrics))
+              SevoFilterChip(
+                label: f.$1,
+                count: f.$3,
+                selected: selectedFilter == f.$2,
+                onTap: () => setFilter(f.$2),
+              ),
           ],
-        );
-      },
-    );
-  }
-}
-
-class _SectionTabButton extends StatelessWidget {
-  const _SectionTabButton({
-    required this.label,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    const activeColor = Color(0xFF005965);
-
-    return Material(
-      color: isSelected ? activeColor : AppColors.surface,
-      borderRadius: BorderRadius.circular(8),
-      elevation: isSelected ? 1 : 0,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: isSelected ? activeColor : AppColors.border,
-              width: isSelected ? 1.4 : 1.0,
-            ),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 12.5,
-              fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-              color: isSelected ? Colors.white : AppColors.textSecondary,
-            ),
-          ),
         ),
-      ),
-    );
-  }
-}
-
-class _FilterTab extends StatelessWidget {
-  const _FilterTab({
-    required this.label,
-    required this.count,
-    required this.isSelected,
-    required this.activeColor,
-    required this.onTap,
-  });
-
-  final String label;
-  final int count;
-  final bool isSelected;
-  final Color activeColor;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: isSelected ? activeColor : AppColors.surface,
-      borderRadius: BorderRadius.circular(8),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6.5),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: isSelected ? activeColor : AppColors.border,
-              width: isSelected ? 1.2 : 1.0,
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                  color: isSelected ? Colors.white : AppColors.textSecondary,
-                ),
+        const SizedBox(height: 8),
+        SevoDropdownField<String>(
+          value: ref.watch(applicationServiceFilterProvider),
+          icon: Icons.filter_list_rounded,
+          label: 'Service',
+          items: [
+            const DropdownMenuItem(value: 'ALL', child: Text('All Services')),
+            for (final name in ref.watch(superAdminUniqueServicesProvider))
+              DropdownMenuItem(
+                value: name,
+                child: Text(name, overflow: TextOverflow.ellipsis),
               ),
-              const SizedBox(width: 5),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                decoration: BoxDecoration(
-                  color: isSelected ? Colors.white.withValues(alpha: 0.25) : AppColors.surfaceMuted,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  '$count',
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    color: isSelected ? Colors.white : AppColors.textSecondary,
-                  ),
-                ),
-              ),
-            ],
-          ),
+          ],
+          onChanged: (v) =>
+              ref.read(applicationServiceFilterProvider.notifier).state =
+                  v ?? 'ALL',
         ),
-      ),
-    );
+        const SizedBox(height: 14),
+        if (filteredApplications.isEmpty)
+          _emptyApplications(selectedFilter, _searchController.text.isNotEmpty)
+        else
+          for (var i = 0; i < filteredApplications.length; i++)
+            ApplicationCard(
+              index: i,
+              application: filteredApplications[i],
+              onViewDetail: () =>
+                  _openApplicationDetail(filteredApplications[i]),
+            ),
+      ] else
+        ..._changeRequestsSection(),
+    ];
   }
-}
 
-class _EmptyApplicationsView extends StatelessWidget {
-  const _EmptyApplicationsView({
-    required this.selectedFilter,
-    required this.hasSearch,
-  });
+  List<(String, PlatformApplicationStatusFilter, int)> _statusChips(
+    SuperAdminApplicationMetrics m,
+  ) => [
+    ('All', PlatformApplicationStatusFilter.all, m.totalCount),
+    ('Pending', PlatformApplicationStatusFilter.pending, m.pendingCount),
+    (
+      'Under Review',
+      PlatformApplicationStatusFilter.underReview,
+      m.underReviewCount,
+    ),
+    ('Approved', PlatformApplicationStatusFilter.approved, m.approvedCount),
+    (
+      'Corrections',
+      PlatformApplicationStatusFilter.correctionsRequired,
+      m.correctionsRequiredCount,
+    ),
+    ('Rejected', PlatformApplicationStatusFilter.rejected, m.rejectedCount),
+  ];
 
-  final PlatformApplicationStatusFilter selectedFilter;
-  final bool hasSearch;
-
-  @override
-  Widget build(BuildContext context) {
-    String title = 'No applications found';
-    String message = 'There are currently no technician applications in this view.';
-
+  Widget _emptyApplications(
+    PlatformApplicationStatusFilter selectedFilter,
+    bool hasSearch,
+  ) {
+    var title = 'No applications found';
+    var message =
+        'There are currently no technician applications in this view.';
     if (hasSearch) {
       title = 'No search results';
-      message = 'No applications matched your search term. Try adjusting your query.';
+      message =
+          'No applications matched your search term. Try adjusting your query.';
     } else {
       switch (selectedFilter) {
         case PlatformApplicationStatusFilter.pending:
           title = 'No pending applications';
           message = 'All submitted technician applications have been reviewed.';
-          break;
         case PlatformApplicationStatusFilter.underReview:
           title = 'No applications under review';
           message = 'There are no applications currently undergoing active administrative review.';
-          break;
         case PlatformApplicationStatusFilter.approved:
           title = 'No approved applications';
           message = 'No technician applications have been approved yet.';
-          break;
         case PlatformApplicationStatusFilter.correctionsRequired:
           title = 'No corrections pending';
-          message = 'No applications are currently awaiting document resubmission.';
-          break;
+          message =
+              'No applications are currently awaiting document resubmission.';
         case PlatformApplicationStatusFilter.rejected:
           title = 'No rejected applications';
           message = 'No technician applications have been rejected.';
-          break;
         case PlatformApplicationStatusFilter.all:
           title = 'No applications registered';
           message = 'No technician applications have been registered on the platform.';
-          break;
       }
     }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.lg,
-        vertical: AppSpacing.xxl,
-      ),
-      margin: const EdgeInsets.only(top: AppSpacing.md),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppRadius.card),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.folder_open_rounded,
-            size: 40,
-            color: AppColors.textMuted,
-          ),
-          const SizedBox(height: 12),
-          Text(
-            title,
-            style: TextStyle(
-              fontSize: 14.5,
-              fontWeight: FontWeight.w800,
-              color: AppColors.textPrimary,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            message,
-            style: TextStyle(
-              fontSize: 12,
-              color: AppColors.textSecondary,
-              height: 1.3,
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
+    return SevoEmptyState(
+      module: SevoModule.technicianApplications,
+      title: title,
+      message: message,
     );
   }
-}
 
-class _EmptyProfileChangeRequestsView extends StatelessWidget {
-  const _EmptyProfileChangeRequestsView();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.lg,
-        vertical: AppSpacing.xxl,
-      ),
-      margin: const EdgeInsets.only(top: AppSpacing.sm),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppRadius.card),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.lock_reset_rounded,
-            size: 40,
-            color: AppColors.textMuted,
-          ),
-          SizedBox(height: 12),
-          Text(
-            'No employee profile change requests pending review.',
-            style: TextStyle(
-              fontSize: 13.5,
-              fontWeight: FontWeight.w700,
-              color: AppColors.textPrimary,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          SizedBox(height: 4),
-          Text(
-            'All technician profile modification requests across the platform have been processed.',
-            style: TextStyle(
-              fontSize: 12,
-              color: AppColors.textSecondary,
-              height: 1.3,
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    );
+  List<Widget> _changeRequestsSection() {
+    final async = ref.watch(superAdminChangeRequestsListProvider);
+    if (async.hasError && !async.hasValue) {
+      return [
+        SevoErrorState(
+          message: 'Unable to load profile change requests',
+          onRetry: () async {
+            ref.invalidate(superAdminChangeRequestsListProvider);
+            await ref.read(superAdminChangeRequestsListProvider.future);
+          },
+        ),
+      ];
+    }
+    if (!async.hasValue) return const [SevoListSkeleton(count: 2)];
+    final requests = async.requireValue;
+    if (requests.isEmpty) {
+      return const [
+        SevoEmptyState(
+          module: SevoModule.technicianApplications,
+          title: 'No employee profile change requests pending review.',
+          message: 'All technician profile modification requests across the platform have been processed.',
+        ),
+      ];
+    }
+    return [
+      for (var i = 0; i < requests.length; i++)
+        ProfileChangeRequestCard(
+          index: i,
+          changeRequest: requests[i],
+          onDecide: () => _openDecideChangeRequestModal(requests[i]),
+        ),
+    ];
   }
 }

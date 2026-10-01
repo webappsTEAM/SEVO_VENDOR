@@ -1,10 +1,11 @@
+import '../../../../shared/widgets/sevo/sevo_module_frame.dart';
+import '../../../../shared/widgets/sevo/sevo_module_art.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:mobile/core/theme/app_theme.dart';
 import 'package:mobile/shared/widgets/async_value_view.dart';
-import 'package:mobile/shared/widgets/workforce_app_bar.dart';
-import 'package:mobile/features/admin/presentation/widgets/admin_drawer.dart';
 import 'package:mobile/features/admin/presentation/finance/admin_finance_providers.dart';
 import 'package:mobile/features/admin/presentation/finance/widgets/admin_withdrawal_card.dart';
 
@@ -17,14 +18,9 @@ class AdminWithdrawalsScreen extends ConsumerWidget {
     final withdrawalsAsync = ref.watch(adminWithdrawalsProvider);
     final currentStatusFilter = ref.watch(adminWithdrawalStatusFilterProvider);
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: const WorkforceAppBar(
-        titleText: 'Payout Approvals',
-        showStatusSubBar: false,
-        showDrawerMenu: true,
-      ),
-      drawer: const AdminDrawer(),
+    return SevoModuleFrame(
+      module: SevoModule.withdrawals,
+      title: 'Payout Approvals',
       body: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(adminWithdrawalsProvider);
@@ -64,17 +60,47 @@ class AdminWithdrawalsScreen extends ConsumerWidget {
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: [
-                  _filterChip(ref, label: 'All Requests', value: 'ALL', current: currentStatusFilter),
+                  _filterChip(
+                    ref,
+                    label: 'All Requests',
+                    value: 'ALL',
+                    current: currentStatusFilter,
+                  ),
                   const SizedBox(width: 6),
-                  _filterChip(ref, label: 'Requested', value: 'REQUESTED', current: currentStatusFilter),
+                  _filterChip(
+                    ref,
+                    label: 'Requested',
+                    value: 'REQUESTED',
+                    current: currentStatusFilter,
+                  ),
                   const SizedBox(width: 6),
-                  _filterChip(ref, label: 'Processing', value: 'PROCESSING', current: currentStatusFilter),
+                  _filterChip(
+                    ref,
+                    label: 'Processing',
+                    value: 'PROCESSING',
+                    current: currentStatusFilter,
+                  ),
                   const SizedBox(width: 6),
-                  _filterChip(ref, label: 'Completed', value: 'COMPLETED', current: currentStatusFilter),
+                  _filterChip(
+                    ref,
+                    label: 'Completed',
+                    value: 'COMPLETED',
+                    current: currentStatusFilter,
+                  ),
                   const SizedBox(width: 6),
-                  _filterChip(ref, label: 'Failed', value: 'FAILED', current: currentStatusFilter),
+                  _filterChip(
+                    ref,
+                    label: 'Failed',
+                    value: 'FAILED',
+                    current: currentStatusFilter,
+                  ),
                   const SizedBox(width: 6),
-                  _filterChip(ref, label: 'Cancelled', value: 'CANCELLED', current: currentStatusFilter),
+                  _filterChip(
+                    ref,
+                    label: 'Cancelled',
+                    value: 'CANCELLED',
+                    current: currentStatusFilter,
+                  ),
                 ],
               ),
             ),
@@ -87,20 +113,33 @@ class AdminWithdrawalsScreen extends ConsumerWidget {
               builder: (context, withdrawals) {
                 if (withdrawals.isEmpty) {
                   return Container(
-                    padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 20),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 48,
+                      horizontal: 20,
+                    ),
                     alignment: Alignment.center,
                     child: Column(
                       children: [
-                        Icon(Icons.payments_outlined, size: 48, color: AppColors.textMuted),
+                        Icon(
+                          Icons.payments_outlined,
+                          size: 48,
+                          color: AppColors.textMuted,
+                        ),
                         const SizedBox(height: 12),
                         Text(
                           'No payout requests found.',
-                          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           'There are currently no withdrawal requests matching this status.',
-                          style: TextStyle(color: AppColors.textMuted, fontSize: 12),
+                          style: TextStyle(
+                            color: AppColors.textMuted,
+                            fontSize: 12,
+                          ),
                         ),
                       ],
                     ),

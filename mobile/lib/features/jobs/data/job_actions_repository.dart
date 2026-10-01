@@ -20,12 +20,24 @@ class JobActionsRepository {
     return _message(json, 'Job offer declined.');
   }
 
-  Future<String> cancelJob(int jobId, {required String reasonCode, String reasonDetail = ''}) async {
-    final json = await _api.cancelJob(jobId, reasonCode: reasonCode, reasonDetail: reasonDetail);
+  Future<String> cancelJob(
+    int jobId, {
+    required String reasonCode,
+    String reasonDetail = '',
+  }) async {
+    final json = await _api.cancelJob(
+      jobId,
+      reasonCode: reasonCode,
+      reasonDetail: reasonDetail,
+    );
     return _message(json, 'Job assignment cancelled.');
   }
 
-  Future<String> verifyArrival(int jobId, {required double lat, required double lon}) async {
+  Future<String> verifyArrival(
+    int jobId, {
+    required double lat,
+    required double lon,
+  }) async {
     final json = await _api.verifyArrival(jobId, lat: lat, lon: lon);
     return _message(json, 'Arrival verified.');
   }
@@ -120,7 +132,11 @@ class JobActionsRepository {
     required int stopId,
     required bool completed,
   }) async {
-    final json = await _api.updateTripStop(jobId, stopId: stopId, completed: completed);
+    final json = await _api.updateTripStop(
+      jobId,
+      stopId: stopId,
+      completed: completed,
+    );
     return TripStopProgressResult.fromJson(json);
   }
 
@@ -132,9 +148,12 @@ class JobActionsRepository {
     );
   }
 
-  Future<String> collectCash(int jobId, double amountReceived) async {
+  Future<CashCollectionResult> collectCash(
+    int jobId,
+    double amountReceived,
+  ) async {
     final json = await _api.collectCash(jobId, amountReceived);
-    return _message(json, 'Cash collection recorded.');
+    return CashCollectionResult.fromJson(json);
   }
 
   Future<String> verifyPaymentOtp(int jobId, String otp) async {

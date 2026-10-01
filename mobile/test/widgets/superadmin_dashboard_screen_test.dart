@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:mobile/shared/widgets/admin_greeting.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -257,19 +258,19 @@ void main() {
 
       // Check AppBar branding & context
       expect(find.byType(WorkforceAppBar), findsOneWidget);
-      expect(find.text('Operations Center'), findsOneWidget);
-      expect(find.byIcon(Icons.refresh_rounded), findsWidgets);
+      expect(find.byType(AdminGreeting), findsOneWidget);
+      expect(find.textContaining('Hello, '), findsOneWidget);
+      expect(find.text('Live'), findsOneWidget);
+      expect(find.byIcon(Icons.sync_rounded), findsWidgets);
       expect(find.byIcon(Icons.menu_rounded), findsOneWidget);
     });
 
-    testWidgets('2. Workforce Operations Center heading, Home breadcrumb, and subtitle render',
+    testWidgets('2. Workforce Operations Center heading and subtitle render',
         (tester) async {
       await tester.pumpWidget(createSubject());
       await tester.pumpAndSettle();
 
       expect(find.byType(SuperAdminDashboardHeader), findsOneWidget);
-      expect(find.text('Home'), findsOneWidget);
-      expect(find.text('Superadmin Console'), findsOneWidget);
       expect(
         find.text(
             'Real-time personnel monitoring, dossier verifications, and dynamic dispatch'),
@@ -284,7 +285,7 @@ void main() {
       await tester.pumpWidget(createSubject());
       await tester.pumpAndSettle();
 
-      expect(find.text('ACTION CENTER'), findsOneWidget);
+      expect(find.text('Action Center'), findsOneWidget);
       expect(
         find.text('Items requiring immediate operational attention'),
         findsOneWidget,
@@ -344,7 +345,7 @@ void main() {
       await tester.pumpWidget(createSubject());
       await tester.pumpAndSettle();
 
-      expect(find.text('WORKFORCE OVERVIEW'), findsOneWidget);
+      expect(find.text('Workforce Overview'), findsOneWidget);
       expect(
         find.text('Personnel roster, availability and field activity'),
         findsOneWidget,
@@ -393,7 +394,7 @@ void main() {
       await tester.scrollUntilVisible(find.byType(SuperAdminRecentOperationsSection), 200);
 
       expect(
-        find.textContaining('RECENT OPERATIONS & SERVICE BOOKINGS'),
+        find.textContaining('Recent Operations & Service Bookings'),
         findsOneWidget,
       );
       expect(find.text('View All Jobs'), findsOneWidget);
@@ -566,7 +567,7 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.scrollUntilVisible(find.text('View All Jobs'), 200);
-      await tester.ensureVisible(find.text('View All Jobs'));
+      await tester.drag(find.byType(Scrollable).first, const Offset(0, 150));
       await tester.pumpAndSettle();
       await tester.tap(find.text('View All Jobs'));
       await tester.pumpAndSettle();
@@ -593,8 +594,12 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      // Job cards are built lazily; scroll until at least one exists.
+      for (var i = 0; i < 12 && find.text('Dispatch').evaluate().isEmpty; i++) {
+        await tester.drag(find.byType(Scrollable).first, const Offset(0, -300));
+        await tester.pumpAndSettle();
+      }
       final firstDispatchBtn = find.text('Dispatch').first;
-      await tester.scrollUntilVisible(firstDispatchBtn, 200);
       await tester.ensureVisible(firstDispatchBtn);
       await tester.pumpAndSettle();
       await tester.tap(firstDispatchBtn);

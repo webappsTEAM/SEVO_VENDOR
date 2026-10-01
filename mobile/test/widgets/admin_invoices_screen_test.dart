@@ -90,44 +90,65 @@ void main() {
   }
 
   group('AdminInvoicesScreen Widget Tests', () {
-    testWidgets(
-      'renders screen header, description, refresh, search, and status chips',
-      (WidgetTester tester) async {
-        await tester.pumpWidget(buildTestWidget());
-        await tester.pumpAndSettle();
+    testWidgets('renders Web header, KPIs, tab counts and invoice rows', (tester) async {
+      tester.view.physicalSize = const Size(800, 2000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      await tester.pumpWidget(buildTestWidget());
+      await tester.pumpAndSettle();
 
-        expect(find.text('Invoices'), findsOneWidget);
-        expect(
-          find.text('Raised automatically when SEVO approves a quotation.'),
-          findsOneWidget,
-        );
-        expect(find.text('Refresh'), findsOneWidget);
-        expect(find.text('Invoice number, customer, phone'), findsOneWidget);
+      expect(find.text('Customer Invoices & Billing'), findsOneWidget);
+      expect(
+        find.text('Tax invoices generated automatically for completed service requests and approved quotations.'),
+        findsOneWidget,
+      );
+      expect(find.text('Export CSV'), findsOneWidget);
+      expect(find.text('Refresh'), findsOneWidget);
+      expect(find.text('Search invoice, customer, job...'), findsOneWidget);
 
-        // Status chips
-        expect(find.widgetWithText(ChoiceChip, 'All Statuses'), findsOneWidget);
-        expect(find.widgetWithText(ChoiceChip, 'Issued'), findsOneWidget);
-        expect(find.widgetWithText(ChoiceChip, 'Partially Paid'), findsOneWidget);
-        expect(find.widgetWithText(ChoiceChip, 'Paid'), findsOneWidget);
-        expect(find.widgetWithText(ChoiceChip, 'Cancelled'), findsOneWidget);
-        expect(find.widgetWithText(ChoiceChip, 'Refunded'), findsOneWidget);
-        expect(find.widgetWithText(ChoiceChip, 'Draft'), findsOneWidget);
+      // KPIs computed like the Web page.
+      expect(find.text('Total Invoiced'), findsOneWidget);
+      expect(find.text('₹5,500.00'), findsOneWidget);
+      expect(find.text('₹2,350.00'), findsOneWidget); // collected
+      expect(find.text('1 fully paid invoices'), findsOneWidget);
+      expect(find.text('1 Paid · 1 Unpaid'), findsOneWidget);
 
-        // Cards
-        expect(find.text('INV-20260908-0001'), findsOneWidget);
-        expect(
-          find.text('Priya Rajan · AC Compressor & Gas Charge'),
-          findsOneWidget,
-        );
-        expect(find.text('₹3650.00'), findsOneWidget);
-        expect(find.text('₹3150.00 outstanding'), findsOneWidget);
-      },
-    );
+      // Web status tabs with counts.
+      expect(find.widgetWithText(ChoiceChip, 'All Invoices (2)'), findsOneWidget);
+      expect(find.widgetWithText(ChoiceChip, 'Paid (1)'), findsOneWidget);
+      expect(find.widgetWithText(ChoiceChip, 'Partial (1)'), findsOneWidget);
 
-    testWidgets('tapping invoice card opens detail sheet', (
-      WidgetTester tester,
-    ) async {
-      tester.view.physicalSize = const Size(800, 1200);
+      // Rows.
+      expect(find.text('INV-20260908-0001'), findsOneWidget);
+      expect(find.text('Priya Rajan'), findsOneWidget);
+      expect(find.text('₹3,650.00'), findsOneWidget);
+      expect(find.text('₹3,150.00 due'), findsWidgets);
+      expect(find.text('Settled'), findsOneWidget);
+      expect(find.text('Partially Paid'), findsOneWidget);
+    });
+
+    testWidgets('status tab and search filter locally', (tester) async {
+      await tester.pumpWidget(buildTestWidget());
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Paid (1)'));
+      await tester.pumpAndSettle();
+      expect(find.text('INV-20260908-0002'), findsOneWidget);
+      expect(find.text('INV-20260908-0001'), findsNothing);
+
+      await tester.tap(find.widgetWithText(ChoiceChip, 'All Invoices (2)'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'karthik');
+      await tester.pump();
+      expect(find.text('INV-20260908-0002'), findsOneWidget);
+      expect(find.text('INV-20260908-0001'), findsNothing);
+    });
+
+    testWidgets('tapping invoice card opens detail sheet', (tester) async {
+      tester.view.physicalSize = const Size(800, 1600);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(() {
         tester.view.resetPhysicalSize();
@@ -140,34 +161,25 @@ void main() {
       await tester.tap(find.text('INV-20260908-0001'));
       await tester.pumpAndSettle();
 
+      expect(find.text('Invoice Date'), findsOneWidget);
+      expect(find.text('Download PDF'), findsOneWidget);
       expect(find.text('LINE ITEMS'), findsOneWidget);
       expect(find.text('AC Compressor 1.5 Ton × 1.0 unit'), findsOneWidget);
       expect(find.text('PAYMENTS HISTORY'), findsOneWidget);
-      expect(find.text('UPI'), findsOneWidget);
       expect(find.text('Ref: UPI-78945612'), findsOneWidget);
       expect(find.text('Record a payment'), findsOneWidget);
-      expect(find.text('Record ₹3150.00'), findsOneWidget);
     });
 
-    testWidgets('renders empty state when no invoices match', (
-      WidgetTester tester,
-    ) async {
+    testWidgets('renders empty state when no invoices match', (tester) async {
       await tester.pumpWidget(buildTestWidget(invoices: []));
       await tester.pumpAndSettle();
 
-      expect(find.text('No invoices yet.'), findsOneWidget);
-      expect(
-        find.text('No invoices match the selected filter criteria.'),
-        findsOneWidget,
-      );
+      expect(find.text('No invoices found'), findsOneWidget);
+      expect(find.text('No invoices match the selected filter criteria.'), findsOneWidget);
     });
 
-    testWidgets('renders error state on fetch failure', (
-      WidgetTester tester,
-    ) async {
-      await tester.pumpWidget(
-        buildTestWidget(error: Exception('Failed to connect to backend')),
-      );
+    testWidgets('renders error state on fetch failure', (tester) async {
+      await tester.pumpWidget(buildTestWidget(error: Exception('Failed to connect to backend')));
       await tester.pumpAndSettle();
 
       expect(find.text('Unable to load invoices'), findsOneWidget);
@@ -190,8 +202,7 @@ void main() {
         await tester.pumpWidget(buildTestWidget());
         await tester.pumpAndSettle();
 
-        expect(find.text('Invoices'), findsOneWidget);
-        expect(find.text('INV-20260908-0001'), findsOneWidget);
+        expect(find.text('Customer Invoices & Billing'), findsOneWidget);
         expect(tester.takeException(), isNull);
       });
     }

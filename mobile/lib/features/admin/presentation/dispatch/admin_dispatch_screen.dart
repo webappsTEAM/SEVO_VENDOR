@@ -1,3 +1,6 @@
+import '../../../../shared/widgets/sevo/sevo_module_frame.dart';
+import '../../../../shared/widgets/sevo/sevo_module_art.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,7 +9,6 @@ import 'package:latlong2/latlong.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../shared/widgets/empty_state.dart';
 import '../../../../shared/widgets/status_chip.dart';
-import '../../../../shared/widgets/workforce_app_bar.dart';
 import '../../../jobs/domain/job.dart';
 import '../../data/admin_dashboard_api.dart';
 import '../../domain/admin_scope_extension.dart';
@@ -15,28 +17,30 @@ import '../../domain/eligible_technician.dart';
 import '../../domain/fleet_member.dart';
 import '../../domain/work_location.dart';
 import '../admin_dashboard_providers.dart';
-import '../widgets/admin_drawer.dart';
+import 'admin_dispatch_radar_view.dart';
 
 /// Admin Operations: Dynamic Dispatch & Fleet Operations.
 /// Real-time GPS telemetry radar, fleet presence, 9-Gate matching, scope extensions,
 /// service authorization requests, and geofenced work locations.
 class AdminDispatchScreen extends ConsumerStatefulWidget {
-  const AdminDispatchScreen({
-    super.key,
-    this.jobId,
-    this.initialTabIndex = 0,
-  });
+  const AdminDispatchScreen({super.key, this.jobId, this.initialTabIndex = 0});
 
   final String? jobId;
   final int initialTabIndex;
 
   @override
-  ConsumerState<AdminDispatchScreen> createState() => _AdminDispatchScreenState();
+  ConsumerState<AdminDispatchScreen> createState() =>
+      _AdminDispatchScreenState();
 }
 
 class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+
+  /// First tab view: read-only radar (Web default) or manual controls.
+  /// Opening Dispatch for a specific job (Field Jobs → Dispatch) starts on
+  /// the manual controls for that job.
+  late bool _showRadar = widget.jobId == null;
   Job? _selectedJob;
   String _selectedBand = 'all';
   bool _isActionInProgress = false;
@@ -61,6 +65,7 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
 
   Future<void> _refreshAll() async {
     ref.invalidate(adminDashboardDataProvider);
+    ref.invalidate(adminApplicationsListProvider('approved'));
     ref.invalidate(adminJobsListProvider(null));
     ref.invalidate(adminFleetListProvider);
     ref.invalidate(adminPendingExtensionsProvider);
@@ -85,7 +90,8 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
       final api = ref.read(adminDashboardApiProvider);
       final res = await api.triggerAutoDispatch(job.id);
       if (mounted) {
-        final msg = res['message']?.toString() ??
+        final msg =
+            res['message']?.toString() ??
             'Auto-dispatch re-evaluated for ${job.requestId}.';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -115,9 +121,12 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppRadius.card)),
-        title: Text('Confirm Dispatch Offer',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+          borderRadius: BorderRadius.circular(AppRadius.card),
+        ),
+        title: Text(
+          'Confirm Dispatch Offer',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -133,17 +142,26 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Service: ${job.displayTitle}',
-                      style: TextStyle(
-                          fontSize: 12, fontWeight: FontWeight.w600)),
+                  Text(
+                    'Service: ${job.displayTitle}',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                  ),
                   if (job.customerName != null)
-                    Text('Customer: ${job.customerName}',
-                        style: TextStyle(
-                            fontSize: 12, color: AppColors.textSecondary)),
+                    Text(
+                      'Customer: ${job.customerName}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
                   if (tech.employeeId != null)
-                    Text('Technician ID: ${tech.employeeId}',
-                        style: TextStyle(
-                            fontSize: 12, color: AppColors.textSecondary)),
+                    Text(
+                      'Technician ID: ${tech.employeeId}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -229,18 +247,25 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
         context: context,
         builder: (ctx) => AlertDialog(
           shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(AppRadius.card)),
-          title: Text('Approve Scope Extension',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+            borderRadius: BorderRadius.circular(AppRadius.card),
+          ),
+          title: Text(
+            'Approve Scope Extension',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Review approved amount for #${ext.requestId ?? 'Job ${ext.jobId}'}:'),
+              Text(
+                'Review approved amount for #${ext.requestId ?? 'Job ${ext.jobId}'}:',
+              ),
               const SizedBox(height: 12),
               TextField(
                 controller: amountController,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 decoration: const InputDecoration(
                   labelText: 'Approved Amount (₹)',
                   border: OutlineInputBorder(),
@@ -256,7 +281,9 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
             ),
             FilledButton(
               onPressed: () => Navigator.of(ctx).pop(true),
-              style: FilledButton.styleFrom(backgroundColor: const Color(0xFF059669)),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF059669),
+              ),
               child: Text('Approve Extension'),
             ),
           ],
@@ -272,9 +299,12 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
         context: context,
         builder: (ctx) => AlertDialog(
           shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(AppRadius.card)),
-          title: Text('Reject Scope Extension',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+            borderRadius: BorderRadius.circular(AppRadius.card),
+          ),
+          title: Text(
+            'Reject Scope Extension',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -298,7 +328,9 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
             ),
             FilledButton(
               onPressed: () => Navigator.of(ctx).pop(true),
-              style: FilledButton.styleFrom(backgroundColor: const Color(0xFFDC2626)),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFDC2626),
+              ),
               child: Text('Reject Extension'),
             ),
           ],
@@ -358,9 +390,12 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
         context: context,
         builder: (ctx) => AlertDialog(
           shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(AppRadius.card)),
-          title: Text('Reject Service Authorization',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+            borderRadius: BorderRadius.circular(AppRadius.card),
+          ),
+          title: Text(
+            'Reject Service Authorization',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -381,7 +416,9 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
             ),
             FilledButton(
               onPressed: () => Navigator.of(ctx).pop(true),
-              style: FilledButton.styleFrom(backgroundColor: const Color(0xFFDC2626)),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFDC2626),
+              ),
               child: Text('Reject Request'),
             ),
           ],
@@ -449,9 +486,12 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppRadius.card)),
-        title: Text('Delete Location?',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+          borderRadius: BorderRadius.circular(AppRadius.card),
+        ),
+        title: Text(
+          'Delete Location?',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+        ),
         content: Text(
           'Delete "${loc.name}"? This removes the authorized boundary. Historical shift records referencing this location remain intact.',
         ),
@@ -462,7 +502,9 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
           ),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFDC2626)),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFDC2626),
+            ),
             child: Text('Delete Location'),
           ),
         ],
@@ -518,24 +560,20 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
   @override
   Widget build(BuildContext context) {
     final dashboardAsync = ref.watch(adminDashboardDataProvider);
+    final approvedTechsAsync = ref.watch(
+      adminApplicationsListProvider('approved'),
+    );
     final fleetAsync = ref.watch(adminFleetListProvider);
     final pendingExtAsync = ref.watch(adminPendingExtensionsProvider);
     final pendingSvcAsync = ref.watch(adminPendingServicesProvider);
     final locationsAsync = ref.watch(adminLocationsProvider);
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: const WorkforceAppBar(
-        titleText: 'Dispatch Console',
-        showStatusSubBar: false,
-        showDrawerMenu: true,
-      ),
-      drawer: const AdminDrawer(),
+    return SevoModuleFrame(
+      module: SevoModule.dispatchRadar,
+      title: 'Dispatch Console',
       body: dashboardAsync.when(
         loading: () => const Center(
-          child: CircularProgressIndicator(
-            color: Color(0xFF005965),
-          ),
+          child: CircularProgressIndicator(color: Color(0xFF005965)),
         ),
         error: (err, _) => Center(
           child: Padding(
@@ -549,8 +587,11 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                     color: AppColors.errorBg,
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.error_outline_rounded,
-                      color: Color(0xFFDC2626), size: 36),
+                  child: const Icon(
+                    Icons.error_outline_rounded,
+                    color: Color(0xFFDC2626),
+                    size: 36,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 Text(
@@ -585,13 +626,20 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
           final pendingExtensions = pendingExtAsync.valueOrNull ?? [];
           final pendingServices = pendingSvcAsync.valueOrNull ?? [];
           final locations = locationsAsync.valueOrNull ?? [];
+          final approvedTechs =
+              approvedTechsAsync.valueOrNull ??
+              data.applications.where((a) => a.isApproved).toList();
 
           // Initial selection handling from route param
           if (_selectedJob == null && widget.jobId != null) {
             final targetId = widget.jobId!.trim();
-            _selectedJob = activeJobs.where((j) =>
-                j.id.toString() == targetId ||
-                j.requestId.toLowerCase() == targetId.toLowerCase()).firstOrNull;
+            _selectedJob = activeJobs
+                .where(
+                  (j) =>
+                      j.id.toString() == targetId ||
+                      j.requestId.toLowerCase() == targetId.toLowerCase(),
+                )
+                .firstOrNull;
           }
           if (_selectedJob != null &&
               !activeJobs.any((j) => j.id == _selectedJob!.id)) {
@@ -601,9 +649,21 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
             _selectedJob = activeJobs.first;
           }
 
-          final onlineCount = fleet.where((f) => f.isOnline).length;
-          final offlineCount = fleet.where((f) => !f.isOnline).length;
-          final activeBookingsCount = activeJobs.length;
+          // Compute top metrics matching the authoritative Web Operations dashboard:
+          // Total Fleet = Approved Technicians (falling back to fleet list)
+          // Online & Ready = isOnline == true among authorized fleet
+          // Offline Fleet = totalFleet - onlineCount
+          // Active Bookings = total booking operations load
+          final totalFleet = approvedTechs.isNotEmpty
+              ? approvedTechs.length
+              : fleet.length;
+          final onlineCount = approvedTechs.isNotEmpty
+              ? approvedTechs.where((t) => t.isOnline).length
+              : fleet.where((f) => f.isOnline).length;
+          final offlineCount = totalFleet - onlineCount;
+          final activeBookingsCount = data.jobs.isNotEmpty
+              ? data.jobs.length
+              : activeJobs.length;
 
           return RefreshIndicator(
             onRefresh: _refreshAll,
@@ -674,14 +734,18 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                                         ),
                                       ),
                                     ),
+                                    const SizedBox(width: 6),
                                     Container(
                                       padding: const EdgeInsets.symmetric(
-                                          horizontal: 7, vertical: 2.5),
+                                        horizontal: 7,
+                                        vertical: 2.5,
+                                      ),
                                       decoration: BoxDecoration(
                                         color: AppColors.successBg,
                                         borderRadius: BorderRadius.circular(20),
                                         border: Border.all(
-                                            color: const Color(0xFFA7F3D0)),
+                                          color: const Color(0xFFA7F3D0),
+                                        ),
                                       ),
                                       child: Row(
                                         mainAxisSize: MainAxisSize.min,
@@ -689,13 +753,13 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                                           Container(
                                             width: 6,
                                             height: 6,
-                                            decoration: BoxDecoration(
+                                            decoration: const BoxDecoration(
                                               color: Color(0xFF10B981),
                                               shape: BoxShape.circle,
                                             ),
                                           ),
                                           const SizedBox(width: 4),
-                                          Text(
+                                          const Text(
                                             'LIVE',
                                             style: TextStyle(
                                               fontSize: 9.5,
@@ -745,7 +809,9 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                             borderRadius: BorderRadius.circular(6),
                             child: Container(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 5),
+                                horizontal: 10,
+                                vertical: 5,
+                              ),
                               decoration: BoxDecoration(
                                 color: AppColors.surfaceMuted,
                                 borderRadius: BorderRadius.circular(6),
@@ -759,10 +825,14 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                                           width: 12,
                                           height: 12,
                                           child: CircularProgressIndicator(
-                                              strokeWidth: 2),
+                                            strokeWidth: 2,
+                                          ),
                                         )
-                                      : const Icon(Icons.refresh_rounded,
-                                          size: 14, color: Color(0xFF005965)),
+                                      : const Icon(
+                                          Icons.refresh_rounded,
+                                          size: 14,
+                                          color: Color(0xFF005965),
+                                        ),
                                   const SizedBox(width: 5),
                                   Text(
                                     'Refresh Fleet Data',
@@ -785,7 +855,7 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
 
                 // ── Summary Metric Cards Strip (4 Cards) ─────────────────────
                 _buildMetricsSection(
-                  totalFleet: fleet.length,
+                  totalFleet: totalFleet,
                   onlineCount: onlineCount,
                   offlineCount: offlineCount,
                   activeBookings: activeBookingsCount,
@@ -837,7 +907,10 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                         text: 'Live Fleet (${fleet.length})',
                       ),
                       Tab(
-                        icon: const Icon(Icons.add_circle_outline_rounded, size: 15),
+                        icon: const Icon(
+                          Icons.add_circle_outline_rounded,
+                          size: 15,
+                        ),
                         text: 'Scope Extensions (${pendingExtensions.length})',
                       ),
                       Tab(
@@ -943,7 +1016,103 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
       builder: (context, _) {
         switch (_tabController.index) {
           case 0:
-            return _buildDispatchMonitorTab(allJobs);
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Web tab 1 is the read-only Dispatch Radar; manual retry /
+                // override controls stay available alongside it.
+                Container(
+                  padding: const EdgeInsets.all(3),
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceMuted,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: InkWell(
+                          onTap: () => setState(() => _showRadar = true),
+                          borderRadius: BorderRadius.circular(8),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 7),
+                            decoration: BoxDecoration(
+                              color: _showRadar
+                                  ? AppColors.surface
+                                  : Colors.transparent,
+                              borderRadius: BorderRadius.circular(8),
+                              boxShadow: _showRadar
+                                  ? const [
+                                      BoxShadow(
+                                        color: Color(0x0C0F172A),
+                                        blurRadius: 4,
+                                        offset: Offset(0, 1),
+                                      ),
+                                    ]
+                                  : null,
+                            ),
+                            child: Center(
+                              child: Text(
+                                'Dispatch Radar',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: _showRadar
+                                      ? const Color(0xFF005965)
+                                      : AppColors.textSecondary,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: InkWell(
+                          onTap: () => setState(() => _showRadar = false),
+                          borderRadius: BorderRadius.circular(8),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 7),
+                            decoration: BoxDecoration(
+                              color: !_showRadar
+                                  ? AppColors.surface
+                                  : Colors.transparent,
+                              borderRadius: BorderRadius.circular(8),
+                              boxShadow: !_showRadar
+                                  ? const [
+                                      BoxShadow(
+                                        color: Color(0x0C0F172A),
+                                        blurRadius: 4,
+                                        offset: Offset(0, 1),
+                                      ),
+                                    ]
+                                  : null,
+                            ),
+                            child: Center(
+                              child: Text(
+                                'Manual Controls',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: !_showRadar
+                                      ? const Color(0xFF005965)
+                                      : AppColors.textSecondary,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                if (_showRadar)
+                  const AdminDispatchRadarView()
+                else
+                  _buildDispatchMonitorTab(allJobs),
+              ],
+            );
           case 1:
             return _buildLiveFleetTelemetryTab(fleet);
           case 2:
@@ -1078,10 +1247,7 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
         children: [
           // ── Header Bar ──────────────────────────────────────────────
           Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 14,
-              vertical: 12,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             decoration: BoxDecoration(
               color: Color(0xFFFAFAFC),
               border: Border(bottom: BorderSide(color: AppColors.border)),
@@ -1131,8 +1297,8 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                                 TextSpan(
                                   text: selectedJob != null
                                       ? (selectedJob.requestId.isNotEmpty
-                                          ? selectedJob.requestId
-                                          : 'SR-${selectedJob.id}')
+                                            ? selectedJob.requestId
+                                            : 'SR-${selectedJob.id}')
                                       : 'None Selected',
                                   style: TextStyle(
                                     fontWeight: FontWeight.w800,
@@ -1162,12 +1328,15 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                             const SizedBox(height: 6),
                             Container(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 9, vertical: 5),
+                                horizontal: 9,
+                                vertical: 5,
+                              ),
                               decoration: BoxDecoration(
                                 color: const Color(0xFFF0FDF4),
                                 borderRadius: BorderRadius.circular(6),
-                                border:
-                                    Border.all(color: const Color(0xFFBBF7D0)),
+                                border: Border.all(
+                                  color: const Color(0xFFBBF7D0),
+                                ),
                               ),
                               child: Row(
                                 children: [
@@ -1197,7 +1366,8 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                                           if (selectedJob.technicianPhone !=
                                                   null &&
                                               selectedJob
-                                                  .technicianPhone!.isNotEmpty)
+                                                  .technicianPhone!
+                                                  .isNotEmpty)
                                             TextSpan(
                                               text:
                                                   ' • ${selectedJob.technicianPhone!}',
@@ -1209,7 +1379,8 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                                           if (selectedJob.technicianEmail !=
                                                   null &&
                                               selectedJob
-                                                  .technicianEmail!.isNotEmpty)
+                                                  .technicianEmail!
+                                                  .isNotEmpty)
                                             TextSpan(
                                               text:
                                                   ' • ${selectedJob.technicianEmail!}',
@@ -1247,7 +1418,9 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                               style: OutlinedButton.styleFrom(
                                 visualDensity: VisualDensity.compact,
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 7),
+                                  horizontal: 10,
+                                  vertical: 7,
+                                ),
                                 textStyle: TextStyle(
                                   fontSize: 11.5,
                                   fontWeight: FontWeight.w700,
@@ -1260,13 +1433,18 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                               onPressed: _isActionInProgress
                                   ? null
                                   : () => _triggerAutoDispatch(selectedJob),
-                              icon: const Icon(Icons.auto_awesome_rounded, size: 14),
+                              icon: const Icon(
+                                Icons.auto_awesome_rounded,
+                                size: 14,
+                              ),
                               label: Text('Re-evaluate Auto-Dispatch'),
                               style: FilledButton.styleFrom(
                                 backgroundColor: const Color(0xFF005965),
                                 visualDensity: VisualDensity.compact,
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 7),
+                                  horizontal: 10,
+                                  vertical: 7,
+                                ),
                                 textStyle: TextStyle(
                                   fontSize: 11.5,
                                   fontWeight: FontWeight.w700,
@@ -1286,7 +1464,9 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                               style: OutlinedButton.styleFrom(
                                 visualDensity: VisualDensity.compact,
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 7),
+                                  horizontal: 10,
+                                  vertical: 7,
+                                ),
                                 textStyle: TextStyle(
                                   fontSize: 11.5,
                                   fontWeight: FontWeight.w700,
@@ -1301,13 +1481,18 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                               onPressed: _isActionInProgress
                                   ? null
                                   : () => _triggerAutoDispatch(selectedJob),
-                              icon: const Icon(Icons.auto_awesome_rounded, size: 14),
+                              icon: const Icon(
+                                Icons.auto_awesome_rounded,
+                                size: 14,
+                              ),
                               label: Text('Re-evaluate Auto-Dispatch'),
                               style: FilledButton.styleFrom(
                                 backgroundColor: const Color(0xFF005965),
                                 visualDensity: VisualDensity.compact,
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 7),
+                                  horizontal: 10,
+                                  vertical: 7,
+                                ),
                                 textStyle: TextStyle(
                                   fontSize: 11.5,
                                   fontWeight: FontWeight.w700,
@@ -1358,8 +1543,7 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                       ),
                       children: [
                         TextSpan(
-                          text:
-                              'Jobs are automatically assigned to nearest eligible technicians using the 9-Gate Employee Eligibility Engine (real-time GPS freshness window, Haversine proximity, skill match, and shift clock-in state).',
+                          text: 'Jobs are automatically assigned to nearest eligible technicians using the 9-Gate Employee Eligibility Engine (real-time GPS freshness window, Haversine proximity, skill match, and shift clock-in state).',
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w500,
@@ -1414,7 +1598,9 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 150),
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 4.5),
+                            horizontal: 10,
+                            vertical: 4.5,
+                          ),
                           decoration: BoxDecoration(
                             color: isSelected
                                 ? const Color(0xFF005965)
@@ -1459,8 +1645,7 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
           // ── Candidate Matching Area ──────────────────────────────
           if (selectedJob == null)
             Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 20, vertical: 24),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
               color: const Color(0xFFFAFAFC),
               child: Center(
                 child: Column(
@@ -1543,7 +1728,8 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
             const SizedBox(height: 8),
             OutlinedButton(
               onPressed: () => ref.invalidate(
-                  adminEligibleTechniciansProvider(selectedJob.id)),
+                adminEligibleTechniciansProvider(selectedJob.id),
+              ),
               child: Text('Retry Scan'),
             ),
           ],
@@ -1576,7 +1762,9 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
         if (filtered.isEmpty) {
           return Container(
             padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.lg, vertical: 28),
+              horizontal: AppSpacing.lg,
+              vertical: 28,
+            ),
             child: Center(
               child: Text(
                 _selectedBand == 'all'
@@ -1599,7 +1787,8 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
           physics: const NeverScrollableScrollPhysics(),
           padding: const EdgeInsets.all(AppSpacing.sm),
           itemCount: filtered.length,
-          separatorBuilder: (context, index) => const SizedBox(height: AppSpacing.sm),
+          separatorBuilder: (context, index) =>
+              const SizedBox(height: AppSpacing.sm),
           itemBuilder: (context, index) {
             final tech = filtered[index];
             return _EligibleTechnicianCard(
@@ -1617,7 +1806,11 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
   // TAB 2: LIVE FLEET TELEMETRY
   // ───────────────────────────────────────────────────────────────────────────
   Widget _buildLiveFleetTelemetryTab(List<FleetMember> fleet) {
-    final withGps = fleet.where((f) => f.hasLocation && f.latitude != null && f.longitude != null).toList();
+    final withGps = fleet
+        .where(
+          (f) => f.hasLocation && f.latitude != null && f.longitude != null,
+        )
+        .toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1640,7 +1833,10 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                   SizedBox(height: 2),
                   Text(
                     'Live coordinate locations and dispatch statuses',
-                    style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: AppColors.textSecondary,
+                    ),
                   ),
                 ],
               ),
@@ -1688,13 +1884,18 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.location_off_rounded,
-                            size: 32, color: AppColors.textMuted),
+                        Icon(
+                          Icons.location_off_rounded,
+                          size: 32,
+                          color: AppColors.textMuted,
+                        ),
                         SizedBox(height: 8),
                         Text(
                           'No live GPS coordinates reported yet.',
                           style: TextStyle(
-                              fontSize: 12, color: AppColors.textSecondary),
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                          ),
                         ),
                       ],
                     ),
@@ -1732,7 +1933,10 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                                 color: isOnline
                                     ? const Color(0xFF10B981)
                                     : AppColors.textMuted,
-                                border: Border.all(color: Colors.white, width: 2.5),
+                                border: Border.all(
+                                  color: Colors.white,
+                                  width: 2.5,
+                                ),
                                 boxShadow: const [
                                   BoxShadow(
                                     color: Color(0x33000000),
@@ -1775,8 +1979,10 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
               ),
             ),
             const SizedBox(width: 4),
-            Text('Online',
-                style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+            Text(
+              'Online',
+              style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+            ),
             const SizedBox(width: 12),
             Container(
               width: 8,
@@ -1787,11 +1993,15 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
               ),
             ),
             const SizedBox(width: 4),
-            Text('Offline',
-                style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+            Text(
+              'Offline',
+              style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+            ),
             const Spacer(),
-            Text('Auto-refreshes on tab focus',
-                style: TextStyle(fontSize: 10.5, color: AppColors.textMuted)),
+            Text(
+              'Auto-refreshes on tab focus',
+              style: TextStyle(fontSize: 10.5, color: AppColors.textMuted),
+            ),
           ],
         ),
 
@@ -1814,17 +2024,24 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                       Text(
                         _selectedMapMember!.name,
                         style: TextStyle(
-                            fontSize: 13, fontWeight: FontWeight.w800),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
                       Text(
                         'ID: ${_selectedMapMember!.employeeId ?? '—'} • ${_selectedMapMember!.isOnline ? 'Online' : 'Offline'}',
-                        style: TextStyle(fontSize: 11, color: Color(0xFF2563EB)),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Color(0xFF2563EB),
+                        ),
                       ),
                       if (_selectedMapMember!.activeJob != null)
                         Text(
                           'Job: ${_selectedMapMember!.activeJob}',
                           style: TextStyle(
-                              fontSize: 11, fontWeight: FontWeight.w700),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                     ],
                   ),
@@ -1870,7 +2087,8 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
           const EmptyState(
             icon: Icons.check_circle_outline_rounded,
             title: 'No Pending Scope Extensions',
-            message: 'All work extensions and scope expansions have been reviewed.',
+            message:
+                'All work extensions and scope expansions have been reviewed.',
           )
         else
           ...pendingExtensions.map((ext) {
@@ -1888,7 +2106,9 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
   // ───────────────────────────────────────────────────────────────────────────
   // TAB 4: SERVICE REQUESTS
   // ───────────────────────────────────────────────────────────────────────────
-  Widget _buildServiceRequestsTab(List<AdminServiceRequestItem> pendingServices) {
+  Widget _buildServiceRequestsTab(
+    List<AdminServiceRequestItem> pendingServices,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1942,7 +2162,10 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                   SizedBox(height: 2),
                   Text(
                     'Configured shift sites & geofence boundaries',
-                    style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: AppColors.textSecondary,
+                    ),
                   ),
                 ],
               ),
@@ -1955,7 +2178,9 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
                 backgroundColor: const Color(0xFF2563EB),
                 visualDensity: VisualDensity.compact,
                 textStyle: TextStyle(
-                    fontSize: 11.5, fontWeight: FontWeight.w800),
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
             ),
           ],
@@ -1965,8 +2190,7 @@ class _AdminDispatchScreenState extends ConsumerState<AdminDispatchScreen>
           const EmptyState(
             icon: Icons.location_off_outlined,
             title: 'No Locations Configured',
-            message:
-                'No authorized company locations configured yet. Tap "Add Location" to create one.',
+            message: 'No authorized company locations configured yet. Tap "Add Location" to create one.',
           )
         else
           ...locations.map((loc) {
@@ -2154,7 +2378,8 @@ class _DispatchJobItemCard extends StatelessWidget {
     if (address != null && address.isNotEmpty) {
       displayLocation = address;
     } else if (job.latitude != null && job.longitude != null) {
-      displayLocation = 'Location: GPS (${job.latitude!.toStringAsFixed(4)}, ${job.longitude!.toStringAsFixed(4)})';
+      displayLocation =
+          'Location: GPS (${job.latitude!.toStringAsFixed(4)}, ${job.longitude!.toStringAsFixed(4)})';
     }
 
     String dispatchMode = 'Auto-Dispatch Active';
@@ -2164,19 +2389,23 @@ class _DispatchJobItemCard extends StatelessWidget {
       dispatchMode = 'Assigned: ${job.technicianName}';
       dispatchModeBg = AppColors.successBg;
       dispatchModeFg = const Color(0xFF065F46);
-    } else if (job.isOffer || (job.activeOffer != null && !job.activeOffer!.isExpired)) {
+    } else if (job.isOffer ||
+        (job.activeOffer != null && !job.activeOffer!.isExpired)) {
       dispatchMode = 'Offer Active (Awaiting Acceptance)';
       dispatchModeBg = AppColors.warningBg;
       dispatchModeFg = const Color(0xFFB45309);
-    } else if (job.status.toLowerCase() == 'assigned' || job.status.toLowerCase() == 'in_progress') {
+    } else if (job.status.toLowerCase() == 'assigned' ||
+        job.status.toLowerCase() == 'in_progress') {
       dispatchMode = 'Assigned';
       dispatchModeBg = AppColors.successBg;
       dispatchModeFg = const Color(0xFF065F46);
     }
 
     String displayDate = formattedSchedule;
-    if (job.createdAt != null && (scheduledDate == null || scheduledDate.isEmpty)) {
-      displayDate = '${job.createdAt!.year}-${job.createdAt!.month.toString().padLeft(2, '0')}-${job.createdAt!.day.toString().padLeft(2, '0')}';
+    if (job.createdAt != null &&
+        (scheduledDate == null || scheduledDate.isEmpty)) {
+      displayDate =
+          '${job.createdAt!.year}-${job.createdAt!.month.toString().padLeft(2, '0')}-${job.createdAt!.day.toString().padLeft(2, '0')}';
     }
 
     return InkWell(
@@ -2280,8 +2509,11 @@ class _DispatchJobItemCard extends StatelessWidget {
                 children: [
                   Padding(
                     padding: EdgeInsets.only(top: 1),
-                    child: Icon(Icons.location_on_outlined,
-                        size: 13, color: AppColors.textMuted),
+                    child: Icon(
+                      Icons.location_on_outlined,
+                      size: 13,
+                      color: AppColors.textMuted,
+                    ),
                   ),
                   const SizedBox(width: 4),
                   Expanded(
@@ -2298,7 +2530,8 @@ class _DispatchJobItemCard extends StatelessWidget {
                 ],
               ),
             ],
-            if (job.technicianName != null && job.technicianName!.isNotEmpty) ...[
+            if (job.technicianName != null &&
+                job.technicianName!.isNotEmpty) ...[
               const SizedBox(height: 4),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -2334,7 +2567,10 @@ class _DispatchJobItemCard extends StatelessWidget {
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: dispatchModeBg,
                     borderRadius: BorderRadius.circular(5),
@@ -2351,8 +2587,11 @@ class _DispatchJobItemCard extends StatelessWidget {
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.calendar_today_outlined,
-                        size: 11, color: AppColors.textMuted),
+                    Icon(
+                      Icons.calendar_today_outlined,
+                      size: 11,
+                      color: AppColors.textMuted,
+                    ),
                     const SizedBox(width: 4),
                     Text(
                       displayDate,
@@ -2474,8 +2713,11 @@ class _FleetMemberTelemetryCard extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.engineering_rounded,
-                      size: 13, color: Color(0xFF2563EB)),
+                  const Icon(
+                    Icons.engineering_rounded,
+                    size: 13,
+                    color: Color(0xFF2563EB),
+                  ),
                   const SizedBox(width: 4),
                   Text(
                     'Active Job: ${member.activeJob}',
@@ -2577,7 +2819,9 @@ class _EligibleTechnicianCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final initial = technician.name.isNotEmpty ? technician.name[0].toUpperCase() : 'T';
+    final initial = technician.name.isNotEmpty
+        ? technician.name[0].toUpperCase()
+        : 'T';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -2643,7 +2887,9 @@ class _EligibleTechnicianCard extends StatelessWidget {
                         ),
                         Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 1.5),
+                            horizontal: 6,
+                            vertical: 1.5,
+                          ),
                           decoration: BoxDecoration(
                             color: technician.isOnline
                                 ? AppColors.successBg
@@ -2692,8 +2938,8 @@ class _EligibleTechnicianCard extends StatelessWidget {
                 technician.isDispatchReady
                     ? '✓ Qualified Candidate'
                     : (technician.ineligibilityReason.isNotEmpty
-                        ? technician.ineligibilityReason
-                        : 'Ineligible'),
+                          ? technician.ineligibilityReason
+                          : 'Ineligible'),
                 style: TextStyle(
                   fontSize: 10.5,
                   fontWeight: FontWeight.w800,
@@ -2732,7 +2978,10 @@ class _EligibleTechnicianCard extends StatelessWidget {
               if (technician.distanceBand != null &&
                   technician.distanceBand != 'unknown')
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: AppColors.surfaceMuted,
                     borderRadius: BorderRadius.circular(4),
@@ -2748,7 +2997,10 @@ class _EligibleTechnicianCard extends StatelessWidget {
                 ),
               if (technician.gpsFreshness != null)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: technician.gpsFreshness == 'LIVE'
                         ? AppColors.successBg
@@ -2785,11 +3037,12 @@ class _EligibleTechnicianCard extends StatelessWidget {
               runSpacing: 4,
               children: technician.gateAudit.map((g) {
                 return Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 5,
+                    vertical: 1.5,
+                  ),
                   decoration: BoxDecoration(
-                    color: g.passed
-                        ? AppColors.successBg
-                        : AppColors.errorBg,
+                    color: g.passed ? AppColors.successBg : AppColors.errorBg,
                     borderRadius: BorderRadius.circular(4),
                     border: Border.all(
                       color: g.passed
@@ -2838,7 +3091,9 @@ class _EligibleTechnicianCard extends StatelessWidget {
                     backgroundColor: const Color(0xFF059669),
                     visualDensity: VisualDensity.compact,
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 6),
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
                     textStyle: TextStyle(
                       fontSize: 11.5,
                       fontWeight: FontWeight.w800,
@@ -2904,7 +3159,10 @@ class _ScopeExtensionCard extends StatelessWidget {
               ),
               if (extension.isCritical)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: AppColors.errorBg,
                     borderRadius: BorderRadius.circular(4),
@@ -2922,7 +3180,10 @@ class _ScopeExtensionCard extends StatelessWidget {
               if (extension.requiresSpecialist) ...[
                 const SizedBox(width: 4),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: AppColors.warningBg,
                     borderRadius: BorderRadius.circular(4),
@@ -3042,7 +3303,9 @@ class _ServiceRequestItemCard extends StatelessWidget {
                     Text(
                       item.employeeName,
                       style: TextStyle(
-                          fontSize: 13, fontWeight: FontWeight.w800),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                     if (item.employeeCode != null)
                       Text(
@@ -3059,9 +3322,7 @@ class _ServiceRequestItemCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: item.isRemoval
-                      ? AppColors.errorBg
-                      : AppColors.infoBg,
+                  color: item.isRemoval ? AppColors.errorBg : AppColors.infoBg,
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
@@ -3152,8 +3413,7 @@ class _WorkLocationCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   location.name,
-                  style: TextStyle(
-                      fontSize: 13.5, fontWeight: FontWeight.w800),
+                  style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800),
                 ),
               ),
               Container(
@@ -3232,10 +3492,7 @@ class _WorkLocationCard extends StatelessWidget {
 
 // ── Location Form Bottom Sheet ───────────────────────────────────────────────
 class _LocationFormBottomSheet extends ConsumerStatefulWidget {
-  const _LocationFormBottomSheet({
-    this.editingLocation,
-    required this.onSaved,
-  });
+  const _LocationFormBottomSheet({this.editingLocation, required this.onSaved});
 
   final WorkLocation? editingLocation;
   final ValueChanged<String> onSaved;
@@ -3263,12 +3520,11 @@ class _LocationFormBottomSheetState
     final loc = widget.editingLocation;
     _nameController = TextEditingController(text: loc?.name ?? '');
     _addressController = TextEditingController(text: loc?.address ?? '');
-    _latController =
-        TextEditingController(text: loc?.lat?.toString() ?? '');
-    _lngController =
-        TextEditingController(text: loc?.lng?.toString() ?? '');
-    _radiusController =
-        TextEditingController(text: (loc?.geofenceRadius ?? 500).toString());
+    _latController = TextEditingController(text: loc?.lat?.toString() ?? '');
+    _lngController = TextEditingController(text: loc?.lng?.toString() ?? '');
+    _radiusController = TextEditingController(
+      text: (loc?.geofenceRadius ?? 500).toString(),
+    );
     _geofenceType = loc?.geofenceType ?? 'circle';
     _isActive = loc?.isActive ?? true;
   }
@@ -3294,8 +3550,10 @@ class _LocationFormBottomSheetState
       return;
     }
     if (lat == null || lng == null) {
-      setState(() => _errorMessage =
-          'Valid latitude and longitude coordinates are required.');
+      setState(
+        () => _errorMessage =
+            'Valid latitude and longitude coordinates are required.',
+      );
       return;
     }
 
@@ -3373,7 +3631,9 @@ class _LocationFormBottomSheetState
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  isEditing ? 'Edit Authorized Location' : 'Add Authorized Location',
+                  isEditing
+                      ? 'Edit Authorized Location'
+                      : 'Add Authorized Location',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w800,
@@ -3424,7 +3684,9 @@ class _LocationFormBottomSheetState
                   child: TextField(
                     controller: _latController,
                     keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true, signed: true),
+                      decimal: true,
+                      signed: true,
+                    ),
                     decoration: const InputDecoration(
                       labelText: 'Latitude *',
                       border: OutlineInputBorder(),
@@ -3436,7 +3698,9 @@ class _LocationFormBottomSheetState
                   child: TextField(
                     controller: _lngController,
                     keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true, signed: true),
+                      decimal: true,
+                      signed: true,
+                    ),
                     decoration: const InputDecoration(
                       labelText: 'Longitude *',
                       border: OutlineInputBorder(),
@@ -3468,7 +3732,10 @@ class _LocationFormBottomSheetState
                     ),
                     items: const [
                       DropdownMenuItem(value: 'circle', child: Text('Circle')),
-                      DropdownMenuItem(value: 'polygon', child: Text('Polygon')),
+                      DropdownMenuItem(
+                        value: 'polygon',
+                        child: Text('Polygon'),
+                      ),
                       DropdownMenuItem(value: 'hybrid', child: Text('Hybrid')),
                     ],
                     onChanged: (val) {
@@ -3481,8 +3748,10 @@ class _LocationFormBottomSheetState
             const SizedBox(height: 10),
             CheckboxListTile(
               contentPadding: EdgeInsets.zero,
-              title: Text('Active (visible to employees for clock-in)',
-                  style: TextStyle(fontSize: 12.5)),
+              title: Text(
+                'Active (visible to employees for clock-in)',
+                style: TextStyle(fontSize: 12.5),
+              ),
               value: _isActive,
               onChanged: (val) => setState(() => _isActive = val ?? true),
             ),
@@ -3499,8 +3768,8 @@ class _LocationFormBottomSheetState
                   _isSaving
                       ? 'Saving...'
                       : isEditing
-                          ? 'Update Location'
-                          : 'Save Location',
+                      ? 'Update Location'
+                      : 'Save Location',
                   style: TextStyle(fontWeight: FontWeight.w800),
                 ),
               ),
@@ -3556,8 +3825,11 @@ class _JobTimelineBottomSheet extends ConsumerWidget {
                       color: AppColors.infoBg,
                       borderRadius: BorderRadius.circular(6),
                     ),
-                    child: const Icon(Icons.history_rounded,
-                        color: Color(0xFF2563EB), size: 18),
+                    child: const Icon(
+                      Icons.history_rounded,
+                      color: Color(0xFF2563EB),
+                      size: 18,
+                    ),
                   ),
                   const SizedBox(width: 8),
                   Text(
@@ -3585,19 +3857,24 @@ class _JobTimelineBottomSheet extends ConsumerWidget {
           Expanded(
             child: timelineAsync.when(
               loading: () => const Center(
-                child: CircularProgressIndicator(
-                  color: Color(0xFF005965),
-                ),
+                child: CircularProgressIndicator(color: Color(0xFF005965)),
               ),
               error: (err, _) => Center(
-                child: Text('Failed to load timeline: $err',
-                    style: TextStyle(fontSize: 12, color: Color(0xFFDC2626))),
+                child: Text(
+                  'Failed to load timeline: $err',
+                  style: TextStyle(fontSize: 12, color: Color(0xFFDC2626)),
+                ),
               ),
               data: (timelineData) {
                 if (timelineData.events.isEmpty) {
                   return Center(
-                    child: Text('No lifecycle events recorded for this job yet.',
-                        style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                    child: Text(
+                      'No lifecycle events recorded for this job yet.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
                   );
                 }
 

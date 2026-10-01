@@ -44,6 +44,7 @@ class AppRoutes {
   // Super Admin routes
   static const superAdminDashboard = '/superadmin/dashboard';
   static const superAdminWorkforce = '/superadmin/workforce';
+  static const superAdminServiceProviders = '/workforce/platform/providers';
   static const superAdminVendors = '/superadmin/vendors';
   static const superAdminApplications = '/superadmin/applications';
 
@@ -61,6 +62,9 @@ class AppRoutes {
   static const adminLiveWorkforce = '/admin/live-workforce';
   static const adminProviderProfile = '/admin/provider-profile';
   static const adminQuotationApprovals = '/admin/quotations';
+  static const adminEstimations = '/admin/estimations';
+  static const adminSellerApplications = '/admin/seller-applications';
+  static const adminStock = '/admin/stock';
   static const adminInvoices = '/admin/invoices';
   static const adminPricingApprovals = '/admin/pricing-approvals';
   static const adminScorecards = '/admin/scorecards';
@@ -75,6 +79,22 @@ class AppRoutes {
   static const adminFinanceBankAccounts = '/admin/finance/bank-accounts';
 
   // Admin Monitoring routes
-  static const adminMonitoringDatabaseEgress = '/admin/monitoring/database-egress';
-}
+  static const adminMonitoringDatabaseEgress =
+      '/admin/monitoring/database-egress';
 
+  // Seller Hub routes
+  static const sellerHome = '/admin/seller/home';
+  static const sellerOrders = '/admin/seller/orders';
+  static const sellerReturns = '/admin/seller/returns';
+  static const sellerClaims = '/admin/seller/claims';
+  static const sellerInventory = '/admin/seller/inventory';
+  static const sellerCatalogUploads = '/admin/seller/catalog-uploads';
+  static const sellerCategories = '/admin/seller/categories';
+  static const sellerCategoriesApproval = '/admin/seller/categories-approval';
+  static const sellerCategoriesApprovalDetail =
+      '/admin/seller/categories-approval/:sellerId';
+  static const sellerWarehouse = '/admin/seller/warehouse';
+  static const sellerCoupons = '/admin/seller/coupons';
+  static const sellerReportsQuality = '/admin/seller/reports-quality';
+  static const sellerStoreProfile = '/admin/seller/store-profile';
+}

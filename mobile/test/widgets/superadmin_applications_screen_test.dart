@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../support/dev_shot.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/features/auth/domain/auth_user.dart';
@@ -351,25 +352,24 @@ void main() {
 
   group('SuperAdminApplicationsScreen Widget Tests', () {
     testWidgets('1. Screen title, header badge, and subtitle render correctly', (tester) async {
-      tester.view.physicalSize = const Size(400 * 3, 1000 * 3);
+      tester.view.physicalSize = const Size(400 * 3, 6000 * 3);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
       await tester.pumpWidget(createTestWidget());
       await tester.pumpAndSettle();
 
-      expect(find.text('PLATFORM GOVERNANCE'), findsOneWidget);
-      expect(find.text('Applications Approval'), findsOneWidget);
+      // Title at the top of the content (once), not duplicated in the app bar.
+      expect(find.text('Technician Applications'), findsOneWidget);
+      expect(find.text('Review onboarding & profile changes'), findsOneWidget);
       expect(
-        find.text(
-          'SEVO Platform Admin: Review technician onboarding applications, verify submitted documents, and manage approval decisions across the platform.',
-        ),
-        findsOneWidget,
+        find.descendant(of: find.byType(AppBar), matching: find.text('Technician Applications')),
+        findsNothing,
       );
     });
 
     testWidgets('2. Top-level section tabs render with dynamic counts', (tester) async {
-      tester.view.physicalSize = const Size(400 * 3, 1000 * 3);
+      tester.view.physicalSize = const Size(400 * 3, 6000 * 3);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
@@ -380,8 +380,33 @@ void main() {
       expect(find.text('🔒 Profile Change Requests (2 Pending)'), findsOneWidget);
     });
 
+    testWidgets('2b. "All Services" dropdown filters applications by requested service', (tester) async {
+      tester.view.physicalSize = const Size(400 * 3, 6000 * 3);
+      tester.view.devicePixelRatio = 3.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      await tester.pumpWidget(createTestWidget());
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(find.text('All Services'), 300, scrollable: find.byType(Scrollable).first);
+      expect(find.text('All Services'), findsOneWidget);
+
+      await tester.tap(find.text('All Services'));
+      await tester.pumpAndSettle();
+      // Options are the distinct requested service names from the live data.
+      expect(find.text('Plumbing'), findsOneWidget);
+      expect(find.text('Carpentry'), findsOneWidget);
+      await tester.tap(find.text('Plumbing').last);
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(find.byType(ApplicationCard), 300, scrollable: find.byType(Scrollable).first);
+      expect(find.byType(ApplicationCard), findsOneWidget);
+      expect(find.text('Suresh Raina'), findsOneWidget);
+      expect(find.text('Ramesh Kumar'), findsNothing);
+    });
+
     testWidgets('3. Sidebar drawer opens and shows Applications Approval as active', (tester) async {
-      tester.view.physicalSize = const Size(400 * 3, 1000 * 3);
+      tester.view.physicalSize = const Size(400 * 3, 6000 * 3);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
@@ -393,11 +418,11 @@ void main() {
       await tester.tap(drawerIcon);
       await tester.pumpAndSettle();
 
-      expect(find.text('Applications Approval'), findsWidgets);
+      expect(find.text('Technician Applications'), findsWidgets);
     });
 
     testWidgets('4. Switching tabs displays Profile Change Requests and back', (tester) async {
-      tester.view.physicalSize = const Size(400 * 3, 1200 * 3);
+      tester.view.physicalSize = const Size(400 * 3, 6000 * 3);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
@@ -431,7 +456,7 @@ void main() {
     });
 
     testWidgets('5. Application metrics render with live data counts', (tester) async {
-      tester.view.physicalSize = const Size(400 * 3, 1200 * 3);
+      tester.view.physicalSize = const Size(400 * 3, 6000 * 3);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
@@ -447,7 +472,7 @@ void main() {
     });
 
     testWidgets('6. Application list renders real provider data cards', (tester) async {
-      tester.view.physicalSize = const Size(400 * 3, 2000 * 3);
+      tester.view.physicalSize = const Size(400 * 3, 6000 * 3);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
@@ -464,7 +489,7 @@ void main() {
     });
 
     testWidgets('7. Search filtering filters list by name, employeeId, and phone', (tester) async {
-      tester.view.physicalSize = const Size(400 * 3, 1400 * 3);
+      tester.view.physicalSize = const Size(400 * 3, 6000 * 3);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
@@ -489,14 +514,14 @@ void main() {
     });
 
     testWidgets('8. Status filtering switches visible applications', (tester) async {
-      tester.view.physicalSize = const Size(400 * 3, 1400 * 3);
+      tester.view.physicalSize = const Size(400 * 3, 6000 * 3);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
       await tester.pumpWidget(createTestWidget());
       await tester.pumpAndSettle();
 
-      final pendingChip = find.widgetWithText(Material, 'Pending').first;
+      final pendingChip = find.text('Pending').first;
       await tester.tap(pendingChip);
       await tester.pumpAndSettle();
 
@@ -504,7 +529,7 @@ void main() {
       expect(find.text('Suresh Raina'), findsNothing);
       expect(find.text('Dinesh Karthik'), findsNothing);
 
-      final approvedChip = find.widgetWithText(Material, 'Approved').first;
+      final approvedChip = find.text('Approved').first;
       await tester.tap(approvedChip);
       await tester.pumpAndSettle();
 
@@ -513,7 +538,7 @@ void main() {
     });
 
     testWidgets('9. Tapping View Application opens ApplicationDetailSheet', (tester) async {
-      tester.view.physicalSize = const Size(400 * 3, 1400 * 3);
+      tester.view.physicalSize = const Size(400 * 3, 6000 * 3);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
@@ -534,7 +559,7 @@ void main() {
     });
 
     testWidgets('10. Approve application flow shows confirmation dialog and calls backend', (tester) async {
-      tester.view.physicalSize = const Size(400 * 3, 1400 * 3);
+      tester.view.physicalSize = const Size(400 * 3, 6000 * 3);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
@@ -579,7 +604,7 @@ void main() {
     });
 
     testWidgets('11. Reject application flow shows reason dialog and calls backend', (tester) async {
-      tester.view.physicalSize = const Size(400 * 3, 1400 * 3);
+      tester.view.physicalSize = const Size(400 * 3, 6000 * 3);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
@@ -614,7 +639,7 @@ void main() {
     });
 
     testWidgets('12. Request correction flow shows notes dialog and calls backend', (tester) async {
-      tester.view.physicalSize = const Size(400 * 3, 1400 * 3);
+      tester.view.physicalSize = const Size(400 * 3, 6000 * 3);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
@@ -628,7 +653,7 @@ void main() {
       await tester.tap(find.text('View Application').first);
       await tester.pumpAndSettle();
 
-      final correctionBtn = find.text('Corrections');
+      final correctionBtn = find.descendant(of: find.byType(ApplicationDetailSheet), matching: find.text('Corrections'));
       expect(correctionBtn, findsOneWidget);
       await tester.tap(correctionBtn);
       await tester.pumpAndSettle();
@@ -649,7 +674,7 @@ void main() {
     });
 
     testWidgets('13. Profile change requests render fields and reason correctly', (tester) async {
-      tester.view.physicalSize = const Size(400 * 3, 1200 * 3);
+      tester.view.physicalSize = const Size(400 * 3, 6000 * 3);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
@@ -667,7 +692,7 @@ void main() {
     });
 
     testWidgets('14. Profile change request approve decision calls backend', (tester) async {
-      tester.view.physicalSize = const Size(400 * 3, 1200 * 3);
+      tester.view.physicalSize = const Size(400 * 3, 6000 * 3);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
@@ -707,7 +732,7 @@ void main() {
     });
 
     testWidgets('15. Profile change request reject decision calls backend', (tester) async {
-      tester.view.physicalSize = const Size(400 * 3, 1200 * 3);
+      tester.view.physicalSize = const Size(400 * 3, 6000 * 3);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
@@ -739,7 +764,7 @@ void main() {
     });
 
     testWidgets('16. Profile change requests empty state renders correctly', (tester) async {
-      tester.view.physicalSize = const Size(400 * 3, 1200 * 3);
+      tester.view.physicalSize = const Size(400 * 3, 6000 * 3);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
@@ -751,7 +776,8 @@ void main() {
 
       // Switch to Profile Change Requests
       await tester.tap(find.text('🔒 Profile Change Requests (0 Pending)'));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
 
       expect(
         find.text('No employee profile change requests pending review.'),
@@ -760,12 +786,14 @@ void main() {
     });
 
     testWidgets('17. Empty state renders when no onboarding applications exist', (tester) async {
-      tester.view.physicalSize = const Size(400 * 3, 1200 * 3);
+      tester.view.physicalSize = const Size(400 * 3, 6000 * 3);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
       await tester.pumpWidget(createTestWidget(applications: const []));
-      await tester.pumpAndSettle();
+      // The empty-state artwork floats forever, so advance by time, not "settle".
+      await tester.pump(const Duration(milliseconds: 1500));
+      await tester.pump(const Duration(milliseconds: 600));
 
       expect(find.text('Onboarding Applications (0)'), findsOneWidget);
       expect(find.text('No applications registered'), findsOneWidget);
@@ -799,7 +827,7 @@ void main() {
     });
 
     testWidgets('19. Initial status filter parameter initializes filter correctly', (tester) async {
-      tester.view.physicalSize = const Size(400 * 3, 1400 * 3);
+      tester.view.physicalSize = const Size(400 * 3, 6000 * 3);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
@@ -817,13 +845,13 @@ void main() {
       final screenWidths = [320.0, 360.0, 390.0, 412.0];
 
       for (final width in screenWidths) {
-        tester.view.physicalSize = Size(width * 3, 1400 * 3);
+        tester.view.physicalSize = Size(width * 3, 6000 * 3);
         tester.view.devicePixelRatio = 3.0;
 
         await tester.pumpWidget(createTestWidget());
         await tester.pumpAndSettle();
 
-        expect(find.text('Applications Approval'), findsOneWidget);
+        expect(find.text('Technician Applications'), findsOneWidget);
         expect(find.text('Onboarding Applications (5)'), findsOneWidget);
         expect(find.text('🔒 Profile Change Requests (2 Pending)'), findsOneWidget);
         expect(find.byType(ApplicationMetrics), findsOneWidget);
@@ -844,7 +872,7 @@ void main() {
     });
 
     testWidgets('21. Approving individual service from application detail sheet calls backend', (tester) async {
-      tester.view.physicalSize = const Size(400 * 3, 1400 * 3);
+      tester.view.physicalSize = const Size(400 * 3, 6000 * 3);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
@@ -868,7 +896,7 @@ void main() {
     });
 
     testWidgets('22. Bulk approving services from application detail sheet calls backend', (tester) async {
-      tester.view.physicalSize = const Size(400 * 3, 1400 * 3);
+      tester.view.physicalSize = const Size(400 * 3, 6000 * 3);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
@@ -892,7 +920,7 @@ void main() {
     });
 
     testWidgets('23. Approving individual document from application detail sheet calls backend', (tester) async {
-      tester.view.physicalSize = const Size(400 * 3, 1400 * 3);
+      tester.view.physicalSize = const Size(400 * 3, 6000 * 3);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
@@ -929,7 +957,7 @@ void main() {
     });
 
     testWidgets('24. Quick approve all prerequisites button triggers bulk operations', (tester) async {
-      tester.view.physicalSize = const Size(400 * 3, 1400 * 3);
+      tester.view.physicalSize = const Size(400 * 3, 6000 * 3);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
@@ -965,7 +993,7 @@ void main() {
     });
 
     testWidgets('25. Missing prerequisite warning shows when attempting to approve without prerequisites', (tester) async {
-      tester.view.physicalSize = const Size(400 * 3, 1400 * 3);
+      tester.view.physicalSize = const Size(400 * 3, 6000 * 3);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
@@ -1004,4 +1032,12 @@ void main() {
       expect(repo.bulkDecideServicesCalls, 1);
     });
   });
+
+  // Developer screenshots (skipped unless --dart-define=SHOTS=true).
+  testWidgets('dev screenshots', (tester) async {
+    await loadShotFonts();
+    shotSurface(tester, width: 360, height: 2600);
+    await tester.pumpWidget(createTestWidget());
+    await shoot(tester, 'techapps_360');
+  }, skip: !shotsEnabled);
 }

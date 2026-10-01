@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:mobile/core/theme/app_theme.dart';
+import 'package:mobile/shared/widgets/sevo_brand_mark.dart';
 import 'package:mobile/features/admin/domain/admin_application.dart';
 import 'package:mobile/features/admin/domain/admin_change_request.dart';
 import 'package:mobile/features/admin/domain/skill.dart';
@@ -83,7 +84,7 @@ void main() {
 
   group('Admin Batch 1 Modules Tests', () {
     testWidgets('AdminDrawer renders all navigation groups and links', (tester) async {
-      tester.view.physicalSize = const Size(800, 1200);
+      tester.view.physicalSize = const Size(800, 2400);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(() => tester.view.resetPhysicalSize());
       final router = GoRouter(
@@ -122,8 +123,9 @@ void main() {
       scaffoldState.openDrawer();
       await tester.pumpAndSettle();
 
-      expect(find.text('WORKFORCE ADMIN'), findsOneWidget);
+      expect(find.byType(SevoHeaderTitle), findsOneWidget);
       expect(find.text('Company Home'), findsOneWidget);
+      expect(find.text('SELLER HUB'), findsOneWidget);
       expect(find.text('MY WORKFORCE'), findsOneWidget);
       expect(find.text('Tied Technicians'), findsOneWidget);
       expect(find.text('Send Invitations'), findsOneWidget);

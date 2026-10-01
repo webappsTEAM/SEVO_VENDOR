@@ -1,3 +1,6 @@
+import '../../../../shared/widgets/sevo/sevo_module_frame.dart';
+import '../../../../shared/widgets/sevo/sevo_module_art.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -5,11 +8,9 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../shared/widgets/empty_state.dart';
 import '../../../../shared/widgets/status_chip.dart';
-import '../../../../shared/widgets/workforce_app_bar.dart';
 import '../../../../shared/widgets/workforce_avatar.dart';
 import '../../domain/admin_application.dart';
 import '../admin_dashboard_providers.dart';
-import '../widgets/admin_drawer.dart';
 
 /// Admin Workforce Employee Roster Screen.
 /// Displays directory of field technicians, presence statuses, and dispatch credentials.
@@ -17,7 +18,8 @@ class AdminEmployeesScreen extends ConsumerStatefulWidget {
   const AdminEmployeesScreen({super.key});
 
   @override
-  ConsumerState<AdminEmployeesScreen> createState() => _AdminEmployeesScreenState();
+  ConsumerState<AdminEmployeesScreen> createState() =>
+      _AdminEmployeesScreenState();
 }
 
 class _AdminEmployeesScreenState extends ConsumerState<AdminEmployeesScreen> {
@@ -39,13 +41,9 @@ class _AdminEmployeesScreenState extends ConsumerState<AdminEmployeesScreen> {
   Widget build(BuildContext context) {
     final applicationsAsync = ref.watch(adminApplicationsListProvider(null));
 
-    return Scaffold(
-      appBar: const WorkforceAppBar(
-        titleText: 'Workforce Employees',
-        showStatusSubBar: false,
-        showDrawerMenu: true,
-      ),
-      drawer: const AdminDrawer(),
+    return SevoModuleFrame(
+      module: SevoModule.employees,
+      title: 'Workforce Employees',
       body: applicationsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (err, _) => Center(
@@ -54,12 +52,20 @@ class _AdminEmployeesScreenState extends ConsumerState<AdminEmployeesScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.error_outline_rounded, color: Color(0xFFDC2626), size: 40),
+                const Icon(
+                  Icons.error_outline_rounded,
+                  color: Color(0xFFDC2626),
+                  size: 40,
+                ),
                 const SizedBox(height: 12),
-                Text('Failed to load employee roster: $err', textAlign: TextAlign.center),
+                Text(
+                  'Failed to load employee roster: $err',
+                  textAlign: TextAlign.center,
+                ),
                 const SizedBox(height: 16),
                 FilledButton(
-                  onPressed: () => ref.invalidate(adminApplicationsListProvider(null)),
+                  onPressed: () =>
+                      ref.invalidate(adminApplicationsListProvider(null)),
                   child: Text('Retry'),
                 ),
               ],
@@ -75,7 +81,8 @@ class _AdminEmployeesScreenState extends ConsumerState<AdminEmployeesScreen> {
             final phone = (tech.phone ?? '').toLowerCase();
             final email = (tech.email ?? '').toLowerCase();
             final company = (tech.companyName ?? '').toLowerCase();
-            final matchesSearch = term.isEmpty ||
+            final matchesSearch =
+                term.isEmpty ||
                 name.contains(term) ||
                 empId.contains(term) ||
                 phone.contains(term) ||
@@ -85,13 +92,18 @@ class _AdminEmployeesScreenState extends ConsumerState<AdminEmployeesScreen> {
             // Status filter
             bool matchesStatus = true;
             if (_statusFilter == 'ACTIVE') {
-              matchesStatus = tech.isApproved || tech.registrationStatus == 'active';
+              matchesStatus =
+                  tech.isApproved || tech.registrationStatus == 'active';
             } else if (_statusFilter == 'PENDING') {
               matchesStatus = tech.isPending;
             } else if (_statusFilter == 'INACTIVE') {
-              matchesStatus = tech.registrationStatus == 'not_started' ||
+              matchesStatus =
+                  tech.registrationStatus == 'not_started' ||
                   tech.registrationStatus == 'in_progress' ||
-                  (!tech.isApproved && !tech.isPending && !tech.isCorrectionRequired && !tech.isRejected);
+                  (!tech.isApproved &&
+                      !tech.isPending &&
+                      !tech.isCorrectionRequired &&
+                      !tech.isRejected);
             } else if (_statusFilter == 'CORRECTION_REQUIRED') {
               matchesStatus = tech.isCorrectionRequired;
             } else if (_statusFilter == 'REJECTED') {
@@ -181,8 +193,15 @@ class _AdminEmployeesScreenState extends ConsumerState<AdminEmployeesScreen> {
                   }),
                   decoration: InputDecoration(
                     hintText: 'Search by technician name, ID, or phone...',
-                    hintStyle: TextStyle(fontSize: 13, color: AppColors.textMuted),
-                    prefixIcon: Icon(Icons.search_rounded, size: 20, color: AppColors.textSecondary),
+                    hintStyle: TextStyle(
+                      fontSize: 13,
+                      color: AppColors.textMuted,
+                    ),
+                    prefixIcon: Icon(
+                      Icons.search_rounded,
+                      size: 20,
+                      color: AppColors.textSecondary,
+                    ),
                     suffixIcon: _searchTerm.isNotEmpty
                         ? IconButton(
                             icon: const Icon(Icons.clear_rounded, size: 18),
@@ -197,7 +216,10 @@ class _AdminEmployeesScreenState extends ConsumerState<AdminEmployeesScreen> {
                         : null,
                     filled: true,
                     fillColor: AppColors.surface,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(AppRadius.input),
                       borderSide: BorderSide(color: AppColors.border),
@@ -242,16 +264,22 @@ class _AdminEmployeesScreenState extends ConsumerState<AdminEmployeesScreen> {
                     message: 'No employee records match the selected filters.',
                   )
                 else ...[
-                  ...pageItems.map((tech) => _AdminEmployeeCard(
-                        tech: tech,
-                        onViewDetails: () => _showEmployeeDetailsModal(context, tech),
-                      )),
+                  ...pageItems.map(
+                    (tech) => _AdminEmployeeCard(
+                      tech: tech,
+                      onViewDetails: () =>
+                          _showEmployeeDetailsModal(context, tech),
+                    ),
+                  ),
 
                   const SizedBox(height: AppSpacing.md),
 
                   // ── Mobile Pagination Bar ──────────────────────────────────
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
                       color: AppColors.surface,
                       borderRadius: BorderRadius.circular(AppRadius.card),
@@ -262,9 +290,13 @@ class _AdminEmployeesScreenState extends ConsumerState<AdminEmployeesScreen> {
                       children: [
                         IconButton(
                           onPressed: safePage > 1
-                              ? () => setState(() => _currentPage = safePage - 1)
+                              ? () =>
+                                    setState(() => _currentPage = safePage - 1)
                               : null,
-                          icon: const Icon(Icons.chevron_left_rounded, size: 20),
+                          icon: const Icon(
+                            Icons.chevron_left_rounded,
+                            size: 20,
+                          ),
                           tooltip: 'Prev Page',
                           visualDensity: VisualDensity.compact,
                         ),
@@ -282,9 +314,13 @@ class _AdminEmployeesScreenState extends ConsumerState<AdminEmployeesScreen> {
                         ),
                         IconButton(
                           onPressed: safePage < totalPages
-                              ? () => setState(() => _currentPage = safePage + 1)
+                              ? () =>
+                                    setState(() => _currentPage = safePage + 1)
                               : null,
-                          icon: const Icon(Icons.chevron_right_rounded, size: 20),
+                          icon: const Icon(
+                            Icons.chevron_right_rounded,
+                            size: 20,
+                          ),
                           tooltip: 'Next Page',
                           visualDensity: VisualDensity.compact,
                         ),
@@ -325,11 +361,17 @@ class _AdminEmployeesScreenState extends ConsumerState<AdminEmployeesScreen> {
           key: const Key('admin_status_filter_dropdown'),
           value: _statusFilter,
           isExpanded: true,
-          icon: Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: AppColors.textSecondary),
+          icon: Icon(
+            Icons.keyboard_arrow_down_rounded,
+            size: 20,
+            color: AppColors.textSecondary,
+          ),
           style: TextStyle(
             fontSize: 12.5,
             fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
-            color: isSelected ? const Color(0xFF005965) : AppColors.textSecondary,
+            color: isSelected
+                ? const Color(0xFF005965)
+                : AppColors.textSecondary,
           ),
           onChanged: (val) {
             if (val != null) {
@@ -344,7 +386,11 @@ class _AdminEmployeesScreenState extends ConsumerState<AdminEmployeesScreen> {
               value: 'ALL',
               child: Row(
                 children: [
-                  Icon(Icons.filter_alt_outlined, size: 16, color: AppColors.textSecondary),
+                  Icon(
+                    Icons.filter_alt_outlined,
+                    size: 16,
+                    color: AppColors.textSecondary,
+                  ),
                   SizedBox(width: 8),
                   Expanded(
                     child: Text('All Status', overflow: TextOverflow.ellipsis),
@@ -356,7 +402,11 @@ class _AdminEmployeesScreenState extends ConsumerState<AdminEmployeesScreen> {
               value: 'ACTIVE',
               child: Row(
                 children: [
-                  Icon(Icons.check_circle_outline_rounded, size: 16, color: Color(0xFF10B981)),
+                  Icon(
+                    Icons.check_circle_outline_rounded,
+                    size: 16,
+                    color: Color(0xFF10B981),
+                  ),
                   SizedBox(width: 8),
                   Expanded(
                     child: Text('Active', overflow: TextOverflow.ellipsis),
@@ -368,7 +418,11 @@ class _AdminEmployeesScreenState extends ConsumerState<AdminEmployeesScreen> {
               value: 'PENDING',
               child: Row(
                 children: [
-                  Icon(Icons.hourglass_top_rounded, size: 16, color: Color(0xFFF59E0B)),
+                  Icon(
+                    Icons.hourglass_top_rounded,
+                    size: 16,
+                    color: Color(0xFFF59E0B),
+                  ),
                   SizedBox(width: 8),
                   Expanded(
                     child: Text('Pending', overflow: TextOverflow.ellipsis),
@@ -380,7 +434,11 @@ class _AdminEmployeesScreenState extends ConsumerState<AdminEmployeesScreen> {
               value: 'INACTIVE',
               child: Row(
                 children: [
-                  Icon(Icons.pause_circle_outline_rounded, size: 16, color: AppColors.textMuted),
+                  Icon(
+                    Icons.pause_circle_outline_rounded,
+                    size: 16,
+                    color: AppColors.textMuted,
+                  ),
                   SizedBox(width: 8),
                   Expanded(
                     child: Text('Inactive', overflow: TextOverflow.ellipsis),
@@ -392,10 +450,17 @@ class _AdminEmployeesScreenState extends ConsumerState<AdminEmployeesScreen> {
               value: 'CORRECTION_REQUIRED',
               child: Row(
                 children: [
-                  Icon(Icons.edit_note_rounded, size: 16, color: Color(0xFFF97316)),
+                  Icon(
+                    Icons.edit_note_rounded,
+                    size: 16,
+                    color: Color(0xFFF97316),
+                  ),
                   SizedBox(width: 8),
                   Expanded(
-                    child: Text('Correction Required', overflow: TextOverflow.ellipsis),
+                    child: Text(
+                      'Correction Required',
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 ],
               ),
@@ -404,7 +469,11 @@ class _AdminEmployeesScreenState extends ConsumerState<AdminEmployeesScreen> {
               value: 'REJECTED',
               child: Row(
                 children: [
-                  Icon(Icons.cancel_outlined, size: 16, color: Color(0xFFF43F5E)),
+                  Icon(
+                    Icons.cancel_outlined,
+                    size: 16,
+                    color: Color(0xFFF43F5E),
+                  ),
                   SizedBox(width: 8),
                   Expanded(
                     child: Text('Rejected', overflow: TextOverflow.ellipsis),
@@ -442,11 +511,17 @@ class _AdminEmployeesScreenState extends ConsumerState<AdminEmployeesScreen> {
           key: const Key('admin_presence_filter_dropdown'),
           value: _presenceFilter,
           isExpanded: true,
-          icon: Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: AppColors.textSecondary),
+          icon: Icon(
+            Icons.keyboard_arrow_down_rounded,
+            size: 20,
+            color: AppColors.textSecondary,
+          ),
           style: TextStyle(
             fontSize: 12.5,
             fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
-            color: isSelected ? const Color(0xFF059669) : AppColors.textSecondary,
+            color: isSelected
+                ? const Color(0xFF059669)
+                : AppColors.textSecondary,
           ),
           onChanged: (val) {
             if (val != null) {
@@ -461,10 +536,17 @@ class _AdminEmployeesScreenState extends ConsumerState<AdminEmployeesScreen> {
               value: 'ALL',
               child: Row(
                 children: [
-                  Icon(Icons.sensors_rounded, size: 16, color: AppColors.textSecondary),
+                  Icon(
+                    Icons.sensors_rounded,
+                    size: 16,
+                    color: AppColors.textSecondary,
+                  ),
                   SizedBox(width: 8),
                   Expanded(
-                    child: Text('All Presence', overflow: TextOverflow.ellipsis),
+                    child: Text(
+                      'All Presence',
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 ],
               ),
@@ -473,7 +555,11 @@ class _AdminEmployeesScreenState extends ConsumerState<AdminEmployeesScreen> {
               value: 'ONLINE',
               child: Row(
                 children: [
-                  Icon(Icons.wifi_tethering_rounded, size: 16, color: Color(0xFF10B981)),
+                  Icon(
+                    Icons.wifi_tethering_rounded,
+                    size: 16,
+                    color: Color(0xFF10B981),
+                  ),
                   SizedBox(width: 8),
                   Expanded(
                     child: Text('Online', overflow: TextOverflow.ellipsis),
@@ -485,7 +571,11 @@ class _AdminEmployeesScreenState extends ConsumerState<AdminEmployeesScreen> {
               value: 'OFFLINE',
               child: Row(
                 children: [
-                  Icon(Icons.wifi_tethering_off_rounded, size: 16, color: AppColors.textMuted),
+                  Icon(
+                    Icons.wifi_tethering_off_rounded,
+                    size: 16,
+                    color: AppColors.textMuted,
+                  ),
                   SizedBox(width: 8),
                   Expanded(
                     child: Text('Offline', overflow: TextOverflow.ellipsis),
@@ -497,10 +587,17 @@ class _AdminEmployeesScreenState extends ConsumerState<AdminEmployeesScreen> {
               value: 'BUSY',
               child: Row(
                 children: [
-                  Icon(Icons.work_outline_rounded, size: 16, color: Color(0xFF3B82F6)),
+                  Icon(
+                    Icons.work_outline_rounded,
+                    size: 16,
+                    color: Color(0xFF3B82F6),
+                  ),
                   SizedBox(width: 8),
                   Expanded(
-                    child: Text('Busy (On Job)', overflow: TextOverflow.ellipsis),
+                    child: Text(
+                      'Busy (On Job)',
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 ],
               ),
@@ -517,7 +614,9 @@ class _AdminEmployeesScreenState extends ConsumerState<AdminEmployeesScreen> {
       isScrollControlled: true,
       backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.card)),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(AppRadius.card),
+        ),
       ),
       builder: (ctx) => DraggableScrollableSheet(
         initialChildSize: 0.7,
@@ -547,7 +646,8 @@ class _AdminEmployeesScreenState extends ConsumerState<AdminEmployeesScreen> {
                   initial: tech.initial,
                   radius: 26,
                   fontSize: 20,
-                  backgroundColor: const Color(0xFF005965).withValues(alpha: 0.1),
+                  backgroundColor: const Color(0xFF005965)
+                      .withValues(alpha: 0.1),
                   foregroundColor: const Color(0xFF005965),
                 ),
                 const SizedBox(width: 14),
@@ -557,11 +657,16 @@ class _AdminEmployeesScreenState extends ConsumerState<AdminEmployeesScreen> {
                     children: [
                       Text(
                         tech.name ?? 'Technician #${tech.id}',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        tech.employeeId != null ? 'ID: ${tech.employeeId}' : 'ID: Pending',
+                        tech.employeeId != null
+                            ? 'ID: ${tech.employeeId}'
+                            : 'ID: Pending',
                         style: TextStyle(
                           fontSize: 12,
                           fontFamily: 'monospace',
@@ -579,8 +684,14 @@ class _AdminEmployeesScreenState extends ConsumerState<AdminEmployeesScreen> {
             const SizedBox(height: AppSpacing.md),
 
             // Presence & Contact Info
-            _detailRow(Icons.sensors_rounded, 'Presence', tech.isOnline ? 'Online (Ready)' : 'Offline',
-                valColor: tech.isOnline ? const Color(0xFF059669) : AppColors.textSecondary),
+            _detailRow(
+              Icons.sensors_rounded,
+              'Presence',
+              tech.isOnline ? 'Online (Ready)' : 'Offline',
+              valColor: tech.isOnline
+                  ? const Color(0xFF059669)
+                  : AppColors.textSecondary,
+            ),
             if (tech.phone != null)
               _detailRow(Icons.phone_rounded, 'Phone', tech.phone!),
             if (tech.email != null)
@@ -591,12 +702,18 @@ class _AdminEmployeesScreenState extends ConsumerState<AdminEmployeesScreen> {
             const SizedBox(height: AppSpacing.md),
             Text(
               'Approved Services',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: AppColors.textPrimary,
+              ),
             ),
             const SizedBox(height: AppSpacing.xs),
             if (tech.allRequestedServices.isEmpty)
-              Text('No services currently assigned.',
-                  style: TextStyle(fontSize: 12, color: AppColors.textMuted))
+              Text(
+                'No services currently assigned.',
+                style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+              )
             else
               Wrap(
                 spacing: 6,
@@ -605,15 +722,22 @@ class _AdminEmployeesScreenState extends ConsumerState<AdminEmployeesScreen> {
                   final isAppr = s.isApproved;
                   return Chip(
                     visualDensity: VisualDensity.compact,
-                    backgroundColor: isAppr ? const Color(0xFFECFDF5) : const Color(0xFFF1F5F9),
+                    backgroundColor: isAppr
+                        ? const Color(0xFFECFDF5)
+                        : const Color(0xFFF1F5F9),
                     side: BorderSide(
-                        color: isAppr ? const Color(0xFFA7F3D0) : AppColors.border),
+                      color: isAppr
+                          ? const Color(0xFFA7F3D0)
+                          : AppColors.border,
+                    ),
                     label: Text(
                       s.name,
                       style: TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w600,
-                        color: isAppr ? const Color(0xFF065F46) : AppColors.textSecondary,
+                        color: isAppr
+                            ? const Color(0xFF065F46)
+                            : AppColors.textSecondary,
                       ),
                     ),
                   );
@@ -639,14 +763,22 @@ class _AdminEmployeesScreenState extends ConsumerState<AdminEmployeesScreen> {
     );
   }
 
-  Widget _detailRow(IconData icon, String label, String value, {Color? valColor}) {
+  Widget _detailRow(
+    IconData icon,
+    String label,
+    String value, {
+    Color? valColor,
+  }) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         children: [
           Icon(icon, size: 16, color: AppColors.textSecondary),
           const SizedBox(width: 8),
-          Text('$label: ', style: TextStyle(fontSize: 12.5, color: AppColors.textSecondary)),
+          Text(
+            '$label: ',
+            style: TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
+          ),
           Expanded(
             child: Text(
               value,
@@ -664,10 +796,7 @@ class _AdminEmployeesScreenState extends ConsumerState<AdminEmployeesScreen> {
 }
 
 class _AdminEmployeeCard extends StatelessWidget {
-  const _AdminEmployeeCard({
-    required this.tech,
-    required this.onViewDetails,
-  });
+  const _AdminEmployeeCard({required this.tech, required this.onViewDetails});
 
   final AdminApplication tech;
   final VoidCallback onViewDetails;
@@ -677,8 +806,8 @@ class _AdminEmployeeCard extends StatelessWidget {
     final services = tech.approvedServices.isNotEmpty
         ? tech.approvedServices.map((s) => s.name).join(' • ')
         : (tech.allRequestedServices.isNotEmpty
-            ? tech.allRequestedServices.map((s) => s.name).join(' • ')
-            : 'No services assigned');
+              ? tech.allRequestedServices.map((s) => s.name).join(' • ')
+              : 'No services assigned');
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -728,7 +857,9 @@ class _AdminEmployeeCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 1),
                     Text(
-                      tech.employeeId != null ? 'ID: ${tech.employeeId}' : 'ID: Pending',
+                      tech.employeeId != null
+                          ? 'ID: ${tech.employeeId}'
+                          : 'ID: Pending',
                       style: TextStyle(
                         fontSize: 11,
                         fontFamily: 'monospace',
@@ -754,12 +885,16 @@ class _AdminEmployeeCard extends StatelessWidget {
             decoration: BoxDecoration(
               color: tech.isBusy
                   ? const Color(0xFFEFF6FF)
-                  : (tech.isOnline ? const Color(0xFFECFDF5) : const Color(0xFFF1F5F9)),
+                  : (tech.isOnline
+                        ? const Color(0xFFECFDF5)
+                        : const Color(0xFFF1F5F9)),
               borderRadius: BorderRadius.circular(6),
               border: Border.all(
                 color: tech.isBusy
                     ? const Color(0xFFBFDBFE)
-                    : (tech.isOnline ? const Color(0xFFA7F3D0) : AppColors.border),
+                    : (tech.isOnline
+                          ? const Color(0xFFA7F3D0)
+                          : AppColors.border),
               ),
             ),
             child: Row(
@@ -772,7 +907,9 @@ class _AdminEmployeeCard extends StatelessWidget {
                     shape: BoxShape.circle,
                     color: tech.isBusy
                         ? const Color(0xFF3B82F6)
-                        : (tech.isOnline ? const Color(0xFF10B981) : AppColors.textMuted),
+                        : (tech.isOnline
+                              ? const Color(0xFF10B981)
+                              : AppColors.textMuted),
                   ),
                 ),
                 const SizedBox(width: 5),
@@ -785,7 +922,9 @@ class _AdminEmployeeCard extends StatelessWidget {
                     fontWeight: FontWeight.w700,
                     color: tech.isBusy
                         ? const Color(0xFF1D4ED8)
-                        : (tech.isOnline ? const Color(0xFF065F46) : AppColors.textSecondary),
+                        : (tech.isOnline
+                              ? const Color(0xFF065F46)
+                              : AppColors.textSecondary),
                   ),
                 ),
               ],
@@ -819,10 +958,7 @@ class _AdminEmployeeCard extends StatelessWidget {
           const SizedBox(height: 2),
           Text(
             services,
-            style: TextStyle(
-              fontSize: 11.5,
-              color: AppColors.textSecondary,
-            ),
+            style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
@@ -843,7 +979,11 @@ class _AdminEmployeeCard extends StatelessWidget {
                           alignment: PlaceholderAlignment.middle,
                           child: Padding(
                             padding: EdgeInsets.only(right: 4),
-                            child: Icon(Icons.phone_rounded, size: 14, color: AppColors.textSecondary),
+                            child: Icon(
+                              Icons.phone_rounded,
+                              size: 14,
+                              color: AppColors.textSecondary,
+                            ),
                           ),
                         ),
                         TextSpan(
@@ -880,7 +1020,11 @@ class _AdminEmployeeCard extends StatelessWidget {
                         ),
                       ),
                       SizedBox(width: 2),
-                      Icon(Icons.arrow_forward_rounded, size: 14, color: Color(0xFF005965)),
+                      Icon(
+                        Icons.arrow_forward_rounded,
+                        size: 14,
+                        color: Color(0xFF005965),
+                      ),
                     ],
                   ),
                 ),

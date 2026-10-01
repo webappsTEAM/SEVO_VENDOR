@@ -12,6 +12,7 @@ import '../../notifications/presentation/notifications_providers.dart';
 import '../../profile/presentation/profile_providers.dart';
 import '../domain/job.dart';
 import 'jobs_providers.dart';
+import 'widgets/category_helper.dart';
 import 'widgets/job_card.dart';
 import 'widgets/job_card_skeleton.dart';
 import 'widgets/job_category_filter_bar.dart';
@@ -73,11 +74,22 @@ class _JobsScreenState extends ConsumerState<JobsScreen> {
   }
 
   bool _isJobCancelled(Job job) {
-    return ['cancelled', 'rejected', 'declined'].contains(job.status.toLowerCase());
+    return [
+      'cancelled',
+      'rejected',
+      'declined',
+    ].contains(job.status.toLowerCase());
+  }
+
+  bool _isJobScheduled(Job job) {
+    return job.isScheduledFuture;
   }
 
   bool _isJobInProgress(Job job) {
-    return !_isJobOffer(job) && !_isJobCompleted(job) && !_isJobCancelled(job);
+    return !_isJobOffer(job) &&
+        !job.isScheduledFuture &&
+        !_isJobCompleted(job) &&
+        !_isJobCancelled(job);
   }
 
   @override
@@ -103,6 +115,7 @@ class _JobsScreenState extends ConsumerState<JobsScreen> {
     // Compute counts across all known jobs
     int newOffersCount = 0;
     int inProgressCount = 0;
+    int scheduledCount = 0;
     int completedCount = 0;
     int cancelledCount = 0;
 
@@ -110,10 +123,12 @@ class _JobsScreenState extends ConsumerState<JobsScreen> {
 
     for (final j in allJobs) {
       if (j.serviceCategory != null && j.serviceCategory!.trim().isNotEmpty) {
-        availableCategories.add(j.serviceCategory!.trim());
+        availableCategories.add(formatCategoryName(j.serviceCategory));
       }
       if (_isJobOffer(j)) {
         newOffersCount++;
+      } else if (j.isScheduledFuture) {
+        scheduledCount++;
       } else if (_isJobCompleted(j)) {
         completedCount++;
       } else if (_isJobCancelled(j)) {
@@ -123,38 +138,55 @@ class _JobsScreenState extends ConsumerState<JobsScreen> {
       }
     }
 
-    // Filter by Status
+    // 1. Filter by Status
     List<Job> statusFilteredJobs = switch (_selectedStatus) {
       JobStatusFilter.all => allJobs,
       JobStatusFilter.newOffers => allJobs.where(_isJobOffer).toList(),
       JobStatusFilter.inProgress => allJobs.where(_isJobInProgress).toList(),
+      JobStatusFilter.scheduled => allJobs.where(_isJobScheduled).toList(),
       JobStatusFilter.completed => allJobs.where(_isJobCompleted).toList(),
       JobStatusFilter.cancelled => allJobs.where(_isJobCancelled).toList(),
     };
 
-    // Filter by Category
-    if (_selectedCategory != null && _selectedCategory!.isNotEmpty) {
-      final catQuery = _selectedCategory!.toLowerCase();
-      statusFilteredJobs = statusFilteredJobs.where((j) {
-        final cat = (j.serviceCategory ?? '').toLowerCase();
-        final title = j.displayTitle.toLowerCase();
-        return cat.contains(catQuery) || title.contains(catQuery);
-      }).toList();
-    }
-
-    // Filter by Search query
+    // 2. Filter by Search query (if active) on the status-filtered set
+    List<Job> statusAndSearchJobs = statusFilteredJobs;
     if (_searchQuery.isNotEmpty) {
       final q = _searchQuery.toLowerCase();
-      statusFilteredJobs = statusFilteredJobs.where((j) {
+      statusAndSearchJobs = statusAndSearchJobs.where((j) {
         return j.requestId.toLowerCase().contains(q) ||
             j.displayTitle.toLowerCase().contains(q) ||
             (j.customerName?.toLowerCase().contains(q) ?? false) ||
             (j.address?.toLowerCase().contains(q) ?? false) ||
-            (j.serviceCategory?.toLowerCase().contains(q) ?? false);
+            (j.serviceCategory?.toLowerCase().contains(q) ?? false) ||
+            formatCategoryName(j.serviceCategory).toLowerCase().contains(q);
       }).toList();
     }
 
-    final isLoading = (activeAsync.isLoading || completedAsync.isLoading) && allJobs.isEmpty;
+    // 3. Dynamic Category Counts for the currently active status and search
+    final categoryCounts = <String, int>{};
+    for (final j in statusAndSearchJobs) {
+      final cat = formatCategoryName(j.serviceCategory);
+      categoryCounts[cat] = (categoryCounts[cat] ?? 0) + 1;
+    }
+    final totalCategoryCount = statusAndSearchJobs.length;
+
+    // 4. Filter by Category to get the final displayed list
+    List<Job> displayedJobs = statusAndSearchJobs;
+    if (_selectedCategory != null && _selectedCategory!.isNotEmpty) {
+      final catQuery = _selectedCategory!.toLowerCase();
+      displayedJobs = displayedJobs.where((j) {
+        final formattedCat = formatCategoryName(j.serviceCategory)
+            .toLowerCase();
+        final rawCat = (j.serviceCategory ?? '').toLowerCase();
+        final title = j.displayTitle.toLowerCase();
+        return formattedCat == catQuery ||
+            rawCat.contains(catQuery) ||
+            title.contains(catQuery);
+      }).toList();
+    }
+
+    final isLoading =
+        (activeAsync.isLoading || completedAsync.isLoading) && allJobs.isEmpty;
     final hasError = activeAsync.hasError && allJobs.isEmpty;
 
     return Scaffold(
@@ -178,9 +210,7 @@ class _JobsScreenState extends ConsumerState<JobsScreen> {
             borderRadius: BorderRadius.vertical(bottom: Radius.circular(22)),
           ),
         ),
-        title: const SevoHeaderTitle(
-          fontSize: 22,
-        ),
+        title: const SevoHeaderTitle(fontSize: 22),
         actions: [
           const ThemeToggleButton(),
           IconButton(
@@ -199,17 +229,32 @@ class _JobsScreenState extends ConsumerState<JobsScreen> {
                 ? Badge(
                     label: Text(
                       unreadCount > 99 ? '99+' : '$unreadCount',
-                      style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     backgroundColor: const Color(0xFFEF4444),
-                    child: const Icon(Icons.notifications_none_rounded, size: 23, color: Colors.white),
+                    child: const Icon(
+                      Icons.notifications_none_rounded,
+                      size: 23,
+                      color: Colors.white,
+                    ),
                   )
-                : const Icon(Icons.notifications_none_rounded, size: 23, color: Colors.white),
+                : const Icon(
+                    Icons.notifications_none_rounded,
+                    size: 23,
+                    color: Colors.white,
+                  ),
             tooltip: 'Notifications',
             onPressed: () => context.push(AppRoutes.notifications),
           ),
           IconButton(
-            icon: const Icon(Icons.refresh_rounded, color: Colors.white, size: 22),
+            icon: const Icon(
+              Icons.refresh_rounded,
+              color: Colors.white,
+              size: 22,
+            ),
             tooltip: 'Refresh Jobs',
             onPressed: _refreshAll,
           ),
@@ -231,7 +276,8 @@ class _JobsScreenState extends ConsumerState<JobsScreen> {
               // ── 1. "MY ORDERS & JOBS" CARD ────────────────────────────────────
               ModuleHeaderCard(
                 title: 'My Orders & Jobs',
-                subtitle: '${allJobs.length} ${allJobs.length == 1 ? 'Job' : 'Jobs'} Available & Assigned',
+                subtitle:
+                    '${allJobs.length} ${allJobs.length == 1 ? 'Job' : 'Jobs'} Available & Assigned',
                 icon: Icons.business_center_rounded,
                 onTap: _refreshAll,
               ),
@@ -252,6 +298,7 @@ class _JobsScreenState extends ConsumerState<JobsScreen> {
                 allCount: allJobs.length,
                 newOffersCount: newOffersCount,
                 inProgressCount: inProgressCount,
+                scheduledCount: scheduledCount,
                 completedCount: completedCount,
                 cancelledCount: cancelledCount,
                 onFilterSelected: (filter) {
@@ -266,8 +313,11 @@ class _JobsScreenState extends ConsumerState<JobsScreen> {
               // ── 4. CATEGORY FILTER ROW (Dropdown Chips) ──────────────────────
               JobCategoryFilterBar(
                 selectedCategory: _selectedCategory,
+                categoryCounts: categoryCounts,
+                totalCount: totalCategoryCount,
                 availableCategories: availableCategories.toList(),
-                onCategorySelected: (cat) => setState(() => _selectedCategory = cat),
+                onCategorySelected: (cat) =>
+                    setState(() => _selectedCategory = cat),
               ),
               const SizedBox(height: 10),
 
@@ -396,12 +446,16 @@ class _JobsScreenState extends ConsumerState<JobsScreen> {
                     ),
                   ),
                 ),
-              ] else if (statusFilteredJobs.isEmpty) ...[
+              ] else if (displayedJobs.isEmpty) ...[
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: AppSpacing.xl),
                   child: EmptyState(
                     icon: _emptyIconForFilter(_selectedStatus),
-                    title: _emptyTitleForFilter(_selectedStatus, isFiltering: _selectedCategory != null || _searchQuery.isNotEmpty),
+                    title: _emptyTitleForFilter(
+                      _selectedStatus,
+                      isFiltering:
+                          _selectedCategory != null || _searchQuery.isNotEmpty,
+                    ),
                     message: _emptyMessageForFilter(_selectedStatus),
                   ),
                 ),
@@ -419,20 +473,21 @@ class _JobsScreenState extends ConsumerState<JobsScreen> {
                       icon: const Icon(Icons.filter_alt_off_outlined, size: 15),
                       label: const Text('Clear Filters & Search'),
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.isDark ? const Color(0xFF38BDF8) : AppColors.peacockBlue,
+                        foregroundColor: AppColors.isDark
+                            ? const Color(0xFF38BDF8)
+                            : AppColors.peacockBlue,
                         side: BorderSide(
-                          color: AppColors.isDark ? const Color(0xFF028090) : AppColors.peacockBlue,
+                          color: AppColors.isDark
+                              ? const Color(0xFF028090)
+                              : AppColors.peacockBlue,
                         ),
                       ),
                     ),
                   ),
                 ],
               ] else ...[
-                for (final job in statusFilteredJobs)
-                  JobCard(
-                    job: job,
-                    hasActiveJob: hasActiveJob,
-                  ),
+                for (final job in displayedJobs)
+                  JobCard(job: job, hasActiveJob: hasActiveJob),
               ],
             ],
           ),
@@ -446,12 +501,16 @@ class _JobsScreenState extends ConsumerState<JobsScreen> {
       JobStatusFilter.all => Icons.work_off_outlined,
       JobStatusFilter.newOffers => Icons.bolt_outlined,
       JobStatusFilter.inProgress => Icons.play_disabled_outlined,
+      JobStatusFilter.scheduled => Icons.schedule_outlined,
       JobStatusFilter.completed => Icons.task_alt_outlined,
       JobStatusFilter.cancelled => Icons.cancel_outlined,
     };
   }
 
-  String _emptyTitleForFilter(JobStatusFilter filter, {bool isFiltering = false}) {
+  String _emptyTitleForFilter(
+    JobStatusFilter filter, {
+    bool isFiltering = false,
+  }) {
     if (isFiltering) {
       return 'No matching jobs found';
     }
@@ -459,6 +518,7 @@ class _JobsScreenState extends ConsumerState<JobsScreen> {
       JobStatusFilter.all => 'No jobs found',
       JobStatusFilter.newOffers => 'No new offers available',
       JobStatusFilter.inProgress => 'No jobs in progress',
+      JobStatusFilter.scheduled => 'No scheduled jobs',
       JobStatusFilter.completed => 'No completed jobs yet',
       JobStatusFilter.cancelled => 'No cancelled jobs',
     };
@@ -466,12 +526,11 @@ class _JobsScreenState extends ConsumerState<JobsScreen> {
 
   String _emptyMessageForFilter(JobStatusFilter filter) {
     return switch (filter) {
-      JobStatusFilter.all =>
-        'New service opportunities and assigned jobs will appear here automatically.',
-      JobStatusFilter.newOffers =>
-        'When new exclusive job dispatches become available, you will receive an instant alert here.',
-      JobStatusFilter.inProgress =>
-        'Jobs that you accept and are actively working on will appear in this section.',
+      JobStatusFilter.all => 'New service opportunities and assigned jobs will appear here automatically.',
+      JobStatusFilter.newOffers => 'When new exclusive job dispatches become available, you will receive an instant alert here.',
+      JobStatusFilter.inProgress => 'Jobs that you accept and are actively working on will appear in this section.',
+      JobStatusFilter.scheduled =>
+        'Upcoming jobs booked for future dates will appear here.',
       JobStatusFilter.completed =>
         'Jobs you finish and confirm payment for will be recorded here.',
       JobStatusFilter.cancelled =>

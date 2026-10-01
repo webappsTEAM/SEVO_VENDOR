@@ -241,7 +241,7 @@ void main() {
       expect(find.text('Open Dispatch Console'), findsOneWidget);
 
       // Action Center Section
-      expect(find.text('ACTION CENTER'), findsOneWidget);
+      expect(find.text('Action Center'), findsOneWidget);
       expect(find.byType(ActionCenterSection), findsOneWidget);
       expect(find.text('Pending Applications'), findsOneWidget);
       expect(find.text('Active Technicians'), findsOneWidget);
@@ -249,7 +249,7 @@ void main() {
       expect(find.text('Corrections Pending Resubmission'), findsOneWidget);
 
       // Workforce Overview Section
-      expect(find.text('WORKFORCE OVERVIEW'), findsOneWidget);
+      expect(find.text('Workforce Overview'), findsOneWidget);
       expect(find.byType(WorkforceOverviewSection), findsOneWidget);
       expect(find.text('Total Registered'), findsOneWidget);
       expect(find.text('Approved & Active'), findsOneWidget);

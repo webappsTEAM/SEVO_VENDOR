@@ -1,21 +1,22 @@
+import '../../../shared/widgets/sevo/sevo_module_frame.dart';
+import '../../../shared/widgets/sevo/sevo_module_art.dart';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/module_header_card.dart';
-import '../../../shared/widgets/workforce_app_bar.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: const WorkforceAppBar(
-        titleText: 'Settings',
-        showBrand: false,
-      ),
+    return SevoModuleFrame(
+      module: SevoModule.systemSettings,
+      title: 'Settings',
+      withDrawer: false,
+      transition: false,
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.lg),
         children: [
@@ -103,7 +104,10 @@ class _SettingsMenuCard extends StatelessWidget {
                   children: [
                     Text(title, style: Theme.of(context).textTheme.titleMedium),
                     const SizedBox(height: 2),
-                    Text(subtitle, style: Theme.of(context).textTheme.bodyMedium),
+                    Text(
+                      subtitle,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
                   ],
                 ),
               ),

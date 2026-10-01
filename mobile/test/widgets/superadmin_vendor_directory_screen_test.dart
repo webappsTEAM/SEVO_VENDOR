@@ -1,4 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:mobile/features/notifications/presentation/notifications_providers.dart';
+import '../support/dev_shot.dart';
+import 'package:mobile/shared/widgets/sevo/sevo_wordmark.dart';
+import 'package:mobile/core/theme/app_theme.dart';
+import 'package:mobile/shared/widgets/sevo/sevo_skeleton.dart';
+import 'package:mobile/core/theme/app_motion.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/features/auth/domain/auth_user.dart';
@@ -97,17 +104,72 @@ void main() {
       await tester.pumpWidget(createTestWidget());
       await tester.pumpAndSettle();
 
-      // Platform Governance context pill
-      expect(find.text('PLATFORM GOVERNANCE'), findsOneWidget);
-
-      // Title & Subtitle
-      expect(find.text('Vendor Companies Management'), findsOneWidget);
+      // The page title lives at the top of the content, once (not in the AppBar).
+      expect(find.text('Vendor Directory'), findsOneWidget);
+      expect(find.text('Manage registered vendors'), findsOneWidget);
       expect(
-        find.text(
-          'SEVO Platform Admin: Complete oversight of service vendor organizations and their tied workforce.',
-        ),
-        findsOneWidget,
+        find.descendant(of: find.byType(AppBar), matching: find.text('Vendor Directory')),
+        findsNothing,
       );
+    });
+
+    testWidgets('shows the SEVO module transition briefly, then reveals the page', (tester) async {
+      await tester.pumpWidget(createTestWidget());
+      await tester.pump();
+
+      // Branded cover with the tagline sits over the page while it opens.
+      expect(find.text('You need it,'), findsOneWidget);
+      expect(find.byType(SevoWordmark), findsOneWidget); // "Sevo" drawn as the logo
+      expect(find.text('for it'), findsOneWidget);
+      expect(find.text('VENDOR DIRECTORY'), findsOneWidget);
+
+      // It never lingers: gone well under 1.5s, page still there.
+      await tester.pump(const Duration(milliseconds: 1500));
+      await tester.pumpAndSettle();
+      expect(find.byType(SevoWordmark), findsNothing);
+      expect(find.text('Vendor Directory'), findsOneWidget);
+    });
+
+    testWidgets('skips the module transition when reduced motion is on', (tester) async {
+      AppMotion.configure(reducedMotion: true);
+      addTearDown(() => AppMotion.configure(reducedMotion: false));
+      await tester.pumpWidget(createTestWidget());
+      await tester.pump();
+      expect(find.byType(SevoWordmark), findsNothing);
+      await tester.pumpAndSettle();
+      expect(find.text('Vendor Directory'), findsOneWidget);
+    });
+
+    testWidgets('shows a skeleton while vendors load', (tester) async {
+      final gate = Completer<PlatformVendorsResponse>();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            authControllerProvider.overrideWith((ref) => FakeAuthController(mockSuperAdminUser)),
+            platformVendorsDataProvider.overrideWith((ref) => gate.future),
+          ],
+          child: const MaterialApp(home: SuperAdminVendorDirectoryScreen()),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 1300));
+      expect(find.byType(SevoListSkeleton), findsOneWidget);
+      expect(find.text('Vendor Directory'), findsOneWidget);
+
+      gate.complete(PlatformVendorsResponse(vendors: mockVendors, totalCount: 2));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.byType(SevoListSkeleton), findsNothing);
+      expect(find.text('Apex Engineering Ltd'), findsOneWidget);
+    });
+
+    testWidgets('renders in dark theme without overflow', (tester) async {
+      AppColors.configure(brightness: Brightness.dark, highContrast: false);
+      addTearDown(() => AppColors.configure(brightness: Brightness.light, highContrast: false));
+      await tester.pumpWidget(createTestWidget());
+      await tester.pumpAndSettle();
+      expect(find.text('Vendor Directory'), findsOneWidget);
+      expect(find.byType(VendorCard), findsWidgets);
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('renders overview metrics and primary workforce action', (tester) async {
@@ -221,7 +283,9 @@ void main() {
 
       final searchInput = find.byType(TextField);
       await tester.enterText(searchInput, 'NonExistentVendorNameXYZ');
-      await tester.pumpAndSettle();
+      // The empty-state artwork floats forever, so advance by time, not "settle".
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
 
       expect(find.text('Showing 0 of 2 vendors'), findsOneWidget);
       expect(find.text('No vendor businesses found'), findsOneWidget);
@@ -231,7 +295,8 @@ void main() {
     testWidgets('renders empty registered state when no vendors exist on platform',
         (tester) async {
       await tester.pumpWidget(createTestWidget(vendors: []));
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 1500));
+      await tester.pump(const Duration(milliseconds: 600));
 
       expect(find.text('Showing 0 of 0 vendors'), findsOneWidget);
       expect(find.text('No Vendors Registered'), findsOneWidget);
@@ -279,7 +344,7 @@ void main() {
         await tester.pumpWidget(createTestWidget());
         await tester.pumpAndSettle();
 
-        expect(find.text('Vendor Companies Management'), findsOneWidget);
+        expect(find.text('Vendor Directory'), findsOneWidget);
         expect(find.byType(VendorDirectoryMetricsCards), findsOneWidget);
         expect(find.byType(VendorCard), findsWidgets);
 
@@ -287,4 +352,21 @@ void main() {
       }
     });
   });
+
+  // Developer screenshots (skipped unless --dart-define=SHOTS=true).
+  testWidgets('dev screenshots', (tester) async {
+    await loadShotFonts();
+    shotSurface(tester, width: 360, height: 1700);
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        authControllerProvider.overrideWith((ref) => FakeAuthController(mockSuperAdminUser)),
+        unreadNotificationsCountProvider.overrideWithValue(3),
+        platformVendorsDataProvider.overrideWith(
+          (ref) async => PlatformVendorsResponse(vendors: mockVendors, totalCount: mockVendors.length),
+        ),
+      ],
+      child: const MaterialApp(home: SuperAdminVendorDirectoryScreen()),
+    ));
+    await shoot(tester, 'vendors_360');
+  }, skip: !shotsEnabled);
 }

@@ -1,380 +1,296 @@
 import 'package:flutter/material.dart';
 
 import '../../../../../core/theme/app_theme.dart';
+import '../../../../../shared/widgets/sevo/sevo_animated_card.dart';
+import '../../../../../shared/widgets/sevo/sevo_typography.dart';
 import '../../domain/platform_vendor.dart';
 
-/// Presentation card displaying a single vendor business in the Super Admin Vendor Directory.
+/// A single vendor business in the Vendor Directory: identity, owner contact
+/// and workforce summary, with a "View Workers" action.
 class VendorCard extends StatelessWidget {
   const VendorCard({
     super.key,
     required this.vendor,
     required this.onViewWorkers,
+    this.index = 0,
   });
 
   final PlatformVendor vendor;
   final VoidCallback onViewWorkers;
 
+  /// Position in the list, for the staggered entrance.
+  final int index;
+
   @override
   Widget build(BuildContext context) {
-    final hasOwnerContact = vendor.ownerName.isNotEmpty ||
+    final hasOwnerContact =
+        vendor.ownerName.isNotEmpty ||
         vendor.ownerEmail.isNotEmpty ||
         vendor.ownerPhone.isNotEmpty;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppRadius.card),
-        border: Border.all(color: AppColors.border),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x06000000),
-            blurRadius: 4,
-            offset: Offset(0, 1.5),
-          ),
-        ],
-      ),
+    return SevoAnimatedCard(
+      index: index,
+      margin: const EdgeInsets.only(bottom: 14),
+      onTap: onViewWorkers,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── 1. Card Header: Avatar, Name, ID/Slug ─────────────────────────
+          // ── Identity ───────────────────────────────────────────────────
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
             child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // Vendor Avatar / Initial
                 Container(
-                  width: 40,
-                  height: 40,
+                  width: 44,
+                  height: 44,
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        Color(0xFF005965),
-                        Color(0xFF003B46),
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(10),
+                    gradient: _avatarGradient(vendor.id),
+                    borderRadius: BorderRadius.circular(13),
                   ),
                   child: Center(
                     child: Text(
                       vendor.initial,
-                      style: TextStyle(
+                      style: const TextStyle(
+                        fontFamily: SevoText.family,
                         color: Colors.white,
                         fontSize: 18,
-                        fontWeight: FontWeight.w900,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
                 ),
                 const SizedBox(width: 12),
-
-                // Name & Slug
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         vendor.displayName,
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.textPrimary,
-                          letterSpacing: -0.3,
-                        ),
-                        maxLines: 1,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
+                        style: SevoText.cardTitle,
                       ),
                       const SizedBox(height: 2),
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              vendor.slug.isNotEmpty
-                                  ? 'ID: #${vendor.id} • ${vendor.slug}'
-                                  : 'ID: #${vendor.id}',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.textSecondary,
-                                fontFamily: 'monospace',
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
+                      Text(
+                        vendor.slug.isNotEmpty
+                            ? 'ID: #${vendor.id} • ${vendor.slug}'
+                            : 'ID: #${vendor.id}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: SevoText.meta,
                       ),
                     ],
                   ),
                 ),
-
-                // Location Pill
-                if (vendor.effectiveLocation != 'Not specified')
+                if (vendor.effectiveLocation != 'Not specified') ...[
+                  const SizedBox(width: 8),
                   Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
+                      horizontal: 10,
+                      vertical: 5,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF1F5F9),
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: AppColors.border),
+                      color: AppColors.surfaceMuted,
+                      borderRadius: BorderRadius.circular(999),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
                           Icons.location_on_outlined,
-                          size: 12,
+                          size: 14,
                           color: AppColors.textSecondary,
                         ),
-                        const SizedBox(width: 3),
+                        const SizedBox(width: 4),
                         ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 85),
+                          constraints: const BoxConstraints(maxWidth: 84),
                           child: Text(
                             vendor.effectiveLocation,
-                            style: TextStyle(
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.textSecondary,
-                            ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
+                            style: SevoText.badge.copyWith(
+                              fontWeight: FontWeight.w500,
+                              color: AppColors.bodyText,
+                            ),
                           ),
                         ),
                       ],
                     ),
                   ),
+                ],
               ],
             ),
           ),
 
-          Divider(height: 1, color: Color(0xFFF1F5F9)),
-
-          // ── 2. Owner / Contact Info ───────────────────────────────────────
-          if (hasOwnerContact)
+          // ── Owner / contact ────────────────────────────────────────────
+          if (hasOwnerContact) ...[
+            Divider(height: 1, color: AppColors.border),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   if (vendor.ownerName.isNotEmpty)
                     Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
+                      padding: const EdgeInsets.only(bottom: 8),
                       child: Row(
                         children: [
                           Icon(
                             Icons.person_outline_rounded,
-                            size: 13,
+                            size: 18,
                             color: AppColors.textSecondary,
                           ),
-                          const SizedBox(width: 5),
+                          const SizedBox(width: 8),
                           Expanded(
                             child: Text(
                               vendor.ownerName,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.textSecondary,
-                              ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
+                              style: SevoText.bodyStrong,
                             ),
                           ),
                         ],
                       ),
                     ),
                   Wrap(
-                    spacing: 12,
-                    runSpacing: 4,
+                    spacing: 16,
+                    runSpacing: 8,
                     children: [
                       if (vendor.ownerEmail.isNotEmpty)
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.email_outlined,
-                              size: 12,
-                              color: AppColors.textMuted,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              vendor.ownerEmail,
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: AppColors.textSecondary,
-                              ),
-                            ),
-                          ],
-                        ),
+                        _contact(Icons.email_outlined, vendor.ownerEmail),
                       if (vendor.ownerPhone.isNotEmpty)
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.phone_outlined,
-                              size: 12,
-                              color: AppColors.textMuted,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              vendor.ownerPhone,
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: AppColors.textSecondary,
-                              ),
-                            ),
-                          ],
-                        ),
+                        _contact(Icons.phone_outlined, vendor.ownerPhone),
                     ],
                   ),
                 ],
               ),
             ),
+          ],
 
-          Divider(height: 1, color: Color(0xFFF1F5F9)),
-
-          // ── 3. Footer: Tied Workers Pill, Pending Invites, View Workers ────
+          // ── Workforce summary + action ─────────────────────────────────
+          Divider(height: 1, color: AppColors.border),
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final isNarrow = constraints.maxWidth < 290;
-
-                final badges = Wrap(
-                  spacing: 6,
-                  runSpacing: 4,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    // Tied Workers badge
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 7,
-                        vertical: 2.5,
+            padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      _badge(
+                        icon: Icons.groups_rounded,
+                        label: '${vendor.tiedWorkersCount} active',
+                        bg: AppColors.successBg,
+                        border: AppColors.successBorder,
+                        fg: AppColors.successText,
                       ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFECFDF5),
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(
-                          color: const Color(0xFFA7F3D0),
-                          width: 0.8,
+                      if (vendor.pendingInvitationsCount > 0)
+                        _badge(
+                          label: '${vendor.pendingInvitationsCount} invites',
+                          bg: AppColors.warningBg,
+                          border: AppColors.warningBorder,
+                          fg: AppColors.warningText,
                         ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(
-                            Icons.groups_rounded,
-                            size: 11,
-                            color: Color(0xFF059669),
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            '${vendor.tiedWorkersCount} active',
-                            style: TextStyle(
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.w800,
-                              color: Color(0xFF065F46),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    // Pending Invites badge
-                    if (vendor.pendingInvitationsCount > 0)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2.5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFFFBEB),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(
-                            color: const Color(0xFFFDE68A),
-                            width: 0.8,
-                          ),
-                        ),
-                        child: Text(
-                          '${vendor.pendingInvitationsCount} invites',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF92400E),
-                          ),
-                        ),
-                      ),
-                  ],
-                );
-
-                final actionButton = Material(
-                  color: const Color(0xFFEFF6FF),
-                  borderRadius: BorderRadius.circular(6),
-                  child: InkWell(
-                    onTap: onViewWorkers,
-                    borderRadius: BorderRadius.circular(6),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(
-                          color: const Color(0xFFBFDBFE),
-                          width: 0.8,
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            'View Workers',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                              color: Color(0xFF1D4ED8),
-                            ),
-                          ),
-                          SizedBox(width: 3),
-                          Icon(
-                            Icons.chevron_right_rounded,
-                            size: 14,
-                            color: Color(0xFF1D4ED8),
-                          ),
-                        ],
-                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                TextButton(
+                  onPressed: onViewWorkers,
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppColors.selectedOnTint,
+                    backgroundColor: AppColors.selectedTint,
+                    padding: const EdgeInsets.only(left: 12, right: 6),
+                    minimumSize: const Size(0, 36),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
                     ),
                   ),
-                );
-
-                if (isNarrow) {
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      badges,
-                      const SizedBox(height: 8),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: actionButton,
+                      Text(
+                        'View Workers',
+                        style: SevoText.button.copyWith(fontSize: 13),
                       ),
+                      const Icon(Icons.chevron_right_rounded, size: 18),
                     ],
-                  );
-                }
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-                return Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(child: badges),
-                    const SizedBox(width: 8),
-                    actionButton,
-                  ],
-                );
-              },
+  /// A friendly, varied avatar colour per vendor (stable for a given id).
+  static LinearGradient _avatarGradient(int id) {
+    const palette = <List<Color>>[
+      [Color(0xFF0D9488), Color(0xFF005965)], // teal
+      [Color(0xFF3B82F6), Color(0xFF1D4ED8)], // blue
+      [Color(0xFF8B5CF6), Color(0xFF6D28D9)], // violet
+      [Color(0xFFF59E0B), Color(0xFFD97706)], // amber
+      [Color(0xFF10B981), Color(0xFF047857)], // green
+    ];
+    final c = palette[id.abs() % palette.length];
+    return LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: c,
+    );
+  }
+
+  Widget _contact(IconData icon, String text) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Icon(icon, size: 16, color: AppColors.textMuted),
+      const SizedBox(width: 6),
+      Flexible(
+        child: Text(
+          text,
+          style: SevoText.caption.copyWith(
+            fontSize: 13,
+            color: AppColors.bodyText,
+          ),
+        ),
+      ),
+    ],
+  );
+
+  Widget _badge({
+    IconData? icon,
+    required String label,
+    required Color bg,
+    required Color border,
+    required Color fg,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 14, color: fg),
+            const SizedBox(width: 5),
+          ],
+          // Flexible + ellipsis: the pill can never overflow its row.
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: SevoText.badge.copyWith(color: fg),
             ),
           ),
         ],

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_motion.dart';
@@ -36,11 +38,7 @@ class AppFadeIn extends StatelessWidget {
     final effective = duration ?? AppMotion.normal;
     final delay = AppMotion.staggerFor(index);
 
-    return _DelayedFadeIn(
-      delay: delay,
-      duration: effective,
-      child: child,
-    );
+    return _DelayedFadeIn(delay: delay, duration: effective, child: child);
   }
 }
 
@@ -61,6 +59,13 @@ class _DelayedFadeIn extends StatefulWidget {
 
 class _DelayedFadeInState extends State<_DelayedFadeIn> {
   bool _visible = false;
+  Timer? _delayTimer;
+
+  @override
+  void dispose() {
+    _delayTimer?.cancel();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -72,7 +77,7 @@ class _DelayedFadeInState extends State<_DelayedFadeIn> {
         if (mounted) setState(() => _visible = true);
       });
     } else {
-      Future<void>.delayed(widget.delay, () {
+      _delayTimer = Timer(widget.delay, () {
         if (mounted) setState(() => _visible = true);
       });
     }

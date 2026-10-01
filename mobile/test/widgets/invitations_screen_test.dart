@@ -127,7 +127,7 @@ void main() {
       // App Bar title
       expect(find.text('Vendor Invitations'), findsOneWidget);
       expect(
-        find.text('Private invitations received directly from verified service businesses.'),
+        find.text('Private invitations from verified businesses'),
         findsOneWidget,
       );
 

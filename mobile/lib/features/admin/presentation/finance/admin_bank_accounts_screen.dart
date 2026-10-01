@@ -1,3 +1,6 @@
+import '../../../../shared/widgets/sevo/sevo_module_frame.dart';
+import '../../../../shared/widgets/sevo/sevo_module_art.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -5,33 +8,28 @@ import 'package:mobile/core/theme/app_theme.dart';
 import 'package:mobile/features/admin/presentation/finance/admin_finance_providers.dart';
 import 'package:mobile/features/admin/presentation/finance/widgets/admin_add_bank_account_sheet.dart';
 import 'package:mobile/features/admin/presentation/finance/widgets/admin_bank_account_card.dart';
-import 'package:mobile/features/admin/presentation/widgets/admin_drawer.dart';
 import 'package:mobile/shared/widgets/async_value_view.dart';
-import 'package:mobile/shared/widgets/workforce_app_bar.dart';
 
 /// Admin Screen: Bank Accounts verification & disbursement destinations.
 class AdminBankAccountsScreen extends ConsumerStatefulWidget {
   const AdminBankAccountsScreen({super.key});
 
   @override
-  ConsumerState<AdminBankAccountsScreen> createState() => _AdminBankAccountsScreenState();
+  ConsumerState<AdminBankAccountsScreen> createState() =>
+      _AdminBankAccountsScreenState();
 }
 
-class _AdminBankAccountsScreenState extends ConsumerState<AdminBankAccountsScreen> {
+class _AdminBankAccountsScreenState
+    extends ConsumerState<AdminBankAccountsScreen> {
   String _statusFilter = 'ALL';
 
   @override
   Widget build(BuildContext context) {
     final accountsAsync = ref.watch(adminBankAccountsProvider);
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: const WorkforceAppBar(
-        titleText: 'Bank Account Verifications',
-        showStatusSubBar: false,
-        showDrawerMenu: true,
-      ),
-      drawer: const AdminDrawer(),
+    return SevoModuleFrame(
+      module: SevoModule.payoutAccounts,
+      title: 'Bank Account Verifications',
       body: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(adminBankAccountsProvider);
@@ -84,8 +82,13 @@ class _AdminBankAccountsScreenState extends ConsumerState<AdminBankAccountsScree
               onPressed: () => AdminAddBankAccountSheet.show(context),
               style: FilledButton.styleFrom(
                 backgroundColor: AppColors.primary, // Peacock Blue branding
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
               ),
               icon: const Icon(Icons.add_rounded, size: 20),
               label: Text(
@@ -118,7 +121,8 @@ class _AdminBankAccountsScreenState extends ConsumerState<AdminBankAccountsScree
               onRetry: () => ref.invalidate(adminBankAccountsProvider),
               builder: (context, accounts) {
                 final filtered = accounts.where((acct) {
-                  if (_statusFilter != 'ALL' && acct.verificationStatus != _statusFilter) {
+                  if (_statusFilter != 'ALL' &&
+                      acct.verificationStatus != _statusFilter) {
                     return false;
                   }
                   return true;
@@ -126,7 +130,10 @@ class _AdminBankAccountsScreenState extends ConsumerState<AdminBankAccountsScree
 
                 if (filtered.isEmpty) {
                   return Container(
-                    padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 16),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 36,
+                      horizontal: 16,
+                    ),
                     alignment: Alignment.center,
                     child: Column(
                       children: [
@@ -134,7 +141,8 @@ class _AdminBankAccountsScreenState extends ConsumerState<AdminBankAccountsScree
                         Container(
                           padding: const EdgeInsets.all(18),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF005965).withValues(alpha: 0.08),
+                            color: const Color(0xFF005965)
+                                .withValues(alpha: 0.08),
                             shape: BoxShape.circle,
                           ),
                           child: const Icon(
@@ -178,7 +186,11 @@ class _AdminBankAccountsScreenState extends ConsumerState<AdminBankAccountsScree
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Icon(Icons.shield_outlined, size: 18, color: AppColors.infoText),
+                              Icon(
+                                Icons.shield_outlined,
+                                size: 18,
+                                color: AppColors.infoText,
+                              ),
                               SizedBox(width: 10),
                               Expanded(
                                 child: Column(

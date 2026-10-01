@@ -165,7 +165,7 @@ void main() {
 
   group('Admin / Service Provider Navigation Drawer Tests', () {
     testWidgets('1. Displays Company header, portal badge, and all required sections', (tester) async {
-      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.physicalSize = const Size(800, 2400);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
@@ -223,32 +223,35 @@ void main() {
       // 2. Company Home
       expect(find.text('Company Home'), findsOneWidget);
 
-      // 3. MY WORKFORCE
+      // 3. SELLER HUB
+      expect(find.text('SELLER HUB'), findsOneWidget);
+
+      // 4. MY WORKFORCE
       expect(find.text('MY WORKFORCE'), findsOneWidget);
       expect(find.text('Tied Technicians'), findsOneWidget);
       expect(find.text('Send Invitations'), findsOneWidget);
       expect(find.text('Employee Roster'), findsOneWidget);
       expect(find.text('Applications'), findsOneWidget);
 
-      // 4. OPERATIONS
+      // 5. OPERATIONS
       expect(find.text('OPERATIONS'), findsOneWidget);
       expect(find.text('Field Jobs'), findsOneWidget);
       expect(find.text('Dispatch Radar'), findsOneWidget);
       expect(find.text('Company Profile'), findsOneWidget);
 
-      // 5. FINANCE & LEDGER
+      // 6. FINANCE & LEDGER
       expect(find.text('FINANCE & LEDGER'), findsOneWidget);
       expect(find.text('Company Wallet'), findsOneWidget);
       expect(find.text('Transactions'), findsOneWidget);
       expect(find.text('Withdrawals'), findsOneWidget);
       expect(find.text('Payout Accounts'), findsOneWidget);
 
-      // 6. TELEMETRY
+      // 7. TELEMETRY
       expect(find.text('TELEMETRY'), findsOneWidget);
       expect(find.text('Database & Egress'), findsOneWidget);
       expect(find.text('Reports & Audits'), findsOneWidget);
 
-      // 7. Pinned Bottom
+      // 8. Pinned Bottom
       expect(find.text('System Settings'), findsOneWidget);
       expect(find.text('Log Out'), findsOneWidget);
     });
@@ -417,8 +420,7 @@ void main() {
       tester.state<ScaffoldState>(find.byType(Scaffold)).openDrawer();
       await tester.pumpAndSettle();
 
-      expect(find.text('SEVO Platform'), findsOneWidget);
-      expect(find.text('Superadmin Console'), findsOneWidget);
+      expect(find.text('SUPERADMIN'), findsOneWidget);
       expect(find.text('PLATFORM GOVERNANCE'), findsOneWidget);
       expect(find.text('Vendor Directory'), findsOneWidget);
     });
@@ -453,14 +455,14 @@ void main() {
       expect(find.text('Open Dispatch Console'), findsOneWidget);
 
       // Action Center Cards
-      expect(find.text('ACTION CENTER'), findsOneWidget);
+      expect(find.text('Action Center'), findsOneWidget);
       expect(find.text('Pending Applications'), findsOneWidget);
       expect(find.text('Active Technicians'), findsOneWidget);
       expect(find.text('Jobs Awaiting Assignment'), findsOneWidget);
       expect(find.text('Corrections Pending Resubmission'), findsOneWidget);
 
       // Workforce Overview Stats
-      expect(find.text('WORKFORCE OVERVIEW'), findsOneWidget);
+      expect(find.text('Workforce Overview'), findsOneWidget);
       expect(find.text('Total Registered'), findsOneWidget);
       expect(find.text('Approved & Active'), findsOneWidget);
       expect(find.text('Online & Available'), findsOneWidget);

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../support/dev_shot.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/features/auth/domain/auth_user.dart';
@@ -176,23 +177,19 @@ void main() {
 
   group('SuperAdminWorkforceRosterScreen Widget Tests', () {
     testWidgets('renders header, title, and live metrics correctly', (tester) async {
-      tester.view.physicalSize = const Size(400 * 3, 1000 * 3);
+      tester.view.physicalSize = const Size(400 * 3, 3200 * 3);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
       await tester.pumpWidget(createTestWidget());
       await tester.pumpAndSettle();
 
-      // Platform Governance context tag
-      expect(find.text('PLATFORM GOVERNANCE'), findsOneWidget);
-
-      // Title & Subtitle
-      expect(find.text('Workforce Oversight (Solo & Tied Workers)'), findsOneWidget);
+      // Title + subtitle at the top of the content, once, not in the app bar
+      expect(find.text('Workforce Roster'), findsOneWidget);
+      expect(find.text('Manage solo & tied technicians'), findsOneWidget);
       expect(
-        find.text(
-          'SEVO Platform Admin: Manage all technicians, directly tie solo workers to any vendor, audit resignations, and relieve workers.',
-        ),
-        findsOneWidget,
+        find.descendant(of: find.byType(AppBar), matching: find.text('Workforce Roster')),
+        findsNothing,
       );
 
       // Manage Vendor Companies button
@@ -210,7 +207,7 @@ void main() {
     });
 
     testWidgets('renders filter tabs with live count badges', (tester) async {
-      tester.view.physicalSize = const Size(400 * 3, 1000 * 3);
+      tester.view.physicalSize = const Size(400 * 3, 3200 * 3);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
@@ -224,7 +221,7 @@ void main() {
     });
 
     testWidgets('renders worker cards with complete information and badges', (tester) async {
-      tester.view.physicalSize = const Size(400 * 3, 1400 * 3);
+      tester.view.physicalSize = const Size(400 * 3, 3200 * 3);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
@@ -251,7 +248,7 @@ void main() {
     });
 
     testWidgets('switching to Resignation Audits tab displays audit requests', (tester) async {
-      tester.view.physicalSize = const Size(400 * 3, 1200 * 3);
+      tester.view.physicalSize = const Size(400 * 3, 3200 * 3);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
@@ -271,7 +268,7 @@ void main() {
     });
 
     testWidgets('tapping Tie to Vendor opens TieVendorBottomSheet modal', (tester) async {
-      tester.view.physicalSize = const Size(400 * 3, 1200 * 3);
+      tester.view.physicalSize = const Size(400 * 3, 3200 * 3);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
@@ -291,7 +288,7 @@ void main() {
     });
 
     testWidgets('tapping Audit & Clear opens ApproveRelievingBottomSheet modal', (tester) async {
-      tester.view.physicalSize = const Size(400 * 3, 1200 * 3);
+      tester.view.physicalSize = const Size(400 * 3, 3200 * 3);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
@@ -316,7 +313,7 @@ void main() {
     });
 
     testWidgets('renders empty state when no workers match criteria', (tester) async {
-      tester.view.physicalSize = const Size(400 * 3, 1200 * 3);
+      tester.view.physicalSize = const Size(400 * 3, 3200 * 3);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
@@ -329,7 +326,8 @@ void main() {
       );
 
       await tester.pumpWidget(createTestWidget(overviewData: emptyData));
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 1500));
+      await tester.pump(const Duration(milliseconds: 600));
 
       expect(find.text('No technicians found'), findsOneWidget);
       expect(
@@ -339,7 +337,7 @@ void main() {
     });
 
     testWidgets('renders empty state when no resignation audits exist', (tester) async {
-      tester.view.physicalSize = const Size(400 * 3, 1200 * 3);
+      tester.view.physicalSize = const Size(400 * 3, 3200 * 3);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
@@ -356,13 +354,14 @@ void main() {
 
       // Switch to Resignation Audits
       await tester.tap(find.text('RELIEVING AUDITS'));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
 
       expect(find.text('No Pending Relieving Audits'), findsOneWidget);
     });
 
     testWidgets('search input field updates query and clears correctly', (tester) async {
-      tester.view.physicalSize = const Size(400 * 3, 1200 * 3);
+      tester.view.physicalSize = const Size(400 * 3, 3200 * 3);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
@@ -409,7 +408,7 @@ void main() {
 
     testWidgets('initialVendorId: null initializes with All Workforce and no vendor filter',
         (tester) async {
-      tester.view.physicalSize = const Size(400 * 3, 1200 * 3);
+      tester.view.physicalSize = const Size(400 * 3, 3200 * 3);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
@@ -444,7 +443,7 @@ void main() {
 
     testWidgets('initialVendorId: 12 pre-selects vendor in dropdown and displays tied worker',
         (tester) async {
-      tester.view.physicalSize = const Size(400 * 3, 1200 * 3);
+      tester.view.physicalSize = const Size(400 * 3, 3200 * 3);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
@@ -474,14 +473,14 @@ void main() {
       final screenWidths = [320.0, 360.0, 390.0, 412.0];
 
       for (final width in screenWidths) {
-        tester.view.physicalSize = Size(width * 3, 1200 * 3);
+        tester.view.physicalSize = Size(width * 3, 3200 * 3);
         tester.view.devicePixelRatio = 3.0;
 
         await tester.pumpWidget(createTestWidget());
         await tester.pumpAndSettle();
 
         // Verify key components exist and render without overflow exception
-        expect(find.text('Workforce Oversight (Solo & Tied Workers)'), findsOneWidget);
+        expect(find.text('Workforce Roster'), findsOneWidget);
         expect(find.byType(WorkforceSummaryMetrics), findsOneWidget);
         expect(find.byType(WorkerCard), findsWidgets);
 
@@ -490,4 +489,12 @@ void main() {
       }
     });
   });
+
+  // Developer screenshots (skipped unless --dart-define=SHOTS=true).
+  testWidgets('dev screenshots', (tester) async {
+    await loadShotFonts();
+    shotSurface(tester, width: 360, height: 2300);
+    await tester.pumpWidget(createTestWidget());
+    await shoot(tester, 'roster_360');
+  }, skip: !shotsEnabled);
 }

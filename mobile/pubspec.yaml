@@ -47,6 +47,7 @@ dependencies:
   url_launcher: ^6.3.2
   flutter_map: ^8.3.1
   latlong2: ^0.10.1
+  file_picker: ^13.1.0
 
 dev_dependencies:
   flutter_test:
@@ -85,6 +86,19 @@ flutter:
 
   # For details regarding adding assets from package dependencies, see
   # https://flutter.dev/to/asset-from-package
+
+  # SEVO display/body typeface (SIL OFL, licence in assets/fonts/Poppins-OFL.txt).
+  fonts:
+    - family: Poppins
+      fonts:
+        - asset: assets/fonts/Poppins-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Poppins-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Poppins-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Poppins-Bold.ttf
+          weight: 700
 
   # To add custom fonts to your application, add a fonts section here,
   # in this "flutter" section. Each entry in this list should have a

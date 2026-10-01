@@ -323,7 +323,7 @@ void main() {
 
       await tester.pumpWidget(
         buildTestableWidget(
-          const AdminDispatchScreen(),
+          const AdminDispatchScreen(jobId: 'PA3510'),
           overrides: [
             adminDashboardDataProvider.overrideWith((ref) => Future.value(mockDashboardData)),
             adminEligibleTechniciansProvider(3510).overrideWith((ref) => Future.value(mockCandidates)),
@@ -337,9 +337,8 @@ void main() {
 
       // Verify Metrics
       expect(find.text('Total Fleet'), findsOneWidget);
-      expect(find.text('Online & Ready'), findsWidgets);
-      expect(find.text('Offline Fleet'), findsOneWidget);
-      expect(find.text('3'), findsNWidgets(2)); // Total Fleet Count (3) and Active Bookings (3)
+      expect(find.text('3'), findsOneWidget); // Total Fleet Count (3)
+      expect(find.text('4'), findsOneWidget); // Active Bookings operations load (4)
 
       // Verify Service Requests Section (3 active jobs, excluding completed PA3509)
       expect(find.text('1. Customer Service Requests (3)'), findsOneWidget);

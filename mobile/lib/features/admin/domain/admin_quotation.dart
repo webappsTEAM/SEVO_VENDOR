@@ -38,6 +38,11 @@ class AdminQuotation {
     this.validUntil,
     this.createdAt,
     this.updatedAt,
+    this.customerDecidedAt,
+    this.advanceAmount,
+    this.balanceAmount,
+    this.items = const [],
+    this.measurements = const [],
   });
 
   factory AdminQuotation.fromJson(Map<String, dynamic> json) {
@@ -48,11 +53,13 @@ class AdminQuotation {
       title: parseString(json['title']) ?? '',
       description: parseString(json['description']) ?? '',
       status: parseString(json['status'])?.toUpperCase() ?? 'DRAFT',
-      statusDisplay: parseString(json['status_display']) ??
+      statusDisplay:
+          parseString(json['status_display']) ??
           parseString(json['status']) ??
           'Draft',
       serviceCategory: parseString(json['service_category']) ?? 'Service',
-      serviceName: parseString(json['service_name']) ??
+      serviceName:
+          parseString(json['service_name']) ??
           parseString(json['title']) ??
           'Quotation',
       jobId: parseInt(json['job_id']) ?? 0,
@@ -71,20 +78,37 @@ class AdminQuotation {
       inspectionFee: parseDouble(json['inspection_fee']) ?? 0.0,
       inspectionFeeAdjusted:
           parseDouble(json['inspection_fee_adjusted']) ?? 0.0,
-      netPayable: parseDouble(json['net_payable']) ??
+      netPayable:
+          parseDouble(json['net_payable']) ??
           parseDouble(json['total_amount']) ??
           0.0,
-      requiresStructuralClearance:
-          parseBool(json['requires_structural_clearance']),
+      requiresStructuralClearance: parseBool(
+        json['requires_structural_clearance'],
+      ),
       isStructurallyCleared: parseBool(json['is_structurally_cleared']),
       customerDecision: parseString(json['customer_decision']),
       customerDeclineReason: parseString(json['customer_decline_reason']),
       customerNotes: parseString(json['customer_notes']),
-      submittedForApprovalAt:
-          parseDateTime(json['submitted_for_approval_at']),
+      submittedForApprovalAt: parseDateTime(json['submitted_for_approval_at']),
       validUntil: parseDateTime(json['valid_until']),
       createdAt: parseDateTime(json['created_at']),
       updatedAt: parseDateTime(json['updated_at']),
+      customerDecidedAt: parseDateTime(json['customer_decided_at']),
+      advanceAmount: parseDouble(json['advance_amount']),
+      balanceAmount: parseDouble(json['balance_amount']),
+      items: [
+        for (final i
+            in (json['items'] is List ? json['items'] as List : const []))
+          if (i is Map) AdminQuoteItem.fromJson(Map<String, dynamic>.from(i)),
+      ],
+      measurements: [
+        for (final m
+            in (json['measurements'] is List
+                ? json['measurements'] as List
+                : const []))
+          if (m is Map)
+            AdminQuoteMeasurement.fromJson(Map<String, dynamic>.from(m)),
+      ],
     );
   }
 
@@ -121,4 +145,98 @@ class AdminQuotation {
   final DateTime? validUntil;
   final DateTime? createdAt;
   final DateTime? updatedAt;
+  final DateTime? customerDecidedAt;
+  final double? advanceAmount;
+  final double? balanceAmount;
+  final List<AdminQuoteItem> items;
+  final List<AdminQuoteMeasurement> measurements;
+
+  double _round(double v) => (v * 100).roundToDouble() / 100;
+
+  /// 50% advance milestone; the Web falls back to half the net payable.
+  double get advance => advanceAmount ?? _round(netPayable * 0.5);
+
+  /// 50% completion balance.
+  double get balance => balanceAmount ?? _round(netPayable - advance);
+
+  double get totalArea => measurements.fold(0.0, (sum, m) => sum + m.area);
+
+  bool get isHeldForReview => status == 'PENDING_REVIEW';
+  bool get isAwaitingApproval =>
+      status == 'CUSTOMER_ACCEPTED' || status == 'PENDING_ADMIN_APPROVAL';
+
+  /// Status label as the Web badge prints it.
+  String get statusLabel => isHeldForReview
+      ? 'HELD FOR CRM REVIEW'
+      : (statusDisplay.isNotEmpty
+            ? statusDisplay
+            : status.replaceAll('_', ' '));
+}
+
+class AdminQuoteItem {
+  const AdminQuoteItem({
+    required this.name,
+    required this.quantity,
+    required this.unit,
+    required this.unitPrice,
+    required this.taxRate,
+    this.section,
+    required this.total,
+  });
+
+  factory AdminQuoteItem.fromJson(Map<String, dynamic> json) {
+    return AdminQuoteItem(
+      name:
+          parseString(json['name']) ??
+          parseString(json['description']) ??
+          'Quotation Item',
+      quantity: parseDouble(json['quantity']) ?? 0,
+      unit: parseString(json['unit']) ?? 'sqft',
+      unitPrice:
+          parseDouble(json['unit_price']) ?? parseDouble(json['rate']) ?? 0,
+      taxRate: parseDouble(json['tax_rate']) ?? 0,
+      section: parseString(json['section']),
+      total:
+          parseDouble(json['total_amount']) ??
+          parseDouble(json['line_total']) ??
+          0,
+    );
+  }
+
+  final String name;
+  final double quantity;
+  final String unit;
+  final double unitPrice;
+  final double taxRate;
+  final String? section;
+  final double total;
+}
+
+class AdminQuoteMeasurement {
+  const AdminQuoteMeasurement({
+    required this.name,
+    this.length,
+    this.width,
+    this.height,
+    required this.area,
+  });
+
+  factory AdminQuoteMeasurement.fromJson(Map<String, dynamic> json) {
+    return AdminQuoteMeasurement(
+      name: parseString(json['name']) ?? '',
+      length: parseDouble(json['length']),
+      width: parseDouble(json['width']),
+      height: parseDouble(json['height']),
+      area:
+          parseDouble(json['area']) ??
+          parseDouble(json['calculated_area']) ??
+          0,
+    );
+  }
+
+  final String name;
+  final double? length;
+  final double? width;
+  final double? height;
+  final double area;
 }

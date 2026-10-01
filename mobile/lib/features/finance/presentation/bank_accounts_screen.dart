@@ -1,3 +1,6 @@
+import '../../../shared/widgets/sevo/sevo_module_frame.dart';
+import '../../../shared/widgets/sevo/sevo_module_art.dart';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,7 +16,6 @@ import 'package:mobile/features/finance/presentation/widgets/bank_account_card.d
 import 'package:mobile/routing/app_routes.dart';
 import 'package:mobile/shared/widgets/app_card.dart';
 import 'package:mobile/shared/widgets/empty_state.dart';
-import 'package:mobile/shared/widgets/workforce_app_bar.dart';
 
 /// Bank accounts management screen for technician payouts.
 ///
@@ -84,7 +86,9 @@ class _BankAccountsScreenState extends ConsumerState<BankAccountsScreen> {
     if (confirmed != true) return;
 
     try {
-      await ref.read(financeRepositoryProvider).deactivatePayoutAccount(account.id);
+      await ref
+          .read(financeRepositoryProvider)
+          .deactivatePayoutAccount(account.id);
       ref.invalidate(payoutAccountsProvider);
       ref.invalidate(withdrawalEligibilityProvider);
 
@@ -100,7 +104,9 @@ class _BankAccountsScreenState extends ConsumerState<BankAccountsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(describeDioError(e, fallback: 'Failed to deactivate account.')),
+            content: Text(
+              describeDioError(e, fallback: 'Failed to deactivate account.'),
+            ),
             backgroundColor: const Color(0xFFE11D48),
           ),
         );
@@ -112,13 +118,11 @@ class _BankAccountsScreenState extends ConsumerState<BankAccountsScreen> {
   Widget build(BuildContext context) {
     final accountsAsync = ref.watch(payoutAccountsProvider);
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: const WorkforceAppBar(
-        titleText: 'Bank Accounts',
-        showBrand: false,
-        showStatusSubBar: false,
-      ),
+    return SevoModuleFrame(
+      module: SevoModule.payoutAccounts,
+      title: 'Bank Accounts',
+      withDrawer: false,
+      transition: false,
       body: RefreshIndicator(
         onRefresh: _handleRefresh,
         child: ListView(
@@ -145,7 +149,11 @@ class _BankAccountsScreenState extends ConsumerState<BankAccountsScreen> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.arrow_back_rounded, size: 16, color: AppColors.primary),
+                    Icon(
+                      Icons.arrow_back_rounded,
+                      size: 16,
+                      color: AppColors.primary,
+                    ),
                     const SizedBox(width: 4),
                     Text(
                       'Back to Wallet',
@@ -196,11 +204,19 @@ class _BankAccountsScreenState extends ConsumerState<BankAccountsScreen> {
                         : const Icon(Icons.refresh_rounded, size: 16),
                     label: const FittedBox(
                       fit: BoxFit.scaleDown,
-                      child: Text('Refresh', style: TextStyle(fontWeight: FontWeight.w700)),
+                      child: Text(
+                        'Refresh',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
                     ),
                     style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 10,
+                        horizontal: 4,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
                   ),
                 ),
@@ -211,12 +227,20 @@ class _BankAccountsScreenState extends ConsumerState<BankAccountsScreen> {
                     icon: const Icon(Icons.add_rounded, size: 16),
                     label: const FittedBox(
                       fit: BoxFit.scaleDown,
-                      child: Text('Add Bank Account', style: TextStyle(fontWeight: FontWeight.w800)),
+                      child: Text(
+                        'Add Bank Account',
+                        style: TextStyle(fontWeight: FontWeight.w800),
+                      ),
                     ),
                     style: FilledButton.styleFrom(
                       backgroundColor: AppColors.primary,
-                      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 10,
+                        horizontal: 4,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
                   ),
                 ),
@@ -258,7 +282,8 @@ class _BankAccountsScreenState extends ConsumerState<BankAccountsScreen> {
                           'Full bank account numbers are submitted via encrypted transport and discarded after extracting the last 4 digits.',
                           style: TextStyle(
                             fontSize: 11.5,
-                            color: const Color(0xFF1E40AF).withValues(alpha: 0.85),
+                            color: const Color(0xFF1E40AF)
+                                .withValues(alpha: 0.85),
                             height: 1.35,
                           ),
                         ),
@@ -309,17 +334,27 @@ class _BankAccountsScreenState extends ConsumerState<BankAccountsScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.error_outline_rounded, size: 40, color: Color(0xFFE11D48)),
+                      const Icon(
+                        Icons.error_outline_rounded,
+                        size: 40,
+                        color: Color(0xFFE11D48),
+                      ),
                       const SizedBox(height: AppSpacing.md),
                       const Text(
                         'Failed to load bank accounts',
-                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         err.toString(),
                         textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textMuted,
+                        ),
                       ),
                       const SizedBox(height: AppSpacing.md),
                       ElevatedButton.icon(
@@ -334,14 +369,16 @@ class _BankAccountsScreenState extends ConsumerState<BankAccountsScreen> {
               data: (accounts) {
                 if (accounts.isEmpty) {
                   return AppCard(
-                    padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 24,
+                      horizontal: 16,
+                    ),
                     child: Column(
                       children: [
                         const EmptyState(
                           icon: Icons.account_balance_outlined,
                           title: 'No Bank Accounts Linked',
-                          message:
-                              'Add a verified bank account to enable self-service payouts.',
+                          message: 'Add a verified bank account to enable self-service payouts.',
                         ),
                         const SizedBox(height: AppSpacing.md),
                         FilledButton.icon(
@@ -350,8 +387,13 @@ class _BankAccountsScreenState extends ConsumerState<BankAccountsScreen> {
                           label: const Text('Add Bank Account'),
                           style: FilledButton.styleFrom(
                             backgroundColor: const Color(0xFF004E89),
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 10,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
                           ),
                         ),
                       ],

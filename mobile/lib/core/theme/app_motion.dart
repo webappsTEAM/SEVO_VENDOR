@@ -29,6 +29,9 @@ class AppMotion {
   static const Duration normal = Duration(milliseconds: 200);
   static const Duration slow = Duration(milliseconds: 250);
 
+  /// Page / header entrance (200–350ms band used by the premium screens).
+  static const Duration entrance = Duration(milliseconds: 300);
+
   /// Standard easing: decelerates into place, no overshoot or bounce.
   static const Curve curve = Curves.easeOutCubic;
 

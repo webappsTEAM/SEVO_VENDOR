@@ -36,7 +36,10 @@ class AppColors {
   static Brightness _brightness = Brightness.light;
   static bool _highContrast = false;
 
-  static void configure({required Brightness brightness, required bool highContrast}) {
+  static void configure({
+    required Brightness brightness,
+    required bool highContrast,
+  }) {
     _brightness = brightness;
     _highContrast = highContrast;
   }
@@ -55,8 +58,11 @@ class AppColors {
   static const Color emerald = Color(0xFF059669);
   static const Color mintAccent = Color(0xFF10B981);
   static const Color darkSurface = Color(0xFF003B46);
-  static Color get selectedTint => _isDark ? const Color(0xFF005965).withValues(alpha: 0.25) : const Color(0xFFE6F4F1);
-  static Color get selectedOnTint => _isDark ? const Color(0xFF2DD4BF) : const Color(0xFF005965);
+  static Color get selectedTint => _isDark
+      ? const Color(0xFF005965).withValues(alpha: 0.25)
+      : const Color(0xFFE6F4F1);
+  static Color get selectedOnTint =>
+      _isDark ? const Color(0xFF2DD4BF) : const Color(0xFF005965);
 
   // SEVO Header Gradient
   static const LinearGradient peacockGradient = LinearGradient(
@@ -72,11 +78,7 @@ class AppColors {
   static const LinearGradient tealGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [
-      Color(0xFF003B46),
-      Color(0xFF005965),
-      Color(0xFF028090),
-    ],
+    colors: [Color(0xFF003B46), Color(0xFF005965), Color(0xFF028090)],
   );
 
   // Semantic color families
@@ -109,23 +111,40 @@ class AppColors {
   );
 
   // Dynamic semantic badge helpers that adapt to dark theme
-  static Color get successBg => _isDark ? const Color(0xFF064E3B).withValues(alpha: 0.35) : const Color(0xFFECFDF5);
-  static Color get successBorder => _isDark ? const Color(0xFF065F46) : const Color(0xFFA7F3D0);
-  static Color get successText => _isDark ? const Color(0xFF34D399) : const Color(0xFF047857);
+  static Color get successBg => _isDark
+      ? const Color(0xFF064E3B).withValues(alpha: 0.35)
+      : const Color(0xFFECFDF5);
+  static Color get successBorder =>
+      _isDark ? const Color(0xFF065F46) : const Color(0xFFA7F3D0);
+  static Color get successText =>
+      _isDark ? const Color(0xFF34D399) : const Color(0xFF047857);
 
-  static Color get warningBg => _isDark ? const Color(0xFF78350F).withValues(alpha: 0.35) : const Color(0xFFFEF3C7);
-  static Color get warningBorder => _isDark ? const Color(0xFF92400E) : const Color(0xFFFDE68A);
-  static Color get warningText => _isDark ? const Color(0xFFFBBF24) : const Color(0xFF92400E);
+  static Color get warningBg => _isDark
+      ? const Color(0xFF78350F).withValues(alpha: 0.35)
+      : const Color(0xFFFEF3C7);
+  static Color get warningBorder =>
+      _isDark ? const Color(0xFF92400E) : const Color(0xFFFDE68A);
+  static Color get warningText =>
+      _isDark ? const Color(0xFFFBBF24) : const Color(0xFF92400E);
 
-  static Color get errorBg => _isDark ? const Color(0xFF7F1D1D).withValues(alpha: 0.35) : const Color(0xFFFEF2F2);
-  static Color get errorBorder => _isDark ? const Color(0xFF991B1B) : const Color(0xFFFECACA);
-  static Color get errorText => _isDark ? const Color(0xFFF87171) : const Color(0xFF991B1B);
+  static Color get errorBg => _isDark
+      ? const Color(0xFF7F1D1D).withValues(alpha: 0.35)
+      : const Color(0xFFFEF2F2);
+  static Color get errorBorder =>
+      _isDark ? const Color(0xFF991B1B) : const Color(0xFFFECACA);
+  static Color get errorText =>
+      _isDark ? const Color(0xFFF87171) : const Color(0xFF991B1B);
 
-  static Color get infoBg => _isDark ? const Color(0xFF1E3A8A).withValues(alpha: 0.35) : const Color(0xFFEFF6FF);
-  static Color get infoBorder => _isDark ? const Color(0xFF1E40AF) : const Color(0xFFBFDBFE);
-  static Color get infoText => _isDark ? const Color(0xFF60A5FA) : const Color(0xFF1D4ED8);
+  static Color get infoBg => _isDark
+      ? const Color(0xFF1E3A8A).withValues(alpha: 0.35)
+      : const Color(0xFFEFF6FF);
+  static Color get infoBorder =>
+      _isDark ? const Color(0xFF1E40AF) : const Color(0xFFBFDBFE);
+  static Color get infoText =>
+      _isDark ? const Color(0xFF60A5FA) : const Color(0xFF1D4ED8);
 
-  static Color get surfaceMuted => _isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9);
+  static Color get surfaceMuted =>
+      _isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9);
 
   static Color get background =>
       _isDark ? const Color(0xFF0B1220) : const Color(0xFFF8FAFC);
@@ -133,7 +152,8 @@ class AppColors {
   static Color get surface => _isDark ? const Color(0xFF151E2E) : Colors.white;
 
   static Color get border {
-    if (_isDark) return _highContrast ? Colors.white54 : const Color(0xFF243044);
+    if (_isDark)
+      return _highContrast ? Colors.white54 : const Color(0xFF243044);
     return _highContrast ? Colors.black54 : const Color(0xFFE2E8F0);
   }
 
@@ -145,7 +165,59 @@ class AppColors {
   static Color get textSecondary =>
       _isDark ? const Color(0xFFCBD5E1) : const Color(0xFF64748B);
 
-  static Color get textMuted => _isDark ? const Color(0xFF94A3B8) : const Color(0xFF94A3B8);
+  static Color get textMuted =>
+      _isDark ? const Color(0xFF94A3B8) : const Color(0xFF94A3B8);
+
+  // ── Premium surface tokens (Platform Governance design language) ──────────
+
+  /// A surface one step above [surface] (sheets, floating elements, pressed cards).
+  static Color get elevatedSurface =>
+      _isDark ? const Color(0xFF1B2638) : Colors.white;
+
+  /// Primary action colour that keeps contrast on both backgrounds
+  /// (deep teal on light, brighter teal on the navy dark surfaces).
+  static Color get actionColor => _isDark ? const Color(0xFF0D9488) : primary;
+
+  /// Teal used for text/icons on [surface] (links, accents).
+  static Color get accentOnSurface =>
+      _isDark ? const Color(0xFF2DD4BF) : primary;
+
+  /// Softened ink for headings/names: crisp but not "pure black" (slate-800 on
+  /// light, the regular light text on dark). Body copy uses [bodyText].
+  static Color get headingText {
+    if (_isDark) return _highContrast ? Colors.white : const Color(0xFFF1F5F9);
+    return _highContrast ? Colors.black : const Color(0xFF1E293B);
+  }
+
+  /// Comfortable reading colour for body copy (slate-600 / slate-300).
+  static Color get bodyText {
+    if (_isDark) return _highContrast ? Colors.white : const Color(0xFFCBD5E1);
+    return _highContrast ? Colors.black : const Color(0xFF475569);
+  }
+
+  /// One soft shadow in light theme; dark theme relies on the border instead.
+  static List<BoxShadow> get cardShadow => _isDark
+      ? const []
+      : const [
+          BoxShadow(
+            color: Color(0x0D0F172A),
+            blurRadius: 12,
+            offset: Offset(0, 3),
+          ),
+        ];
+
+  /// Hero gradient for primary call-to-action cards.
+  static LinearGradient get heroGradient => _isDark
+      ? const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF0B3A44), Color(0xFF0F5560), Color(0xFF117A85)],
+        )
+      : const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF003B46), Color(0xFF005965), Color(0xFF028090)],
+        );
 }
 
 /// A small, consistent spacing scale used across every screen so padding
@@ -178,18 +250,10 @@ class AppElevation {
 
   static const List<BoxShadow> none = [];
   static const List<BoxShadow> subtle = [
-    BoxShadow(
-      color: Color(0x060A2540),
-      blurRadius: 8,
-      offset: Offset(0, 2),
-    ),
+    BoxShadow(color: Color(0x060A2540), blurRadius: 8, offset: Offset(0, 2)),
   ];
   static const List<BoxShadow> elevated = [
-    BoxShadow(
-      color: Color(0x0E0A2540),
-      blurRadius: 16,
-      offset: Offset(0, 4),
-    ),
+    BoxShadow(color: Color(0x0E0A2540), blurRadius: 16, offset: Offset(0, 4)),
   ];
 }
 
@@ -281,7 +345,10 @@ class AppTheme {
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: AppColors.border, width: highContrast ? 1.4 : 1),
+          side: BorderSide(
+            color: AppColors.border,
+            width: highContrast ? 1.4 : 1,
+          ),
         ),
       ),
       bottomSheetTheme: BottomSheetThemeData(
@@ -301,7 +368,10 @@ class AppTheme {
         backgroundColor: AppColors.surface,
         surfaceTintColor: Colors.transparent,
       ),
-      dividerTheme: DividerThemeData(color: AppColors.border, thickness: highContrast ? 1.2 : 1),
+      dividerTheme: DividerThemeData(
+        color: AppColors.border,
+        thickness: highContrast ? 1.2 : 1,
+      ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: AppColors.surface,
         surfaceTintColor: Colors.transparent,
@@ -315,7 +385,9 @@ class AppTheme {
             fontSize: 11.5,
             fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
             color: selected
-                ? (brightness == Brightness.dark ? const Color(0xFF38BDF8) : const Color(0xFF005965))
+                ? (brightness == Brightness.dark
+                      ? const Color(0xFF38BDF8)
+                      : const Color(0xFF005965))
                 : AppColors.textSecondary,
           );
         }),
@@ -333,9 +405,17 @@ class AppTheme {
           foregroundColor: Colors.white,
           elevation: 0,
           minimumSize: const Size(64, 44),
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: 12),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg,
+            vertical: 12,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+          textStyle: const TextStyle(
+            fontWeight: FontWeight.w800,
+            fontSize: 13.5,
+          ),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
@@ -343,26 +423,78 @@ class AppTheme {
           foregroundColor: const Color(0xFF005965),
           side: const BorderSide(color: Color(0xFF005965)),
           minimumSize: const Size(64, 44),
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: 12),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg,
+            vertical: 12,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+          textStyle: const TextStyle(
+            fontWeight: FontWeight.w700,
+            fontSize: 13.5,
+          ),
         ),
       ),
       textTheme: TextTheme(
-        displayLarge: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
-        displayMedium: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
-        displaySmall: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
-        headlineLarge: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
-        headlineMedium: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
-        headlineSmall: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
-        titleLarge: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
-        titleMedium: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-        titleSmall: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+        displayLarge: TextStyle(
+          fontSize: 32,
+          fontWeight: FontWeight.bold,
+          color: AppColors.textPrimary,
+        ),
+        displayMedium: TextStyle(
+          fontSize: 28,
+          fontWeight: FontWeight.bold,
+          color: AppColors.textPrimary,
+        ),
+        displaySmall: TextStyle(
+          fontSize: 24,
+          fontWeight: FontWeight.bold,
+          color: AppColors.textPrimary,
+        ),
+        headlineLarge: TextStyle(
+          fontSize: 24,
+          fontWeight: FontWeight.bold,
+          color: AppColors.textPrimary,
+        ),
+        headlineMedium: TextStyle(
+          fontSize: 20,
+          fontWeight: FontWeight.bold,
+          color: AppColors.textPrimary,
+        ),
+        headlineSmall: TextStyle(
+          fontSize: 18,
+          fontWeight: FontWeight.bold,
+          color: AppColors.textPrimary,
+        ),
+        titleLarge: TextStyle(
+          fontSize: 18,
+          fontWeight: FontWeight.bold,
+          color: AppColors.textPrimary,
+        ),
+        titleMedium: TextStyle(
+          fontSize: 15,
+          fontWeight: FontWeight.w700,
+          color: AppColors.textPrimary,
+        ),
+        titleSmall: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w700,
+          color: AppColors.textPrimary,
+        ),
         bodyLarge: TextStyle(fontSize: 15, color: AppColors.textPrimary),
         bodyMedium: TextStyle(fontSize: 13.5, color: AppColors.textSecondary),
         bodySmall: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-        labelLarge: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-        labelMedium: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
+        labelLarge: TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w700,
+          color: AppColors.textPrimary,
+        ),
+        labelMedium: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: AppColors.textSecondary,
+        ),
         labelSmall: TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.w700,
@@ -373,7 +505,10 @@ class AppTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: AppColors.surface,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 12,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: AppColors.border),

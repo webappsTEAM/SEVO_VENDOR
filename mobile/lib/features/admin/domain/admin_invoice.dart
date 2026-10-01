@@ -26,7 +26,8 @@ class AdminInvoiceItem {
       unitPrice: parseDouble(json['unit_price']) ?? 0.0,
       taxRate: parseDouble(json['tax_rate']) ?? 0.0,
       discountAmount: parseDouble(json['discount_amount']) ?? 0.0,
-      totalAmount: parseDouble(json['total_amount']) ??
+      totalAmount:
+          parseDouble(json['total_amount']) ??
           parseDouble(json['line_total']) ??
           0.0,
     );
@@ -63,7 +64,8 @@ class AdminInvoicePayment {
       method: parseString(json['method']) ?? 'ONLINE',
       reference: parseString(json['reference']) ?? '',
       status: parseString(json['status']) ?? 'COMPLETED',
-      recordedAt: parseDateTime(json['recorded_at']) ??
+      recordedAt:
+          parseDateTime(json['recorded_at']) ??
           parseDateTime(json['created_at']),
       ledgerEntryId: parseInt(json['ledger_entry_id']),
     );
@@ -115,6 +117,8 @@ class AdminInvoice {
     this.cancelledAt,
     this.items = const [],
     this.payments = const [],
+    this.jobRequestId,
+    this.technicianName,
   });
 
   factory AdminInvoice.fromJson(Map<String, dynamic> json) {
@@ -123,10 +127,10 @@ class AdminInvoice {
 
     return AdminInvoice(
       id: parseInt(json['id']) ?? 0,
-      invoiceNumber:
-          parseString(json['invoice_number']) ?? 'INV-${json['id']}',
+      invoiceNumber: parseString(json['invoice_number']) ?? 'INV-${json['id']}',
       status: parseString(json['status'])?.toUpperCase() ?? 'ISSUED',
-      statusDisplay: parseString(json['status_display']) ??
+      statusDisplay:
+          parseString(json['status_display']) ??
           parseString(json['status']) ??
           'Issued',
       quoteId: parseInt(json['quote_id']),
@@ -152,23 +156,25 @@ class AdminInvoice {
       advancePercent: parseDouble(json['advance_percent']),
       advanceAmount: parseDouble(json['advance_amount']) ?? 0.0,
       balanceAmount: parseDouble(json['balance_amount']) ?? 0.0,
-      issuedAt: parseDateTime(json['issued_at']) ??
-          parseDateTime(json['created_at']),
-      dueDate: parseDateTime(json['due_date']),
+      issuedAt:
+          parseDateTime(json['issued_at']) ?? parseDateTime(json['created_at']),
+      dueDate: parseDateTime(json['due_at']) ?? parseDateTime(json['due_date']),
       paidAt: parseDateTime(json['paid_at']),
       cancelledAt: parseDateTime(json['cancelled_at']),
       items: itemsJson is List
           ? itemsJson
-              .whereType<Map<String, dynamic>>()
-              .map(AdminInvoiceItem.fromJson)
-              .toList()
+                .whereType<Map<String, dynamic>>()
+                .map(AdminInvoiceItem.fromJson)
+                .toList()
           : const [],
       payments: paymentsJson is List
           ? paymentsJson
-              .whereType<Map<String, dynamic>>()
-              .map(AdminInvoicePayment.fromJson)
-              .toList()
+                .whereType<Map<String, dynamic>>()
+                .map(AdminInvoicePayment.fromJson)
+                .toList()
           : const [],
+      jobRequestId: parseString(json['job_request_id']),
+      technicianName: parseString(json['technician_name']),
     );
   }
 
@@ -204,6 +210,24 @@ class AdminInvoice {
   final DateTime? cancelledAt;
   final List<AdminInvoiceItem> items;
   final List<AdminInvoicePayment> payments;
+
+  /// Booking reference such as `SR-6980` (Web: "Booking: …").
+  final String? jobRequestId;
+  final String? technicianName;
+
+  String? get bookingReference =>
+      jobRequestId ?? (jobId != null ? 'Job #$jobId' : null);
+
+  /// Status label as the Web `STATUS_CONFIGS` prints it.
+  String get statusLabel => switch (status) {
+    'PAID' => 'Paid',
+    'ISSUED' => 'Issued (Pending)',
+    'PARTIALLY_PAID' => 'Partially Paid',
+    'CANCELLED' => 'Cancelled',
+    'REFUNDED' => 'Refunded',
+    'DRAFT' => 'Draft',
+    _ => statusDisplay,
+  };
 
   bool get isIssued => status == 'ISSUED';
   bool get isPartiallyPaid => status == 'PARTIALLY_PAID';

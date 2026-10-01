@@ -1,3 +1,6 @@
+import '../../../../shared/widgets/sevo/sevo_module_frame.dart';
+import '../../../../shared/widgets/sevo/sevo_module_art.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -5,9 +8,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../routing/app_routes.dart';
 import '../../../../shared/widgets/status_chip.dart';
-import '../../../../shared/widgets/workforce_app_bar.dart';
 import '../admin_dashboard_providers.dart';
-import '../widgets/admin_drawer.dart';
 
 /// Admin Company Profile Screen.
 /// Displays organization legal details, primary administrator, verification status, and business entities.
@@ -18,13 +19,9 @@ class AdminProviderProfileScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final profileAsync = ref.watch(adminProviderProfileProvider);
 
-    return Scaffold(
-      appBar: const WorkforceAppBar(
-        titleText: 'Company Profile',
-        showStatusSubBar: false,
-        showDrawerMenu: true,
-      ),
-      drawer: const AdminDrawer(),
+    return SevoModuleFrame(
+      module: SevoModule.companyProfile,
+      title: 'Company Profile',
       body: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(adminProviderProfileProvider);
@@ -43,12 +40,20 @@ class AdminProviderProfileScreen extends ConsumerWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.error_outline_rounded, color: Color(0xFFDC2626), size: 40),
+                  const Icon(
+                    Icons.error_outline_rounded,
+                    color: Color(0xFFDC2626),
+                    size: 40,
+                  ),
                   const SizedBox(height: 12),
-                  Text('Failed to load company profile: $err', textAlign: TextAlign.center),
+                  Text(
+                    'Failed to load company profile: $err',
+                    textAlign: TextAlign.center,
+                  ),
                   const SizedBox(height: 16),
                   FilledButton(
-                    onPressed: () => ref.invalidate(adminProviderProfileProvider),
+                    onPressed: () =>
+                        ref.invalidate(adminProviderProfileProvider),
                     child: Text('Retry'),
                   ),
                 ],
@@ -121,21 +126,34 @@ class AdminProviderProfileScreen extends ConsumerWidget {
                                 Row(
                                   children: [
                                     StatusChip(
-                                      status: profile.isActive ? 'active' : 'inactive',
+                                      status: profile.isActive
+                                          ? 'active'
+                                          : 'inactive',
                                     ),
                                     const SizedBox(width: 6),
                                     if (profile.isVerified)
                                       Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 6,
+                                          vertical: 2,
+                                        ),
                                         decoration: BoxDecoration(
                                           color: const Color(0xFFECFDF5),
-                                          borderRadius: BorderRadius.circular(4),
-                                          border: Border.all(color: const Color(0xFFA7F3D0)),
+                                          borderRadius: BorderRadius.circular(
+                                            4,
+                                          ),
+                                          border: Border.all(
+                                            color: const Color(0xFFA7F3D0),
+                                          ),
                                         ),
                                         child: Row(
                                           mainAxisSize: MainAxisSize.min,
                                           children: [
-                                            Icon(Icons.verified_rounded, size: 12, color: Color(0xFF059669)),
+                                            Icon(
+                                              Icons.verified_rounded,
+                                              size: 12,
+                                              color: Color(0xFF059669),
+                                            ),
                                             SizedBox(width: 3),
                                             Text(
                                               'VERIFIED',
@@ -193,7 +211,10 @@ class AdminProviderProfileScreen extends ConsumerWidget {
                   children: [
                     _buildInfoRow('Legal Company Name', profile.companyName),
                     if (profile.registrationNumber != null)
-                      _buildInfoRow('Registration / Tax No', profile.registrationNumber!),
+                      _buildInfoRow(
+                        'Registration / Tax No',
+                        profile.registrationNumber!,
+                      ),
                     if (profile.email != null)
                       _buildInfoRow('Contact Email', profile.email!),
                     if (profile.phone != null)
@@ -211,14 +232,25 @@ class AdminProviderProfileScreen extends ConsumerWidget {
                     children: [
                       _buildInfoRow(
                         'Admin Name',
-                        '${profile.primaryAdmin!['first_name'] ?? ''} ${profile.primaryAdmin!['last_name'] ?? ''}'.trim().isEmpty
-                            ? (profile.primaryAdmin!['username'] ?? 'Primary Admin').toString()
-                            : '${profile.primaryAdmin!['first_name'] ?? ''} ${profile.primaryAdmin!['last_name'] ?? ''}'.trim(),
+                        '${profile.primaryAdmin!['first_name'] ?? ''} ${profile.primaryAdmin!['last_name'] ?? ''}'
+                                .trim()
+                                .isEmpty
+                            ? (profile.primaryAdmin!['username'] ??
+                                      'Primary Admin')
+                                  .toString()
+                            : '${profile.primaryAdmin!['first_name'] ?? ''} ${profile.primaryAdmin!['last_name'] ?? ''}'
+                                  .trim(),
                       ),
                       if (profile.primaryAdmin!['email'] != null)
-                        _buildInfoRow('Admin Email', profile.primaryAdmin!['email'].toString()),
+                        _buildInfoRow(
+                          'Admin Email',
+                          profile.primaryAdmin!['email'].toString(),
+                        ),
                       if (profile.primaryAdmin!['username'] != null)
-                        _buildInfoRow('Username', profile.primaryAdmin!['username'].toString()),
+                        _buildInfoRow(
+                          'Username',
+                          profile.primaryAdmin!['username'].toString(),
+                        ),
                     ],
                   ),
                   const SizedBox(height: AppSpacing.md),
@@ -247,7 +279,8 @@ class AdminProviderProfileScreen extends ConsumerWidget {
                       _buildNavRow(
                         icon: Icons.people_alt_rounded,
                         title: 'Tied Technicians Roster',
-                        onTap: () => context.push(AppRoutes.adminTiedTechnicians),
+                        onTap: () =>
+                            context.push(AppRoutes.adminTiedTechnicians),
                       ),
                       Divider(height: 1, color: Color(0xFFF1F5F9)),
                       _buildNavRow(
@@ -259,7 +292,8 @@ class AdminProviderProfileScreen extends ConsumerWidget {
                       _buildNavRow(
                         icon: Icons.account_balance_wallet_rounded,
                         title: 'Company Wallet & Ledger',
-                        onTap: () => context.push(AppRoutes.adminFinanceWallets),
+                        onTap: () =>
+                            context.push(AppRoutes.adminFinanceWallets),
                       ),
                     ],
                   ),
@@ -412,7 +446,11 @@ class AdminProviderProfileScreen extends ConsumerWidget {
                 ),
               ),
             ),
-            Icon(Icons.chevron_right_rounded, size: 18, color: AppColors.textMuted),
+            Icon(
+              Icons.chevron_right_rounded,
+              size: 18,
+              color: AppColors.textMuted,
+            ),
           ],
         ),
       ),
