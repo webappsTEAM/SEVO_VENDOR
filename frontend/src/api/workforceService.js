@@ -2154,6 +2154,22 @@ export async function apiAdminDeleteDeliverySlot(id) {
   });
 }
 
+// ── Seller Product Variant Groups ──────────────────────────────────────────
+export async function apiSellerGetVariantGroups(params = {}) {
+  const qs = new URLSearchParams();
+  if (params.search) qs.set('search', params.search);
+  const queryStr = qs.toString();
+  return await apiRequest(`/workforce/seller-hub/variant-groups/${queryStr ? `?${queryStr}` : ''}`);
+}
+
+export async function apiSellerCreateVariantGroup(payload) {
+  return await apiRequest('/workforce/seller-hub/variant-groups/', {
+    method: 'POST',
+    json: payload,
+  });
+}
+
+
 
 
 // Toll / parking pass-through (policy = Customer GTExtraChargePolicy; see WorkforceJobLogisticsExtraChargeView).

@@ -4079,6 +4079,21 @@ class SellerProduct(models.Model):
     )
     unit = models.CharField(max_length=50, default="piece")
     pack_size = models.CharField(max_length=50, default="1")
+    variant_group = models.ForeignKey(
+        "SellerProductVariantGroup",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="variants",
+        db_index=True,
+        help_text="If set, this product is one size/qty option within a variant family.",
+    )
+    variant_label = models.CharField(
+        max_length=50,
+        blank=True,
+        default="",
+        help_text="Customer-facing option label for this variant, e.g. '50g', '100g', 'Pack of 6'.",
+    )
     mrp = models.DecimalField(max_digits=10, decimal_places=2)
     selling_price = models.DecimalField(max_digits=10, decimal_places=2)
     procurement_price = models.DecimalField(
@@ -4126,6 +4141,11 @@ class SellerProduct(models.Model):
                 fields=["company", "sku"],
                 name="unique_seller_product_sku_per_company",
             ),
+            models.UniqueConstraint(
+                fields=["variant_group", "variant_label"],
+                condition=models.Q(variant_group__isnull=False),
+                name="unique_variant_label_per_group",
+            ),
         ]
         indexes = [
             models.Index(fields=["company", "status"], name="wf_seller_prod_comp_st_idx"),
@@ -4167,6 +4187,30 @@ class SellerProductImage(models.Model):
         return f"Image for {self.product.title} (Primary: {self.is_primary})"
 
 
+class SellerProductSpec(models.Model):
+    """
+    Free-form additional specification bullet points for a SellerProduct,
+    e.g. 'Net Weight: 100g', 'Country of Origin: India' — similar to
+    Amazon's product detail bullets. Independent per variant SKU.
+    """
+    product = models.ForeignKey(
+        SellerProduct,
+        on_delete=models.CASCADE,
+        related_name="specs",
+    )
+    label = models.CharField(max_length=100)
+    value = models.CharField(max_length=255)
+    sort_order = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "workforce_seller_product_spec"
+        ordering = ["sort_order", "id"]
+
+    def __str__(self):
+        return f"{self.label}: {self.value} (Product #{self.product_id})"
+
+
 class SellerProductAuditLog(models.Model):
     """
     Immutable audit history of all reviewer and seller lifecycle actions on a product.
@@ -4195,6 +4239,42 @@ class SellerProductAuditLog(models.Model):
 
     def __str__(self):
         return f"Audit #{self.id} for Product #{self.product_id}: {self.action} ({self.from_status} -> {self.to_status})"
+
+
+class SellerProductVariantGroup(models.Model):
+    """
+    Groups sibling SellerProduct rows that are the same underlying product
+    at different sizes/quantities (e.g. Colgate Paste 50g / 100g), so they
+    render together on the customer product page as selectable options.
+    Each member is still an independently priced, stocked, and reviewed
+    SellerProduct — this is purely a display/grouping link.
+    """
+    company = models.ForeignKey(
+        "companies.Company",
+        on_delete=models.CASCADE,
+        related_name="product_variant_groups",
+        db_index=True,
+    )
+    group_title = models.CharField(
+        max_length=255,
+        help_text="Shared family name shown to the customer, e.g. 'Colgate Paste'.",
+    )
+    variant_attribute_name = models.CharField(
+        max_length=50,
+        default="Size",
+        help_text="Label for the selector, e.g. 'Size', 'Quantity', 'Weight'.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "workforce_seller_product_variant_group"
+        indexes = [
+            models.Index(fields=["company"], name="wf_variant_grp_company_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.group_title} ({self.company.company_name})"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # SELLER HUB BASKET / COMBO OFFERS (Phase 3 Bundle Extensions)
@@ -6091,9 +6171,6 @@ class DeliverySlotBooking(models.Model):
 
     def __str__(self):
         return f"Booking for Slot #{self.slot_id} on {self.delivery_date} (Order #{self.seller_order_id or 'N/A'})"
-
-
-
 
 
 

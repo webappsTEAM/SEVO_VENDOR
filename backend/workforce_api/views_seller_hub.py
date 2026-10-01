@@ -45,6 +45,7 @@ from workforce_api.models import (
     SellerProduct,
     SellerProductImage,
     SellerProductAuditLog,
+    SellerProductVariantGroup,
     SellerInventory,
     SellerInventoryBatch,
     SellerInventoryMovement,
@@ -64,6 +65,7 @@ from workforce_api.serializers import (
     SellerHubCategoryTreeSerializer,
     SellerCatalogCategoryItemSerializer,
     VendorCouponSerializer,
+    SellerProductVariantGroupSerializer,
     SellerProductListSerializer,
     SellerProductDetailSerializer,
     SellerProductCreateUpdateSerializer,
@@ -1215,7 +1217,7 @@ class SellerProductListView(APIView):
         is_super = is_platform_reviewer(user)
         company_id = _resolve_user_company_id(user)
 
-        queryset = SellerProduct.objects.select_related("category", "category__parent", "company", "reviewed_by", "created_by").prefetch_related("images")
+        queryset = SellerProduct.objects.select_related("category", "category__parent", "company", "reviewed_by", "created_by", "variant_group").prefetch_related("images")
 
         # Tenant Scoping: Sellers only see their company's products
         if not is_super:
@@ -1277,6 +1279,10 @@ class SellerProductListView(APIView):
         if isinstance(images_data, str):
             images_data = [images_data] if images_data.strip() else []
 
+        specs_data = data.pop("specs", [])
+        if not isinstance(specs_data, list):
+            specs_data = []
+
         initial_status = str(data.get("status", "DRAFT")).strip().upper()
         if initial_status not in [choice[0] for choice in SellerProduct.Status.choices]:
             initial_status = SellerProduct.Status.DRAFT
@@ -1314,6 +1320,19 @@ class SellerProductListView(APIView):
                         sort_order=idx,
                     )
 
+            # Create product specs
+            for s_idx, spec in enumerate(specs_data):
+                if isinstance(spec, dict):
+                    lbl = str(spec.get("label", "")).strip()
+                    val = str(spec.get("value", "")).strip()
+                    if lbl and val:
+                        SellerProductSpec.objects.create(
+                            product=product,
+                            label=lbl,
+                            value=val,
+                            sort_order=spec.get("sort_order", s_idx),
+                        )
+
             # Create immutable audit log
             SellerProductAuditLog.objects.create(
                 product=product,
@@ -1345,7 +1364,7 @@ class SellerProductDetailView(APIView):
         is_super = is_platform_reviewer(user)
         company_id = _resolve_user_company_id(user)
 
-        qs = SellerProduct.objects.select_related("category", "category__parent", "company", "reviewed_by", "created_by").prefetch_related("images", "audit_logs", "audit_logs__actor")
+        qs = SellerProduct.objects.select_related("category", "category__parent", "company", "reviewed_by", "created_by").prefetch_related("images", "specs", "audit_logs", "audit_logs__actor")
         if is_super:
             return qs.filter(pk=pk).first()
         if company_id:
@@ -1369,6 +1388,7 @@ class SellerProductDetailView(APIView):
 
         data = request.data.copy()
         images_data = data.pop("images", None)
+        specs_data = data.pop("specs", None)
 
         old_status = product.status
         old_title = product.title
@@ -1376,6 +1396,8 @@ class SellerProductDetailView(APIView):
         old_price = product.selling_price
         old_mrp = product.mrp
         old_category_id = product.category_id
+        old_variant_group_id = product.variant_group_id
+        old_variant_label = product.variant_label or ""
 
         # Rules for edits:
         # Sellers can edit Draft, Changes Requested, Rejected, and Paused products.
@@ -1419,6 +1441,21 @@ class SellerProductDetailView(APIView):
                             sort_order=idx,
                         )
 
+            # Handle spec replacements if provided
+            if specs_data is not None:
+                product.specs.all().delete()
+                for s_idx, spec in enumerate(specs_data):
+                    if isinstance(spec, dict):
+                        lbl = str(spec.get("label", "")).strip()
+                        val = str(spec.get("value", "")).strip()
+                        if lbl and val:
+                            SellerProductSpec.objects.create(
+                                product=product,
+                                label=lbl,
+                                value=val,
+                                sort_order=spec.get("sort_order", s_idx),
+                            )
+
             # Detect edits that require re-approval on an APPROVED product
             # Rule: edits to title, description, selling_price, images, or category trigger re-approval (SUBMITTED)
             reapproval_required = False
@@ -1441,6 +1478,12 @@ class SellerProductDetailView(APIView):
 
             if old_mrp != updated_product.mrp:
                 notes_list.append(f"MRP changed from ₹{old_mrp} to ₹{updated_product.mrp}")
+
+            if old_variant_group_id != updated_product.variant_group_id or old_variant_label != (updated_product.variant_label or ""):
+                if updated_product.variant_group:
+                    notes_list.append(f"Linked to variant family '{updated_product.variant_group.group_title}' ({updated_product.variant_label})")
+                else:
+                    notes_list.append("Unlinked from variant family")
 
             # Check if resubmission or status change
             if old_status == SellerProduct.Status.APPROVED and reapproval_required and not is_super:
@@ -1926,6 +1969,7 @@ class AdminProductApprovalDetailView(APIView):
             "company",
             "reviewed_by",
             "created_by",
+            "variant_group",
         ).prefetch_related(
             "images",
             "audit_logs",
@@ -2148,6 +2192,117 @@ class AdminProductBulkApproveView(APIView):
 
 
 
+class SellerProductVariantGroupListView(APIView):
+    """
+    GET  /api/workforce/seller-hub/variant-groups/ – List variant groups for the seller's company
+    POST /api/workforce/seller-hub/variant-groups/ – Create a new variant group
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        is_super = is_platform_reviewer(user)
+        company_id = _resolve_user_company_id(user)
+
+        qs = SellerProductVariantGroup.objects.select_related("company").prefetch_related("variants")
+        if not is_super:
+            if not company_id:
+                return Response(
+                    {"error": "User is not associated with an approved merchant company."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            qs = qs.filter(company_id=company_id)
+        else:
+            target_company = request.query_params.get("company_id")
+            if target_company and str(target_company).isdigit():
+                qs = qs.filter(company_id=int(target_company))
+
+        search = request.query_params.get("search", "").strip()
+        if search:
+            qs = qs.filter(group_title__icontains=search)
+
+        qs = qs.order_by("-updated_at")
+        serializer = SellerProductVariantGroupSerializer(qs, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        user = request.user
+        company_id = _resolve_user_company_id(user)
+        if not company_id:
+            return Response(
+                {"error": "Merchant store required to create variant groups."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        company = Company.objects.filter(pk=company_id).first()
+        if not company:
+            return Response({"error": "Merchant company not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        group_title = str(request.data.get("group_title", "")).strip()
+        if not group_title:
+            return Response(
+                {"error": "Variant group title (e.g. 'Colgate Paste') is required.", "field": "group_title"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        variant_attribute_name = str(request.data.get("variant_attribute_name", "Size")).strip() or "Size"
+
+        group, created = SellerProductVariantGroup.objects.get_or_create(
+            company=company,
+            group_title=group_title,
+            defaults={"variant_attribute_name": variant_attribute_name},
+        )
+        if not created and variant_attribute_name and group.variant_attribute_name != variant_attribute_name:
+            group.variant_attribute_name = variant_attribute_name
+            group.save(update_fields=["variant_attribute_name", "updated_at"])
+
+        serializer = SellerProductVariantGroupSerializer(group)
+        return Response(serializer.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+
+class SellerProductVariantGroupDetailView(APIView):
+    """
+    GET    /api/workforce/seller-hub/variant-groups/<int:pk>/
+    PATCH  /api/workforce/seller-hub/variant-groups/<int:pk>/
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _get_group(self, user, pk):
+        is_super = is_platform_reviewer(user)
+        company_id = _resolve_user_company_id(user)
+        qs = SellerProductVariantGroup.objects.select_related("company").prefetch_related("variants")
+        if is_super:
+            return qs.filter(pk=pk).first()
+        if company_id:
+            return qs.filter(pk=pk, company_id=company_id).first()
+        return None
+
+    def get(self, request, pk):
+        group = self._get_group(request.user, pk)
+        if not group:
+            return Response({"error": "Variant group not found."}, status=status.HTTP_404_NOT_FOUND)
+        return Response(SellerProductVariantGroupSerializer(group).data, status=status.HTTP_200_OK)
+
+    def patch(self, request, pk):
+        group = self._get_group(request.user, pk)
+        if not group:
+            return Response({"error": "Variant group not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        group_title = request.data.get("group_title")
+        if group_title is not None:
+            clean_title = str(group_title).strip()
+            if not clean_title:
+                return Response({"error": "Group title cannot be empty."}, status=status.HTTP_400_BAD_REQUEST)
+            group.group_title = clean_title
+
+        attr_name = request.data.get("variant_attribute_name")
+        if attr_name is not None:
+            group.variant_attribute_name = str(attr_name).strip() or "Size"
+
+        group.save(update_fields=["group_title", "variant_attribute_name", "updated_at"])
+        return Response(SellerProductVariantGroupSerializer(group).data, status=status.HTTP_200_OK)
+
+
 class SellerProductTemplateDownloadView(APIView):
     """
     GET /api/workforce/seller-hub/products/template/ – Download standardized bulk catalog upload CSV template
@@ -2169,6 +2324,8 @@ class SellerProductTemplateDownloadView(APIView):
             "Category_Slug",
             "Unit",
             "Pack_Size",
+            "Variant_Group",
+            "Variant_Label",
             "MRP",
             "Selling_Price",
             "Procurement_Price",
@@ -2187,13 +2344,15 @@ class SellerProductTemplateDownloadView(APIView):
 
         # Sample guide rows
         writer.writerow([
-            "Fortune Sunlite Refined Sunflower Oil",
+            "Fortune Sunlite Refined Sunflower Oil 1L",
             "100% pure refined sunflower oil for cooking.",
             "Fortune",
             "FORT-SUN-1L",
             "8901234567890",
             slug1,
             "litre",
+            "1L",
+            "Fortune Sunlite Sunflower Oil",
             "1L",
             "180.00",
             "165.00",
@@ -2205,7 +2364,27 @@ class SellerProductTemplateDownloadView(APIView):
             "Best before 9 months from manufacture",
         ])
         writer.writerow([
-            "Tata Sampann Unpolished Toor Dal",
+            "Fortune Sunlite Refined Sunflower Oil 5L",
+            "100% pure refined sunflower oil 5 litre can.",
+            "Fortune",
+            "FORT-SUN-5L",
+            "8901234567891",
+            slug1,
+            "litre",
+            "5L",
+            "Fortune Sunlite Sunflower Oil",
+            "5L",
+            "850.00",
+            "799.00",
+            "700.00",
+            "5.00",
+            "1512",
+            "https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?w=500",
+            "Store in a cool and dry place away from direct sunlight.",
+            "Best before 9 months from manufacture",
+        ])
+        writer.writerow([
+            "Tata Sampann Unpolished Toor Dal 1kg",
             "High protein unpolished toor dal rich in dietary fiber.",
             "Tata Sampann",
             "TATA-TOOR-1KG",
@@ -2213,6 +2392,8 @@ class SellerProductTemplateDownloadView(APIView):
             slug2,
             "kg",
             "1 kg",
+            "",
+            "",
             "195.00",
             "175.00",
             "150.00",
@@ -2400,6 +2581,20 @@ class SellerProductBulkUploadView(APIView):
             expiry_info = normalized_row.get("expiry_info", "")
             image_url = normalized_row.get("image_url", "")
 
+            # Variant Group & Label handling
+            variant_group_name = (
+                normalized_row.get("variant_group")
+                or normalized_row.get("variant_group_title")
+                or normalized_row.get("group_title", "")
+            ).strip()
+            variant_label = (
+                normalized_row.get("variant_label")
+                or normalized_row.get("variant_option", "")
+            ).strip()
+
+            if variant_group_name and not variant_label:
+                row_errors.append("Variant Label (e.g. '50g', '100g') is required when Variant Group is specified.")
+
             item_data = {
                 "row_number": idx,
                 "title": title,
@@ -2410,6 +2605,8 @@ class SellerProductBulkUploadView(APIView):
                 "category_name": cat_obj.name if cat_obj else cat_identifier,
                 "unit": unit,
                 "pack_size": pack_size,
+                "variant_group_name": variant_group_name,
+                "variant_label": variant_label,
                 "mrp": str(mrp_val) if mrp_val is not None else "",
                 "selling_price": str(price_val) if price_val is not None else "",
                 "procurement_price": str(procurement_price_val) if procurement_price_val is not None else None,
@@ -2432,6 +2629,26 @@ class SellerProductBulkUploadView(APIView):
                 })
 
             parsed_items.append(item_data)
+
+        # Validate duplicate variant_labels within the same variant_group in the batch
+        group_label_seen = set()
+        for it in parsed_items:
+            vg_name = it.get("variant_group_name", "")
+            vl = it.get("variant_label", "")
+            if vg_name and vl:
+                key = (vg_name.lower(), vl.lower())
+                if key in group_label_seen:
+                    err_msg = f"Duplicate variant label '{vl}' for variant group '{vg_name}' in this upload file."
+                    it["has_errors"] = True
+                    it["errors"].append(err_msg)
+                    error_report.append({
+                        "row": it["row_number"],
+                        "sku": it["sku"],
+                        "title": it["title"],
+                        "errors": [err_msg],
+                    })
+                else:
+                    group_label_seen.add(key)
 
         # If preview mode, return validation summary
         if is_preview:
@@ -2471,8 +2688,20 @@ class SellerProductBulkUploadView(APIView):
                 status=SellerCatalogUploadBatch.Status.PROCESSING,
             )
 
+            # Pre-resolve / create variant groups needed for this batch
+            variant_groups_map = {}
+            distinct_group_names = {i["variant_group_name"] for i in parsed_items if i.get("variant_group_name")}
+            for gname in distinct_group_names:
+                vg, _ = SellerProductVariantGroup.objects.get_or_create(
+                    company=company,
+                    group_title=gname,
+                    defaults={"variant_attribute_name": "Size"},
+                )
+                variant_groups_map[gname.lower()] = vg
+
             created_products = []
             for item in parsed_items:
+                vg_obj = variant_groups_map.get(item["variant_group_name"].lower()) if item.get("variant_group_name") else None
                 prod = SellerProduct.objects.create(
                     company=company,
                     created_by=user,
@@ -2484,6 +2713,8 @@ class SellerProductBulkUploadView(APIView):
                     barcode=item["barcode"],
                     unit=item["unit"],
                     pack_size=item["pack_size"],
+                    variant_group=vg_obj,
+                    variant_label=item.get("variant_label", "") if vg_obj else "",
                     mrp=Decimal(item["mrp"]),
                     selling_price=Decimal(item["selling_price"]),
                     procurement_price=Decimal(item["procurement_price"]) if item.get("procurement_price") is not None else None,
@@ -7645,15 +7876,29 @@ class SellerInboundRequestListCreateView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        from django.db.models import Count, Q
         from workforce_api.models import WarehouseInboundRequest
         from workforce_api.serializers import WarehouseInboundRequestSerializer
 
         queryset = WarehouseInboundRequest.objects.filter(
             company_id=company_id
         ).select_related(
-            "product", "company", "warehouse", "requested_by", "reviewed_by"
+            "product",
+            "product__variant_group",
+            "company",
+            "warehouse",
+            "requested_by",
+            "reviewed_by",
+            "shortfall_reported_by",
+            "seller_shortfall_decided_by",
+        ).annotate(
+            annotated_total_units=Count("units", distinct=True),
+            annotated_received_units=Count("units", filter=Q(units__status="RECEIVED"), distinct=True),
+            annotated_pending_units=Count("units", filter=Q(units__status="PENDING_SCAN"), distinct=True),
+            annotated_not_received_units=Count("units", filter=Q(units__status="NOT_RECEIVED"), distinct=True),
         ).prefetch_related(
-            "audit_logs", "product__images"
+            "audit_logs__actor",
+            "product__images",
         ).order_by("-created_at")
 
         product_id = request.query_params.get("product_id")

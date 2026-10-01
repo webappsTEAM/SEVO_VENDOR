@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { Sidebar } from '../../components/common/Sidebar.jsx';
 import { useAuth } from '../../context/AuthProvider.jsx';
 import {
@@ -43,6 +43,7 @@ import {
   Boxes,
   Package,
   Printer,
+  CornerDownRight,
 } from 'lucide-react';
 import { BarcodeScannerModal } from '../../components/common/BarcodeScannerModal.jsx';
 import { BarcodeRenderer } from '../../components/common/BarcodeRenderer.jsx';
@@ -71,6 +72,7 @@ const STATUS_CONFIG = {
 export function SellerCatalogUploadsPage() {
   const { user, token, isPlatformAdmin, isAdmin } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
 
   // Active view: 'catalog' | 'bulk_upload' | 'batches' | 'inbound_requests'
   const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'catalog');
@@ -81,9 +83,11 @@ export function SellerCatalogUploadsPage() {
   // Data states
   const [products, setProducts] = useState([]);
   const [leafCategories, setLeafCategories] = useState([]);
+  const [variantGroups, setVariantGroups] = useState([]);
   const [batches, setBatches] = useState([]);
   const [allInboundRequests, setAllInboundRequests] = useState([]);
   const [inboundTabStatusFilter, setInboundTabStatusFilter] = useState('ALL');
+  const [inboundTabLoading, setInboundTabLoading] = useState(false);
   const [metrics, setMetrics] = useState({
     catalogs_awaiting_approval: 0,
     approved_products: 0,
@@ -150,6 +154,12 @@ export function SellerCatalogUploadsPage() {
     description: '',
     images: [],
     status: 'DRAFT',
+    has_variants: false,
+    variant_group_mode: 'existing',
+    variant_group: '',
+    new_variant_group_title: '',
+    new_variant_attribute_name: 'Size',
+    variant_label: '',
   });
   const [formErrors, setFormErrors] = useState({});
 
@@ -177,17 +187,23 @@ export function SellerCatalogUploadsPage() {
     try {
       const authHeader = { Authorization: `Bearer ${token}` };
 
-      // Fetch products, categories, metrics, and batches in parallel
-      const [prodRes, catRes, metRes, batRes] = await Promise.all([
+      // Fetch products, categories, metrics, batches, and variant groups in parallel
+      const [prodRes, catRes, metRes, batRes, vgRes] = await Promise.all([
         fetch('/api/workforce/seller-hub/products/', { headers: authHeader }),
         fetch('/api/workforce/seller-hub/categories/active/', { headers: authHeader }),
         fetch('/api/workforce/seller-hub/metrics/', { headers: authHeader }),
         fetch('/api/workforce/seller-hub/products/batches/', { headers: authHeader }),
+        fetch('/api/workforce/seller-hub/variant-groups/', { headers: authHeader }),
       ]);
 
       if (!prodRes.ok) throw new Error('Failed to load products');
       const prodData = await prodRes.json();
       setProducts(prodData || []);
+
+      if (vgRes && vgRes.ok) {
+        const vgData = await vgRes.json();
+        setVariantGroups(vgData || []);
+      }
 
       if (catRes.ok) {
         const catData = await catRes.json();
@@ -231,19 +247,122 @@ export function SellerCatalogUploadsPage() {
         const matchesSku = p.sku?.toLowerCase().includes(q);
         const matchesBrand = p.brand?.toLowerCase().includes(q);
         const matchesBarcode = p.barcode?.toLowerCase().includes(q);
-        if (!matchesTitle && !matchesSku && !matchesBrand && !matchesBarcode) return false;
+        const matchesVariantLabel = p.variant_label?.toLowerCase().includes(q);
+        const matchesVariantGroupTitle = p.variant_group_title?.toLowerCase().includes(q);
+        if (!matchesTitle && !matchesSku && !matchesBrand && !matchesBarcode && !matchesVariantLabel && !matchesVariantGroupTitle) return false;
       }
       return true;
     });
   }, [products, statusFilter, categoryFilter, searchQuery]);
 
+  // Variant Group Collapsible State ({ [groupId]: boolean })
+  // Default is expanded (falsy value)
+  const [collapsedGroups, setCollapsedGroups] = useState({});
+
+  const toggleGroupCollapse = (groupId) => {
+    setCollapsedGroups((prev) => ({
+      ...prev,
+      [groupId]: !prev[groupId],
+    }));
+  };
+
+  // Group filtered products by variant_group
+  const groupedCatalogItems = useMemo(() => {
+    const groupsMap = new Map();
+    const result = [];
+
+    filteredProducts.forEach((product) => {
+      const vGroupId = product.variant_group;
+      if (vGroupId) {
+        if (!groupsMap.has(vGroupId)) {
+          const groupEntry = {
+            isGroup: true,
+            groupId: vGroupId,
+            groupTitle: product.variant_group_title || product.title,
+            brand: product.brand,
+            category: product.category,
+            category_name: product.category_name,
+            category_path: product.category_path,
+            primary_image: product.primary_image,
+            children: [],
+          };
+          groupsMap.set(vGroupId, groupEntry);
+          result.push(groupEntry);
+        }
+        const existingGroup = groupsMap.get(vGroupId);
+        if (!existingGroup.primary_image && product.primary_image) {
+          existingGroup.primary_image = product.primary_image;
+        }
+        existingGroup.children.push(product);
+      } else {
+        result.push({
+          isGroup: false,
+          product,
+        });
+      }
+    });
+
+    return result;
+  }, [filteredProducts]);
+
+  // Helper: Parent group price summary
+  const getGroupPriceSummary = (children) => {
+    const prices = children
+      .map((c) => Number(c.selling_price))
+      .filter((p) => !isNaN(p) && p >= 0);
+    if (prices.length === 0) return { formatted: '—', discountText: null };
+    const minPrice = Math.min(...prices);
+    const maxPrice = Math.max(...prices);
+    const formatted = minPrice === maxPrice ? `₹${minPrice}` : `₹${minPrice} – ₹${maxPrice}`;
+
+    let maxDiscount = 0;
+    children.forEach((c) => {
+      if (c.mrp && c.selling_price && Number(c.mrp) > Number(c.selling_price)) {
+        const disc = Math.round(((Number(c.mrp) - Number(c.selling_price)) / Number(c.mrp)) * 100);
+        if (disc > maxDiscount) maxDiscount = disc;
+      }
+    });
+
+    return {
+      formatted,
+      discountText: maxDiscount > 0 ? `Up to ${maxDiscount}% OFF` : null,
+    };
+  };
+
+  // Helper: Parent group status summary
+  const getGroupStatusSummary = (children) => {
+    const counts = {};
+    children.forEach((c) => {
+      counts[c.status] = (counts[c.status] || 0) + 1;
+    });
+
+    const statusKeys = Object.keys(counts);
+    if (statusKeys.length === 1) {
+      const status = statusKeys[0];
+      const conf = STATUS_CONFIG[status] || STATUS_CONFIG.DRAFT;
+      return {
+        isUniform: true,
+        conf,
+        label: `${children.length} ${conf.label}`,
+      };
+    }
+
+    return {
+      isUniform: false,
+      counts,
+    };
+  };
+
   // Phase X: Inbound Requests Handlers
   const fetchAllInboundRequests = useCallback(async () => {
+    setInboundTabLoading(true);
     try {
       const res = await apiSellerGetInboundRequests();
       setAllInboundRequests(Array.isArray(res) ? res : res.results || []);
     } catch (err) {
       console.error('Failed to load all inbound requests:', err);
+    } finally {
+      setInboundTabLoading(false);
     }
   }, []);
 
@@ -626,6 +745,12 @@ export function SellerCatalogUploadsPage() {
         description: prod.description || '',
         images: prod.primary_image ? [prod.primary_image] : [],
         status: prod.status || 'DRAFT',
+        has_variants: Boolean(prod.variant_group),
+        variant_group_mode: 'existing',
+        variant_group: prod.variant_group || '',
+        new_variant_group_title: '',
+        new_variant_attribute_name: 'Size',
+        variant_label: prod.variant_label || '',
       });
 
       // Match category details or path
@@ -669,6 +794,12 @@ export function SellerCatalogUploadsPage() {
         description: '',
         images: [],
         status: 'DRAFT',
+        has_variants: false,
+        variant_group_mode: 'existing',
+        variant_group: '',
+        new_variant_group_title: '',
+        new_variant_attribute_name: 'Size',
+        variant_label: '',
       });
       // Opens on step 1 for add product and fetches fresh root categories
       setProductModalStep(1);
@@ -735,6 +866,21 @@ export function SellerCatalogUploadsPage() {
       errors.images = 'At least one product image is required to submit for review';
     }
 
+    if (productForm.has_variants) {
+      if (productForm.variant_group_mode === 'new') {
+        if (!productForm.new_variant_group_title.trim()) {
+          errors.new_variant_group_title = 'Variant family title (e.g. Colgate Paste) is required';
+        }
+      } else {
+        if (!productForm.variant_group) {
+          errors.variant_group = 'Please select a variant family or create a new one';
+        }
+      }
+      if (!productForm.variant_label.trim()) {
+        errors.variant_label = 'Option label (e.g. 50g, 100g, Pack of 6) is required for this variant SKU';
+      }
+    }
+
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors);
       return;
@@ -742,8 +888,32 @@ export function SellerCatalogUploadsPage() {
 
     setActionLoading(true);
     try {
+      let finalVariantGroupId = null;
+      if (productForm.has_variants) {
+        if (productForm.variant_group_mode === 'new') {
+          const vgRes = await fetch('/api/workforce/seller-hub/variant-groups/', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              group_title: productForm.new_variant_group_title.trim(),
+              variant_attribute_name: productForm.new_variant_attribute_name.trim() || 'Size',
+            }),
+          });
+          const vgData = await vgRes.json();
+          if (!vgRes.ok) throw new Error(vgData.error || 'Failed to create variant group');
+          finalVariantGroupId = vgData.id;
+        } else {
+          finalVariantGroupId = productForm.variant_group ? Number(productForm.variant_group) : null;
+        }
+      }
+
       const payload = {
         ...productForm,
+        variant_group: finalVariantGroupId,
+        variant_label: productForm.has_variants ? productForm.variant_label.trim() : '',
         procurement_price: productForm.procurement_price !== '' && productForm.procurement_price !== null ? productForm.procurement_price : null,
         status: submitNow ? 'SUBMITTED' : (editingProduct ? productForm.status : 'DRAFT'),
       };
@@ -968,7 +1138,7 @@ export function SellerCatalogUploadsPage() {
 
           <div className="flex items-center gap-2">
             <button
-              onClick={() => handleOpenProductModal()}
+              onClick={() => navigate('/workforce/seller-hub/products/new')}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-xs transition-colors"
             >
               <Plus className="w-4 h-4" />
@@ -1140,10 +1310,7 @@ export function SellerCatalogUploadsPage() {
                 Upload Batches ({batches.length})
               </button>
               <button
-                onClick={() => {
-                  setActiveTab('inbound_requests');
-                  fetchAllInboundRequests();
-                }}
+                onClick={() => setActiveTab('inbound_requests')}
                 className={`px-4 py-2 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 ${
                   activeTab === 'inbound_requests'
                     ? 'bg-indigo-900 text-white shadow-xs'
@@ -1257,7 +1424,7 @@ export function SellerCatalogUploadsPage() {
                     </p>
                     <div className="mt-5 flex items-center gap-2">
                       <button
-                        onClick={() => handleOpenProductModal()}
+                        onClick={() => navigate('/workforce/seller-hub/products/new')}
                         className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold shadow-xs hover:bg-emerald-700"
                       >
                         Add First Product
@@ -1284,7 +1451,372 @@ export function SellerCatalogUploadsPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 font-medium">
-                        {filteredProducts.map((p) => {
+                        {groupedCatalogItems.map((item) => {
+                          if (item.isGroup) {
+                            const isExpanded = !collapsedGroups[item.groupId];
+                            const priceSummary = getGroupPriceSummary(item.children);
+                            const statusSummary = getGroupStatusSummary(item.children);
+
+                            return (
+                              <React.Fragment key={`group-${item.groupId}`}>
+                                {/* Parent Family Row */}
+                                <tr
+                                  onClick={() => toggleGroupCollapse(item.groupId)}
+                                  className="bg-slate-50/80 hover:bg-slate-100/90 transition-colors border-b border-slate-200/80 cursor-pointer"
+                                >
+                                  {/* Family Product Info */}
+                                  <td className="px-4 py-3.5">
+                                    <div className="flex items-center gap-2.5">
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          toggleGroupCollapse(item.groupId);
+                                        }}
+                                        className="p-1 rounded-md text-slate-400 hover:text-purple-700 hover:bg-purple-50 transition-colors shrink-0"
+                                        title={isExpanded ? 'Collapse variant family' : 'Expand variant family'}
+                                      >
+                                        {isExpanded ? (
+                                          <ChevronDown className="w-4 h-4 text-purple-700" />
+                                        ) : (
+                                          <ChevronRight className="w-4 h-4 text-slate-400" />
+                                        )}
+                                      </button>
+                                      <div className="w-12 h-12 rounded-xl bg-slate-100 border border-slate-200 shrink-0 overflow-hidden flex items-center justify-center relative shadow-2xs">
+                                        {item.primary_image ? (
+                                          <img
+                                            src={item.primary_image}
+                                            alt={item.groupTitle}
+                                            className="w-full h-full object-cover"
+                                            onError={(e) => {
+                                              e.target.style.display = 'none';
+                                            }}
+                                          />
+                                        ) : (
+                                          <ImageIcon className="w-5 h-5 text-slate-300" />
+                                        )}
+                                      </div>
+                                      <div className="min-w-0 max-w-xs">
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                          <span className="font-bold text-slate-900 block truncate text-xs" title={item.groupTitle}>
+                                            {item.groupTitle}
+                                          </span>
+                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800 border border-purple-200" title={`Variant Family with ${item.children.length} size options`}>
+                                            <Layers className="w-3 h-3 text-purple-600" />
+                                            <span>{item.children.length} {item.children.length === 1 ? 'variant' : 'variants'}</span>
+                                          </span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-slate-500">
+                                          {item.brand && <span className="font-medium text-slate-700">• {item.brand}</span>}
+                                          <span className="text-slate-400 text-[10px] truncate">
+                                            ({item.children.map((c) => c.variant_label || `${c.pack_size} ${c.unit}`).filter(Boolean).join(', ')})
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </td>
+
+                                  {/* Category */}
+                                  <td className="px-4 py-3.5">
+                                    <span
+                                      className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 text-slate-700 rounded-lg text-[11px] font-medium max-w-[200px] truncate"
+                                      title={item.category_path || item.category_name}
+                                    >
+                                      <Layers className="w-3 h-3 text-slate-400 shrink-0" />
+                                      <span className="truncate">{item.category_path || item.category_name || 'Leaf Category'}</span>
+                                    </span>
+                                  </td>
+
+                                  {/* Pricing Range */}
+                                  <td className="px-4 py-3.5">
+                                    <div className="space-y-0.5">
+                                      <span className="text-emerald-700 text-xs font-bold block">
+                                        {priceSummary.formatted}
+                                      </span>
+                                      {priceSummary.discountText && (
+                                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded inline-block">
+                                          {priceSummary.discountText}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </td>
+
+                                  {/* Pack & Tax */}
+                                  <td className="px-4 py-3.5 text-slate-600">
+                                    <p className="text-[11px] font-semibold text-slate-800">
+                                      {item.children.length} {item.children.length === 1 ? 'Pack Size' : 'Pack Sizes'}
+                                    </p>
+                                    <p className="text-[10px] text-slate-400 truncate max-w-[160px]">
+                                      {item.children.map((c) => c.pack_size ? `${c.pack_size} ${c.unit}` : c.variant_label).filter(Boolean).slice(0, 3).join(', ')}{item.children.length > 3 ? '...' : ''}
+                                    </p>
+                                  </td>
+
+                                  {/* Status Summary */}
+                                  <td className="px-4 py-3.5">
+                                    {statusSummary.isUniform ? (
+                                      <span
+                                        className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${statusSummary.conf.bg} ${statusSummary.conf.text} ${statusSummary.conf.border}`}
+                                      >
+                                        {React.createElement(statusSummary.conf.icon || Info, { className: 'w-3 h-3 shrink-0' })}
+                                        <span>{statusSummary.label}</span>
+                                      </span>
+                                    ) : (
+                                      <div className="flex flex-wrap gap-1 max-w-[200px]">
+                                        {Object.entries(statusSummary.counts).map(([st, cnt]) => {
+                                          const conf = STATUS_CONFIG[st] || STATUS_CONFIG.DRAFT;
+                                          const StIcon = conf.icon || Info;
+                                          return (
+                                            <span
+                                              key={st}
+                                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${conf.bg} ${conf.text} ${conf.border}`}
+                                            >
+                                              <StIcon className="w-3 h-3 shrink-0" />
+                                              <span>{cnt} {conf.label}</span>
+                                            </span>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+                                  </td>
+
+                                  {/* Parent Actions */}
+                                  <td className="px-4 py-3.5 text-right" onClick={(e) => e.stopPropagation()}>
+                                    <div className="flex items-center justify-end gap-1.5">
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleGroupCollapse(item.groupId)}
+                                        className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg transition-colors"
+                                      >
+                                        {isExpanded ? (
+                                          <>
+                                            <ChevronDown className="w-3 h-3 text-purple-600" />
+                                            <span>Collapse</span>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <ChevronRight className="w-3 h-3 text-purple-600" />
+                                            <span>View {item.children.length} Variants</span>
+                                          </>
+                                        )}
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+
+                                {/* Indented Child Variant Rows */}
+                                {isExpanded &&
+                                  item.children.map((p) => {
+                                    const statusConf = STATUS_CONFIG[p.status] || STATUS_CONFIG.DRAFT;
+                                    const StatusIcon = statusConf.icon || Info;
+                                    const discountPercent =
+                                      p.mrp > p.selling_price
+                                        ? Math.round(((p.mrp - p.selling_price) / p.mrp) * 100)
+                                        : 0;
+
+                                    return (
+                                      <tr
+                                        key={p.id}
+                                        className="bg-purple-50/20 hover:bg-purple-50/40 transition-colors border-b border-purple-100/60"
+                                      >
+                                        {/* Child Product & Variant SKU */}
+                                        <td className="px-4 py-2.5">
+                                          <div className="flex items-center gap-2 pl-6">
+                                            <CornerDownRight className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                                            <div className="w-9 h-9 rounded-lg bg-white border border-slate-200 shrink-0 overflow-hidden flex items-center justify-center">
+                                              {p.primary_image ? (
+                                                <img
+                                                  src={p.primary_image}
+                                                  alt={p.variant_label || p.title}
+                                                  className="w-full h-full object-cover"
+                                                  onError={(e) => {
+                                                    e.target.style.display = 'none';
+                                                  }}
+                                                />
+                                              ) : (
+                                                <ImageIcon className="w-4 h-4 text-slate-300" />
+                                              )}
+                                            </div>
+                                            <div className="min-w-0 max-w-xs">
+                                              <div className="flex items-center gap-1.5 flex-wrap">
+                                                <span className="font-bold text-purple-950 bg-purple-100/90 text-[11px] px-2 py-0.5 rounded-md border border-purple-200/80">
+                                                  {p.variant_label || `${p.pack_size} ${p.unit}`}
+                                                </span>
+                                                <span className="bg-slate-100 px-1.5 py-0.2 rounded text-slate-700 font-mono font-bold text-[11px]">
+                                                  {p.sku}
+                                                </span>
+                                              </div>
+                                              <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                                {p.fulfillment_method === 'FULFILLED_BY_SEVO' ? (
+                                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200" title="Fulfilled by Sevo (FBS) - Stock held at Sevo warehouse">
+                                                    <WarehouseIcon className="w-3 h-3 text-indigo-500" />
+                                                    <span>FBS</span>
+                                                  </span>
+                                                ) : (
+                                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200" title="Self-Ship - Seller direct fulfillment">
+                                                    <Truck className="w-3 h-3 text-slate-400" />
+                                                    <span>Self-Ship</span>
+                                                  </span>
+                                                )}
+                                                {p.barcode && (
+                                                  <div className="flex items-center gap-1 text-[10px] font-mono text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-1.5 py-0.5 rounded" title={`Barcode: ${p.barcode}`}>
+                                                    <BarcodeIcon className="w-3 h-3 text-emerald-600 shrink-0" />
+                                                    <span>{p.barcode}</span>
+                                                  </div>
+                                                )}
+                                              </div>
+                                            </div>
+                                          </div>
+                                        </td>
+
+                                        {/* Category */}
+                                        <td className="px-4 py-2.5">
+                                          <span className="text-slate-400 text-[11px] pl-2">
+                                            ↳ {p.category_name || 'Same as family'}
+                                          </span>
+                                        </td>
+
+                                        {/* Pricing */}
+                                        <td className="px-4 py-2.5">
+                                          <div className="space-y-0.5">
+                                            <div className="flex items-center gap-1.5 font-bold text-slate-900">
+                                              <span className="text-emerald-700 text-xs">₹{p.selling_price}</span>
+                                              {discountPercent > 0 && (
+                                                <span className="text-[10px] text-slate-400 line-through">
+                                                  ₹{p.mrp}
+                                                </span>
+                                              )}
+                                            </div>
+                                            {discountPercent > 0 && (
+                                              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded">
+                                                {discountPercent}% OFF
+                                              </span>
+                                            )}
+                                          </div>
+                                        </td>
+
+                                        {/* Pack & Tax */}
+                                        <td className="px-4 py-2.5 text-slate-600">
+                                          <p className="text-[11px]">
+                                            {p.pack_size} {p.unit}
+                                          </p>
+                                          <p className="text-[10px] text-slate-400 font-mono">
+                                            GST: {p.tax_rate}% {p.hsn_code ? `• HSN: ${p.hsn_code}` : ''}
+                                          </p>
+                                        </td>
+
+                                        {/* Status & Review Notes */}
+                                        <td className="px-4 py-2.5">
+                                          <div className="space-y-1">
+                                            <span
+                                              className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${statusConf.bg} ${statusConf.text} ${statusConf.border}`}
+                                            >
+                                              <StatusIcon className="w-3 h-3 shrink-0" />
+                                              <span>{statusConf.label}</span>
+                                            </span>
+
+                                            {(p.rejection_reason || p.admin_review_note) && ['REJECTED', 'CHANGES_REQUESTED'].includes(p.status) && (
+                                              <div
+                                                className="text-[10px] text-rose-700 bg-rose-50 border border-rose-200 p-1.5 rounded-lg max-w-xs line-clamp-2"
+                                                title={p.rejection_reason || p.admin_review_note}
+                                              >
+                                                <span className="font-bold text-rose-900">
+                                                  {p.status === 'REJECTED' ? 'Rejection Reason:' : 'Changes Needed:'}
+                                                </span>{' '}
+                                                {p.rejection_reason || p.admin_review_note}
+                                              </div>
+                                            )}
+                                          </div>
+                                        </td>
+
+                                        {/* Actions */}
+                                        <td className="px-4 py-2.5 text-right">
+                                          <div className="flex items-center justify-end gap-1.5">
+                                            {/* Request Storage Action (Phase X - For Approved FBS Products) */}
+                                            {p.fulfillment_method === 'FULFILLED_BY_SEVO' && p.status === 'APPROVED' && (
+                                              <button
+                                                onClick={() => handleOpenInboundModal(p)}
+                                                className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-colors shadow-xs"
+                                                title="Request Warehouse Storage / Intake for this FBS product"
+                                              >
+                                                <WarehouseIcon className="w-3.5 h-3.5 text-indigo-600" />
+                                                <span>Request Storage</span>
+                                              </button>
+                                            )}
+
+                                            {/* View Detail & Audit Log */}
+                                            <button
+                                              onClick={() => handleOpenDetailModal(p.id)}
+                                              className="p-1.5 text-slate-500 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                                              title="View Audit Timeline & Details"
+                                            >
+                                              <History className="w-3.5 h-3.5" />
+                                            </button>
+
+                                            {/* Edit & Resubmit Action for Rejected / Changes Requested */}
+                                            {['REJECTED', 'CHANGES_REQUESTED'].includes(p.status) && (
+                                              <button
+                                                onClick={() => navigate(`/workforce/seller-hub/products/${p.id}/edit`)}
+                                                className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-300 rounded-lg transition-colors"
+                                                title="Edit details and resubmit for approval"
+                                              >
+                                                <RotateCcw className="w-3 h-3 text-amber-600" />
+                                                <span>Edit & Resubmit</span>
+                                              </button>
+                                            )}
+
+                                            {/* Submit for Review (if Draft or Paused) */}
+                                            {['DRAFT', 'PAUSED'].includes(p.status) && (
+                                              <button
+                                                onClick={() => handleSubmitProduct(p.id)}
+                                                className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded-lg transition-colors"
+                                                title="Submit product for approval"
+                                              >
+                                                <Send className="w-3 h-3" />
+                                                <span>Submit</span>
+                                              </button>
+                                            )}
+
+                                            {/* Edit Product */}
+                                            <button
+                                              onClick={() => navigate(`/workforce/seller-hub/products/${p.id}/edit`)}
+                                              className="p-1.5 text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                                              title="Edit Product Details"
+                                            >
+                                              <FileEdit className="w-3.5 h-3.5" />
+                                            </button>
+
+                                            {/* Admin Review Action Button */}
+                                            {(isPlatformAdmin || isAdmin) && (
+                                              <button
+                                                onClick={() => handleOpenReviewModal(p)}
+                                                className="px-2.5 py-1 text-[11px] font-bold bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 rounded-lg transition-colors"
+                                                title="Review Product Status"
+                                              >
+                                                Review
+                                              </button>
+                                            )}
+
+                                            {/* Delete (if draft or rejected) */}
+                                            {['DRAFT', 'REJECTED'].includes(p.status) && (
+                                              <button
+                                                onClick={() => handleDeleteProduct(p.id, p.title)}
+                                                className="p-1.5 text-rose-500 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors"
+                                                title="Delete Product"
+                                              >
+                                                <Trash2 className="w-3.5 h-3.5" />
+                                              </button>
+                                            )}
+                                          </div>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                              </React.Fragment>
+                            );
+                          }
+
+                          // Standalone Non-Variant Product Row
+                          const p = item.product;
                           const statusConf = STATUS_CONFIG[p.status] || STATUS_CONFIG.DRAFT;
                           const StatusIcon = statusConf.icon || Info;
                           const discountPercent =
@@ -1436,7 +1968,7 @@ export function SellerCatalogUploadsPage() {
                                   {/* Edit & Resubmit Action for Rejected / Changes Requested */}
                                   {['REJECTED', 'CHANGES_REQUESTED'].includes(p.status) && (
                                     <button
-                                      onClick={() => handleOpenProductModal(p)}
+                                      onClick={() => navigate(`/workforce/seller-hub/products/${p.id}/edit`)}
                                       className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-300 rounded-lg transition-colors"
                                       title="Edit details and resubmit for approval"
                                     >
@@ -1459,7 +1991,7 @@ export function SellerCatalogUploadsPage() {
 
                                   {/* Edit Product */}
                                   <button
-                                    onClick={() => handleOpenProductModal(p)}
+                                    onClick={() => navigate(`/workforce/seller-hub/products/${p.id}/edit`)}
                                     className="p-1.5 text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
                                     title="Edit Product Details"
                                   >
@@ -1780,7 +2312,12 @@ export function SellerCatalogUploadsPage() {
                 ))}
               </div>
 
-              {allInboundRequests.length === 0 ? (
+              {inboundTabLoading ? (
+                <div className="p-12 text-center text-slate-400 flex flex-col items-center justify-center gap-3 bg-white rounded-2xl border border-slate-200 shadow-xs">
+                  <RefreshCw className="w-6 h-6 animate-spin text-indigo-600" />
+                  <span className="text-xs font-medium text-slate-600">Loading storage requests...</span>
+                </div>
+              ) : allInboundRequests.length === 0 ? (
                 <div className="p-12 text-center bg-white rounded-2xl border border-slate-200 space-y-2">
                   <Boxes className="w-8 h-8 text-slate-400 mx-auto" />
                   <p className="text-sm font-bold text-slate-800">No Warehouse Storage Requests</p>
@@ -2797,10 +3334,167 @@ export function SellerCatalogUploadsPage() {
                       </div>
                     </div>
 
+                    {/* ── 4. Size / Quantity Variants ── */}
+                    <div className="space-y-3 pt-2">
+                      <div className="flex items-center justify-between border-b pb-1">
+                        <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                          4. Product Variants (Size / Quantity Options)
+                        </h4>
+                        <label className="inline-flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={productForm.has_variants}
+                            onChange={(e) =>
+                              setProductForm({
+                                ...productForm,
+                                has_variants: e.target.checked,
+                                variant_group_mode: productForm.variant_group_mode || 'existing',
+                              })
+                            }
+                            className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500"
+                          />
+                          <span className="text-xs font-bold text-slate-700">This product has size/qty options</span>
+                        </label>
+                      </div>
+
+                      {productForm.has_variants ? (
+                        <div className="p-4 bg-emerald-50/50 border border-emerald-200 rounded-xl space-y-3 animate-fadeIn">
+                          <div className="flex items-center gap-2 text-xs text-emerald-900 font-medium">
+                            <Layers className="w-4 h-4 text-emerald-600 shrink-0" />
+                            <span>
+                              Variants allow customers to choose between multiple sizes (e.g. 50g / 100g) on one product page. Each variant has its own independent price, SKU, stock, and review lifecycle.
+                            </span>
+                          </div>
+
+                          {/* Mode Tabs: Attach to existing or create new group */}
+                          <div className="flex gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={() => setProductForm({ ...productForm, variant_group_mode: 'existing' })}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                productForm.variant_group_mode === 'existing'
+                                  ? 'bg-emerald-600 text-white shadow-2xs'
+                                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                              }`}
+                            >
+                              Attach to Existing Family
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setProductForm({ ...productForm, variant_group_mode: 'new' })}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                productForm.variant_group_mode === 'new'
+                                  ? 'bg-emerald-600 text-white shadow-2xs'
+                                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                              }`}
+                            >
+                              + Create New Family
+                            </button>
+                          </div>
+
+                          {productForm.variant_group_mode === 'existing' ? (
+                            <div>
+                              <label className="block text-xs font-bold text-slate-700 mb-1">
+                                Select Variant Family <span className="text-rose-500">*</span>
+                              </label>
+                              {variantGroups.length > 0 ? (
+                                <select
+                                  value={productForm.variant_group}
+                                  onChange={(e) => setProductForm({ ...productForm, variant_group: e.target.value })}
+                                  className={`w-full px-3.5 py-2 bg-white border rounded-xl text-xs text-slate-800 ${
+                                    formErrors.variant_group ? 'border-rose-500' : 'border-slate-300'
+                                  }`}
+                                >
+                                  <option value="">-- Choose existing variant family --</option>
+                                  {variantGroups.map((g) => (
+                                    <option key={g.id} value={g.id}>
+                                      {g.group_title} ({g.variants_count} member{g.variants_count === 1 ? '' : 's'} • Selector: {g.variant_attribute_name})
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <div className="p-3 bg-white rounded-xl border border-slate-200 text-xs text-slate-500 flex items-center justify-between">
+                                  <span>No existing variant families found. Create one now.</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setProductForm({ ...productForm, variant_group_mode: 'new' })}
+                                    className="px-2.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded text-[11px] font-bold"
+                                  >
+                                    Create New
+                                  </button>
+                                </div>
+                              )}
+                              {formErrors.variant_group && (
+                                <p className="text-[10px] text-rose-600 mt-0.5">{formErrors.variant_group}</p>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <div>
+                                <label className="block text-xs font-bold text-slate-700 mb-1">
+                                  Family Group Title <span className="text-rose-500">*</span>
+                                </label>
+                                <input
+                                  type="text"
+                                  placeholder="e.g. Colgate Total Toothpaste"
+                                  value={productForm.new_variant_group_title}
+                                  onChange={(e) => setProductForm({ ...productForm, new_variant_group_title: e.target.value })}
+                                  className={`w-full px-3.5 py-2 bg-white border rounded-xl text-xs text-slate-800 ${
+                                    formErrors.new_variant_group_title ? 'border-rose-500' : 'border-slate-300'
+                                  }`}
+                                />
+                                {formErrors.new_variant_group_title && (
+                                  <p className="text-[10px] text-rose-600 mt-0.5">{formErrors.new_variant_group_title}</p>
+                                )}
+                              </div>
+                              <div>
+                                <label className="block text-xs font-bold text-slate-700 mb-1">
+                                  Selector Attribute Label
+                                </label>
+                                <input
+                                  type="text"
+                                  placeholder="e.g. Size, Weight, Quantity, Pack"
+                                  value={productForm.new_variant_attribute_name}
+                                  onChange={(e) => setProductForm({ ...productForm, new_variant_attribute_name: e.target.value })}
+                                  className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800"
+                                />
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Variant option label for this specific product SKU */}
+                          <div>
+                            <label className="block text-xs font-bold text-slate-700 mb-1">
+                              Option Label for THIS Product SKU <span className="text-rose-500">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="e.g. 50g, 100g, 1L, Pack of 3"
+                              value={productForm.variant_label}
+                              onChange={(e) => setProductForm({ ...productForm, variant_label: e.target.value })}
+                              className={`w-full px-3.5 py-2 bg-white border rounded-xl text-xs text-slate-800 ${
+                                formErrors.variant_label ? 'border-rose-500' : 'border-slate-300'
+                              }`}
+                            />
+                            <p className="text-[10px] text-slate-500 mt-0.5">
+                              This label appears on the customer selector chip (e.g. "50g").
+                            </p>
+                            {formErrors.variant_label && (
+                              <p className="text-[10px] text-rose-600 mt-0.5">{formErrors.variant_label}</p>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-[11px] text-slate-400 italic">
+                          Standalone product (no size/quantity chips). Enable checkbox above to group with sibling sizes.
+                        </p>
+                      )}
+                    </div>
+
                     {/* Product Media */}
                     <div className="space-y-3 pt-2">
                       <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 border-b pb-1">
-                        4. Product Image Media
+                        5. Product Image Media
                       </h4>
 
                       <div className="space-y-2">
@@ -2941,6 +3635,12 @@ export function SellerCatalogUploadsPage() {
                   <p className="text-slate-500 font-mono">
                     SKU: {selectedProductForReview.sku} • {selectedProductForReview.company_name}
                   </p>
+                  {selectedProductForReview.variant_group_title && (
+                    <div className="pt-1 flex items-center gap-1.5 text-[11px] text-indigo-700 font-semibold">
+                      <Layers className="w-3.5 h-3.5" />
+                      <span>Part of variant family: <strong>{selectedProductForReview.variant_group_title}</strong> ({selectedProductForReview.variant_label || 'Variant'})</span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-2">
@@ -3080,6 +3780,99 @@ export function SellerCatalogUploadsPage() {
                     )}
                   </div>
                 </div>
+
+                {/* Variant Family Info */}
+                {detailedProduct.variant_group_title && (
+                  <div className="p-3.5 bg-indigo-50/70 border border-indigo-200 rounded-xl space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-950">
+                        <Layers className="w-4 h-4 text-indigo-600 shrink-0" />
+                        <span>Part of variant family: <strong className="text-indigo-900">{detailedProduct.variant_group_title}</strong></span>
+                      </div>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-bold">
+                        {detailedProduct.variant_attribute_name || 'Size'}: {detailedProduct.variant_label || 'Default'}
+                      </span>
+                    </div>
+
+                    <div className="space-y-1.5 pt-1 border-t border-indigo-150">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                        Sibling Variants:
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-white border-2 border-indigo-500 text-indigo-900 shadow-xs">
+                          <span>{detailedProduct.variant_label || 'This SKU'}</span>
+                          <span className="text-[10px] font-medium text-indigo-600 font-mono">(this one — {detailedProduct.status})</span>
+                        </div>
+                        {detailedProduct.variant_siblings?.map((sib) => (
+                          <div
+                            key={sib.id}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs bg-white border border-slate-200 text-slate-700"
+                          >
+                            <span className="font-semibold">{sib.variant_label || sib.sku}</span>
+                            <span className="text-[10px] text-slate-400 font-mono">₹{sib.selling_price}</span>
+                            <span
+                              className={`px-1.5 py-0.2 rounded text-[9px] font-bold ${
+                                sib.status === 'APPROVED'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : sib.status === 'UNDER_REVIEW' || sib.status === 'SUBMITTED'
+                                  ? 'bg-amber-100 text-amber-800'
+                                  : sib.status === 'REJECTED'
+                                  ? 'bg-rose-100 text-rose-800'
+                                  : 'bg-slate-100 text-slate-600'
+                              }`}
+                            >
+                              {sib.status}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Description, Storage Instructions & Specs */}
+                {(detailedProduct.description ||
+                  detailedProduct.storage_info ||
+                  detailedProduct.expiry_info ||
+                  (detailedProduct.specs && detailedProduct.specs.length > 0)) && (
+                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3 text-xs">
+                    {detailedProduct.description && (
+                      <div>
+                        <span className="font-bold text-slate-700 block mb-0.5">Product Description:</span>
+                        <p className="text-slate-600 whitespace-pre-line leading-relaxed">
+                          {detailedProduct.description}
+                        </p>
+                      </div>
+                    )}
+                    {(detailedProduct.storage_info || detailedProduct.expiry_info) && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-slate-200">
+                        {detailedProduct.storage_info && (
+                          <p className="text-slate-600">
+                            <strong className="text-slate-700">Storage:</strong> {detailedProduct.storage_info}
+                          </p>
+                        )}
+                        {detailedProduct.expiry_info && (
+                          <p className="text-slate-600">
+                            <strong className="text-slate-700">Expiry/Shelf Life:</strong> {detailedProduct.expiry_info}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    {detailedProduct.specs && detailedProduct.specs.length > 0 && (
+                      <div className="pt-2 border-t border-slate-200 space-y-1.5">
+                        <span className="font-bold text-slate-700 block">Additional Specifications:</span>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {detailedProduct.specs.map((sp, idx) => (
+                            <div key={idx} className="flex items-center gap-2 p-1.5 bg-white rounded-lg border border-slate-200">
+                              <span className="font-semibold text-slate-500">{sp.label}:</span>
+                              <span className="font-bold text-slate-800">{sp.value}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Audit Timeline */}
                 <div className="space-y-3">

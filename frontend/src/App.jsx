@@ -86,6 +86,7 @@ import { SellerReturnsPage } from './pages/seller/SellerReturnsPage.jsx';
 import { SellerClaimsPage } from './pages/seller/SellerClaimsPage.jsx';
 import { SellerInventoryPage } from './pages/seller/SellerInventoryPage.jsx';
 import { SellerCatalogUploadsPage } from './pages/seller/SellerCatalogUploadsPage.jsx';
+import { SellerProductEditorPage } from './pages/seller/SellerProductEditorPage.jsx';
 import { SellerReportsPage } from './pages/seller/SellerReportsPage.jsx';
 
 import { WarehouseLayout } from './pages/warehouse/WarehouseLayout.jsx';
@@ -694,6 +695,56 @@ export function App() {
           <Route
             path="/workforce/seller/catalog-uploads"
             element={<Navigate to="/workforce/seller-hub/catalog-uploads" replace />}
+          />
+
+          {/* 6b. Product Add / Edit Full Page Flow */}
+          <Route
+            path="/workforce/seller-hub/products/new"
+            element={
+              <SellerHubRoute>
+                <SellerProductEditorPage />
+              </SellerHubRoute>
+            }
+          />
+          <Route
+            path="/workforce/seller-hub/products/:id/edit"
+            element={
+              <SellerHubRoute>
+                <SellerProductEditorPage />
+              </SellerHubRoute>
+            }
+          />
+          <Route
+            path="/workforce/admin/seller-hub/products/new"
+            element={
+              <SellerHubRoute>
+                <SellerProductEditorPage />
+              </SellerHubRoute>
+            }
+          />
+          <Route
+            path="/workforce/admin/seller-hub/products/:id/edit"
+            element={
+              <SellerHubRoute>
+                <SellerProductEditorPage />
+              </SellerHubRoute>
+            }
+          />
+          <Route
+            path="/workforce/seller/products/new"
+            element={<Navigate to="/workforce/seller-hub/products/new" replace />}
+          />
+          <Route
+            path="/workforce/seller/products/:id/edit"
+            element={<Navigate to="/workforce/seller-hub/products/:id/edit" replace />}
+          />
+          <Route
+            path="/seller-hub/products/new"
+            element={<Navigate to="/workforce/seller-hub/products/new" replace />}
+          />
+          <Route
+            path="/seller-hub/products/:id/edit"
+            element={<Navigate to="/workforce/seller-hub/products/:id/edit" replace />}
           />
 
           {/* 7. Categories (Platform Superadmin / Platform Admin Only) */}

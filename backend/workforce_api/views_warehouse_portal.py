@@ -293,9 +293,22 @@ class WarehousePortalInboundRequestListView(APIView):
         queryset = WarehouseInboundRequest.objects.filter(
             warehouse_id=warehouse.id
         ).select_related(
-            "product", "company", "warehouse", "requested_by", "reviewed_by"
+            "product",
+            "product__variant_group",
+            "company",
+            "warehouse",
+            "requested_by",
+            "reviewed_by",
+            "shortfall_reported_by",
+            "seller_shortfall_decided_by",
+        ).annotate(
+            annotated_total_units=models.Count("units", distinct=True),
+            annotated_received_units=models.Count("units", filter=models.Q(units__status="RECEIVED"), distinct=True),
+            annotated_pending_units=models.Count("units", filter=models.Q(units__status="PENDING_SCAN"), distinct=True),
+            annotated_not_received_units=models.Count("units", filter=models.Q(units__status="NOT_RECEIVED"), distinct=True),
         ).prefetch_related(
-            "audit_logs", "product__images"
+            "audit_logs__actor",
+            "product__images",
         ).order_by("-created_at")
 
         # Status filter
