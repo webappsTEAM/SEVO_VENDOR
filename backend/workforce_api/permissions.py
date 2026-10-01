@@ -6,6 +6,18 @@ from rest_framework.permissions import BasePermission
 from accounts.permissions import is_admin_role
 
 
+class JsonObjectBodyMixin:
+    """Writes on a view must carry a JSON object / form body. A JSON array or scalar
+    (`[]`, `"x"`, `5`) has no `.get()`, so handlers that read `request.data.get(...)` used to
+    crash with a 500 instead of answering 400."""
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)   # authentication / permission / throttle first
+        if request.method in ("POST", "PUT", "PATCH") and not hasattr(request.data, "get"):
+            from rest_framework.exceptions import ParseError
+            raise ParseError("Request body must be a JSON object.")
+
+
 class IsWorkforceAdmin(BasePermission):
     def has_permission(self, request, view):
         return is_admin_role(getattr(request, "user", None))

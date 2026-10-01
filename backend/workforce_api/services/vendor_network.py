@@ -7,6 +7,8 @@ Core domain services for Technician-Vendor Network:
 3. VendorRelationshipService (status transitions, scope management, security isolation)
 """
 
+from __future__ import annotations
+
 import logging
 import secrets
 from datetime import timedelta
@@ -47,10 +49,10 @@ class VendorDiscoveryEngine:
     def evaluate_candidates(
         cls,
         vendor: Company,
-        terms: list[dict] = None,
-        criteria: VendorCriteria = None,
+        terms: list[dict] | None = None,
+        criteria: VendorCriteria | None = None,
         limit: int = 50,
-        search_query: str = None,
+        search_query: str | None = None,
     ) -> list[dict]:
         """
         Evaluate candidate technicians against criteria terms or a saved VendorCriteria.
@@ -285,12 +287,12 @@ class VendorInvitationService:
         cls,
         vendor: Company,
         invited_email: str,
-        technician: Employee = None,
+        technician: Employee | None = None,
         channel: str = VendorInvitation.Channel.DIRECT_EMAIL,
         message: str = "",
-        criteria: VendorCriteria = None,
+        criteria: VendorCriteria | None = None,
         expiry_days: int = 14,
-        actor: User = None,
+        actor: User | None = None,
     ) -> VendorInvitation:
         """
         Creates or updates a pending invitation from vendor to an email / technician.
@@ -389,7 +391,7 @@ class VendorInvitationService:
         invitation_id: int,
         employee: Employee,
         decision: str,
-        actor: User = None,
+        actor: User | None = None,
     ) -> tuple[VendorInvitation, VendorTechnicianRelationship | None]:
         """
         Technician accepts or rejects an invitation atomically with row locking.
@@ -501,7 +503,7 @@ class VendorInvitationService:
             return invitation, relationship
 
     @classmethod
-    def cancel_invitation(cls, invitation_id: int, vendor: Company, actor: User = None) -> VendorInvitation:
+    def cancel_invitation(cls, invitation_id: int, vendor: Company, actor: User | None = None) -> VendorInvitation:
         """
         Vendor withdraws a pending invitation.
         """
@@ -534,7 +536,7 @@ class VendorRelationshipService:
         relationship_id: int,
         vendor: Company,
         action: str,
-        actor: User = None,
+        actor: User | None = None,
     ) -> VendorTechnicianRelationship:
         """
         Vendor updates relationship status (SUSPEND, REACTIVATE, TERMINATE).
@@ -569,7 +571,7 @@ class VendorRelationshipService:
         cls,
         relationship_id: int,
         employee: Employee,
-        actor: User = None,
+        actor: User | None = None,
     ) -> VendorTechnicianRelationship:
         """
         Technician leaves/resigns a vendor relationship from their side.
@@ -604,7 +606,7 @@ class VendorRelationshipService:
         cls,
         employee_id: int,
         vendor_id: int,
-        actor: User = None,
+        actor: User | None = None,
         engagement_type: str = VendorTechnicianRelationship.EngagementType.PER_JOB,
         payment_model: str = VendorTechnicianRelationship.PaymentModel.DIRECT_TO_TECHNICIAN,
         notes: str = "",
@@ -660,7 +662,7 @@ class VendorRelationshipService:
     def untie_technician(
         cls,
         employee_id: int,
-        actor: User = None,
+        actor: User | None = None,
     ) -> list:
         """
         SEVO Platform Admin unties a technician from all vendors, making them a free Solo Worker.
@@ -711,7 +713,7 @@ class VendorRelievingService:
         reason_category: str = VendorRelievingRequest.ReasonCategory.TRANSITION_TO_SOLO,
         notes: str = "",
         desired_date = None,
-        actor: User = None,
+        actor: User | None = None,
     ) -> VendorRelievingRequest:
         with transaction.atomic():
             rel = (
@@ -791,7 +793,7 @@ class VendorRelievingService:
         request_id: int,
         vendor: Company,
         settlement_notes: str = "",
-        actor: User = None,
+        actor: User | None = None,
     ) -> VendorRelievingRequest:
         with transaction.atomic():
             req = (
@@ -822,7 +824,7 @@ class VendorRelievingService:
         cls,
         request_id: int,
         audit_notes: str = "",
-        actor: User = None,
+        actor: User | None = None,
     ) -> VendorRelievingRequest:
         """
         SEVO Platform Superadmin verifies general job settlement and compliance check,

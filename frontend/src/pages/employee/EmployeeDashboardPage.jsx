@@ -4,6 +4,8 @@ import {
   Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthProvider.jsx';
 import { ClockInCard } from '../../components/employee/ClockInCard.jsx';
+import { isLogisticsJob } from '../../components/employee/logistics/LogisticsLegController.jsx';
+import SignaturePad from '../../components/employee/SignaturePad.jsx';
 import {
   apiGetWorkforceJobs,
   apiTransitionJob,
@@ -739,6 +741,9 @@ export function EmployeeDashboardPage() {
   const [afterFile, setAfterFile] = useState(null);
   const [afterPreviewUrl, setAfterPreviewUrl] = useState(null);
   const [workNotes, setWorkNotes] = useState('');
+  // Round 8 gap 2: optional recipient signature + name for GT/logistics proof-of-delivery only.
+  const [recipientName, setRecipientName] = useState('');
+  const [signatureDataUrl, setSignatureDataUrl] = useState(null);
   const [isUploadingProof, setIsUploadingProof] = useState(false);
 
   // Live Camera Real-Time Capture State
@@ -994,6 +999,11 @@ export function EmployeeDashboardPage() {
         formData.append('after_presence_photo', afterFaceFile);
         if (afterFile) formData.append('after_appliance_photo', afterFile);
         if (workNotes) formData.append('notes', workNotes);
+        // Round 8 gap 2: GT/logistics-only, both optional -- never blocks submission.
+        if (isLogisticsJob(targetJob)) {
+          if (recipientName.trim()) formData.append('recipient_name', recipientName.trim());
+          if (signatureDataUrl) formData.append('signature_data_url', signatureDataUrl);
+        }
 
         const res = await apiUploadJobProof(targetJob.id, formData);
         setProofModalJob(null);
@@ -1004,6 +1014,8 @@ export function EmployeeDashboardPage() {
         setAfterFacePreviewUrl(null);
         setAfterPreviewUrl(null);
         setWorkNotes('');
+        setRecipientName('');
+        setSignatureDataUrl(null);
 
         // Seamlessly transition to collect payment if payment is pending / cash on service
         const isCompleted = res?.status === 'completed';
@@ -1757,6 +1769,29 @@ export function EmployeeDashboardPage() {
                     </button>
                   )}
                 </div>
+
+                {isLogisticsJob(proofModalJob) && (
+                  <>
+                    <div>
+                      <label className="block text-slate-700 font-semibold mb-1">
+                        Recipient Name <span className="text-slate-400 font-normal text-[11px]">(optional)</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={recipientName}
+                        onChange={(e) => setRecipientName(e.target.value)}
+                        placeholder="Who received the goods?"
+                        className="w-full border border-slate-300 rounded-lg p-2.5 text-xs text-slate-800 outline-none focus:border-slate-800"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-slate-700 font-semibold mb-1">
+                        Recipient Signature <span className="text-slate-400 font-normal text-[11px]">(optional)</span>
+                      </label>
+                      <SignaturePad onChange={setSignatureDataUrl} />
+                    </div>
+                  </>
+                )}
 
                 <div>
                   <label className="block text-slate-700 font-semibold mb-1">

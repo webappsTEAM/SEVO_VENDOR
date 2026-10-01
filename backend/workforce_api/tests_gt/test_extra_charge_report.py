@@ -38,6 +38,7 @@ class ViewTests(SimpleTestCase):
              patch.object(views.ServiceRequest.objects, "filter", return_value=qs), \
              patch.object(views, "is_employee_authorized_for_job", return_value=True), \
              patch("workforce_api.services.extra_charges.policy_for", return_value=pol), \
+             patch("workforce_api.services.extra_charges.charge_already_reported", return_value=False), \
              patch("workforce_api.models.WorkforceEventLog.objects.create") as log, \
              patch("workforce_api.services.customer_webhook.notify_customer_app") as hook:
             resp = views.WorkforceJobLogisticsExtraChargeView.as_view()(req, pk=5)
@@ -86,6 +87,7 @@ class ReceiptPhotoTests(ViewTests):
              patch.object(views.ServiceRequest.objects, "filter", return_value=qs), \
              patch.object(views, "is_employee_authorized_for_job", return_value=True), \
              patch("workforce_api.services.extra_charges.policy_for", return_value=pol), \
+             patch("workforce_api.services.extra_charges.charge_already_reported", return_value=False), \
              patch("django.core.files.storage.default_storage.save", return_value="logistics_receipts/5_r.png"), \
              patch("django.core.files.storage.default_storage.url", return_value="/media/logistics_receipts/5_r.png"), \
              patch("workforce_api.models.WorkforceEventLog.objects.create"), \

@@ -3,6 +3,7 @@ Driver-side toll / parking receipt. The Customer GTExtraChargePolicy (mirrored) 
 of truth for what is accepted; the Customer app re-validates and bills. Mirrors
 service_requests/services/extra_charges.py on the Customer app.
 """
+import re
 import uuid
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
@@ -17,7 +18,29 @@ def _amount(v):
         d = Decimal(str(v)).quantize(CENT, rounding=ROUND_HALF_UP)
     except (InvalidOperation, ValueError, TypeError):
         return None
+    # Decimal("NaN") quantizes without error and then raises on comparison; reject non-finite values.
+    if not d.is_finite():
+        return None
     return d if d > 0 else None
+
+
+_CHARGE_ID_RE = re.compile(r"^[A-Za-z0-9_\-]{1,64}$")
+
+
+def clean_charge_id(value):
+    """Client-supplied idempotency key: a short token, otherwise the server mints one."""
+    if isinstance(value, str) and _CHARGE_ID_RE.match(value.strip()):
+        return value.strip()
+    return uuid.uuid4().hex[:12]
+
+
+def charge_already_reported(job, charge_id):
+    """True when this driver-side receipt id was already reported for the job (retry / double-tap)."""
+    from workforce_api.models import WorkforceEventLog
+    return any(
+        (e.payload or {}).get("job_id") == job.id
+        for e in WorkforceEventLog.objects.filter(event_type="LOGISTICS_EXTRA_CHARGE", payload__charge_id=charge_id)
+    )
 
 
 def applied_total(job):
@@ -58,7 +81,9 @@ def report_extra_charge(job, emp, kind, amount, note="", receipt="", charge_id=N
     from workforce_api.models import WorkforceEventLog
     from workforce_api.services.customer_webhook import notify_customer_app
 
-    charge_id = charge_id or uuid.uuid4().hex[:12]
+    charge_id = clean_charge_id(charge_id)
+    if charge_already_reported(job, charge_id):
+        return charge_id
     amt = str(_amount(amount))
     reported_at = timezone.now().isoformat()
     WorkforceEventLog.objects.create(
