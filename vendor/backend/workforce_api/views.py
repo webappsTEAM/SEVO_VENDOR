@@ -7971,12 +7971,16 @@ class WorkforceJobArriveView(APIView):
 
         verification, _ = PreServiceVerification.objects.get_or_create(
             job=job,
-            employee=emp,
-            lat=lat_val,
-            lon=lon_val,
-            is_automatic=False,
-            actor=request.user
+            defaults={"employee": emp}
         )
+        verification.employee = emp
+        verification.geofence_passed = True
+        verification.arrival_lat = float(lat_val)
+        verification.arrival_lon = float(lon_val)
+        if not verification.arrived_at:
+            verification.arrived_at = now
+        verification.save(update_fields=["employee", "geofence_passed", "arrival_lat", "arrival_lon", "arrived_at"])
+
 
         # ── Authoritative Single OTP Resolution ──────────────────────────────
         # Priority: start_otp on ServiceRequest (set during booking) > existing

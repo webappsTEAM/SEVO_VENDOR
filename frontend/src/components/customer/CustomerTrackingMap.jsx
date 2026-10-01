@@ -1,7 +1,7 @@
 /**
  * CustomerTrackingMap.jsx
  *
- * Dedicated, full-screen ready Customer Live Tracking Component for CalTrack.
+ * Dedicated, full-screen ready Customer Live Tracking Component for SEVO.
  * Displays technician live position, customer destination, route path, status badge,
  * and Work Start OTP without exposing technician private data.
  */
@@ -190,7 +190,7 @@ export function CustomerTrackingMap({
                   {trackingData?.assigned_technician?.name || 'Assigned Professional'}
                 </div>
                 <div className="text-[10px] text-slate-400 flex items-center gap-1">
-                  <ShieldCheck className="w-3 h-3 text-emerald-400" /> Verified CalTrack Technician
+                  <ShieldCheck className="w-3 h-3 text-emerald-400" /> Verified SEVO Technician
                 </div>
               </div>
             </div>

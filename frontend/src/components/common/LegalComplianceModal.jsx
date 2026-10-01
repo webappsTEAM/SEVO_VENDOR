@@ -152,7 +152,7 @@ export function LegalComplianceModal({
                 </span>
               </div>
               <div className="text-[11px] text-slate-400 font-normal">
-                CalServices Workforce Operations & Legal Compliance Architecture
+                SEVO Workforce Operations & Legal Compliance Architecture
               </div>
             </div>
           </div>
@@ -487,7 +487,7 @@ export function LegalComplianceModal({
                   <span>Scope of Operating Agreement & Service Definitions</span>
                 </h3>
                 <p className="text-justify leading-relaxed">
-                  These Terms of Service constitute a legally binding contractual framework established between <strong>CALDIM ENGINEERING PRIVATE LIMITED</strong> (“Company”, “Platform”, “CalServices”) and any certified technician, contractor, enterprise customer, or individual accessing the workforce portal. CalServices provides a synchronized digital infrastructure facilitating on-demand engineering diagnostics, field calibration, appliance repairs, and spare parts fulfillment. Accessing or executing service bookings through the portal signifies unconditional acceptance of these terms. For legal notices, contact <a href="mailto:support@caldimengg.in" className="text-blue-700 font-mono font-semibold underline">support@caldimengg.in</a>.
+                  These Terms of Service constitute a legally binding contractual framework established between <strong>CALDIM ENGINEERING PRIVATE LIMITED</strong> (“Company”, “Platform”, “SEVO”) and any certified technician, contractor, enterprise customer, or individual accessing the workforce portal. SEVO provides a synchronized digital infrastructure facilitating on-demand engineering diagnostics, field calibration, appliance repairs, and spare parts fulfillment. Accessing or executing service bookings through the portal signifies unconditional acceptance of these terms. For legal notices, contact <a href="mailto:support@caldimengg.in" className="text-blue-700 font-mono font-semibold underline">support@caldimengg.in</a>.
                 </p>
               </section>
 
@@ -542,7 +542,7 @@ export function LegalComplianceModal({
                   <span>Work Extensions, Spare Parts Fulfillment & Warranty</span>
                 </h3>
                 <p className="text-justify leading-relaxed">
-                  Unforeseen repairs requiring supplementary labor or replacement hardware strictly require an electronic Work Extension Request submitted via the technician interface. No additional charge may be collected nor unapproved part installed without prior digital authorization and price consent from the customer. All replacement parts supplied through CalServices channels are genuine OEM components carrying standard manufacturer warranties.
+                  Unforeseen repairs requiring supplementary labor or replacement hardware strictly require an electronic Work Extension Request submitted via the technician interface. No additional charge may be collected nor unapproved part installed without prior digital authorization and price consent from the customer. All replacement parts supplied through SEVO channels are genuine OEM components carrying standard manufacturer warranties.
                 </p>
               </section>
 
@@ -553,7 +553,7 @@ export function LegalComplianceModal({
                   <span>Code of Conduct, Safety Standards & Anti-Solicitation</span>
                 </h3>
                 <p className="text-justify leading-relaxed">
-                  Technicians must wear approved Personal Protective Equipment (PPE), observe electrical safety protocols, and maintain professional demeanor. Off-platform private solicitation of CalServices customers or unrecorded cash transactions constitute severe material breaches of contract, leading to immediate permanent deactivation, forfeiture of accrued pending payouts, and statutory legal recourse.
+                  Technicians must wear approved Personal Protective Equipment (PPE), observe electrical safety protocols, and maintain professional demeanor. Off-platform private solicitation of SEVO customers or unrecorded cash transactions constitute severe material breaches of contract, leading to immediate permanent deactivation, forfeiture of accrued pending payouts, and statutory legal recourse.
                 </p>
               </section>
 
@@ -592,7 +592,7 @@ export function LegalComplianceModal({
                   <span>Information Collection & Statutory Ground</span>
                 </h3>
                 <p className="text-justify leading-relaxed">
-                  CalServices processes personal identification, professional certification data, and service telemetry strictly under statutory contractual necessity. Collected data comprises technician identity records (Government ID, PAN/Aadhaar/Tax numbers), trade certifications, customer service locations, diagnostic photographs, attendance logs, and financial transaction records required for field operations, invoicing, and regulatory tax compliance.
+                  SEVO processes personal identification, professional certification data, and service telemetry strictly under statutory contractual necessity. Collected data comprises technician identity records (Government ID, PAN/Aadhaar/Tax numbers), trade certifications, customer service locations, diagnostic photographs, attendance logs, and financial transaction records required for field operations, invoicing, and regulatory tax compliance.
                 </p>
               </section>
 
@@ -755,7 +755,7 @@ export function LegalComplianceModal({
                   <span>20-Kilometer Geofenced Service Radius</span>
                 </h3>
                 <p className="text-justify leading-relaxed">
-                  CalServices operates an on-site field engineering fulfillment model. Because physical execution and component delivery occur at the customer’s specified premises, bookings are dynamically dispatched exclusively to certified technicians located within a 20-kilometer operational service zone, optimizing response times and carbon footprint.
+                  SEVO operates an on-site field engineering fulfillment model. Because physical execution and component delivery occur at the customer’s specified premises, bookings are dynamically dispatched exclusively to certified technicians located within a 20-kilometer operational service zone, optimizing response times and carbon footprint.
                 </p>
               </section>
 

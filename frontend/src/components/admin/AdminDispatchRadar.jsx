@@ -1,7 +1,7 @@
 /**
  * AdminDispatchRadar.jsx
  *
- * CalTrack Super Admin Dispatch Radar V2 — Read-Only Observability & Control Tower.
+ * SEVO Super Admin Dispatch Radar V2 — Read-Only Observability & Control Tower.
  *
  * Visualizes how customer bookings travel through the technician dispatch pipeline:
  *  - Compact metric overview strip (Active, Searching, Offered, Assigned, En Route, In Progress, Completed Today)
@@ -12,7 +12,7 @@
  *  - Live countdown timers on active offers
  *  - Realtime SSE reconciliation with zero dispatch side effects
  *
- * THEME: Strictly aligned with the clean, light CalTrack Admin Operations visual system.
+ * THEME: Strictly aligned with the clean, light SEVO Admin Operations visual system.
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -186,7 +186,7 @@ export function AdminDispatchRadar() {
     return `${m < 10 ? '0' + m : m}:${s < 10 ? '0' + s : s}`;
   };
 
-  // Status badge styling helper aligned with CalTrack light palette
+  // Status badge styling helper aligned with SEVO light palette
   const getStatusBadgeClass = (st) => {
     const s = (st || '').toUpperCase();
     if (s.includes('OFFER')) return 'bg-amber-50 text-amber-700 border-amber-200';

@@ -61,6 +61,7 @@ INSTALLED_APPS = [
     "companies",
     "accounts",
     "employees",
+    "inventory",
     "service_requests",
     "workforce_api",
     "time_tracking",
@@ -208,6 +209,9 @@ SIMPLE_JWT = {
 AUTH_COOKIE = "qt_access"
 AUTH_COOKIE_REFRESH = "qt_refresh"
 AUTH_COOKIE_SECURE = not DEBUG
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 AUTH_COOKIE_SAMESITE = os.getenv("AUTH_COOKIE_SAMESITE", "Lax" if DEBUG else "Strict")
 AUTH_COOKIE_DOMAIN = os.getenv("AUTH_COOKIE_DOMAIN", None)
 

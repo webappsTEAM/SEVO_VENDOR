@@ -1,14 +1,4 @@
-import React from 'react';
-  
-  const ManeuverUtils = () =>  {
-	return (
-	  <div>
-	  </div>
-	);
-  }
-  
-  export default ManeuverUtils;
-  /**
+/**
  * maneuverUtils.js
  *
  * Turn-by-Turn Navigation Maneuver Parser & Step Progression Engine for CalTrack.

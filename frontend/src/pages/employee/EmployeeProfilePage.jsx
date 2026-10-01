@@ -219,7 +219,7 @@ export function EmployeeProfilePage() {
                     {profile?.first_name} {profile?.last_name}
                   </h1>
                   <p className="text-xs text-zinc-500 font-medium">
-                    {profile?.title || 'Certified Technician'} • {profile?.company_name || 'CalServices'}
+                    {profile?.title || 'Certified Technician'} • {profile?.company_name || 'SEVO'}
                   </p>
                 </div>
                 <div className="flex items-center justify-center sm:justify-end gap-2">

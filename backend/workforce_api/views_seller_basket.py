@@ -70,7 +70,6 @@ class SellerProductBasketCalculatePreviewView(APIView):
     def post(self, request):
         company = _get_seller_company(request.user)
         is_admin = request.user.is_superuser or getattr(request.user, "is_staff", False)
-
         target_company_id = request.data.get("company_id")
         if is_admin and target_company_id:
             company = Company.objects.filter(id=target_company_id).first()

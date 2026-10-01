@@ -31,7 +31,7 @@ export function PrivacyPolicyPage() {
   return (
     <LegalLayout
       title="Privacy & Telemetry Policy"
-      subtitle="How CalServices collects, encrypts, processes, and protects your personal, operational, and geospatial data."
+      subtitle="How SEVO collects, encrypts, processes, and protects your personal, operational, and geospatial data."
       activeTab="privacy"
     >
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
@@ -79,7 +79,7 @@ export function PrivacyPolicyPage() {
               <span>1.0 Information Collection & Processing Scope</span>
             </h2>
             <p className="text-justify leading-relaxed">
-              When you use CalServices, we collect information essential for coordinating field service engineering, customer dispatch, payment settlement, and compliance verification:
+              When you use SEVO, we collect information essential for coordinating field service engineering, customer dispatch, payment settlement, and compliance verification:
             </p>
             <ul className="list-disc pl-5 space-y-1.5 text-slate-700">
               <li>
@@ -108,7 +108,7 @@ export function PrivacyPolicyPage() {
                 Active Duty Geolocation Policy:
               </p>
               <p className="text-blue-900">
-                CalServices accesses device GPS coordinates only when a technician is logged in and is either <em>Clocked In</em> for a shift or has marked a job as <em>“On the Way”</em>. Real-time telemetry is transmitted to:
+                SEVO accesses device GPS coordinates only when a technician is logged in and is either <em>Clocked In</em> for a shift or has marked a job as <em>“On the Way”</em>. Real-time telemetry is transmitted to:
               </p>
               <ul className="list-disc pl-4 space-y-1 text-blue-800">
                 <li>Provide customers with a live ETA and map view of their technician's arrival.</li>
@@ -143,7 +143,7 @@ export function PrivacyPolicyPage() {
               <span>4. Tenant Isolation & Database Security</span>
             </h2>
             <p>
-              The CalServices backend is built on Supabase PostgreSQL with strict multi-tenant isolation:
+              The SEVO backend is built on Supabase PostgreSQL with strict multi-tenant isolation:
             </p>
             <ul className="list-disc pl-5 space-y-1.5 text-slate-700">
               <li><strong>Zero Cross-Tenant Leakage:</strong> Every operational record is bound to the verified tenant company context. One company’s managers or technicians cannot access another vendor’s customer or job data.</li>
@@ -159,7 +159,7 @@ export function PrivacyPolicyPage() {
               <span>5. Third-Party Data Sharing & Disclosure</span>
             </h2>
             <p>
-              CalServices does not sell, rent, or monetize your personal data. Data is shared only with verified technical partners:
+              SEVO does not sell, rent, or monetize your personal data. Data is shared only with verified technical partners:
             </p>
             <ul className="list-disc pl-5 space-y-1.5 text-slate-700">
               <li><strong>Payment Gateways:</strong> Razorpay and Stripe for secure payment tokenization and automated bank disbursements.</li>
@@ -219,7 +219,7 @@ export function PrivacyPolicyPage() {
               <span>8. Session Tokens & Authentication Security</span>
             </h2>
             <p>
-              CalServices uses secure HTTP session cookies and JSON Web Tokens (JWT) for authentication. We implement CSRF protection, secure header sanitization, and automatic token expiration to prevent unauthorized session hijacking.
+              SEVO uses secure HTTP session cookies and JSON Web Tokens (JWT) for authentication. We implement CSRF protection, secure header sanitization, and automatic token expiration to prevent unauthorized session hijacking.
             </p>
           </section>
 

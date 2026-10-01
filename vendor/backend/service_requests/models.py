@@ -339,6 +339,15 @@ class ServiceRequest(models.Model):
     discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     subtotal_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     final_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    fare_breakdown = models.JSONField(default=dict, blank=True)
+    dispatch_attempts = models.PositiveIntegerField(default=0)
+    dispatch_status = models.CharField(max_length=30, default="PENDING")
+    last_dispatch_error = models.TextField(blank=True, default="")
+    is_delayed = models.BooleanField(default=False)
+    delay_reason = models.CharField(max_length=255, blank=True, default="")
+    customer_gstin = models.CharField(max_length=15, blank=True, default="")
+    delivery_exception = models.JSONField(default=dict, blank=True)
+    extra_charges = models.JSONField(default=list, blank=True)
 
     # X-04: cancellation fields, all missing from this mirror -- without
     # these a technician-side "why was this job cancelled" view (e.g. after

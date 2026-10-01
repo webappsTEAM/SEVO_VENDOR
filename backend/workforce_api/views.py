@@ -1330,6 +1330,10 @@ class WorkforceOnboardingDocumentUploadView(APIView):
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request):
+        from workforce_api.services.registration import (
+            get_or_create_employee_profile,
+            REGISTRATION_STATUS_APPROVED,
+        )
         from workforce_api.services.onboarding import (
             CANONICAL_DOCUMENT_CATEGORIES,
             REQUIRED_DOCUMENT_CATEGORIES,
@@ -1342,13 +1346,24 @@ class WorkforceOnboardingDocumentUploadView(APIView):
         user = request.user
         emp = getattr(user, "employee_profile", None)
         if not emp:
+            emp = get_or_create_employee_profile(user)
+        if not emp:
             return Response({"error": "Employee record not found."}, status=status.HTTP_404_NOT_FOUND)
 
         bank_details = emp.bank_details or {}
         onboarding = bank_details.get("onboarding", {})
         current_status = str(onboarding.get("status", "not_started")).strip().lower()
 
-        if current_status not in CANDIDATE_EDITABLE_STATUSES:
+        # Operational/approved workers can upload/update documents in the portal,
+        # as well as candidates in active editable onboarding statuses.
+        # Only candidates in locked 'submitted' or 'under_review' statuses cannot edit.
+        allowed_upload_statuses = CANDIDATE_EDITABLE_STATUSES | {
+            REGISTRATION_STATUS_APPROVED,
+            "approved",
+            "active",
+        }
+
+        if current_status not in allowed_upload_statuses and getattr(emp, "status", "").lower() != "active":
             return Response({
                 "error": "LIFECYCLE_CONFLICT",
                 "message": f"Cannot upload documents while application is '{current_status}'.",
@@ -4188,7 +4203,7 @@ class WorkforceJobCashCollectView(APIView):
             pmt.payment_status = JobPayment.PaymentStatus.CASH_PENDING
             pmt.save()
 
-            # Record immutable audit event
+            # Record immutable audit event with OTP for customer confirmation
             PaymentCollectionEvent.objects.create(
                 job_payment=pmt,
                 employee=emp,
@@ -4654,33 +4669,27 @@ class WorkforceCustomerPaymentConfirmView(APIView):
 
                 if job.status == "proof_submitted" and is_fully_settled:
                     try:
-                        apply_transition(job, "completed", actor=request.user)
-                    except ValidationError as ve:
-                        completion_blocked_reason = str(ve)
-                        logger.warning("Could not complete job #%s after customer payment confirm: %s", job.id, ve)
-                        job.save(update_fields=["payment_status"])
-                        try:
-                            admin_user = None
-                            if job.company:
-                                admin_user = get_user_model().objects.filter(
-                                    Q(role__in=["admin", "manager"]) | Q(is_staff=True),
-                                    company=job.company,
-                                ).first()
-                            if admin_user:
-                                WorkforceNotification.objects.create(
-                                    recipient=admin_user,
-                                    title="Payment Confirmed but Job Did Not Close",
-                                    message=(
-                                        f"Job #{job.id} ({job.request_id}) payment was confirmed PAID but the job "
-                                        f"could not be marked completed: {completion_blocked_reason} Wallet was NOT "
-                                        f"credited. Run `complete_stuck_paid_jobs --job {job.request_id}` once resolved."
-                                    ),
-                                    notification_type="JOB_COMPLETION_BLOCKED",
-                                    company=job.company,
-                                    related_object_id=str(job.id),
-                                )
-                        except Exception as notify_err:
-                            logger.warning(f"Could not notify admin of blocked completion for Job #{job.id}: {notify_err}")
+                        admin_user = None
+                        if job.company:
+                            admin_user = get_user_model().objects.filter(
+                                Q(role__in=["admin", "manager"]) | Q(is_staff=True),
+                                company=job.company,
+                            ).first()
+                        if admin_user:
+                            WorkforceNotification.objects.create(
+                                recipient=admin_user,
+                                title="Payment Confirmed but Job Did Not Close",
+                                message=(
+                                    f"Job #{job.id} ({job.request_id}) payment was confirmed PAID but the job "
+                                    f"could not be marked completed: {completion_blocked_reason} Wallet was NOT "
+                                    f"credited. Run `complete_stuck_paid_jobs --job {job.request_id}` once resolved."
+                                ),
+                                notification_type="JOB_COMPLETION_BLOCKED",
+                                company=job.company,
+                                related_object_id=str(job.id),
+                            )
+                    except Exception as notify_err:
+                        logger.warning(f"Could not notify admin of blocked completion for Job #{job.id}: {notify_err}")
                     except Exception as e:
                         completion_blocked_reason = str(e)
                         logger.exception("Unexpected error completing job #%s after customer payment confirm: %s", job.id, e)

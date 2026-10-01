@@ -1,7 +1,7 @@
 /**
  * TechnicianFirstPersonNavView.jsx
  *
- * Full Google-Maps-Style First-Person Turn-by-Turn Navigation View for CalTrack Technicians.
+ * Full Google-Maps-Style First-Person Turn-by-Turn Navigation View for SEVO Technicians.
  * Reproduces the exact visual and interaction layout of the reference navigation screen:
  *  - Top Floating Deep Teal Maneuver Card (#005B52) with large directional arrow & "towards <Road Name>".
  *  - Attached "Then ↰" / "Then ←" sub-pill.

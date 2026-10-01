@@ -1,7 +1,7 @@
 /**
  * maneuverUtils.js
  *
- * Turn-by-Turn Navigation Maneuver Parser & Step Progression Engine for CalTrack.
+ * Turn-by-Turn Navigation Maneuver Parser & Step Progression Engine for SEVO.
  * Matches Google Maps navigation UI with extracted road targets and rich directional icons.
  */
 

@@ -96,7 +96,7 @@ function formatCategoryLabel(raw) {
 }
 
 /**
- * Service Category Styling (Dynamic Urban Company / CalTrack Style)
+ * Service Category Styling (Dynamic Urban Company / SEVO Style)
  */
 function getServiceCategoryMeta(categoryName = '', title = '') {
   const cat = (categoryName || '').trim().toLowerCase();
@@ -123,8 +123,8 @@ function getServiceCategoryMeta(categoryName = '', title = '') {
       id: 'painting',
       icon: Paintbrush,
       label: 'Painting & Wall Care',
-      tagColor: 'bg-rose-500/10 text-rose-800 border-rose-200',
-      iconBg: 'bg-rose-100 text-rose-700',
+      tagColor: 'bg-teal-500/10 text-teal-800 border-teal-200',
+      iconBg: 'bg-teal-100 text-teal-700',
     };
   }
 
@@ -151,39 +151,9 @@ function getServiceCategoryMeta(categoryName = '', title = '') {
     };
   }
 
-  // Canonical category match first (robust against service title renames)
-  if (cat === 'goods_transport_truck' || cat === 'truck' || cat === 'mini_truck') {
-    return {
-      id: 'goods_transport_truck',
-      icon: Truck,
-      label: 'Mini Truck',
-      tagColor: 'bg-blue-500/10 text-blue-800 border-blue-200',
-      iconBg: 'bg-blue-100 text-blue-700',
-    };
-  }
-
-  if (cat === 'goods_transport_two_wheeler' || cat === 'two_wheeler' || cat === 'two-wheeler') {
-    return {
-      id: 'goods_transport_two_wheeler',
-      icon: Truck,
-      label: 'Two-Wheeler',
-      tagColor: 'bg-indigo-500/10 text-indigo-800 border-indigo-200',
-      iconBg: 'bg-indigo-100 text-indigo-700',
-    };
-  }
-
-  if (cat === 'packers_movers' || cat === 'packers-and-movers' || cat === 'packers_and_movers') {
-    return {
-      id: 'packers_movers',
-      icon: Layers,
-      label: 'Packers & Movers',
-      tagColor: 'bg-purple-500/10 text-purple-800 border-purple-200',
-      iconBg: 'bg-purple-100 text-purple-700',
-    };
-  }
-
-  // 1. Mini Truck Delivery / Heavy Goods Transport
+  // 3. Mini Truck Delivery / Heavy Goods Transport
   if (
+    cat === 'goods_transport_truck' || cat === 'truck' || cat === 'mini_truck' ||
     text.includes('goods_transport_truck') ||
     text.includes('mini truck') ||
     text.includes('3 wheeler') ||
@@ -204,8 +174,9 @@ function getServiceCategoryMeta(categoryName = '', title = '') {
     };
   }
 
-  // 2. Two-Wheeler / Bike Courier
+  // 4. Two-Wheeler / Bike Courier
   if (
+    cat === 'goods_transport_two_wheeler' || cat === 'two_wheeler' || cat === 'two-wheeler' ||
     text.includes('goods_transport_two_wheeler') ||
     text.includes('two_wheeler') ||
     text.includes('two wheeler') ||
@@ -224,8 +195,9 @@ function getServiceCategoryMeta(categoryName = '', title = '') {
     };
   }
 
-  // 3. Packers & Movers / Relocation
+  // 5. Packers & Movers / Relocation
   if (
+    cat === 'packers_movers' || cat === 'packers-and-movers' || cat === 'packers_and_movers' ||
     text.includes('packers_movers') ||
     text.includes('packer') ||
     text.includes('mover') ||
@@ -242,7 +214,7 @@ function getServiceCategoryMeta(categoryName = '', title = '') {
     };
   }
 
-  // 4. General Goods & Transport / Logistics
+  // 6. General Goods & Transport / Logistics
   if (
     text.includes('goods_transport') ||
     text.includes('logistics') ||
@@ -258,7 +230,7 @@ function getServiceCategoryMeta(categoryName = '', title = '') {
     };
   }
 
-  // 5. Electrical & Power
+  // 7. Electrical & Power
   if (
     text.includes('electr') ||
     text.includes('socket') ||
@@ -279,7 +251,7 @@ function getServiceCategoryMeta(categoryName = '', title = '') {
     };
   }
 
-  // 6. AC & Appliances
+  // 8. AC & Appliances
   if (
     text.includes('ac') ||
     text.includes('air') ||
@@ -299,7 +271,7 @@ function getServiceCategoryMeta(categoryName = '', title = '') {
     };
   }
 
-  // 7. Plumbing & Water
+  // 9. Plumbing & Water
   if (
     text.includes('plumb') ||
     text.includes('pipe') ||
@@ -319,7 +291,7 @@ function getServiceCategoryMeta(categoryName = '', title = '') {
     };
   }
 
-  // 8. Carpentry, Locks & Doors
+  // 10. Carpentry, Locks & Doors
   if (
     text.includes('lock') ||
     text.includes('mortise') ||
@@ -338,7 +310,7 @@ function getServiceCategoryMeta(categoryName = '', title = '') {
     };
   }
 
-  // 9. Cleaning & Disinfection
+  // 11. Cleaning & Disinfection
   if (text.includes('clean') || text.includes('pest') || text.includes('deep') || text.includes('disinfect')) {
     return {
       id: 'cleaning',

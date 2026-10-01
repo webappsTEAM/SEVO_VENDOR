@@ -1,14 +1,4 @@
-import React from 'react';
-  
-  const WorkforceService = () =>  {
-	return (
-	  <div>
-	  </div>
-	);
-  }
-  
-  export default WorkforceService;
-  /**
+/**
  * workforce-app/frontend/src/api/workforceService.js
  * Comprehensive API Client for all 21 CalServices Workforce Lifecycle Phases.
  */

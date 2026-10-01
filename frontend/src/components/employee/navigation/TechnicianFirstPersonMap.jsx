@@ -1,7 +1,7 @@
 /**
  * TechnicianFirstPersonMap.jsx
  *
- * True First-Person Course-Up Navigation Map for CalTrack Technicians.
+ * True First-Person Course-Up Navigation Map for SEVO Technicians.
  * Matches Google Maps Navigation experience with:
  *  - Course-Up Bearing Rotation following real device GPS movement heading.
  *  - Navigation Camera Offset (technician situated in lower 25% of viewport).

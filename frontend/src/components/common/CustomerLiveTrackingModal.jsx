@@ -1,7 +1,7 @@
 /**
  * CustomerLiveTrackingModal.jsx
  *
- * Full-Featured Realtime Customer & Admin Live Tracking Modal for CalTrack.
+ * Full-Featured Realtime Customer & Admin Live Tracking Modal for SEVO.
  *
  * Integrates:
  *  - REST state recovery & polling fallback.
@@ -347,7 +347,7 @@ export function CustomerLiveTrackingModal({
         <div className="px-5 py-3 bg-white border-t border-slate-200 flex items-center justify-between text-xs text-slate-600">
           <span className="flex items-center gap-1.5">
             <ShieldCheck className="w-4 h-4 text-blue-600" />
-            <span>CalTrack Verified Road Dispatch</span>
+            <span>SEVO Verified Road Dispatch</span>
           </span>
           <button
             type="button"
