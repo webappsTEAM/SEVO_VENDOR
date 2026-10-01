@@ -65,7 +65,11 @@ class CashCollectionNoOtpTests(TestCase):
             is_submitted=True,
         )
 
-    def test_cash_collection_directly_marks_paid_and_completes_job(self):
+    def test_cash_collection_records_cash_pending_and_otp_verification_completes_job(self):
+        """Technician reports cash; transitions to CASH_PENDING; OTP verification transitions to PAID and completes job."""
+        from django.contrib.auth.hashers import make_password
+
+        # Step 1: Cash Collection
         req = self.factory.post(
             f"/workforce/jobs/{self.job.id}/payment/collect/",
             {"amount_received": "1000.00"},
@@ -76,71 +80,83 @@ class CashCollectionNoOtpTests(TestCase):
         resp = view(req, pk=self.job.id)
 
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.data["payment_status"], "PAID")
-        self.assertEqual(resp.data["job_status"], "completed")
+        self.assertEqual(resp.data["payment_status"], "CASH_PENDING")
         self.assertEqual(resp.data["amount_due"], "999.00")
         self.assertEqual(resp.data["amount_received"], "1000.00")
         self.assertEqual(resp.data["change_returned"], "1.00")
 
-        # Verify database record
+        # Verify database record in CASH_PENDING state
         pmt = JobPayment.objects.get(job=self.job)
-        self.assertEqual(pmt.payment_status, JobPayment.PaymentStatus.PAID)
-        self.assertEqual(pmt.amount_paid, Decimal("999.00"))
-        self.assertIsNone(pmt.payment_confirmation_otp_hash)
+        self.assertEqual(pmt.payment_status, JobPayment.PaymentStatus.CASH_PENDING)
+        self.assertIsNotNone(pmt.payment_confirmation_otp_hash)
+
+        # Verify audit events
+        events = list(PaymentCollectionEvent.objects.filter(job_payment=pmt).values_list("event_type", flat=True))
+        self.assertIn("CASH_REPORTED", events)
+
+        # Step 2: Set deterministic OTP and verify via WorkforceJobPaymentVerifyOTPView
+        pmt.payment_confirmation_otp_hash = make_password("654321")
+        pmt.save(update_fields=["payment_confirmation_otp_hash"])
+
+        req_otp = self.factory.post(
+            f"/workforce/jobs/{self.job.id}/payment/verify-otp/",
+            {"otp": "654321"},
+            format="json",
+        )
+        force_authenticate(req_otp, user=self.user)
+        view_otp = WorkforceJobPaymentVerifyOTPView.as_view()
+        resp_otp = view_otp(req_otp, pk=self.job.id)
+
+        self.assertEqual(resp_otp.status_code, 200)
+        self.assertEqual(resp_otp.data["payment_status"], "PAID")
 
         # Verify job is completed
         self.job.refresh_from_db()
         self.assertEqual(self.job.status, "completed")
         self.assertEqual(self.job.payment_status, "paid")
 
-        # Verify audit events
-        events = list(PaymentCollectionEvent.objects.filter(job_payment=pmt).values_list("event_type", flat=True))
-        self.assertIn("CASH_COLLECTED", events)
-        self.assertIn("PAYMENT_PAID", events)
+        # Verify final audit events
+        events_final = list(PaymentCollectionEvent.objects.filter(job_payment=pmt).values_list("event_type", flat=True))
+        self.assertIn("PAYMENT_PAID", events_final)
 
-    def test_cash_collection_from_in_progress_completes_job(self):
-        unique_id = uuid.uuid4().hex[:8]
-        job_in_progress = ServiceRequest.objects.create(
-            company=self.company,
-            assigned_employee=self.emp,
-            status="in_progress",
-            total_amount=Decimal("499.00"),
-            payment_method="cash",
-            payment_status="pending",
-            preferred_date=timezone.localdate(),
-            preferred_time="11:00 AM",
-            service_category="Appliances",
-            issue_title="Fan Repair",
-        )
+    def test_cash_collection_insufficient_amount_rejected(self):
+        """Technician cannot collect less than authoritative amount due."""
         req = self.factory.post(
-            f"/workforce/jobs/{job_in_progress.id}/payment/collect/",
+            f"/workforce/jobs/{self.job.id}/payment/collect/",
             {"amount_received": "500.00"},
             format="json",
         )
         force_authenticate(req, user=self.user)
         view = WorkforceJobCashCollectView.as_view()
-        resp = view(req, pk=job_in_progress.id)
+        resp = view(req, pk=self.job.id)
 
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.data["payment_status"], "PAID")
-        self.assertEqual(resp.data["job_status"], "completed")
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("cannot be less than authoritative amount due", resp.data["error"])
 
-        job_in_progress.refresh_from_db()
-        self.assertEqual(job_in_progress.status, "completed")
-        self.assertEqual(job_in_progress.payment_status, "paid")
+    def test_wrong_payment_confirmation_otp_rejected(self):
+        """Submitting an invalid 6-digit OTP is rejected with 400."""
+        from django.contrib.auth.hashers import make_password
 
-    def test_legacy_verify_otp_view_safe_deprecated_response(self):
+        # Report cash first
         req = self.factory.post(
-            f"/workforce/jobs/{self.job.id}/payment/verify-otp/",
-            {"otp": "123456"},
+            f"/workforce/jobs/{self.job.id}/payment/collect/",
+            {"amount_received": "1000.00"},
             format="json",
         )
         force_authenticate(req, user=self.user)
-        view = WorkforceJobPaymentVerifyOTPView.as_view()
-        resp = view(req, pk=self.job.id)
+        WorkforceJobCashCollectView.as_view()(req, pk=self.job.id)
 
-        self.assertEqual(resp.status_code, 200)
-        self.assertIn("no longer required", resp.data["message"])
+        # Submit wrong OTP
+        req_wrong = self.factory.post(
+            f"/workforce/jobs/{self.job.id}/payment/verify-otp/",
+            {"otp": "000000"},
+            format="json",
+        )
+        force_authenticate(req_wrong, user=self.user)
+        resp_wrong = WorkforceJobPaymentVerifyOTPView.as_view()(req_wrong, pk=self.job.id)
+
+        self.assertEqual(resp_wrong.status_code, 400)
+        self.assertIn("Incorrect payment confirmation OTP", resp_wrong.data["error"])
 
 
 if __name__ == "__main__":

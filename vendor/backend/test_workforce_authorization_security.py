@@ -14,6 +14,7 @@ Comprehensive Authorization & Security Verification Suite for Workforce:
 """
 import uuid
 from decimal import Decimal
+from datetime import timedelta
 
 from django.test import TestCase, Client, override_settings
 from django.utils import timezone
@@ -107,6 +108,7 @@ class WorkforceAuthorizationAndSecurityTests(TestCase):
             job=self.job_a,
             employee=self.emp_a,
             status=WorkforceJobOffer.Status.OFFERED,
+            expires_at=timezone.now() + timedelta(minutes=15),
         )
 
     # ── 1. Unauthenticated Access ─────────────────────────────────────────────
