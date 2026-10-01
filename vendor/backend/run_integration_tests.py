@@ -184,12 +184,12 @@ call_command('test', *labels, '--keepdb', '--noinput')
             conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
             cursor = conn.cursor()
             # Terminate any remaining connections to the test DB
-            cursor.execute(f\"\"\"
+            cursor.execute(f"""
                 SELECT pg_terminate_backend(pg_stat_activity.pid)
                 FROM pg_stat_activity
                 WHERE pg_stat_activity.datname = '{disposable_db}'
                   AND pid <> pg_backend_pid();
-            \"\"\")
+            """)
             cursor.execute(f"DROP DATABASE IF EXISTS {disposable_db};")
             cursor.close()
             conn.close()
