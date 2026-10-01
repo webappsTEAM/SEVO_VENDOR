@@ -94,6 +94,7 @@ from .views import (
     WorkforceComplianceRequirementView,
     WorkforceEmployeeComplianceView,
     WorkforceRealtimeStreamView,
+    WorkforceRealtimeStreamTicketView,
     WorkforceAdminPayrollListView,
     WorkforceAdminPayrollProcessView,
     WorkforceMyPayslipsView,
@@ -476,6 +477,7 @@ urlpatterns = [
     path("compliance/records/<int:emp_id>/", WorkforceEmployeeComplianceView.as_view(), name="workforce-compliance-records-emp"),
 
     # Workforce Realtime Stream (Phase 25)
+    path("realtime/stream-ticket/", WorkforceRealtimeStreamTicketView.as_view(), name="workforce-realtime-stream-ticket"),
     path("realtime/stream/", WorkforceRealtimeStreamView.as_view(), name="workforce-realtime-stream"),
 
     # Payroll Management (Phase 26)

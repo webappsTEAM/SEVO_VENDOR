@@ -213,12 +213,37 @@ export function useRealtimeStream({
         return;
       }
 
+      // Step A2: never put the access JWT in the stream URL (proxies/access logs record URLs and the JWT
+      // lives for hours). Exchange it for a 60 s single-use ticket sent in a header; fall back to the
+      // legacy query token only if the server predates tickets.
+      let ticketUrl = null;
+      try {
+        const ticketResp = await fetch('/api/workforce/realtime/stream-ticket/', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (ticketResp.ok) {
+          const ticketJson = await ticketResp.json();
+          if (ticketJson && ticketJson.ticket) {
+            ticketUrl = `/api/workforce/realtime/stream/?ticket=${encodeURIComponent(ticketJson.ticket)}`;
+          }
+        }
+      } catch (ticketErr) {
+        console.warn('[Realtime] Stream ticket request failed; using legacy token URL.', ticketErr?.message || ticketErr);
+      }
+
+      if (!isMountedRef.current || !enabled) {
+        setConnectionState(SSE_STATE.DISCONNECTED);
+        isConnectingRef.current = false;
+        return;
+      }
+
       // Step B: Instantiate Generation-Tracked EventSource
       const currentGen = ++connectionGenerationRef.current;
       setConnectionState((prev) => (prev === SSE_STATE.DISCONNECTED ? SSE_STATE.CONNECTING : SSE_STATE.RECONNECTING));
       console.info(`[Realtime CONNECT] generation=${currentGen}`);
 
-      let streamUrl = `/api/workforce/realtime/stream/?token=${encodeURIComponent(token)}`;
+      let streamUrl = ticketUrl || `/api/workforce/realtime/stream/?token=${encodeURIComponent(token)}`;
       if (lastEventIdRef.current) {
         streamUrl += `&last_event_id=${encodeURIComponent(lastEventIdRef.current)}`;
       }

@@ -9106,6 +9106,23 @@ class ServerSentEventRenderer(BaseRenderer):
         return data
 
 
+ADMIN_ONLY_REALTIME_EVENT_TYPES = frozenset({
+    "DISPATCH_STARTED",
+    "CANDIDATES_EVALUATED",
+    "EMPLOYEE_JOB_DECLINED",
+    "DISPATCH_UNASSIGNED_REASON",
+})
+
+
+class WorkforceRealtimeStreamTicketView(APIView):
+    """POST (Authorization header) -> a 60 s single-use ticket for opening the SSE stream."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        from workforce_api.services.stream_ticket import issue_stream_ticket, TTL_SECONDS
+        return Response({"ticket": issue_stream_ticket(request.user.id), "expires_in": TTL_SECONDS})
+
+
 class WorkforceRealtimeStreamView(APIView):
     permission_classes = [permissions.AllowAny]
     renderer_classes = [ServerSentEventRenderer, JSONRenderer]
@@ -9117,13 +9134,27 @@ class WorkforceRealtimeStreamView(APIView):
 
         logger.info("[Realtime SSE START] Received SSE connection request.")
         user = request.user
-        token_str = request.query_params.get("token") or request.headers.get("Authorization", "").replace("Bearer ", "").strip()
+        ticket_str = request.query_params.get("ticket")
+        query_token = request.query_params.get("token")
+        header_token = request.headers.get("Authorization", "").replace("Bearer ", "").strip()
+        # A full access JWT in the URL is recorded by proxies/access logs and stays valid for hours; the
+        # driver app now uses a 60 s single-use ticket instead. The query-string JWT keeps working
+        # until clients are updated; set REALTIME_ALLOW_QUERY_TOKEN=False to turn it off.
+        if query_token and not header_token and not getattr(settings, "REALTIME_ALLOW_QUERY_TOKEN", True):
+            return Response({"error": "Use a stream ticket.", "code": "QUERY_TOKEN_DISABLED"}, status=status.HTTP_401_UNAUTHORIZED)
+        token_str = query_token or header_token
 
-        # Step 1: JWT Authentication
-        if (not user or not user.is_authenticated) and token_str:
+        # Step 1: Authentication (stream ticket, or JWT)
+        if (not user or not user.is_authenticated) and (token_str or ticket_str):
             try:
-                access_token = AccessToken(token_str)
-                user_id = access_token.get("user_id")
+                if ticket_str:
+                    from workforce_api.services.stream_ticket import redeem_stream_ticket
+                    user_id = redeem_stream_ticket(ticket_str)
+                    if user_id is None:
+                        return Response({"error": "Invalid or expired stream ticket.", "code": "INVALID_TICKET"}, status=status.HTTP_401_UNAUTHORIZED)
+                else:
+                    access_token = AccessToken(token_str)
+                    user_id = access_token.get("user_id")
                 if user_id is None:
                     logger.warning("[Realtime AUTH] Token missing user_id claim.")
                     return Response({"error": "Invalid token claims.", "code": "INVALID_TOKEN"}, status=status.HTTP_401_UNAUTHORIZED)
@@ -9253,8 +9284,15 @@ class WorkforceRealtimeStreamView(APIView):
                                 logger.debug("[Realtime SSE PUBSUB_READ_ERR] %s", ps_read_err)
                                 pubsub = None
                                 time.sleep(1)
+                                # Redis dropped mid-stream: fall back to the DB event log
+                                should_query_db = True
                         else:
                             time.sleep(1)
+                            # No Redis (not configured / unreachable): nothing will ever signal
+                            # a new event, so poll the event log (one indexed id > last_id query
+                            # per second) instead of silently delivering nothing. GT offers
+                            # live only ~20-40s; the client's 30s poll cannot cover that.
+                            should_query_db = True
 
                     if should_query_db:
                         has_pending_events = False
@@ -9289,8 +9327,14 @@ class WorkforceRealtimeStreamView(APIView):
                                     ev_comp = ev_payload.get("company_id")
                                     is_authorized = (ev_comp is None or ev_comp == user_company_id)
                             elif ev_user_id is None:
-                                ev_company_id = ev_payload.get("company_id") if isinstance(ev_payload, dict) else None
-                                is_authorized = (ev_company_id is None or ev_company_id == user_company_id)
+                                # Dispatch diagnostics (ranked candidate names/scores/distances, decline
+                                # reasons) belong to the admin dispatch radar only; a driver must never
+                                # receive other drivers' details or jobs not offered to them.
+                                if ev["event_type"] in ADMIN_ONLY_REALTIME_EVENT_TYPES:
+                                    is_authorized = False
+                                else:
+                                    ev_company_id = ev_payload.get("company_id") if isinstance(ev_payload, dict) else None
+                                    is_authorized = (ev_company_id is None or ev_company_id == user_company_id)
                             else:
                                 is_authorized = False
 
