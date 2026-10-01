@@ -203,7 +203,7 @@ class VendorDiscoveryEngine:
                 rel_id = None
 
             # Calculate match percentage (100% if no criteria specified, or ratio of matched groups)
-            match_score = int(round((matched_term_count / total_terms) * 100)) if parsed_terms else 100
+            match_score = round((matched_term_count / total_terms) * 100) if parsed_terms else 100
 
             full_name = f"{emp.user.first_name} {emp.user.last_name}".strip() or emp.user.username
             results.append({
