@@ -55,6 +55,7 @@ class User(AbstractBaseUser):
         CUSTOMER = "customer", "Customer"
 
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.EMPLOYEE)
+    custom_permissions = models.JSONField(default=dict, blank=True)
     bio = models.TextField(blank=True, default="")
     phone = models.CharField(max_length=30, unique=True, null=True, blank=True)
     mobile_number = models.CharField(max_length=15, unique=True, null=True, blank=True, db_index=True)
