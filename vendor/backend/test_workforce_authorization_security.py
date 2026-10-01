@@ -120,7 +120,7 @@ class WorkforceAuthorizationAndSecurityTests(TestCase):
         resp_list = client.get("/api/workforce/jobs/")
         self.assertEqual(resp_list.status_code, status.HTTP_401_UNAUTHORIZED)
 
-        resp_accept = client.post(f"/api/workforce/jobs/{self.job_a.id}/accept/")
+        resp_accept = client.post(f"/api/workforce/jobs/{self.job_a.id}/accept-offer/")
         self.assertEqual(resp_accept.status_code, status.HTTP_401_UNAUTHORIZED)
 
         resp_collect = client.post(f"/api/workforce/jobs/{self.job_a.id}/payment/collect/", {"amount_received": "500.00"})
@@ -250,6 +250,7 @@ class WorkforceAuthorizationAndSecurityTests(TestCase):
     def test_08_csrf_protection_enforced_on_session_client(self):
         """CSRF protection blocks unvalidated state-mutating requests when CSRF checks are enabled."""
         csrf_client = Client(enforce_csrf_checks=True)
+        csrf_client.force_login(self.user_tech_a)
         # Attempt POST without CSRF token
         resp = csrf_client.post("/api/workforce/jobs/", {"dummy": "data"})
         # Should be rejected with 403 Forbidden due to CSRF failure

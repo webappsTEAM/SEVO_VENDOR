@@ -156,7 +156,7 @@ class CashCollectionNoOtpTests(TestCase):
         resp_wrong = WorkforceJobPaymentVerifyOTPView.as_view()(req_wrong, pk=self.job.id)
 
         self.assertEqual(resp_wrong.status_code, 400)
-        self.assertIn("Incorrect payment confirmation OTP", resp_wrong.data["error"])
+        self.assertIn("Invalid payment confirmation OTP", resp_wrong.data["error"])
 
 
 if __name__ == "__main__":
