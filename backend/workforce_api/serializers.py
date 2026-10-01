@@ -2701,6 +2701,7 @@ class SellerProductListSerializer(serializers.ModelSerializer):
     images_count = serializers.SerializerMethodField()
     reviewed_by_name = serializers.SerializerMethodField()
     rejection_reason = serializers.CharField(source="admin_review_note", read_only=True)
+    effective_fssai_license_number = serializers.SerializerMethodField()
 
     class Meta:
         from .models import SellerProduct
@@ -2733,6 +2734,8 @@ class SellerProductListSerializer(serializers.ModelSerializer):
             "hsn_code",
             "storage_info",
             "expiry_info",
+            "fssai_license_number",
+            "effective_fssai_license_number",
             "status",
             "admin_review_note",
             "rejection_reason",
@@ -2763,6 +2766,15 @@ class SellerProductListSerializer(serializers.ModelSerializer):
         if not has_access:
             data.pop("procurement_price", None)
         return data
+
+    def get_effective_fssai_license_number(self, obj):
+        if getattr(obj, "fssai_license_number", ""):
+            return obj.fssai_license_number
+        vendor_store = getattr(obj.company, "vendor_store", None)
+        if not vendor_store:
+            from .models import VendorStore
+            vendor_store = VendorStore.objects.filter(company=obj.company).first()
+        return vendor_store.fssai_license_number if vendor_store else ""
 
     def get_category_path(self, obj):
         if not obj.category:
@@ -2814,6 +2826,7 @@ class SellerProductDetailSerializer(serializers.ModelSerializer):
     variant_siblings = serializers.SerializerMethodField()
     reviewed_by_name = serializers.SerializerMethodField()
     rejection_reason = serializers.CharField(source="admin_review_note", read_only=True)
+    effective_fssai_license_number = serializers.SerializerMethodField()
 
     class Meta:
         from .models import SellerProduct
@@ -2847,6 +2860,8 @@ class SellerProductDetailSerializer(serializers.ModelSerializer):
             "hsn_code",
             "storage_info",
             "expiry_info",
+            "fssai_license_number",
+            "effective_fssai_license_number",
             "status",
             "admin_review_note",
             "rejection_reason",
@@ -2898,6 +2913,15 @@ class SellerProductDetailSerializer(serializers.ModelSerializer):
             return None
         name = f"{getattr(obj.reviewed_by, 'first_name', '')} {getattr(obj.reviewed_by, 'last_name', '')}".strip()
         return name or getattr(obj.reviewed_by, "username", "Reviewer")
+
+    def get_effective_fssai_license_number(self, obj):
+        if getattr(obj, "fssai_license_number", ""):
+            return obj.fssai_license_number
+        vendor_store = getattr(obj.company, "vendor_store", None)
+        if not vendor_store:
+            from .models import VendorStore
+            vendor_store = VendorStore.objects.filter(company=obj.company).first()
+        return vendor_store.fssai_license_number if vendor_store else ""
 
     def get_variant_siblings(self, obj):
         if not obj.variant_group_id:
@@ -3015,6 +3039,7 @@ class SellerProductCreateUpdateSerializer(serializers.ModelSerializer):
             "hsn_code",
             "storage_info",
             "expiry_info",
+            "fssai_license_number",
             "status",
             "images",
             "specs",
@@ -4459,33 +4484,38 @@ class WarehouseInboundRequestCreateSerializer(serializers.Serializer):
 # BASKET OFFERS (MULTI-PRODUCT COMBO BUNDLES) SERIALIZERS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-class SellerProductBasketItemSerializer(serializers.ModelSerializer):
+class SellerProductBasketItemOptionSerializer(serializers.ModelSerializer):
     product_id = serializers.IntegerField(source="product.id")
     product_title = serializers.CharField(source="product.title", read_only=True)
     product_sku = serializers.CharField(source="product.sku", read_only=True)
+    product_brand = serializers.CharField(source="product.brand", read_only=True)
     product_unit = serializers.CharField(source="product.unit", read_only=True)
+    product_pack_size = serializers.CharField(source="product.pack_size", read_only=True)
     product_mrp = serializers.DecimalField(source="product.mrp", max_digits=10, decimal_places=2, read_only=True)
     product_selling_price = serializers.DecimalField(source="product.selling_price", max_digits=10, decimal_places=2, read_only=True)
     product_procurement_price = serializers.DecimalField(source="product.procurement_price", max_digits=10, decimal_places=2, read_only=True)
     product_image = serializers.SerializerMethodField()
     available_qty = serializers.SerializerMethodField()
     on_hand_qty = serializers.SerializerMethodField()
-    is_approved = serializers.BooleanField(source="product.status == 'APPROVED'", read_only=True)
+    is_approved = serializers.SerializerMethodField()
 
     class Meta:
-        from .models import SellerProductBasketItem
-        model = SellerProductBasketItem
+        from .models import SellerProductBasketItemOption
+        model = SellerProductBasketItemOption
         fields = [
             "id",
             "product_id",
             "product_title",
             "product_sku",
+            "product_brand",
             "product_unit",
+            "product_pack_size",
             "product_mrp",
             "product_selling_price",
             "product_procurement_price",
             "product_image",
-            "quantity",
+            "is_default",
+            "display_order",
             "on_hand_qty",
             "available_qty",
             "is_approved",
@@ -4508,6 +4538,115 @@ class SellerProductBasketItemSerializer(serializers.ModelSerializer):
         if not inv:
             return 0
         return int(inv.on_hand_qty) if (inv.on_hand_qty % 1) == 0 else float(inv.on_hand_qty)
+
+    def get_is_approved(self, obj):
+        return obj.product.status == "APPROVED"
+
+
+class SellerProductBasketItemSerializer(serializers.ModelSerializer):
+    slot_title = serializers.CharField(required=False, allow_blank=True)
+    quantity = serializers.IntegerField(default=1)
+    display_order = serializers.IntegerField(default=0)
+    options = SellerProductBasketItemOptionSerializer(many=True, read_only=True)
+
+    # Backward compatibility fields pointing to the slot's default / primary product
+    product_id = serializers.SerializerMethodField()
+    product_title = serializers.SerializerMethodField()
+    product_sku = serializers.SerializerMethodField()
+    product_unit = serializers.SerializerMethodField()
+    product_mrp = serializers.SerializerMethodField()
+    product_selling_price = serializers.SerializerMethodField()
+    product_procurement_price = serializers.SerializerMethodField()
+    product_image = serializers.SerializerMethodField()
+    available_qty = serializers.SerializerMethodField()
+    on_hand_qty = serializers.SerializerMethodField()
+    is_approved = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models import SellerProductBasketItem
+        model = SellerProductBasketItem
+        fields = [
+            "id",
+            "slot_title",
+            "quantity",
+            "display_order",
+            "options",
+            "product_id",
+            "product_title",
+            "product_sku",
+            "product_unit",
+            "product_mrp",
+            "product_selling_price",
+            "product_procurement_price",
+            "product_image",
+            "on_hand_qty",
+            "available_qty",
+            "is_approved",
+        ]
+        read_only_fields = ["id"]
+
+    def _get_target_product(self, obj):
+        return obj.get_default_product()
+
+    def get_product_id(self, obj):
+        p = self._get_target_product(obj)
+        return p.id if p else None
+
+    def get_product_title(self, obj):
+        p = self._get_target_product(obj)
+        return p.title if p else (obj.slot_title or "")
+
+    def get_product_sku(self, obj):
+        p = self._get_target_product(obj)
+        return p.sku if p else ""
+
+    def get_product_unit(self, obj):
+        p = self._get_target_product(obj)
+        return p.unit if p else ""
+
+    def get_product_mrp(self, obj):
+        p = self._get_target_product(obj)
+        return str(p.mrp) if p and p.mrp is not None else "0.00"
+
+    def get_product_selling_price(self, obj):
+        p = self._get_target_product(obj)
+        return str(p.selling_price) if p and p.selling_price is not None else "0.00"
+
+    def get_product_procurement_price(self, obj):
+        p = self._get_target_product(obj)
+        return str(p.procurement_price) if p and p.procurement_price is not None else None
+
+    def get_product_image(self, obj):
+        p = self._get_target_product(obj)
+        if not p:
+            return ""
+        img = p.images.filter(is_primary=True).first() or p.images.first()
+        return img.image_url if img else ""
+
+    def get_available_qty(self, obj):
+        p = self._get_target_product(obj)
+        if not p:
+            return 0
+        inv = getattr(p, "inventory", None)
+        if not inv:
+            return 0
+        avail = inv.on_hand_qty - inv.reserved_qty
+        return max(0, int(avail) if (avail % 1) == 0 else float(avail))
+
+    def get_on_hand_qty(self, obj):
+        p = self._get_target_product(obj)
+        if not p:
+            return 0
+        inv = getattr(p, "inventory", None)
+        if not inv:
+            return 0
+        return int(inv.on_hand_qty) if (inv.on_hand_qty % 1) == 0 else float(inv.on_hand_qty)
+
+    def get_is_approved(self, obj):
+        p = self._get_target_product(obj)
+        return (p.status == "APPROVED") if p else False
+
+
 class SellerProductBasketSerializer(serializers.ModelSerializer):
     company_name = serializers.CharField(source="company.company_name", read_only=True)
     items = SellerProductBasketItemSerializer(many=True, read_only=True)

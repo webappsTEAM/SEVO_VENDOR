@@ -14530,6 +14530,7 @@ class VendorStoreProfileView(APIView):
             "logo_url": store.logo_url,
             "banner_url": store.banner_url,
             "fssai_license_number": store.fssai_license_number,
+            "gst_number": store.gst_number,
             "store_address": effective_addr,
             "latitude": str(effective_lat) if effective_lat is not None else None,
             "longitude": str(effective_lon) if effective_lon is not None else None,
@@ -14564,7 +14565,7 @@ class VendorStoreProfileView(APIView):
         data = request.data
         updatable_fields = [
             "store_name", "tagline", "description", "logo_url", "banner_url",
-            "fssai_license_number", "store_address", "is_accepting_orders",
+            "fssai_license_number", "gst_number", "store_address", "is_accepting_orders",
             "estimated_delivery_mins",
         ]
         for field in updatable_fields:

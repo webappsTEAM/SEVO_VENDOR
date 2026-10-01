@@ -148,9 +148,9 @@ export function Sidebar({ onCloseMobile = () => {} }) {
   // ─── 1. Dedicated SEVO Seller Hub Sidebar (Grocery / Retail Sellers) ─────────
   if (isDedicatedSeller) {
     return (
-      <aside className="w-60 bg-white border-r border-slate-200/90 h-full flex flex-col justify-between overflow-y-auto text-xs select-none shadow-xs">
-        <div className="p-3.5 space-y-4">
-          {/* Seller Header */}
+      <aside className="w-60 bg-white border-r border-slate-200/90 h-full flex flex-col text-xs select-none shadow-xs overflow-hidden shrink-0">
+        {/* Pinned Header Card */}
+        <div className="p-3.5 pb-2 shrink-0">
           <div className="p-3 rounded-lg border border-emerald-200/80 bg-emerald-50/60 text-emerald-950 flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
               <Store className="w-4 h-4" />
@@ -162,8 +162,10 @@ export function Sidebar({ onCloseMobile = () => {} }) {
               <span className="text-[10px] text-emerald-700 font-medium">Seller Hub Portal</span>
             </div>
           </div>
+        </div>
 
-          {/* 7 Seller Hub Navigation Modules (Categories managed exclusively by Admin) */}
+        {/* Scrollable Navigation Area */}
+        <div className="flex-1 overflow-y-auto px-3.5 pb-3.5 pt-1 space-y-4 sidebar-scrollbar">
           <div className="space-y-0.5">
             {renderNavLink('/workforce/seller/dashboard', Home, 'Home', null, true)}
             {renderNavLink('/workforce/seller-hub/orders', ShoppingBag, 'Orders')}
@@ -177,8 +179,8 @@ export function Sidebar({ onCloseMobile = () => {} }) {
           </div>
         </div>
 
-        {/* Footer Settings */}
-        <div className="p-3 border-t border-slate-100">
+        {/* Pinned Footer Settings */}
+        <div className="p-3 border-t border-slate-100 shrink-0 bg-white">
           {renderNavLink('/workforce/seller-hub/store-profile', Settings, 'Store Settings')}
         </div>
       </aside>
@@ -188,9 +190,9 @@ export function Sidebar({ onCloseMobile = () => {} }) {
   // ─── 2. SEVO Platform Superadmin Sidebar ─────────────────────────────────────
   if (isPlatformAdmin) {
     return (
-      <aside className="w-60 bg-white border-r border-slate-200/90 h-full flex flex-col justify-between overflow-y-auto text-xs select-none shadow-xs">
-        <div className="p-3.5 space-y-4">
-          {/* Platform Admin Header */}
+      <aside className="w-60 bg-white border-r border-slate-200/90 h-full flex flex-col text-xs select-none shadow-xs overflow-hidden shrink-0">
+        {/* Pinned Header Card */}
+        <div className="p-3.5 pb-2 shrink-0">
           <div className="p-3 rounded-lg border border-indigo-200/80 bg-indigo-50/60 text-indigo-950 flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs">
               <Crown className="w-4 h-4" />
@@ -200,6 +202,10 @@ export function Sidebar({ onCloseMobile = () => {} }) {
               <span className="text-[10px] text-indigo-600 font-medium">Superadmin Console</span>
             </div>
           </div>
+        </div>
+
+        {/* Scrollable Navigation Area */}
+        <div className="flex-1 overflow-y-auto px-3.5 pb-3.5 pt-1 space-y-4 sidebar-scrollbar">
 
           {/* Home */}
           <div>
@@ -339,6 +345,11 @@ export function Sidebar({ onCloseMobile = () => {} }) {
             )}
           </div>
         </div>
+
+        {/* Pinned Footer Settings */}
+        <div className="p-3 border-t border-slate-100 shrink-0 bg-white">
+          {renderNavLink('/workforce/admin/settings', Settings, 'Platform Settings')}
+        </div>
       </aside>
     );
   }
@@ -346,9 +357,9 @@ export function Sidebar({ onCloseMobile = () => {} }) {
   // ─── 3. Vendor Workspace Sidebar (Service Provider Business) ─────────────────
   if (isAdmin || isVendorAdmin) {
     return (
-      <aside className="w-60 bg-white border-r border-slate-200/90 h-full flex flex-col justify-between overflow-y-auto text-xs select-none shadow-xs">
-        <div className="p-3.5 space-y-4">
-          {/* Vendor Company Header */}
+      <aside className="w-60 bg-white border-r border-slate-200/90 h-full flex flex-col text-xs select-none shadow-xs overflow-hidden shrink-0">
+        {/* Pinned Header Card */}
+        <div className="p-3.5 pb-2 shrink-0">
           <div className="p-3 rounded-lg border border-blue-200/80 bg-blue-50/60 text-blue-950 flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-xs">
               <Building2 className="w-4 h-4" />
@@ -360,6 +371,10 @@ export function Sidebar({ onCloseMobile = () => {} }) {
               <span className="text-[10px] text-blue-600 font-medium">Company Portal</span>
             </div>
           </div>
+        </div>
+
+        {/* Scrollable Navigation Area */}
+        <div className="flex-1 overflow-y-auto px-3.5 pb-3.5 pt-1 space-y-4 sidebar-scrollbar">
 
           {/* Home */}
           <div>
@@ -496,6 +511,11 @@ export function Sidebar({ onCloseMobile = () => {} }) {
             )}
           </div>
         </div>
+
+        {/* Pinned Footer Settings */}
+        <div className="p-3 border-t border-slate-100 shrink-0 bg-white">
+          {renderNavLink('/workforce/admin/settings', Settings, 'Business Settings')}
+        </div>
       </aside>
     );
   }
@@ -523,8 +543,9 @@ export function Sidebar({ onCloseMobile = () => {} }) {
     }
 
     return (
-      <aside className="w-60 bg-white border-r border-slate-200/90 h-full flex flex-col justify-between overflow-y-auto text-xs select-none shadow-xs">
-        <div className="p-3.5 space-y-4">
+      <aside className="w-60 bg-white border-r border-slate-200/90 h-full flex flex-col text-xs select-none shadow-xs overflow-hidden shrink-0">
+        {/* Scrollable Navigation Area */}
+        <div className="flex-1 overflow-y-auto p-3.5 space-y-4 sidebar-scrollbar">
           {/* Status Banner */}
           <div className={`p-3.5 rounded-lg border text-[11px] font-medium space-y-1.5 ${statusBadgeColor}`}>
             <p className="font-bold flex items-center gap-1.5">
@@ -548,8 +569,8 @@ export function Sidebar({ onCloseMobile = () => {} }) {
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="p-3 border-t border-slate-100">
+        {/* Pinned Footer */}
+        <div className="p-3 border-t border-slate-100 shrink-0 bg-white">
           {renderNavLink('/workforce/employee/settings', Settings, 'Settings')}
         </div>
       </aside>
@@ -558,8 +579,9 @@ export function Sidebar({ onCloseMobile = () => {} }) {
 
   // ─── 5. Approved Technician Sidebar ─────────────────────────────────────────
   return (
-    <aside className="w-60 bg-white border-r border-slate-200/90 h-full flex flex-col justify-between overflow-y-auto text-xs select-none shadow-xs">
-      <div className="p-3.5 space-y-4">
+    <aside className="w-60 bg-white border-r border-slate-200/90 h-full flex flex-col text-xs select-none shadow-xs overflow-hidden shrink-0">
+      {/* Scrollable Navigation Area */}
+      <div className="flex-1 overflow-y-auto p-3.5 space-y-4 sidebar-scrollbar">
         {/* Dashboard Link */}
         <div>
           {renderNavLink('/workforce/employee/dashboard', Home, 'Dashboard', null, true)}
@@ -673,8 +695,8 @@ export function Sidebar({ onCloseMobile = () => {} }) {
         </div>
       </div>
 
-      {/* Footer Settings */}
-      <div className="p-3 border-t border-slate-100">
+      {/* Pinned Footer Settings */}
+      <div className="p-3 border-t border-slate-100 shrink-0 bg-white">
         {renderNavLink('/workforce/employee/settings', Settings, 'Settings')}
       </div>
     </aside>

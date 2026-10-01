@@ -437,9 +437,9 @@ export function SellerOrdersPage() {
     switch (status) {
       case 'NEW':
         return (
-          <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
-            <Clock className="w-3 h-3" />
-            <span>New Order</span>
+          <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-300">
+            <Clock className="w-3 h-3 text-amber-600" />
+            <span>Awaiting Warehouse Review</span>
           </span>
         );
       case 'ACCEPTED':
@@ -508,10 +508,10 @@ export function SellerOrdersPage() {
   };
 
   return (
-    <div className="flex min-h-screen bg-slate-100 font-sans text-slate-800">
+    <div className="flex h-screen bg-slate-100 font-sans text-slate-800 overflow-hidden">
       <Sidebar />
 
-      <main className="flex-1 min-w-0 flex flex-col">
+      <main className="flex-1 min-w-0 flex flex-col overflow-y-auto">
         {/* Top Header */}
         <header className="bg-white border-b border-slate-200 sticky top-0 z-10 px-8 py-5 flex items-center justify-between shadow-xs">
           <div className="flex items-center gap-3">
@@ -559,7 +559,7 @@ export function SellerOrdersPage() {
         </header>
 
         {/* Content Area */}
-        <div className="p-8 max-w-7xl w-full mx-auto space-y-6">
+        <div className="p-8 w-full space-y-6">
           {/* Top Metrics Cards */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
@@ -573,11 +573,11 @@ export function SellerOrdersPage() {
 
             <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
               <div className="flex items-center justify-between text-slate-400">
-                <span className="text-xs font-medium">Action Required (New)</span>
+                <span className="text-xs font-medium">New (Warehouse Review)</span>
                 <Package className="w-4 h-4 text-amber-500" />
               </div>
               <p className="text-2xl font-extrabold text-amber-600 font-mono mt-2">{metrics.pending_orders_count}</p>
-              <p className="text-[11px] text-slate-400 mt-0.5">Awaiting acceptance</p>
+              <p className="text-[11px] text-slate-400 mt-0.5">Awaiting warehouse acceptance</p>
             </div>
 
             <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
@@ -605,7 +605,7 @@ export function SellerOrdersPage() {
             <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-100 pb-3">
               {[
                 { id: 'ALL', label: 'All Orders' },
-                { id: 'NEW', label: 'New / Action Required' },
+                { id: 'NEW', label: 'New (Warehouse Review)' },
                 { id: 'IN_PREPARATION', label: 'In Preparation' },
                 { id: 'READY_FOR_PICKUP', label: 'Ready for Pickup' },
                 { id: 'COMPLETED', label: 'Completed' },
@@ -784,23 +784,15 @@ export function SellerOrdersPage() {
 
                         <td className="py-4 px-5 align-top text-right">
                           <div className="flex items-center justify-end gap-1.5 flex-wrap">
-                            {/* State Transition Quick Actions */}
+                            {/* NEW: Read-only status for seller, actions handled by Warehouse */}
                             {ord.status === 'NEW' && (
-                              <>
-                                <button
-                                  onClick={() => handleTransition(ord.id, 'accept')}
-                                  disabled={actionLoading}
-                                  className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold transition-colors shadow-xs"
-                                >
-                                  Accept
-                                </button>
-                                <button
-                                  onClick={() => setCancellationModal({ isOpen: true, orderId: ord.id, reason: '' })}
-                                  className="px-2 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-xs font-semibold transition-colors"
-                                >
-                                  Cancel
-                                </button>
-                              </>
+                              <span
+                                className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded bg-amber-50 text-amber-800 border border-amber-200"
+                                title="Fulfillment warehouse will verify physical stock and accept or dispatch this order"
+                              >
+                                <Clock className="w-3 h-3 text-amber-600" />
+                                <span>In Warehouse Review</span>
+                              </span>
                             )}
 
                             {ord.status === 'ACCEPTED' && (
@@ -1123,13 +1115,15 @@ export function SellerOrdersPage() {
                     </span>
                     <div className="flex flex-wrap items-center gap-2">
                       {selectedOrderDetail.status === 'NEW' && (
-                        <button
-                          onClick={() => handleTransition(selectedOrderDetail.id, 'accept')}
-                          disabled={actionLoading}
-                          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-xs transition-colors"
-                        >
-                          Accept Order & Reserve Stock
-                        </button>
+                        <div className="p-3 bg-amber-50/80 border border-amber-200 rounded-lg flex items-start gap-2.5 text-xs text-amber-900 w-full">
+                          <Clock className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                          <div>
+                            <span className="font-bold block">Awaiting Warehouse Review</span>
+                            <span className="text-[11px] text-amber-800 mt-0.5 block">
+                              The physical stock for this order is located at your assigned warehouse facility. Warehouse operators will verify physical inventory and accept or dispatch this order.
+                            </span>
+                          </div>
+                        </div>
                       )}
 
                       {selectedOrderDetail.status === 'ACCEPTED' && (
@@ -1174,7 +1168,7 @@ export function SellerOrdersPage() {
                       )}
 
                       {/* Cancel Button */}
-                      {!['DELIVERED', 'CANCELLED'].includes(selectedOrderDetail.status) && (
+                      {!['NEW', 'DELIVERED', 'CANCELLED'].includes(selectedOrderDetail.status) && (
                         <button
                           onClick={() => setCancellationModal({ isOpen: true, orderId: selectedOrderDetail.id, reason: '' })}
                           className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-semibold transition-colors"

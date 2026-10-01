@@ -18,7 +18,7 @@ export function AppShell({ children, breadcrumbs = [], noPadding = false }) {
       <div className="flex-1 flex overflow-hidden">
         {/* Desktop Persistent Sidebar - Sharp outer edges */}
         {user && (
-          <div className="hidden lg:block shrink-0 h-full overflow-y-auto">
+          <div className="hidden lg:block shrink-0 h-full overflow-hidden">
             <Sidebar />
           </div>
         )}

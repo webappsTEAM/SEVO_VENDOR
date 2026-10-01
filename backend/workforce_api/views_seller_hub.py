@@ -2784,32 +2784,42 @@ class SellerProductBatchListView(APIView):
 class SellerProductImageUploadView(APIView):
     """
     POST /api/workforce/seller-hub/products/upload-image/ – Secure image upload handler
+    Supports single or multiple file uploads via 'images' or 'image' form fields.
     """
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request):
-        image_file = request.FILES.get("image")
-        if not image_file:
+        image_files = request.FILES.getlist("images") or request.FILES.getlist("image")
+        if not image_files:
+            single = request.FILES.get("image")
+            if single:
+                image_files = [single]
+
+        if not image_files:
             return Response({"error": "No image file provided."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # File size check (< 5MB)
-        if image_file.size > 5 * 1024 * 1024:
-            return Response({"error": "Image file exceeds 5MB maximum limit."}, status=status.HTTP_400_BAD_REQUEST)
+        uploaded_urls = []
+        for image_file in image_files:
+            # File size check (< 5MB)
+            if image_file.size > 5 * 1024 * 1024:
+                return Response({"error": f"Image file '{image_file.name}' exceeds 5MB maximum limit."}, status=status.HTTP_400_BAD_REQUEST)
 
-        content_type = getattr(image_file, "content_type", "").lower()
-        if not any(content_type.startswith(p) for p in ("image/jpeg", "image/png", "image/webp", "image/gif")):
-            return Response({"error": "Invalid image format. Allowed formats: JPG, PNG, WEBP, GIF."}, status=status.HTTP_400_BAD_REQUEST)
+            content_type = getattr(image_file, "content_type", "").lower()
+            if not any(content_type.startswith(p) for p in ("image/jpeg", "image/png", "image/webp", "image/gif")):
+                return Response({"error": f"Invalid image format for '{image_file.name}'. Allowed formats: JPG, PNG, WEBP, GIF."}, status=status.HTTP_400_BAD_REQUEST)
 
-        ext = os.path.splitext(image_file.name)[1].lower() or ".jpg"
-        unique_name = f"seller_products/{uuid.uuid4().hex}{ext}"
-        saved_path = default_storage.save(unique_name, image_file)
-        image_url = default_storage.url(saved_path)
+            ext = os.path.splitext(image_file.name)[1].lower() or ".jpg"
+            unique_name = f"seller_products/{uuid.uuid4().hex}{ext}"
+            saved_path = default_storage.save(unique_name, image_file)
+            image_url = default_storage.url(saved_path)
+            uploaded_urls.append(image_url)
 
         return Response(
             {
-                "message": "Image uploaded successfully.",
-                "image_url": image_url,
+                "message": f"{len(uploaded_urls)} image(s) uploaded successfully.",
+                "image_url": uploaded_urls[0] if uploaded_urls else "",
+                "image_urls": uploaded_urls,
             },
             status=status.HTTP_201_CREATED
         )

@@ -38,6 +38,7 @@ export default function AdminStoreProfilePage() {
   const [logoUrl, setLogoUrl] = useState('');
   const [bannerUrl, setBannerUrl] = useState('');
   const [fssaiLicense, setFssaiLicense] = useState('');
+  const [gstNumber, setGstNumber] = useState('');
   const [storeAddress, setStoreAddress] = useState('');
   const [latitude, setLatitude] = useState(null);
   const [longitude, setLongitude] = useState(null);
@@ -63,6 +64,7 @@ export default function AdminStoreProfilePage() {
         setLogoUrl(res.logo_url || '');
         setBannerUrl(res.banner_url || '');
         setFssaiLicense(res.fssai_license_number || '');
+        setGstNumber(res.gst_number || '');
         setStoreAddress(res.store_address || '');
         setLatitude(res.latitude !== undefined && res.latitude !== null ? parseFloat(res.latitude) : null);
         setLongitude(res.longitude !== undefined && res.longitude !== null ? parseFloat(res.longitude) : null);
@@ -80,6 +82,11 @@ export default function AdminStoreProfilePage() {
 
   const handleSave = async (e) => {
     e.preventDefault();
+    const trimmedFssai = fssaiLicense.trim();
+    if (trimmedFssai && !/^\d{14}$/.test(trimmedFssai)) {
+      setMsg({ type: 'error', text: 'FSSAI License Number must be exactly 14 digits (numeric only).' });
+      return;
+    }
     setSaving(true);
     setMsg({ type: '', text: '' });
     try {
@@ -89,7 +96,8 @@ export default function AdminStoreProfilePage() {
         description,
         logo_url: logoUrl,
         banner_url: bannerUrl,
-        fssai_license_number: fssaiLicense,
+        fssai_license_number: trimmedFssai,
+        gst_number: gstNumber.trim().toUpperCase(),
         store_address: storeAddress,
         latitude: latitude != null ? latitude : null,
         longitude: longitude != null ? longitude : null,
@@ -109,7 +117,7 @@ export default function AdminStoreProfilePage() {
 
   return (
     <AppShell activeNav="/workforce/admin/store-profile">
-      <div className="max-w-5xl mx-auto space-y-6 pb-16">
+      <div className="w-full space-y-6 pb-16">
         <PageHeader
           title="Seller Storefront Profile"
           subtitle="Configure your public store presence, rapid fulfillment parameters, and live order acceptance."
@@ -366,15 +374,39 @@ export default function AdminStoreProfilePage() {
                 <p className="text-xs text-slate-500">Government mandated for all fresh grocery & produce suppliers.</p>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">FSSAI License / Registration Number</label>
-                <input
-                  type="text"
-                  value={fssaiLicense}
-                  onChange={(e) => setFssaiLicense(e.target.value)}
-                  className="w-full max-w-md px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 uppercase font-mono"
-                  placeholder="e.g. 12422002000123"
-                />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    FSSAI Registration Number (14 digits)
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={14}
+                    value={fssaiLicense}
+                    onChange={(e) => setFssaiLicense(e.target.value.replace(/\D/g, ''))}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+                    placeholder="e.g. 12422002000123"
+                  />
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Default 14-digit FSSAI license number applied to all products from your store.
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    GST Number (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={15}
+                    value={gstNumber}
+                    onChange={(e) => setGstNumber(e.target.value.toUpperCase())}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 uppercase font-mono"
+                    placeholder="e.g. 33AAAAA0000A1Z5"
+                  />
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Goods and Services Tax Identification Number (GSTIN).
+                  </p>
+                </div>
               </div>
             </div>
 

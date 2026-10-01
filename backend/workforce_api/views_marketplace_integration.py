@@ -712,6 +712,9 @@ class MarketplaceBasketListView(APIView):
             status__in=[SellerProductBasket.Status.ACTIVE, SellerProductBasket.Status.OUT_OF_STOCK],
             company__is_active=True,
         ).select_related("company").prefetch_related(
+            "items__options__product__inventory",
+            "items__options__product__images",
+            "items__options__product__category",
             "items__product__inventory",
             "items__product__images",
             "items__product__category"
@@ -753,25 +756,77 @@ class MarketplaceBasketListView(APIView):
         results = []
         for basket, avail_units in page_baskets:
             wh = get_seller_assigned_warehouse(basket.company_id)
+            slots_data = []
             items_preview = []
             for item in basket.items.all():
-                prod = item.product
-                primary_img = ""
-                for img in prod.images.all():
-                    if img.image_url:
-                        if img.is_primary or not primary_img:
-                            primary_img = img.image_url
-                items_preview.append({
-                    "id": prod.id,
-                    "title": prod.title,
-                    "sku": prod.sku,
-                    "unit": prod.unit or "",
-                    "pack_size": str(prod.pack_size or ""),
-                    "mrp": str(prod.mrp),
-                    "selling_price": str(prod.selling_price),
+                options_data = []
+                opts = list(item.options.all())
+                if not opts and item.product:
+                    eligible_pairs = [(None, item.product)]
+                else:
+                    eligible_pairs = [(opt, opt.product) for opt in opts]
+
+                for opt, prod in eligible_pairs:
+                    if not prod:
+                        continue
+                    inv = getattr(prod, "inventory", None)
+                    avail_prod_qty = max(Decimal("0.000"), (inv.on_hand_qty - inv.reserved_qty)) if inv else Decimal("0.000")
+                    primary_img = ""
+                    gallery = []
+                    for img in prod.images.all():
+                        if img.image_url:
+                            gallery.append(img.image_url)
+                            if img.is_primary and not primary_img:
+                                primary_img = img.image_url
+                    if not primary_img and gallery:
+                        primary_img = gallery[0]
+
+                    is_def = opt.is_default if opt else True
+                    options_data.append({
+                        "id": opt.id if opt else prod.id,
+                        "option_id": opt.id if opt else prod.id,
+                        "product_id": prod.id,
+                        "sku": prod.sku,
+                        "title": prod.title,
+                        "product_title": prod.title,
+                        "brand": prod.brand or "",
+                        "product_brand": prod.brand or "",
+                        "unit": prod.unit or "",
+                        "pack_size": str(prod.pack_size or ""),
+                        "mrp": str(prod.mrp),
+                        "selling_price": str(prod.selling_price),
+                        "is_default": is_def,
+                        "primary_image": primary_img,
+                        "images": gallery,
+                        "in_stock": avail_prod_qty >= item.quantity,
+                        "available_quantity": float(round(avail_prod_qty, 3)) if (avail_prod_qty % 1) != 0 else int(avail_prod_qty),
+                    })
+
+                def_opt = next((o for o in options_data if o["is_default"]), None) or (options_data[0] if options_data else None)
+
+                slots_data.append({
+                    "id": item.id,
+                    "slot_title": item.slot_title or (def_opt["title"] if def_opt else f"Slot #{item.id}"),
                     "quantity": item.quantity,
-                    "primary_image": primary_img,
+                    "display_order": item.display_order,
+                    "default_product_id": def_opt["id"] if def_opt else None,
+                    "options": options_data,
+                    "options_count": len(options_data),
+                "is_multi_option": len(options_data) > 1,
                 })
+
+                if def_opt:
+                    items_preview.append({
+                        "id": def_opt["id"],
+                        "title": def_opt["title"],
+                        "sku": def_opt["sku"],
+                        "unit": def_opt["unit"] or "",
+                        "pack_size": str(def_opt["pack_size"] or ""),
+                        "mrp": str(def_opt["mrp"]),
+                        "selling_price": str(def_opt["selling_price"]),
+                        "quantity": item.quantity,
+                        "primary_image": def_opt["primary_image"],
+                    })
 
             savings_amt = max(Decimal("0.00"), basket.total_mrp - basket.selling_price)
             savings_pct = round((savings_amt / basket.total_mrp * 100), 1) if basket.total_mrp > 0 else Decimal("0.0")
@@ -802,6 +857,7 @@ class MarketplaceBasketListView(APIView):
                     "code": wh.code,
                     "city": wh.city,
                 } if wh else None,
+                "slots": slots_data,
                 "items": items_preview,
                 "updated_at": basket.updated_at.isoformat() if basket.updated_at else "",
             })
@@ -819,7 +875,7 @@ class MarketplaceBasketListView(APIView):
 class MarketplaceBasketDetailView(APIView):
     """
     GET /api/workforce/marketplace/baskets/<int:pk>/
-    Fetch single basket details with full component item breakdowns.
+    Fetch single basket details with full component item breakdowns & slot options.
     """
     authentication_classes = []
     permission_classes = [IsMarketplaceIntegrationCaller]
@@ -829,6 +885,9 @@ class MarketplaceBasketDetailView(APIView):
             pk=pk,
             company__is_active=True,
         ).select_related("company").prefetch_related(
+            "items__options__product__inventory",
+            "items__options__product__images",
+            "items__options__product__category",
             "items__product__inventory",
             "items__product__images",
             "items__product__category"
@@ -842,38 +901,83 @@ class MarketplaceBasketDetailView(APIView):
             return Response({"error": "Basket offer is currently out of stock or unavailable.", "code": "BASKET_UNAVAILABLE"}, status=status.HTTP_404_NOT_FOUND)
 
         wh = get_seller_assigned_warehouse(basket.company_id)
+        slots_data = []
         items_data = []
         for item in basket.items.all():
-            prod = item.product
-            inv = getattr(prod, "inventory", None)
-            avail_prod_qty = max(Decimal("0.000"), (inv.on_hand_qty - inv.reserved_qty)) if inv else Decimal("0.000")
-            primary_img = ""
-            gallery = []
-            for img in prod.images.all():
-                if img.image_url:
-                    gallery.append(img.image_url)
-                    if img.is_primary and not primary_img:
-                        primary_img = img.image_url
-            if not primary_img and gallery:
-                primary_img = gallery[0]
+            options_data = []
+            opts = list(item.options.all())
+            if not opts and item.product:
+                eligible_pairs = [(None, item.product)]
+            else:
+                eligible_pairs = [(opt, opt.product) for opt in opts]
 
-            items_data.append({
-                "id": prod.id,
-                "sku": prod.sku,
-                "title": prod.title,
-                "brand": prod.brand or "",
-                "unit": prod.unit or "",
-                "pack_size": str(prod.pack_size or ""),
-                "mrp": str(prod.mrp),
-                "selling_price": str(prod.selling_price),
+            for opt, prod in eligible_pairs:
+                if not prod:
+                    continue
+                inv = getattr(prod, "inventory", None)
+                avail_prod_qty = max(Decimal("0.000"), (inv.on_hand_qty - inv.reserved_qty)) if inv else Decimal("0.000")
+                primary_img = ""
+                gallery = []
+                for img in prod.images.all():
+                    if img.image_url:
+                        gallery.append(img.image_url)
+                        if img.is_primary and not primary_img:
+                            primary_img = img.image_url
+                if not primary_img and gallery:
+                    primary_img = gallery[0]
+
+                is_def = opt.is_default if opt else True
+                options_data.append({
+                    "id": opt.id if opt else prod.id,
+                    "option_id": opt.id if opt else prod.id,
+                    "product_id": prod.id,
+                    "sku": prod.sku,
+                    "title": prod.title,
+                    "product_title": prod.title,
+                    "brand": prod.brand or "",
+                    "product_brand": prod.brand or "",
+                    "unit": prod.unit or "",
+                    "pack_size": str(prod.pack_size or ""),
+                    "mrp": str(prod.mrp),
+                    "selling_price": str(prod.selling_price),
+                    "is_default": is_def,
+                    "primary_image": primary_img,
+                    "images": gallery,
+                    "in_stock": avail_prod_qty >= item.quantity,
+                    "available_quantity": float(round(avail_prod_qty, 3)) if (avail_prod_qty % 1) != 0 else int(avail_prod_qty),
+                })
+
+            def_opt = next((o for o in options_data if o["is_default"]), None) or (options_data[0] if options_data else None)
+
+            slots_data.append({
+                "id": item.id,
+                "slot_title": item.slot_title or (def_opt["title"] if def_opt else f"Slot #{item.id}"),
                 "quantity": item.quantity,
-                "item_total_mrp": str(prod.mrp * item.quantity),
-                "item_total_selling_price": str(prod.selling_price * item.quantity),
-                "primary_image": primary_img,
-                "images": gallery,
-                "in_stock": avail_prod_qty >= item.quantity,
-                "available_quantity": float(round(avail_prod_qty, 3)) if (avail_prod_qty % 1) != 0 else int(avail_prod_qty),
+                "display_order": item.display_order,
+                "default_product_id": def_opt["id"] if def_opt else None,
+                "options": options_data,
+                "options_count": len(options_data),
+                "is_multi_option": len(options_data) > 1,
             })
+
+            if def_opt:
+                items_data.append({
+                    "id": def_opt["id"],
+                    "sku": def_opt["sku"],
+                    "title": def_opt["title"],
+                    "brand": def_opt["brand"] or "",
+                    "unit": def_opt["unit"] or "",
+                    "pack_size": str(def_opt["pack_size"] or ""),
+                    "mrp": str(def_opt["mrp"]),
+                    "selling_price": str(def_opt["selling_price"]),
+                    "quantity": item.quantity,
+                    "item_total_mrp": str(Decimal(def_opt["mrp"]) * item.quantity),
+                    "item_total_selling_price": str(Decimal(def_opt["selling_price"]) * item.quantity),
+                    "primary_image": def_opt["primary_image"],
+                    "images": def_opt.get("images", []),
+                    "in_stock": def_opt["in_stock"],
+                    "available_quantity": def_opt["available_quantity"],
+                })
 
         savings_amt = max(Decimal("0.00"), basket.total_mrp - basket.selling_price)
         savings_pct = round((savings_amt / basket.total_mrp * 100), 1) if basket.total_mrp > 0 else Decimal("0.0")
@@ -891,7 +995,7 @@ class MarketplaceBasketDetailView(APIView):
             "total_procurement_price": str(basket.total_procurement_price),
             "savings_vs_mrp": str(savings_amt),
             "savings_percent": float(savings_pct),
-            "item_count": len(items_data),
+            "item_count": len(slots_data),
             "available_stock": avail_units,
             "in_stock": avail_units > 0,
             "seller_id": basket.company.id,
@@ -904,6 +1008,7 @@ class MarketplaceBasketDetailView(APIView):
                 "code": wh.code,
                 "city": wh.city,
             } if wh else None,
+            "slots": slots_data,
             "items": items_data,
             "updated_at": basket.updated_at.isoformat() if basket.updated_at else "",
         }, status=status.HTTP_200_OK)
@@ -1021,7 +1126,12 @@ class MarketplaceCartValidateView(APIView):
                     })
                     continue
 
-                is_avail, avail_units, _ = basket.check_availability()
+                # Check slot-specific selections if provided
+                cust = item.get("customization") or {}
+                slot_selections = cust.get("slot_selections") or item.get("slot_selections") or []
+                selected_pids = [s["product_id"] for s in slot_selections if isinstance(s, dict) and s.get("product_id")]
+
+                is_avail, avail_units, _ = basket.check_availability(selected_product_ids=selected_pids if selected_pids else None)
                 if not is_avail and basket.status != SellerProductBasket.Status.ACTIVE:
                     errors.append({
                         "basket_id": b_id,
@@ -1386,7 +1496,10 @@ class MarketplaceOrderIntakeView(APIView):
         if seen_basket_ids:
             baskets = {
                 b.id: b
-                for b in SellerProductBasket.objects.filter(id__in=seen_basket_ids).prefetch_related("items__product")
+                for b in SellerProductBasket.objects.filter(id__in=seen_basket_ids).prefetch_related(
+                    "items__options__product",
+                    "items__product",
+                )
             }
             for b_id in seen_basket_ids:
                 if b_id not in baskets:
@@ -1458,9 +1571,35 @@ class MarketplaceOrderIntakeView(APIView):
 
         # ── Atomic Stock Reservation, Validation & Order Creation ─────────────
         all_product_ids = set(seen_product_ids)
-        for basket in baskets.values():
+        for item in items_payload:
+            b_id = item.get("basket_id")
+            if not b_id:
+                continue
+            basket = baskets.get(b_id)
+            if not basket:
+                continue
+
+            cust = item.get("customization") or {}
+            slot_selections = cust.get("slot_selections") or item.get("slot_selections") or []
+            slot_chosen_map = {}
+            for sel in slot_selections:
+                if isinstance(sel, dict) and sel.get("slot_id") and sel.get("product_id"):
+                    try:
+                        slot_chosen_map[int(sel["slot_id"])] = int(sel["product_id"])
+                    except (ValueError, TypeError):
+                        pass
+
             for b_item in basket.items.all():
-                all_product_ids.add(b_item.product_id)
+                chosen_pid = slot_chosen_map.get(b_item.id)
+                eligible_pids = [p.id for p in b_item.get_eligible_products()]
+                if chosen_pid and chosen_pid in eligible_pids:
+                    all_product_ids.add(chosen_pid)
+                else:
+                    def_p = b_item.get_default_product()
+                    if def_p:
+                        all_product_ids.add(def_p.id)
+                    elif b_item.product_id:
+                        all_product_ids.add(b_item.product_id)
 
         active_cat_ids = get_active_seller_category_ids()
 
@@ -1659,19 +1798,35 @@ class MarketplaceOrderIntakeView(APIView):
                     basket_line_total = basket.selling_price * qty
                     total_amount += basket_line_total
 
+                    cust = item.get("customization") or {}
+                    slot_selections = cust.get("slot_selections") or item.get("slot_selections") or []
+                    slot_chosen_map = {}
+                    for sel in slot_selections:
+                        if isinstance(sel, dict) and sel.get("slot_id") and sel.get("product_id"):
+                            try:
+                                slot_chosen_map[int(sel["slot_id"])] = int(sel["product_id"])
+                            except (ValueError, TypeError):
+                                pass
+
                     for b_item in basket.items.all():
-                        comp_p = b_item.product
-                        comp_inv = inventories.get(comp_p.id)
+                        chosen_pid = slot_chosen_map.get(b_item.id)
+                        eligible_pids = [p.id for p in b_item.get_eligible_products()]
+                        if not (chosen_pid and chosen_pid in eligible_pids):
+                            def_p = b_item.get_default_product()
+                            chosen_pid = def_p.id if def_p else b_item.product_id
+
+                        comp_inv = inventories.get(chosen_pid)
                         if not comp_inv:
                             return Response(
                                 {
-                                    "error": f"Inventory record not found for component '{comp_p.title}' in basket '{basket.title}'.",
+                                    "error": f"Inventory record not found for component product #{chosen_pid} in basket '{basket.title}'.",
                                     "code": "INVENTORY_NOT_FOUND",
-                                    "product_id": comp_p.id,
+                                    "product_id": chosen_pid,
                                 },
                                 status=status.HTTP_404_NOT_FOUND,
                             )
 
+                        comp_p = comp_inv.product
                         if comp_p.status != SellerProduct.Status.APPROVED:
                             return Response(
                                 {

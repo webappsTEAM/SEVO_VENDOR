@@ -1900,6 +1900,13 @@ export async function apiWarehouseGetOrderDetail(id) {
   return await apiRequest(`/workforce/warehouse/orders/${id}/`);
 }
 
+export async function apiWarehouseTransitionOrder(id, payload = {}) {
+  return await apiRequest(`/workforce/warehouse/orders/${id}/transition/`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
 // ── Phase X: Inbound Stock Requests & Storage ─────────────────────────────────
 
 export async function apiSellerGetAssignedWarehouse() {
@@ -2068,6 +2075,7 @@ export const workforceService = {
   warehouseGetStats: apiWarehouseGetStats,
   warehouseGetOrders: apiWarehouseGetOrders,
   warehouseGetOrderDetail: apiWarehouseGetOrderDetail,
+  warehouseTransitionOrder: apiWarehouseTransitionOrder,
   sellerGetAssignedWarehouse: apiSellerGetAssignedWarehouse,
   sellerGetInboundRequests: apiSellerGetInboundRequests,
   sellerCreateInboundRequest: apiSellerCreateInboundRequest,
