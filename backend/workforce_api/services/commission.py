@@ -107,11 +107,40 @@ def is_in_promo_period(wallet) -> bool:
     return (timezone.now() - wallet.created_at).days < PROMO_PERIOD_DAYS
 
 
+def _live_rate(key: str, default: Decimal) -> Decimal:
+    """GT_COMMISSION_LIVE: commission rates can be changed without a deploy through the SuperAdmin
+    system settings (WorkforceSystemSetting keys SEVO_*_RATE, e.g. "0.12"); a missing, invalid or
+    out-of-range (outside 0..<1) value falls back to the env/settings default. Cached for 60 s."""
+    from django.core.cache import cache
+    ck = f"wf_comm_rate_{key}"
+    try:
+        hit = cache.get(ck)
+    except Exception:
+        hit = None
+    if hit is not None:
+        return Decimal(hit)
+    rate = default
+    try:
+        from workforce_api.models import WorkforceSystemSetting
+        row = WorkforceSystemSetting.objects.filter(key=key).first()
+        if row is not None:
+            v = Decimal(str(row.value).strip())
+            if v.is_finite() and Decimal("0") <= v < Decimal("1"):
+                rate = v
+    except Exception:
+        rate = default
+    try:
+        cache.set(ck, str(rate), 60)
+    except Exception:
+        pass
+    return rate
+
+
 def commission_rate_for(wallet, channel: str) -> Decimal:
     promo = is_in_promo_period(wallet)
     if channel == "PROVIDER_HEAD":
-        return PROVIDER_PROMO_RATE if promo else PROVIDER_STANDARD_RATE
-    return INDIVIDUAL_PROMO_RATE if promo else INDIVIDUAL_STANDARD_RATE
+        return _live_rate("SEVO_PROVIDER_PROMO_RATE", PROVIDER_PROMO_RATE) if promo else _live_rate("SEVO_PROVIDER_COMMISSION_RATE", PROVIDER_STANDARD_RATE)
+    return _live_rate("SEVO_INDIVIDUAL_PROMO_RATE", INDIVIDUAL_PROMO_RATE) if promo else _live_rate("SEVO_INDIVIDUAL_COMMISSION_RATE", INDIVIDUAL_STANDARD_RATE)
 
 
 def _extra_charges_total(service_request):

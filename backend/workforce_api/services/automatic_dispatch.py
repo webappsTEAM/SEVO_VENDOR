@@ -58,14 +58,22 @@ SUBSEQUENT_WAVE_SIZE = 20 # Wave 4+: Ranks 36+ in batches of 20
 
 def get_wave_size(wave_number: int) -> int:
     """Returns the configured bounded wave size for a given dispatch wave number."""
+    # GT_WAVE_CFG: wave sizes can be changed live from the SuperAdmin system settings
+    # (WorkforceSystemSetting keys DISPATCH_*_WAVE_SIZE, picked up within a minute);
+    # without a row the Django settings / module defaults apply exactly as before.
     if wave_number <= 1:
-        return getattr(settings, "DISPATCH_INITIAL_WAVE_SIZE", INITIAL_WAVE_SIZE)
+        key, dflt = "DISPATCH_INITIAL_WAVE_SIZE", getattr(settings, "DISPATCH_INITIAL_WAVE_SIZE", INITIAL_WAVE_SIZE)
     elif wave_number == 2:
-        return getattr(settings, "DISPATCH_SECOND_WAVE_SIZE", SECOND_WAVE_SIZE)
+        key, dflt = "DISPATCH_SECOND_WAVE_SIZE", getattr(settings, "DISPATCH_SECOND_WAVE_SIZE", SECOND_WAVE_SIZE)
     elif wave_number == 3:
-        return getattr(settings, "DISPATCH_THIRD_WAVE_SIZE", THIRD_WAVE_SIZE)
+        key, dflt = "DISPATCH_THIRD_WAVE_SIZE", getattr(settings, "DISPATCH_THIRD_WAVE_SIZE", THIRD_WAVE_SIZE)
     else:
-        return getattr(settings, "DISPATCH_SUBSEQUENT_WAVE_SIZE", SUBSEQUENT_WAVE_SIZE)
+        key, dflt = "DISPATCH_SUBSEQUENT_WAVE_SIZE", getattr(settings, "DISPATCH_SUBSEQUENT_WAVE_SIZE", SUBSEQUENT_WAVE_SIZE)
+    try:
+        size = int(_system_setting_float(key, float(dflt)))
+    except Exception:
+        size = int(dflt)
+    return size if size >= 1 else int(dflt)
 
 
 # ── Variable offer window (Booking Dispatch Framework) ──────────────────────

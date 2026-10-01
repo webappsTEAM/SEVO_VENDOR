@@ -1175,8 +1175,16 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
         return JobPaymentSerializer(pmt).data
 
     def get_estimated_payout_info(self, obj):
-        from .services.commission import preview_job_payout
-        return preview_job_payout(obj)
+        # GT_PAYOUT_SAFE: the preview costs a few queries, so only compute it for logistics jobs that are
+        # actually assigned, never for non-model objects, and never let it break the job payload.
+        from django.db.models import Model
+        if not isinstance(obj, Model) or not getattr(obj, "assigned_employee_id", None):
+            return None
+        try:
+            from .services.commission import preview_job_payout
+            return preview_job_payout(obj)
+        except Exception:
+            return None
 
     def get_cancellation_info(self, obj):
         request = self.context.get("request")
@@ -1244,6 +1252,9 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
             return quotes_map.get(obj.id)
         if not hasattr(obj, "_cached_active_quote"):
             from .models import WorkforceQuote
+            from django.db.models import Model as _M
+            if not isinstance(obj, _M):
+                return None  # GT_QUOTE_NONMODEL: non-model job objects (lightweight stand-ins) have no quotes
             q = (
                 WorkforceQuote.objects.filter(job=obj)
                 .exclude(status__in=[WorkforceQuote.Status.SUPERSEDED, WorkforceQuote.Status.CANCELLED])
