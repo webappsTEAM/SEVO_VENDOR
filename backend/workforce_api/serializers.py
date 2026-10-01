@@ -2579,6 +2579,20 @@ class SellerCatalogCategoryItemSerializer(serializers.ModelSerializer):
         path_list = self.get_path(obj)
         return " > ".join(a["name"] for a in path_list)
 
+class SellerProductSpecSerializer(serializers.ModelSerializer):
+    class Meta:
+        from .models import SellerProductSpec
+        model = SellerProductSpec
+        fields = [
+            "id",
+            "label",
+            "value",
+            "sort_order",
+            "created_at",
+        ]
+        read_only_fields = ["id", "created_at"]
+
+
 class SellerProductImageSerializer(serializers.ModelSerializer):
     class Meta:
         from .models import SellerProductImage
@@ -2665,12 +2679,53 @@ class SellerLeafCategorySerializer(serializers.Serializer):
         return getattr(obj, "path_string", getattr(obj, "path", ""))
 
 
+class SellerProductVariantGroupSerializer(serializers.ModelSerializer):
+    company_name = serializers.CharField(source="company.company_name", read_only=True)
+    variants_count = serializers.SerializerMethodField()
+    variants = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models import SellerProductVariantGroup
+        model = SellerProductVariantGroup
+        fields = [
+            "id",
+            "company",
+            "company_name",
+            "group_title",
+            "variant_attribute_name",
+            "variants_count",
+            "variants",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "company", "created_at", "updated_at"]
+
+    def get_variants_count(self, obj):
+        return obj.variants.count()
+
+    def get_variants(self, obj):
+        return [
+            {
+                "id": v.id,
+                "title": v.title,
+                "sku": v.sku,
+                "variant_label": v.variant_label,
+                "status": v.status,
+                "selling_price": str(v.selling_price),
+                "mrp": str(v.mrp),
+            }
+            for v in obj.variants.all()
+        ]
+
+
 class SellerProductListSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source="category.name", read_only=True)
     category_slug = serializers.CharField(source="category.slug", read_only=True)
     category_path = serializers.SerializerMethodField()
     path_string = serializers.SerializerMethodField()
     company_name = serializers.CharField(source="company.company_name", read_only=True)
+    variant_group_title = serializers.CharField(source="variant_group.group_title", read_only=True, default="")
+    variant_attribute_name = serializers.CharField(source="variant_group.variant_attribute_name", read_only=True, default="")
     primary_image = serializers.SerializerMethodField()
     images_count = serializers.SerializerMethodField()
     reviewed_by_name = serializers.SerializerMethodField()
@@ -2696,6 +2751,10 @@ class SellerProductListSerializer(serializers.ModelSerializer):
             "fulfillment_method",
             "unit",
             "pack_size",
+            "variant_group",
+            "variant_group_title",
+            "variant_attribute_name",
+            "variant_label",
             "mrp",
             "selling_price",
             "procurement_price",
@@ -2772,12 +2831,16 @@ class SellerProductListSerializer(serializers.ModelSerializer):
 
 class SellerProductDetailSerializer(serializers.ModelSerializer):
     images = SellerProductImageSerializer(many=True, read_only=True)
+    specs = SellerProductSpecSerializer(many=True, read_only=True)
     audit_logs = SellerProductAuditLogSerializer(many=True, read_only=True)
     category_name = serializers.CharField(source="category.name", read_only=True)
     category_slug = serializers.CharField(source="category.slug", read_only=True)
     category_path = serializers.SerializerMethodField()
     path_string = serializers.SerializerMethodField()
     company_name = serializers.CharField(source="company.company_name", read_only=True)
+    variant_group_title = serializers.CharField(source="variant_group.group_title", read_only=True, default="")
+    variant_attribute_name = serializers.CharField(source="variant_group.variant_attribute_name", read_only=True, default="")
+    variant_siblings = serializers.SerializerMethodField()
     reviewed_by_name = serializers.SerializerMethodField()
     rejection_reason = serializers.CharField(source="admin_review_note", read_only=True)
 
@@ -2801,6 +2864,11 @@ class SellerProductDetailSerializer(serializers.ModelSerializer):
             "fulfillment_method",
             "unit",
             "pack_size",
+            "variant_group",
+            "variant_group_title",
+            "variant_attribute_name",
+            "variant_label",
+            "variant_siblings",
             "mrp",
             "selling_price",
             "procurement_price",
@@ -2816,6 +2884,7 @@ class SellerProductDetailSerializer(serializers.ModelSerializer):
             "reviewed_at",
             "upload_batch",
             "images",
+            "specs",
             "audit_logs",
             "created_at",
             "updated_at",
@@ -2858,6 +2927,28 @@ class SellerProductDetailSerializer(serializers.ModelSerializer):
             return None
         name = f"{getattr(obj.reviewed_by, 'first_name', '')} {getattr(obj.reviewed_by, 'last_name', '')}".strip()
         return name or getattr(obj.reviewed_by, "username", "Reviewer")
+
+    def get_variant_siblings(self, obj):
+        if not obj.variant_group_id:
+            return []
+        from .models import SellerProduct
+        siblings = SellerProduct.objects.filter(variant_group_id=obj.variant_group_id).exclude(id=obj.id).select_related("inventory")
+        results = []
+        for s in siblings:
+            inv = getattr(s, "inventory", None)
+            avail_qty = max(Decimal("0.000"), (inv.on_hand_qty - inv.reserved_qty)) if inv else Decimal("0.000")
+            results.append({
+                "id": s.id,
+                "title": s.title,
+                "sku": s.sku,
+                "variant_label": s.variant_label or "",
+                "status": s.status,
+                "selling_price": str(s.selling_price),
+                "mrp": str(s.mrp),
+                "available_qty": str(round(avail_qty, 3)),
+                "in_stock": avail_qty > Decimal("0.000"),
+            })
+        return results
 
 
 def is_category_leaf(category):
@@ -2924,6 +3015,11 @@ class SellerProductCreateUpdateSerializer(serializers.ModelSerializer):
         required=False,
         write_only=True,
     )
+    specs = serializers.ListField(
+        child=serializers.DictField(),
+        required=False,
+        write_only=True,
+    )
 
     class Meta:
         from .models import SellerProduct
@@ -2939,6 +3035,8 @@ class SellerProductCreateUpdateSerializer(serializers.ModelSerializer):
             "fulfillment_method",
             "unit",
             "pack_size",
+            "variant_group",
+            "variant_label",
             "mrp",
             "selling_price",
             "procurement_price",
@@ -2948,6 +3046,7 @@ class SellerProductCreateUpdateSerializer(serializers.ModelSerializer):
             "expiry_info",
             "status",
             "images",
+            "specs",
         ]
 
     def validate_category(self, value):
@@ -2987,9 +3086,10 @@ class SellerProductCreateUpdateSerializer(serializers.ModelSerializer):
         if tax_rate is not None and tax_rate < 0:
             raise serializers.ValidationError({"tax_rate": "Tax rate cannot be negative."})
 
+        company = self.context.get("company")
+
         # SKU uniqueness per company check
         sku = data.get("sku")
-        company = self.context.get("company")
         if sku and company:
             from .models import SellerProduct
             qs = SellerProduct.objects.filter(company=company, sku=sku)
@@ -2998,6 +3098,32 @@ class SellerProductCreateUpdateSerializer(serializers.ModelSerializer):
             if qs.exists():
                 raise serializers.ValidationError(
                     {"sku": f"A product with SKU '{sku}' already exists in your store catalog."}
+                )
+
+        # Variant group and label validation
+        variant_group = data.get("variant_group")
+        variant_label = data.get("variant_label", "").strip() if data.get("variant_label") is not None else ""
+        if variant_group is None and self.instance:
+            variant_group = self.instance.variant_group
+        if not variant_label and self.instance:
+            variant_label = self.instance.variant_label or ""
+
+        if variant_group:
+            if company and getattr(variant_group, "company_id", None) != company.id:
+                raise serializers.ValidationError(
+                    {"variant_group": "Selected variant group does not belong to your merchant store."}
+                )
+            if not variant_label:
+                raise serializers.ValidationError(
+                    {"variant_label": "Variant option label (e.g. '50g', '100g') is required when linked to a variant group."}
+                )
+            from .models import SellerProduct
+            qs_v = SellerProduct.objects.filter(variant_group=variant_group, variant_label__iexact=variant_label)
+            if self.instance:
+                qs_v = qs_v.exclude(pk=self.instance.pk)
+            if qs_v.exists():
+                raise serializers.ValidationError(
+                    {"variant_label": f"A variant with option label '{variant_label}' already exists in this variant group."}
                 )
 
         return attrs
@@ -4091,6 +4217,12 @@ class WarehouseInboundRequestSerializer(serializers.ModelSerializer):
     product_fulfillment_method = serializers.CharField(source="product.fulfillment_method", read_only=True)
     product_selling_price = serializers.DecimalField(source="product.selling_price", max_digits=10, decimal_places=2, read_only=True)
     product_image_url = serializers.SerializerMethodField()
+    variant_group_id = serializers.IntegerField(source="product.variant_group_id", read_only=True, default=None)
+    variant_group_title = serializers.CharField(source="product.variant_group.group_title", read_only=True, default="")
+    variant_attribute_name = serializers.CharField(source="product.variant_group.variant_attribute_name", read_only=True, default="Size")
+    variant_label = serializers.CharField(source="product.variant_label", read_only=True, default="")
+    product_pack_size = serializers.CharField(source="product.pack_size", read_only=True, default="")
+    product_unit = serializers.CharField(source="product.unit", read_only=True, default="")
     company_name = serializers.CharField(source="company.company_name", read_only=True)
     company_code = serializers.CharField(source="company.company_code", read_only=True, default="")
     warehouse_name = serializers.CharField(source="warehouse.name", read_only=True)
@@ -4106,7 +4238,7 @@ class WarehouseInboundRequestSerializer(serializers.ModelSerializer):
     not_received_units_count = serializers.SerializerMethodField()
     shortfall_quantity = serializers.SerializerMethodField()
     is_fully_received = serializers.SerializerMethodField()
-    units = WarehouseInboundUnitSerializer(many=True, read_only=True)
+    units = serializers.SerializerMethodField()
     audit_logs = WarehouseInboundRequestAuditLogSerializer(many=True, read_only=True)
 
     class Meta:
@@ -4122,6 +4254,12 @@ class WarehouseInboundRequestSerializer(serializers.ModelSerializer):
             "product_fulfillment_method",
             "product_selling_price",
             "product_image_url",
+            "variant_group_id",
+            "variant_group_title",
+            "variant_attribute_name",
+            "variant_label",
+            "product_pack_size",
+            "product_unit",
             "company",
             "company_name",
             "company_code",
@@ -4168,6 +4306,12 @@ class WarehouseInboundRequestSerializer(serializers.ModelSerializer):
             "product_fulfillment_method",
             "product_selling_price",
             "product_image_url",
+            "variant_group_id",
+            "variant_group_title",
+            "variant_attribute_name",
+            "variant_label",
+            "product_pack_size",
+            "product_unit",
             "company_name",
             "company_code",
             "warehouse_name",
@@ -4191,11 +4335,25 @@ class WarehouseInboundRequestSerializer(serializers.ModelSerializer):
             "audit_logs",
         ]
 
+    def get_units(self, obj):
+        if hasattr(obj, "_prefetched_objects_cache") and "units" in obj._prefetched_objects_cache:
+            return WarehouseInboundUnitSerializer(obj._prefetched_objects_cache["units"], many=True).data
+        return []
+
     def get_product_image_url(self, obj):
         try:
-            primary_img = obj.product.images.filter(is_primary=True).first() or obj.product.images.first()
-            if primary_img and primary_img.image:
-                return primary_img.image.url
+            if not obj.product:
+                return None
+            images = getattr(obj.product, "_prefetched_objects_cache", {}).get("images")
+            if images is not None:
+                primary_img = next((img for img in images if getattr(img, "is_primary", False)), None) or (images[0] if images else None)
+                if primary_img and primary_img.image:
+                    return primary_img.image.url
+            imgs = list(obj.product.images.all())
+            if imgs:
+                primary_img = next((img for img in imgs if getattr(img, "is_primary", False)), None) or imgs[0]
+                if primary_img and primary_img.image:
+                    return primary_img.image.url
         except Exception:
             pass
         return None
@@ -4221,20 +4379,32 @@ class WarehouseInboundRequestSerializer(serializers.ModelSerializer):
         return None
 
     def get_total_units_count(self, obj):
+        annotated = getattr(obj, "annotated_total_units", None)
+        if annotated is not None:
+            return annotated if annotated > 0 else obj.requested_quantity
         count = getattr(obj, "_total_units_cache", None)
         if count is None:
             count = obj.units.count()
         return count if count > 0 else obj.requested_quantity
 
     def get_received_units_count(self, obj):
+        annotated = getattr(obj, "annotated_received_units", None)
+        if annotated is not None:
+            return annotated
         from .models import WarehouseInboundUnit
         return obj.units.filter(status=WarehouseInboundUnit.Status.RECEIVED).count()
 
     def get_pending_units_count(self, obj):
+        annotated = getattr(obj, "annotated_pending_units", None)
+        if annotated is not None:
+            return annotated
         from .models import WarehouseInboundUnit
         return obj.units.filter(status=WarehouseInboundUnit.Status.PENDING_SCAN).count()
 
     def get_not_received_units_count(self, obj):
+        annotated = getattr(obj, "annotated_not_received_units", None)
+        if annotated is not None:
+            return annotated
         from .models import WarehouseInboundUnit
         return obj.units.filter(status=WarehouseInboundUnit.Status.NOT_RECEIVED).count()
 
@@ -4482,3 +4652,4 @@ class DeliverySlotSerializer(serializers.ModelSerializer):
                     })
 
         return attrs
+
