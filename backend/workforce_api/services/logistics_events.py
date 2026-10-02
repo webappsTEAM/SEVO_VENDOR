@@ -377,7 +377,7 @@ def _technician_identity(emp):
     return name or "", str(getattr(emp, "id", "") or "")
 
 
-def emit_delivery_proof_for_job(job, emp, proof=None, notes=""):
+def emit_delivery_proof_for_job(job, emp, proof=None, notes="", recipient_name="", signature=None):
     """
     Send the proof of delivery the driver just submitted to the Customer app.
 
@@ -392,8 +392,12 @@ def emit_delivery_proof_for_job(job, emp, proof=None, notes=""):
 
     The photo reference is the DROP checkpoint photo when one was recorded
     (that is the unloading proof), else the best photo on the PostServiceProof.
-    Nothing is invented: recipient name/phone are not captured by the driver
-    flow, so they are not sent.
+
+    Round 8 gap 2: recipient_name and signature (a FieldFile, e.g.
+    proof.delivery_signature) are OPTIONAL -- the driver flow does not require
+    either. When present they are forwarded as recipient_name/signature_url so
+    the Customer app creates the matching RECIPIENT_NAME/SIGNATURE DeliveryProof
+    rows alongside the PHOTO row, same as before this pass when neither existed.
     """
     if not _is_logistics_job(job):
         return False
@@ -422,11 +426,20 @@ def emit_delivery_proof_for_job(job, emp, proof=None, notes=""):
         if drop is not None and drop.gps_lat is not None and drop.gps_lon is not None:
             location = {"latitude": str(drop.gps_lat), "longitude": str(drop.gps_lon)}
 
+        signature_url = ""
+        try:
+            if signature:
+                signature_url = signature.url
+        except Exception:
+            signature_url = ""
+
         tech_name, tech_id = _technician_identity(emp or getattr(job, "assigned_employee", None))
         emit_completion_proof(
             job,
             notes=notes or "",
             photo_url=photo_url,
+            signature_url=signature_url,
+            recipient_name=recipient_name or "",
             otp_verified=bool(drop is not None and drop.otp_verified),
             technician_name=tech_name,
             workforce_employee_id=tech_id,

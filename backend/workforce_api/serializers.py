@@ -506,6 +506,7 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
     service_title = serializers.SerializerMethodField()
     job_status = serializers.SerializerMethodField()
     payment = serializers.SerializerMethodField()
+    estimated_payout_info = serializers.SerializerMethodField()
     active_offer = serializers.SerializerMethodField()
     cancellation_info = serializers.SerializerMethodField()
     extensions = serializers.SerializerMethodField()
@@ -587,6 +588,7 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
             "payment_status",
             "payment_method",
             "payment",
+            "estimated_payout_info",
             "customer_display_name",
             "active_offer",
             "cancellation_info",
@@ -973,7 +975,28 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
             return f"Customer ({str(obj.phone)[-4:]})"
         return obj.customer_name or "Valued Customer"
 
+    def _hide_customer_contact(self, obj):
+        """A technician who is NOT assigned to the job (an open offer or an upcoming scheduled
+        preview) must not receive the customer's phone/email before accepting it. Admin/vendor-admin
+        views and the assigned technician are unaffected."""
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not user or not getattr(user, "is_authenticated", False):
+            return False
+        try:
+            from accounts.permissions import is_admin_role
+            if is_admin_role(user):
+                return False
+        except Exception:
+            return False
+        emp = getattr(user, "employee_profile", None)
+        if emp is None:
+            return False
+        return getattr(obj, "assigned_employee_id", None) != getattr(emp, "id", None)
+
     def get_phone(self, obj):
+        if self._hide_customer_contact(obj):
+            return ""
         if obj.phone:
             return str(obj.phone)
         if obj.customer:
@@ -989,6 +1012,8 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
         return ""
 
     def get_email(self, obj):
+        if self._hide_customer_contact(obj):
+            return ""
         if obj.email:
             return obj.email
         if obj.customer and getattr(obj.customer, "email", None):
@@ -1162,6 +1187,18 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
             }
         return JobPaymentSerializer(pmt).data
 
+    def get_estimated_payout_info(self, obj):
+        # GT_PAYOUT_SAFE: the preview costs a few queries, so only compute it for logistics jobs that are
+        # actually assigned, never for non-model objects, and never let it break the job payload.
+        from django.db.models import Model
+        if not isinstance(obj, Model) or not getattr(obj, "assigned_employee_id", None):
+            return None
+        try:
+            from .services.commission import preview_job_payout
+            return preview_job_payout(obj)
+        except Exception:
+            return None
+
     def get_cancellation_info(self, obj):
         request = self.context.get("request")
         if not request or not getattr(request, "user", None):
@@ -1228,6 +1265,9 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
             return quotes_map.get(obj.id)
         if not hasattr(obj, "_cached_active_quote"):
             from .models import WorkforceQuote
+            from django.db.models import Model as _M
+            if not isinstance(obj, _M):
+                return None  # GT_QUOTE_NONMODEL: non-model job objects (lightweight stand-ins) have no quotes
             q = (
                 WorkforceQuote.objects.filter(job=obj)
                 .exclude(status__in=[WorkforceQuote.Status.SUPERSEDED, WorkforceQuote.Status.CANCELLED])

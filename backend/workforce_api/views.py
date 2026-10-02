@@ -49,7 +49,7 @@ import secrets
 from django.contrib.auth.hashers import make_password, check_password
 from accounts.permissions import is_admin_role, is_platform_admin
 from accounts.platform import is_platform_admin_user, is_platform_company, PLATFORM_COMPANY_ID
-from .permissions import IsWorkforceAdmin, IsWorkforceEmployee, IsApprovedTechnician, IsInternalWorkforceCaller
+from .permissions import JsonObjectBodyMixin, IsWorkforceAdmin, IsWorkforceEmployee, IsApprovedTechnician, IsInternalWorkforceCaller
 
 from .serializers import (
     GrocerySellerApplicationDetailSerializer,
@@ -3907,6 +3907,19 @@ class WorkforceJobProofView(APIView):
         after_work_area = request.FILES.get("after_work_area_photo") or request.FILES.get("during_photo") or request.FILES.get("before_photo")
         parts_used = request.data.get("parts_used", [])
 
+        # Round 8 gap 2: optional recipient signature + name, GT/logistics jobs only.
+        # Both optional -- never required for job completion (see docstring below).
+        recipient_name_in = str(request.data.get("recipient_name") or "").strip()
+        signature_file = request.FILES.get("signature")
+        signature_data_url = request.data.get("signature_data_url") or request.data.get("signature") \
+            if not signature_file else None
+        is_logistics_job = False
+        try:
+            from workforce_api.services.automatic_dispatch import LOGISTICS_SERVICE_CATEGORIES
+            is_logistics_job = (job.service_category or "").strip().lower() in LOGISTICS_SERVICE_CATEGORIES
+        except Exception:
+            is_logistics_job = False
+
         if not after_presence and not after_appliance and not after_work_area:
             return Response({"error": "After-service completion requires After Face/Identity Selfie or service photo."}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -3929,6 +3942,25 @@ class WorkforceJobProofView(APIView):
             proof.completion_notes = completion_notes
         if parts_used:
             proof.parts_used = parts_used
+
+        # Round 8 gap 2: only GT/logistics jobs ever get a recipient-name/signature row --
+        # a home-service job's proof form never sends these fields.
+        if is_logistics_job and recipient_name_in:
+            proof.delivery_recipient_name = recipient_name_in[:200]
+        if is_logistics_job and signature_file:
+            _sig_err = _validate_photo_upload(signature_file)
+            if _sig_err:
+                return Response({"error": _sig_err}, status=status.HTTP_400_BAD_REQUEST)
+            proof.delivery_signature = signature_file
+        elif is_logistics_job and signature_data_url and isinstance(signature_data_url, str) and signature_data_url.startswith("data:image"):
+            try:
+                import base64
+                from django.core.files.base import ContentFile
+                header, b64data = signature_data_url.split(",", 1)
+                ext = "png" if "png" in header else "jpg"
+                proof.delivery_signature = ContentFile(base64.b64decode(b64data), name=f"signature_{job.id}.{ext}")
+            except Exception:
+                logger.warning("[PROOF_SUBMIT] Could not decode signature_data_url for job %s", job.id)
 
         proof.check_submission()
         proof.save()
@@ -3976,7 +4008,10 @@ class WorkforceJobProofView(APIView):
         # jobs; never blocks or undoes the submission.
         try:
             from workforce_api.services.logistics_events import emit_delivery_proof_for_job
-            emit_delivery_proof_for_job(job, emp or job.assigned_employee, proof=proof, notes=completion_notes)
+            emit_delivery_proof_for_job(
+                job, emp or job.assigned_employee, proof=proof, notes=completion_notes,
+                recipient_name=proof.delivery_recipient_name, signature=proof.delivery_signature,
+            )
         except Exception:
             logger.exception("Could not emit delivery proof for job %s", job.id)
 
@@ -4194,6 +4229,14 @@ class WorkforceJobCashCollectView(APIView):
             try:
                 amt_received = Decimal(str(raw_received if raw_received is not None else pmt.amount_due))
             except Exception:
+                return Response({"error": "Invalid collection amount format."}, status=status.HTTP_400_BAD_REQUEST)
+
+            # NaN/Infinity parse as Decimals but explode on comparison or on save
+            # (unhandled 500 / corrupt change_returned); reject them and anything the
+            # DB column cannot hold, with a clean message.
+            _rf = JobPayment._meta.get_field("amount_received")
+            if (not amt_received.is_finite()
+                    or abs(amt_received) >= Decimal(10) ** (_rf.max_digits - _rf.decimal_places)):
                 return Response({"error": "Invalid collection amount format."}, status=status.HTTP_400_BAD_REQUEST)
 
             if amt_received < pmt.amount_due:
@@ -4922,7 +4965,7 @@ class WorkforceDispatchEligibleListView(APIView):
                 gate_audit.append({
                     "gate": g_code,
                     "name": g_name,
-                    "passed": bool(gate_results.get(g_code, False)),
+                    "passed": gate_results.get(g_code, False),
                 })
 
             eligible.append({
@@ -9132,6 +9175,23 @@ class ServerSentEventRenderer(BaseRenderer):
         return data
 
 
+ADMIN_ONLY_REALTIME_EVENT_TYPES = frozenset({
+    "DISPATCH_STARTED",
+    "CANDIDATES_EVALUATED",
+    "EMPLOYEE_JOB_DECLINED",
+    "DISPATCH_UNASSIGNED_REASON",
+})
+
+
+class WorkforceRealtimeStreamTicketView(APIView):
+    """POST (Authorization header) -> a 60 s single-use ticket for opening the SSE stream."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        from workforce_api.services.stream_ticket import issue_stream_ticket, TTL_SECONDS
+        return Response({"ticket": issue_stream_ticket(request.user.id), "expires_in": TTL_SECONDS})
+
+
 class WorkforceRealtimeStreamView(APIView):
     permission_classes = [permissions.AllowAny]
     renderer_classes = [ServerSentEventRenderer, JSONRenderer]
@@ -9143,13 +9203,27 @@ class WorkforceRealtimeStreamView(APIView):
 
         logger.info("[Realtime SSE START] Received SSE connection request.")
         user = request.user
-        token_str = request.query_params.get("token") or request.headers.get("Authorization", "").replace("Bearer ", "").strip()
+        ticket_str = request.query_params.get("ticket")
+        query_token = request.query_params.get("token")
+        header_token = request.headers.get("Authorization", "").replace("Bearer ", "").strip()
+        # A full access JWT in the URL is recorded by proxies/access logs and stays valid for hours; the
+        # driver app now uses a 60 s single-use ticket instead. The query-string JWT keeps working
+        # until clients are updated; set REALTIME_ALLOW_QUERY_TOKEN=False to turn it off.
+        if query_token and not header_token and not getattr(settings, "REALTIME_ALLOW_QUERY_TOKEN", True):
+            return Response({"error": "Use a stream ticket.", "code": "QUERY_TOKEN_DISABLED"}, status=status.HTTP_401_UNAUTHORIZED)
+        token_str = query_token or header_token
 
-        # Step 1: JWT Authentication
-        if (not user or not user.is_authenticated) and token_str:
+        # Step 1: Authentication (stream ticket, or JWT)
+        if (not user or not user.is_authenticated) and (token_str or ticket_str):
             try:
-                access_token = AccessToken(token_str)
-                user_id = access_token.get("user_id")
+                if ticket_str:
+                    from workforce_api.services.stream_ticket import redeem_stream_ticket
+                    user_id = redeem_stream_ticket(ticket_str)
+                    if user_id is None:
+                        return Response({"error": "Invalid or expired stream ticket.", "code": "INVALID_TICKET"}, status=status.HTTP_401_UNAUTHORIZED)
+                else:
+                    access_token = AccessToken(token_str)
+                    user_id = access_token.get("user_id")
                 if user_id is None:
                     logger.warning("[Realtime AUTH] Token missing user_id claim.")
                     return Response({"error": "Invalid token claims.", "code": "INVALID_TOKEN"}, status=status.HTTP_401_UNAUTHORIZED)
@@ -9279,8 +9353,15 @@ class WorkforceRealtimeStreamView(APIView):
                                 logger.debug("[Realtime SSE PUBSUB_READ_ERR] %s", ps_read_err)
                                 pubsub = None
                                 time.sleep(1)
+                                # Redis dropped mid-stream: fall back to the DB event log
+                                should_query_db = True
                         else:
                             time.sleep(1)
+                            # No Redis (not configured / unreachable): nothing will ever signal
+                            # a new event, so poll the event log (one indexed id > last_id query
+                            # per second) instead of silently delivering nothing. GT offers
+                            # live only ~20-40s; the client's 30s poll cannot cover that.
+                            should_query_db = True
 
                     if should_query_db:
                         has_pending_events = False
@@ -9315,8 +9396,14 @@ class WorkforceRealtimeStreamView(APIView):
                                     ev_comp = ev_payload.get("company_id")
                                     is_authorized = (ev_comp is None or ev_comp == user_company_id)
                             elif ev_user_id is None:
-                                ev_company_id = ev_payload.get("company_id") if isinstance(ev_payload, dict) else None
-                                is_authorized = (ev_company_id is None or ev_company_id == user_company_id)
+                                # Dispatch diagnostics (ranked candidate names/scores/distances, decline
+                                # reasons) belong to the admin dispatch radar only; a driver must never
+                                # receive other drivers' details or jobs not offered to them.
+                                if ev["event_type"] in ADMIN_ONLY_REALTIME_EVENT_TYPES:
+                                    is_authorized = False
+                                else:
+                                    ev_company_id = ev_payload.get("company_id") if isinstance(ev_payload, dict) else None
+                                    is_authorized = (ev_company_id is None or ev_company_id == user_company_id)
                             else:
                                 is_authorized = False
 
@@ -9968,7 +10055,7 @@ class WorkforceJobArriveView(APIView):
             "message": "Arrival verified! Fresh Customer Work Start OTP generated and sent to customer.",
             "geofence_passed": True,
             "matched_location": matched_location,
-            "distance_m": round(distance_m, 1),
+            "distance_m": round(distance_m, 1) if distance_m is not None else None,
             "status": job.status,
             "otp_generated": True,
             "otp_expires_in_minutes": 15,
@@ -9976,7 +10063,7 @@ class WorkforceJobArriveView(APIView):
 
 
 
-class WorkforceJobVerifyOTPView(APIView):
+class WorkforceJobVerifyOTPView(JsonObjectBodyMixin, APIView):
     permission_classes = [IsApprovedTechnician]
     throttle_classes = [ScopedRateThrottle]  # EC-06: OTP guess-attempt endpoint
     throttle_scope = "workforce_otp"
@@ -12327,7 +12414,7 @@ class WorkforceDispatchHealthView(APIView):
         }, status=status.HTTP_200_OK if healthy else status.HTTP_503_SERVICE_UNAVAILABLE)
 
 
-class WorkforceJobLogisticsLegView(APIView):
+class WorkforceJobLogisticsLegView(JsonObjectBodyMixin, APIView):
     """
     GT-B-03: technician-facing sub-phase tracker for multi-leg logistics
     jobs. Deliberately separate from job.status/apply_transition -- see
@@ -12411,7 +12498,7 @@ class WorkforceJobLogisticsLegView(APIView):
 
         leg = str(request.data.get("leg") or "").strip().upper()
         if leg not in ServiceRequest.LogisticsLeg.values:
-            valid_legs = ", ".join(ServiceRequest.LogisticsLeg.values)
+            valid_legs = ", ".join(str(v) for v in ServiceRequest.LogisticsLeg.values)
             return Response({
                 "error": f"Invalid leg. Choose one of: {valid_legs}"
             }, status=status.HTTP_400_BAD_REQUEST)
@@ -12471,7 +12558,7 @@ class WorkforceJobLogisticsLegView(APIView):
         }, status=status.HTTP_200_OK)
 
 
-class WorkforceJobLogisticsCheckpointView(APIView):
+class WorkforceJobLogisticsCheckpointView(JsonObjectBodyMixin, APIView):
     """
     Pickup / drop checkpoint verification for logistics trips -- the mid-trip
     counterpart of the job-start Pre-Service Verification (arrive/, verify-otp/,
@@ -12493,7 +12580,8 @@ class WorkforceJobLogisticsCheckpointView(APIView):
 
     def get_throttles(self):
         # Only OTP guess/resend attempts are rate limited, as on verify-otp/.
-        action = str(getattr(self.request, "data", {}).get("action", "") if self.request.method == "POST" else "").lower()
+        body = getattr(self.request, "data", None) if self.request.method == "POST" else None
+        action = str(body.get("action", "") if hasattr(body, "get") else "").lower()
         if action in ("otp", "resend_otp"):
             return super().get_throttles()
         return []
@@ -12692,7 +12780,7 @@ class WorkforceJobLogisticsExtraChargeView(WorkforceJobLogisticsCheckpointView):
         return Response({"reported": True, "charge_id": cid}, status=status.HTTP_200_OK)
 
 
-class WorkforceJobTripStopsView(APIView):
+class WorkforceJobTripStopsView(JsonObjectBodyMixin, APIView):
     """
     GT-D-01: the driver's view of a multi-stop trip, and how they advance
     it.

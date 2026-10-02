@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Truck,
   Package,
@@ -184,6 +184,7 @@ export function LogisticsLegController({ job, onLegUpdated, className = '' }) {
   // backend's 400 is the gate.
   const [gates, setGates] = useState(null);
   const [gateTick, setGateTick] = useState(0);
+  const advancing = useRef(false);
 
   const jobId = job?.id;
   const legKey = (job?.logistics_leg || '').trim().toUpperCase();
@@ -247,7 +248,8 @@ export function LogisticsLegController({ job, onLegUpdated, className = '' }) {
   const jumpMissing = (selectedJumpLeg && gates && gates[selectedJumpLeg]) || [];
 
   const handleAdvanceLeg = async (targetLeg) => {
-    if (!targetLeg) return;
+    if (!targetLeg || advancing.current) return; // double-tap guard: state updates are async
+    advancing.current = true;
     setLoading(true);
     setError('');
     try {
@@ -260,6 +262,7 @@ export function LogisticsLegController({ job, onLegUpdated, className = '' }) {
       setError(err?.message || 'Failed to update logistics leg. Please retry.');
       setGateTick((t) => t + 1);
     } finally {
+      advancing.current = false;
       setLoading(false);
     }
   };
@@ -278,7 +281,7 @@ export function LogisticsLegController({ job, onLegUpdated, className = '' }) {
                 {isPM ? 'Packers & Movers Journey' : 'Goods Transport Journey'}
               </h3>
               <span className="text-[10px] font-bold text-blue-800 bg-blue-100 px-1.5 py-0.5 rounded">
-                {isPM ? '13 Stages' : '5 Stages'}
+                {`${sequence.length} Stages`}
               </span>
             </div>
             <p className="text-[11px] text-slate-500">

@@ -149,7 +149,7 @@ export function LogisticsCheckpointGate({ jobId, targetLabel, missing, onVerifie
 
             {item.requirement === 'gps' && (
               <p className="text-[11px] text-slate-500">
-                Your GPS position must be within 250m of the {where} location.
+                Your GPS position must be within {item.radius_m ? `${item.radius_m}m` : 'the allowed distance'} of the {where} location.
               </p>
             )}
             {item.requirement === 'photo' && (
