@@ -136,10 +136,16 @@ export function SellerInventoryPage() {
     reason: 'Initial opening stock setup.',
   });
 
+  const isPollingRef = useRef(false);
+
   // ── Data Fetching ─────────────────────────────────────────────────────────
-  const fetchInventory = useCallback(async () => {
-    setLoading(true);
-    setError('');
+  const fetchInventory = useCallback(async (isSilent = false) => {
+    if (isPollingRef.current && isSilent) return;
+    if (!isSilent) {
+      setLoading(true);
+      setError('');
+    }
+    isPollingRef.current = true;
     try {
       let url = `/api/workforce/seller-hub/inventory/?status=${activeTab}`;
       if (searchQuery.trim()) {
@@ -186,9 +192,14 @@ export function SellerInventoryPage() {
         }
       }
     } catch (err) {
-      setError(err.message || 'Error fetching store inventory.');
+      if (!isSilent) {
+        setError(err.message || 'Error fetching store inventory.');
+      }
     } finally {
-      setLoading(false);
+      isPollingRef.current = false;
+      if (!isSilent) {
+        setLoading(false);
+      }
     }
   }, [token, activeTab, searchQuery, selectedCategory]);
 
@@ -250,8 +261,36 @@ export function SellerInventoryPage() {
   }, []);
 
   useEffect(() => {
-    fetchInventory();
+    fetchInventory(false);
   }, [fetchInventory]);
+
+  // Background Auto-Refresh Polling (every 15s, pause when tab hidden or modal open)
+  useEffect(() => {
+    const isModalOpen = stockInModalItem !== null || adjustModalItem !== null || damageModalItem !== null ||
+      expiredModalItem !== null || thresholdModalItem !== null || initModalOpen || basketBuilderOpen || showInventoryScanner;
+
+    const pollInterval = 15000;
+    const intervalId = setInterval(() => {
+      if (document.visibilityState === 'visible' && !isModalOpen) {
+        fetchInventory(true);
+        if (activeTab === 'BASKET_OFFERS') {
+          fetchBaskets();
+        }
+      }
+    }, pollInterval);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && !isModalOpen) {
+        fetchInventory(true);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [fetchInventory, fetchBaskets, activeTab, stockInModalItem, adjustModalItem, damageModalItem, expiredModalItem, thresholdModalItem, initModalOpen, basketBuilderOpen, showInventoryScanner]);
 
   useEffect(() => {
     fetchCategories();

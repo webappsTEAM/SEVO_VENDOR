@@ -49,27 +49,82 @@ export function WarehouseOrdersPage() {
   const [orderDetail, setOrderDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
-  const fetchOrders = async () => {
-    setLoading(true);
-    setError('');
+  // Track newly arrived orders for visual highlight
+  const [newOrderIds, setNewOrderIds] = useState(new Set());
+  const knownOrderIdsRef = useRef(null);
+  const isPollingRef = useRef(false);
+
+  const fetchOrders = useCallback(async (isSilent = false) => {
+    if (isPollingRef.current && isSilent) return;
+    if (!isSilent) {
+      setLoading(true);
+      setError('');
+    }
+    isPollingRef.current = true;
     try {
       const params = {};
       if (statusFilter !== 'ALL') params.status = statusFilter;
       if (searchTerm.trim()) params.search = searchTerm.trim();
 
       const res = await apiWarehouseGetOrders(params);
-      setOrders(res?.results || res || []);
+      const incoming = res?.results || res || [];
+      const incomingList = Array.isArray(incoming) ? incoming : [];
+
+      // Detect genuinely new orders that arrived after initial load
+      if (knownOrderIdsRef.current !== null) {
+        const brandNew = incomingList.filter(o => !knownOrderIdsRef.current.has(o.id)).map(o => o.id);
+        if (brandNew.length > 0) {
+          setNewOrderIds(prev => new Set([...prev, ...brandNew]));
+          // Clear highlight after 8 seconds
+          setTimeout(() => {
+            setNewOrderIds(prev => {
+              const next = new Set(prev);
+              brandNew.forEach(id => next.delete(id));
+              return next;
+            });
+          }, 8000);
+        }
+      }
+      knownOrderIdsRef.current = new Set(incomingList.map(o => o.id));
+      setOrders(incomingList);
     } catch (err) {
       console.error('Failed to load warehouse orders:', err);
-      setError('Unable to load orders for this warehouse facility.');
+      if (!isSilent) {
+        setError('Unable to load orders for this warehouse facility.');
+      }
     } finally {
-      setLoading(false);
+      isPollingRef.current = false;
+      if (!isSilent) {
+        setLoading(false);
+      }
     }
-  };
+  }, [statusFilter, searchTerm]);
 
   useEffect(() => {
-    fetchOrders();
-  }, [statusFilter]);
+    fetchOrders(false);
+  }, [fetchOrders]);
+
+  // Background Auto-Refresh Polling (every 8s, pause when tab hidden or modal open)
+  useEffect(() => {
+    const pollInterval = 8000;
+    const intervalId = setInterval(() => {
+      if (document.visibilityState === 'visible' && !cancellationModal.isOpen) {
+        fetchOrders(true);
+      }
+    }, pollInterval);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && !cancellationModal.isOpen) {
+        fetchOrders(true);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [fetchOrders, cancellationModal.isOpen]);
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
@@ -243,16 +298,26 @@ export function WarehouseOrdersPage() {
               ) : (
                 orders.map((ord) => {
                   const isActing = actionLoadingId === ord.id;
+                  const isNew = newOrderIds.has(ord.id);
                   return (
                     <tr
                       key={ord.id}
                       onClick={() => handleOpenDetail(ord.id)}
-                      className="hover:bg-slate-50/80 cursor-pointer transition-colors"
+                      className={`cursor-pointer transition-all duration-300 ${
+                        isNew
+                          ? 'bg-emerald-50/80 hover:bg-emerald-100/60 ring-2 ring-emerald-400/40 ring-inset'
+                          : 'hover:bg-slate-50/80'
+                      }`}
                     >
                       <td className="p-3.5">
                         <div className="font-mono font-bold text-slate-900 flex items-center gap-1.5">
                           <Hash className="w-3 h-3 text-indigo-600" />
                           <span>{ord.order_number}</span>
+                          {isNew && (
+                            <span className="px-1.5 py-0.2 bg-emerald-600 text-white text-[9px] font-black rounded-full animate-pulse uppercase tracking-wider">
+                              NEW
+                            </span>
+                          )}
                         </div>
                         <div className="text-[10px] text-slate-500 font-mono mt-0.5">{ord.source_order_id}</div>
                       </td>
@@ -502,7 +567,7 @@ export function WarehouseOrdersPage() {
                         className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold transition-colors shadow-xs flex items-center gap-1.5 disabled:opacity-50"
                       >
                         <Truck className="w-3.5 h-3.5" />
-                        <span>Dispatch 2-Wheeler Rider</span>
+                        <span>Dispatch Sevo Delivery Partner</span>
                       </button>
                     )}
 

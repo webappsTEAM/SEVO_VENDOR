@@ -4416,7 +4416,10 @@ class SellerProductBasket(models.Model):
         if not self.company or not self.company.is_active:
             return False, 0, ["Merchant store is inactive."]
 
-        items = list(self.items.prefetch_related("options__product__inventory", "options__product__company").select_related("product", "product__inventory").all())
+        if hasattr(self, "_prefetched_objects_cache") and "items" in self._prefetched_objects_cache:
+            items = list(self._prefetched_objects_cache["items"])
+        else:
+            items = list(self.items.prefetch_related("options__product__inventory", "options__product__company").select_related("product", "product__inventory").all())
         if len(items) < 3:
             return False, 0, ["Basket must contain at least 3 distinct slots / products."]
 
@@ -4461,6 +4464,7 @@ class SellerProductBasket(models.Model):
         return is_avail, available_units, reasons
 
 
+
 class SellerProductBasketItem(models.Model):
     """
     Slot / Component item in a combo basket offer.
@@ -4503,12 +4507,16 @@ class SellerProductBasketItem(models.Model):
         return self.product
 
     def get_eligible_products(self):
-        opts = list(self.options.select_related("product", "product__inventory").all())
+        if hasattr(self, "_prefetched_objects_cache") and "options" in self._prefetched_objects_cache:
+            opts = self._prefetched_objects_cache["options"]
+        else:
+            opts = list(self.options.select_related("product", "product__inventory").all())
         if opts:
-            return [o.product for o in opts]
+            return [o.product for o in opts if getattr(o, "product", None)]
         if self.product:
             return [self.product]
         return []
+
 
 
 class SellerProductBasketItemOption(models.Model):

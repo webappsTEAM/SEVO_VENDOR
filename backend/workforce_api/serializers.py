@@ -655,15 +655,19 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
     def get_clock_in_time(self, obj):
         emp = self._get_context_emp() or getattr(obj, "assigned_employee", None)
         if emp:
-            try:
-                emp_id = getattr(emp, "id", None) or getattr(emp, "pk", None)
-                if isinstance(emp_id, int):
+            emp_id = getattr(emp, "id", None) or getattr(emp, "pk", None)
+            if isinstance(emp_id, int):
+                clock_in_map = self.context.get("clock_in_map")
+                if clock_in_map is not None:
+                    return clock_in_map.get(emp_id)
+                try:
                     from time_tracking.models import TimeLog
                     open_log = TimeLog.objects.filter(employee_id=emp_id, clock_out__isnull=True).order_by("-id").first()
                     if open_log and open_log.clock_in:
                         return open_log.clock_in.isoformat()
-            except Exception:
-                pass
+                except Exception:
+                    pass
+
         if getattr(obj, "started_at", None):
             return obj.started_at.isoformat()
         if getattr(obj, "otp_verified_at", None):
@@ -950,7 +954,11 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
                 return full
             if getattr(cust, "name", None) and not str(cust.name).startswith("cust_"):
                 return cust.name
-            if hasattr(cust, "saved_addresses"):
+            if hasattr(cust, "_prefetched_objects_cache") and "saved_addresses" in cust._prefetched_objects_cache:
+                for addr in cust.saved_addresses.all():
+                    if getattr(addr, "receiver_name", None):
+                        return addr.receiver_name
+            elif hasattr(cust, "saved_addresses"):
                 try:
                     addr = cust.saved_addresses.filter(receiver_name__isnull=False).exclude(receiver_name="").first()
                     if addr and addr.receiver_name:
@@ -990,13 +998,18 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
     def get_address(self, obj):
         if obj.address:
             return obj.address
-        if obj.customer and hasattr(obj.customer, "saved_addresses"):
-            try:
-                addr = obj.customer.saved_addresses.first()
-                if addr and getattr(addr, "address_line1", None):
-                    return addr.formatted_address or addr.address_line1
-            except Exception:
-                pass
+        if obj.customer:
+            if hasattr(obj.customer, "_prefetched_objects_cache") and "saved_addresses" in obj.customer._prefetched_objects_cache:
+                for addr in obj.customer.saved_addresses.all():
+                    if getattr(addr, "address_line1", None):
+                        return addr.formatted_address or addr.address_line1
+            elif hasattr(obj.customer, "saved_addresses"):
+                try:
+                    addr = obj.customer.saved_addresses.first()
+                    if addr and getattr(addr, "address_line1", None):
+                        return addr.formatted_address or addr.address_line1
+                except Exception:
+                    pass
         return ""
 
     def get_service_title(self, obj):
@@ -1211,7 +1224,7 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
 
     def _get_active_quote(self, obj):
         quotes_map = self.context.get("quotes_map")
-        if quotes_map is not None and obj.id in quotes_map:
+        if quotes_map is not None:
             return quotes_map.get(obj.id)
         if not hasattr(obj, "_cached_active_quote"):
             from .models import WorkforceQuote
@@ -1230,6 +1243,21 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
                 )
             obj._cached_active_quote = q
         return obj._cached_active_quote
+
+    def _get_active_invoice(self, obj):
+        invoices_map = self.context.get("invoices_map")
+        if invoices_map is not None:
+            return invoices_map.get(obj.id)
+        if not hasattr(obj, "_cached_active_invoice"):
+            try:
+                from workforce_api.models import WorkforceInvoice
+                inv = WorkforceInvoice.objects.filter(job=obj).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
+                if not inv and getattr(obj, "parent_request_id", None):
+                    inv = WorkforceInvoice.objects.filter(job_id=obj.parent_request_id).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
+                obj._cached_active_invoice = inv
+            except Exception:
+                obj._cached_active_invoice = None
+        return obj._cached_active_invoice
 
     def get_is_estimation(self, obj):
         return self._is_estimation_job(obj)
@@ -1276,9 +1304,7 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
     def get_active_quote_advance_paid(self, obj):
         try:
             from workforce_api.models import WorkforceInvoice
-            inv = WorkforceInvoice.objects.filter(job=obj).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
-            if not inv and getattr(obj, "parent_request_id", None):
-                inv = WorkforceInvoice.objects.filter(job_id=obj.parent_request_id).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
+            inv = self._get_active_invoice(obj)
             if inv:
                 if inv.status == WorkforceInvoice.Status.PAID:
                     return True
@@ -1299,9 +1325,7 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
     def get_active_quote_is_fully_paid(self, obj):
         try:
             from workforce_api.models import WorkforceInvoice
-            inv = WorkforceInvoice.objects.filter(job=obj).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
-            if not inv and getattr(obj, "parent_request_id", None):
-                inv = WorkforceInvoice.objects.filter(job_id=obj.parent_request_id).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
+            inv = self._get_active_invoice(obj)
             if inv:
                 return inv.status == WorkforceInvoice.Status.PAID or float(inv.balance_due) <= 0.0
         except Exception:
@@ -1311,9 +1335,7 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
     def get_active_quote_balance_amount(self, obj):
         try:
             from workforce_api.models import WorkforceInvoice
-            inv = WorkforceInvoice.objects.filter(job=obj).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
-            if not inv and getattr(obj, "parent_request_id", None):
-                inv = WorkforceInvoice.objects.filter(job_id=obj.parent_request_id).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
+            inv = self._get_active_invoice(obj)
             if inv:
                 bal = float(inv.balance_amount) if inv.balance_amount and float(inv.balance_amount) > 0 else (float(inv.total_amount) - float(inv.advance_amount or 0.0))
                 return round(bal, 2)
@@ -1343,8 +1365,12 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
     def get_payment_otp(self, obj):
         try:
             from workforce_api.models import JobPayment, PaymentCollectionEvent
-            pmt = getattr(obj, "payment_record", None) or JobPayment.objects.filter(job=obj).first()
-            if pmt and pmt.payment_status == JobPayment.PaymentStatus.CASH_PENDING:
+            payments_map = self.context.get("payments_map")
+            if payments_map is not None:
+                pmt = payments_map.get(obj.id)
+            else:
+                pmt = getattr(obj, "payment_record", None) or JobPayment.objects.filter(job=obj).first()
+            if pmt and getattr(pmt, "payment_status", "") == JobPayment.PaymentStatus.CASH_PENDING:
                 last_event = PaymentCollectionEvent.objects.filter(job_payment=pmt, event_type="CASH_REPORTED").order_by("-created_at").first()
                 if last_event and last_event.metadata:
                     return last_event.metadata.get("otp")
@@ -3280,27 +3306,49 @@ class SellerInventoryListSerializer(serializers.ModelSerializer):
         ]
 
     def get_product_category_path(self, obj):
-        cat = obj.product.category
+        cat = getattr(getattr(obj, "product", None), "category", None)
         if not cat:
             return ""
         path = [cat.name]
-        curr = cat.parent
-        while curr:
+        curr = getattr(cat, "parent", None)
+        visited = {cat.id}
+        while curr and curr.id not in visited:
+            visited.add(curr.id)
             path.insert(0, curr.name)
-            curr = curr.parent
+            curr = getattr(curr, "parent", None)
         return " > ".join(path)
 
     def get_product_image(self, obj):
-        img = obj.product.images.filter(is_primary=True).first() or obj.product.images.first()
+        prod = getattr(obj, "product", None)
+        if not prod:
+            return None
+        if hasattr(prod, "_prefetched_objects_cache") and "images" in prod._prefetched_objects_cache:
+            images = prod._prefetched_objects_cache["images"]
+            for img in images:
+                if img.is_primary and img.image_url:
+                    return img.image_url
+            for img in images:
+                if img.image_url:
+                    return img.image_url
+            return None
+        img = prod.images.filter(is_primary=True).first() or prod.images.first()
         return img.image_url if img else None
 
     def get_batches_count(self, obj):
+        if hasattr(obj, "_prefetched_objects_cache") and "batches" in obj._prefetched_objects_cache:
+            return sum(1 for b in obj._prefetched_objects_cache["batches"] if b.current_quantity > 0)
         return obj.batches.filter(current_quantity__gt=0).count()
 
     def get_has_expiring_batches(self, obj):
         from django.utils import timezone
         thirty_days = timezone.now().date() + timezone.timedelta(days=30)
+        if hasattr(obj, "_prefetched_objects_cache") and "batches" in obj._prefetched_objects_cache:
+            return any(
+                b.current_quantity > 0 and b.expiry_date and b.expiry_date <= thirty_days
+                for b in obj._prefetched_objects_cache["batches"]
+            )
         return obj.batches.filter(current_quantity__gt=0, expiry_date__lte=thirty_days).exists()
+
 
 
 class SellerInventoryDetailSerializer(SellerInventoryListSerializer):

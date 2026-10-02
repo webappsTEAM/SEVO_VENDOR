@@ -197,7 +197,13 @@ class WarehousePortalOrdersListView(APIView):
 
         queryset = SellerOrder.objects.filter(
             warehouse_id=warehouse.id
-        ).select_related("company").prefetch_related("items", "items__product").order_by("-id")
+        ).select_related(
+            "company",
+            "handling_technician",
+            "handling_technician__user",
+            "dispatch_job",
+        ).prefetch_related("items", "items__product").order_by("-id")
+
 
         # Status filter
         status_filter = request.query_params.get("status", "").strip().upper()
@@ -309,7 +315,7 @@ class WarehousePortalOrderStatusTransitionView(APIView):
         if action in ("handover", "deliver") and not getattr(user, "is_superuser", False):
             return Response(
                 {
-                    "error": "Manual handover and delivery actions are disabled. Orders must be verified by the assigned 2-wheeler rider using Pickup and Delivery OTP verification checkpoints.",
+                    "error": "Manual handover and delivery actions are disabled. Orders must be verified by the assigned delivery partner using Pickup and Delivery OTP verification checkpoints.",
                     "code": "MANUAL_HANDOVER_DISABLED",
                     "action": action,
                 },
@@ -419,7 +425,7 @@ class WarehousePortalOrderStatusTransitionView(APIView):
 
                             sr = ServiceRequest.objects.create(
                                 company=order.company,
-                                service_category="goods_transport_two_wheeler",
+                                service_category="sevo_delivery_partner",
                                 job_type="DELIVERY",
                                 request_kind=ServiceRequest.RequestKind.DIRECT,
                                 customer_name=order.customer_name,
@@ -454,7 +460,7 @@ class WarehousePortalOrderStatusTransitionView(APIView):
 
                         sr = ServiceRequest.objects.create(
                             company=order.company,
-                            service_category="goods_transport_two_wheeler",
+                            service_category="sevo_delivery_partner",
                             job_type="DELIVERY",
                             request_kind=ServiceRequest.RequestKind.DIRECT,
                             customer_name=order.customer_name,
@@ -522,7 +528,7 @@ class WarehousePortalOrderStatusTransitionView(APIView):
 
                                 sr = ServiceRequest.objects.create(
                                     company=order.company,
-                                    service_category="goods_transport_two_wheeler",
+                                    service_category="sevo_delivery_partner",
                                     job_type="DELIVERY",
                                     request_kind=ServiceRequest.RequestKind.DIRECT,
                                     customer_name=remaining_active[0].customer_name,

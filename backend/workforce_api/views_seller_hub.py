@@ -3582,7 +3582,13 @@ class SellerOrderListView(APIView):
         company_id = _resolve_user_company_id(user)
         is_super = is_platform_reviewer(user)
 
-        queryset = SellerOrder.objects.select_related("company").prefetch_related("items", "items__product")
+        queryset = SellerOrder.objects.select_related(
+            "company",
+            "handling_technician",
+            "handling_technician__user",
+            "dispatch_job",
+        ).prefetch_related("items", "items__product")
+
 
         if not is_super:
             if not company_id:
@@ -3718,7 +3724,7 @@ class SellerOrderStatusTransitionView(APIView):
         if action in ("handover", "deliver") and not getattr(user, "is_superuser", False):
             return Response(
                 {
-                    "error": "Manual handover and delivery actions are disabled. Orders must be verified by the assigned 2-wheeler rider using Pickup and Delivery OTP verification checkpoints.",
+                    "error": "Manual handover and delivery actions are disabled. Orders must be verified by the assigned delivery partner using Pickup and Delivery OTP verification checkpoints.",
                     "code": "MANUAL_HANDOVER_DISABLED",
                     "action": action,
                 },
@@ -3829,7 +3835,7 @@ class SellerOrderStatusTransitionView(APIView):
 
                             sr = ServiceRequest.objects.create(
                                 company=order.company,
-                                service_category="goods_transport_two_wheeler",
+                                service_category="sevo_delivery_partner",
                                 job_type="DELIVERY",
                                 request_kind=ServiceRequest.RequestKind.DIRECT,
                                 customer_name=order.customer_name,
@@ -3864,7 +3870,7 @@ class SellerOrderStatusTransitionView(APIView):
 
                         sr = ServiceRequest.objects.create(
                             company=order.company,
-                            service_category="goods_transport_two_wheeler",
+                            service_category="sevo_delivery_partner",
                             job_type="DELIVERY",
                             request_kind=ServiceRequest.RequestKind.DIRECT,
                             customer_name=order.customer_name,
@@ -3936,7 +3942,7 @@ class SellerOrderStatusTransitionView(APIView):
 
                                 sr = ServiceRequest.objects.create(
                                     company=first_rem.company,
-                                    service_category="goods_transport_two_wheeler",
+                                    service_category="sevo_delivery_partner",
                                     job_type="DELIVERY",
                                     request_kind=ServiceRequest.RequestKind.DIRECT,
                                     customer_name=first_rem.customer_name,
@@ -4674,7 +4680,7 @@ class SellerOrderAdminOverrideView(APIView):
 class SellerOrderAvailableRidersView(APIView):
     """
     GET /api/workforce/seller-hub/orders/<int:pk>/available-riders/
-    Vendor-visible read-only eligibility diagnostics for 2-wheeler riders.
+    Vendor-visible read-only eligibility diagnostics for delivery partners.
     Runs the exact same candidate discovery and gate checks as get_eligible_candidates().
     """
     permission_classes = [permissions.IsAuthenticated]
@@ -4764,7 +4770,7 @@ class SellerOrderRetryDispatchView(APIView):
         if not order.dispatch_job:
             sr = ServiceRequest.objects.create(
                 company=order.company,
-                service_category="goods_transport_two_wheeler",
+                service_category="sevo_delivery_partner",
                 job_type="DELIVERY",
                 request_kind=ServiceRequest.RequestKind.DIRECT,
                 customer_name=order.customer_name,

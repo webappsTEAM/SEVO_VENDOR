@@ -459,6 +459,15 @@ class MarketplaceProductListView(APIView):
                     "specs": [{"label": s.label, "value": s.value} for s in sib.specs.all()],
                 })
 
+        # Pre-fetch warehouse assignments for distinct seller companies on this page
+        page_company_ids = {p.company_id for p in page_items if p.company_id}
+        wh_assignments = {}
+        if page_company_ids:
+            from workforce_api.models import SellerWarehouseAssignment
+            for swa in SellerWarehouseAssignment.objects.filter(company_id__in=page_company_ids, warehouse__is_active=True).select_related("warehouse"):
+                wh_assignments[swa.company_id] = swa.warehouse
+
+
         results = []
         for p in page_items:
             inv = getattr(p, "inventory", None)
@@ -476,8 +485,9 @@ class MarketplaceProductListView(APIView):
 
             cat_path = build_category_path(p.category)
             cat_hierarchy = build_category_hierarchy(p.category)
-            wh = get_seller_assigned_warehouse(p.company_id)
+            wh = wh_assignments.get(p.company_id)
             results.append({
+
                 "id": p.id,
                 "sku": p.sku,
                 "title": p.title,
@@ -753,10 +763,22 @@ class MarketplaceBasketListView(APIView):
         end_idx = start_idx + page_size
         page_baskets = baskets_list[start_idx:end_idx]
 
+        # Bulk fetch warehouse assignments for distinct company IDs in page_baskets
+        page_company_ids = {b.company_id for b, _ in page_baskets if b.company_id}
+        wh_assignments = {}
+        if page_company_ids:
+            from workforce_api.models import SellerWarehouseAssignment
+            for swa in SellerWarehouseAssignment.objects.filter(company_id__in=page_company_ids, warehouse__is_active=True).select_related("warehouse"):
+                wh_assignments[swa.company_id] = swa.warehouse
+
+
+
+
         results = []
         for basket, avail_units in page_baskets:
-            wh = get_seller_assigned_warehouse(basket.company_id)
+            wh = wh_assignments.get(basket.company_id)
             slots_data = []
+
             items_preview = []
             for item in basket.items.all():
                 options_data = []

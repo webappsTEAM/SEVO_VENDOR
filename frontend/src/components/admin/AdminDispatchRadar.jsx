@@ -90,6 +90,28 @@ export function AdminDispatchRadar() {
     fetchRadar(null, false);
   }, [statusFilter, searchQuery]);
 
+  // Background Auto-Refresh Polling (every 6s, pause when tab hidden or dispatching)
+  useEffect(() => {
+    const pollInterval = 6000;
+    const intervalId = setInterval(() => {
+      if (document.visibilityState === 'visible' && !isDispatching) {
+        fetchRadar(null, true);
+      }
+    }, pollInterval);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && !isDispatching) {
+        fetchRadar(null, true);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [fetchRadar, isDispatching]);
+
   // Reset attempt index when selecting a new job
   const handleSelectJob = (id) => {
     setSelectedJobId(id);

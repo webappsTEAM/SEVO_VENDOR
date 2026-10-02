@@ -154,6 +154,8 @@ class Service(models.Model):
     icon = models.CharField(max_length=100, blank=True, default="")
     image = models.CharField(max_length=500, blank=True, default="")
     is_active = models.BooleanField(default=True)
+    is_customer_bookable = models.BooleanField(default=True)
+    flow_type = models.CharField(max_length=50, blank=True, null=True)
     sort_order = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)
