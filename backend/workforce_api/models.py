@@ -4115,6 +4115,12 @@ class SellerProduct(models.Model):
     hsn_code = models.CharField(max_length=50, blank=True, default="")
     storage_info = models.CharField(max_length=255, blank=True, default="")
     expiry_info = models.CharField(max_length=255, blank=True, default="")
+    fssai_license_number = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        help_text="Optional product-specific FSSAI license override. If blank, falls back to store-level FSSAI.",
+    )
     status = models.CharField(
         max_length=30,
         choices=Status.choices,
@@ -4371,13 +4377,15 @@ class SellerProductBasket(models.Model):
 
     def recalculate_totals(self, save=False):
         """Authoritative server-side calculation of total_mrp, total_procurement_price, selling_price/margin."""
-        items = list(self.items.select_related("product").all())
+        items = list(self.items.prefetch_related("options__product").select_related("product").all())
         mrp_sum = Decimal("0.00")
         proc_sum = Decimal("0.00")
         missing_proc = []
 
         for item in items:
-            prod = item.product
+            prod = item.get_default_product()
+            if not prod:
+                continue
             qty = Decimal(str(item.quantity))
             mrp_sum += (prod.mrp or Decimal("0.00")) * qty
             if prod.procurement_price is None:
@@ -4410,44 +4418,67 @@ class SellerProductBasket(models.Model):
             "missing_procurement_products": missing_proc,
         }
 
-    def check_availability(self):
+    def check_availability(self, selected_product_ids=None):
         """
-        Validates if all component products are APPROVED, company active, and available stock >= required qty.
+        Validates if every slot has at least one approved, in-stock option (or checks specific selected_product_ids).
         Returns (is_available: bool, available_units: int, reasons: list[str])
         """
         if not self.company or not self.company.is_active:
             return False, 0, ["Merchant store is inactive."]
 
-        items = list(self.items.select_related("product", "product__inventory", "product__company").all())
+        if hasattr(self, "_prefetched_objects_cache") and "items" in self._prefetched_objects_cache:
+            items = list(self._prefetched_objects_cache["items"])
+        else:
+            items = list(self.items.prefetch_related("options__product__inventory", "options__product__company").select_related("product", "product__inventory").all())
         if len(items) < 3:
-            return False, 0, ["Basket must contain at least 3 distinct products."]
+            return False, 0, ["Basket must contain at least 3 distinct slots / products."]
 
         reasons = []
         max_possible_units = []
+
         for it in items:
-            p = it.product
-            if p.status != SellerProduct.Status.APPROVED:
-                reasons.append(f"Product '{p.title}' is not approved (Status: {p.status}).")
-            if p.procurement_price is None:
-                reasons.append(f"Product '{p.title}' is missing a procurement price.")
-            inv = getattr(p, "inventory", None)
-            avail_qty = max(Decimal("0.000"), (inv.on_hand_qty - inv.reserved_qty)) if inv else Decimal("0.000")
             req_qty = Decimal(str(it.quantity))
-            if req_qty > Decimal("0.000"):
-                max_possible_units.append(int(avail_qty // req_qty))
-            else:
+            eligible_prods = it.get_eligible_products()
+            if not eligible_prods:
+                reasons.append(f"Slot '{it.slot_title or it.id}' has no eligible products.")
                 max_possible_units.append(0)
-            if avail_qty < req_qty:
-                reasons.append(f"Product '{p.title}' has insufficient stock ({avail_qty} available, {it.quantity} required).")
+                continue
+
+            if selected_product_ids:
+                chosen = next((p for p in eligible_prods if p.id in selected_product_ids), None)
+                if not chosen:
+                    chosen = eligible_prods[0]
+                eval_prods = [chosen]
+            else:
+                eval_prods = eligible_prods
+
+            slot_avail_list = []
+            for p in eval_prods:
+                if p.status != SellerProduct.Status.APPROVED:
+                    continue
+                inv = getattr(p, "inventory", None)
+                avail_qty = max(Decimal("0.000"), (inv.on_hand_qty - inv.reserved_qty)) if inv else Decimal("0.000")
+                if req_qty > Decimal("0.000"):
+                    slot_avail_list.append(int(avail_qty // req_qty))
+                else:
+                    slot_avail_list.append(0)
+
+            best_slot_avail = max(slot_avail_list) if slot_avail_list else 0
+            max_possible_units.append(best_slot_avail)
+            if best_slot_avail <= 0:
+                slot_name = it.slot_title or (it.product.title if it.product else f"Slot #{it.id}")
+                reasons.append(f"No in-stock option available for slot '{slot_name}'.")
 
         available_units = min(max_possible_units) if max_possible_units else 0
         is_avail = len(reasons) == 0 and available_units > 0
         return is_avail, available_units, reasons
 
 
+
 class SellerProductBasketItem(models.Model):
     """
-    Component product row in a combo basket offer.
+    Slot / Component item in a combo basket offer.
+    Supports a named slot (e.g. 'Cooking Oil') with multiple eligible product options.
     """
     basket = models.ForeignKey(
         SellerProductBasket,
@@ -4455,25 +4486,81 @@ class SellerProductBasketItem(models.Model):
         related_name="items",
         db_index=True,
     )
+    slot_title = models.CharField(max_length=255, blank=True, default="")
     product = models.ForeignKey(
         SellerProduct,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name="basket_items",
         db_index=True,
+        help_text="Default / legacy product reference for single-option slots.",
     )
     quantity = models.PositiveIntegerField(default=1)
+    display_order = models.PositiveIntegerField(default=0)
 
     class Meta:
         db_table = "workforce_seller_product_basket_item"
-        constraints = [
-            models.UniqueConstraint(
-                fields=["basket", "product"],
-                name="unique_seller_product_basket_item",
-            ),
-        ]
+        ordering = ["display_order", "id"]
 
     def __str__(self):
-        return f"{self.quantity}x {self.product.title} in Basket #{self.basket_id}"
+        title = self.slot_title or (self.product.title if self.product else f"Slot #{self.id}")
+        return f"{self.quantity}x {title} in Basket #{self.basket_id}"
+
+    def get_default_product(self):
+        default_opt = self.options.filter(is_default=True).select_related("product").first()
+        if default_opt:
+            return default_opt.product
+        first_opt = self.options.select_related("product").first()
+        if first_opt:
+            return first_opt.product
+        return self.product
+
+    def get_eligible_products(self):
+        if hasattr(self, "_prefetched_objects_cache") and "options" in self._prefetched_objects_cache:
+            opts = self._prefetched_objects_cache["options"]
+        else:
+            opts = list(self.options.select_related("product", "product__inventory").all())
+        if opts:
+            return [o.product for o in opts if getattr(o, "product", None)]
+        if self.product:
+            return [self.product]
+        return []
+
+
+
+class SellerProductBasketItemOption(models.Model):
+    """
+    An eligible product option choice for a combo basket slot.
+    Allows customers to pick their preferred brand/product variant within the slot.
+    """
+    basket_item = models.ForeignKey(
+        SellerProductBasketItem,
+        on_delete=models.CASCADE,
+        related_name="options",
+        db_index=True,
+    )
+    product = models.ForeignKey(
+        SellerProduct,
+        on_delete=models.CASCADE,
+        related_name="basket_slot_options",
+        db_index=True,
+    )
+    is_default = models.BooleanField(default=False)
+    display_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        db_table = "workforce_seller_product_basket_item_option"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["basket_item", "product"],
+                name="unique_basket_item_product_option",
+            ),
+        ]
+        ordering = ["display_order", "id"]
+
+    def __str__(self):
+        return f"{self.product.title} (Option for Slot #{self.basket_item_id})"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

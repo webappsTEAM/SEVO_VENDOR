@@ -264,27 +264,42 @@ AUTH_COOKIE_DOMAIN = os.getenv("AUTH_COOKIE_DOMAIN", None)
 # ─── CORS ─────────────────────────────────────────────────────────────────────
 
 CORS_ALLOW_ALL_ORIGINS = DEBUG
+CORS_URLS_REGEX = r"^/.*$"
+
 _cors_env = os.getenv("CORS_ALLOWED_ORIGINS")
+_default_cors_origins = [
+    # Workforce Frontend
+    "http://localhost:5176",
+    "http://127.0.0.1:5176",
+    "http://localhost:5177",
+    "http://127.0.0.1:5177",
+    # Customer Frontend
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    # Platform Admin Frontend
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
+    # Alternative standard ports
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+    # Production Domains
+    "https://vendor.sevo.co.in",
+    "https://sevo.co.in",
+    "https://www.sevo.co.in",
+    "https://customer.sevo.co.in",
+    "https://app.sevo.co.in",
+    "https://vendor.caldimservices.online",
+    "https://customer.caldimservices.online",
+]
+
 if _cors_env:
-    CORS_ALLOWED_ORIGINS = [origin.strip() for origin in _cors_env.split(",") if origin.strip()]
+    _env_origins = [origin.strip() for origin in _cors_env.split(",") if origin.strip()]
+    # Merge env origins with default origins to ensure essential customer/vendor origins are never omitted
+    CORS_ALLOWED_ORIGINS = list(dict.fromkeys(_default_cors_origins + _env_origins))
 else:
-    CORS_ALLOWED_ORIGINS = [
-        # Workforce Frontend
-        "http://localhost:5176",
-        "http://127.0.0.1:5176",
-        "http://localhost:5177",
-        "http://127.0.0.1:5177",
-        # Customer Frontend
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        # Platform Admin Frontend
-        "http://localhost:5174",
-        "http://127.0.0.1:5174",
-        # Production Domains
-        "https://vendor.sevo.co.in",
-        "https://sevo.co.in",
-        "https://www.sevo.co.in",
-    ]
+    CORS_ALLOWED_ORIGINS = _default_cors_origins
 
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_METHODS = [

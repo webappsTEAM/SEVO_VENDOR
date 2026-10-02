@@ -10,6 +10,8 @@ import {
   apiRejectJobOffer,
   apiVerifyOTP,
   apiVerifyArrival,
+  apiGetMySkills,
+  apiGetOnboardingProfile,
 } from '../../api/workforceService.js';
 import { AppShell } from '../../components/common/AppShell.jsx';
 
@@ -174,7 +176,23 @@ function getServiceCategoryMeta(categoryName = '', title = '') {
     };
   }
 
-  // 4. Two-Wheeler / Bike Courier
+  // 4. Sevo Delivery Partner / Grocery Delivery
+  if (
+    cat === 'sevo_delivery_partner' || cat === 'sevo-delivery-partner' ||
+    text.includes('sevo_delivery_partner') ||
+    text.includes('sevo delivery partner') ||
+    text.includes('sevo delivery')
+  ) {
+    return {
+      id: 'sevo_delivery_partner',
+      icon: Truck,
+      label: 'Sevo Delivery Partner',
+      tagColor: 'bg-emerald-500/10 text-emerald-800 border-emerald-200',
+      iconBg: 'bg-emerald-100 text-emerald-700',
+    };
+  }
+
+  // 5. Two-Wheeler / Bike Courier (Legacy)
   if (
     cat === 'goods_transport_two_wheeler' || cat === 'two_wheeler' || cat === 'two-wheeler' ||
     text.includes('goods_transport_two_wheeler') ||
@@ -439,18 +457,6 @@ function getStatusTag(job) {
   };
 }
 
-const CATEGORIES = [
-  { id: 'ALL', label: 'All Categories' },
-  { id: 'goods_transport_truck', label: '🚚 Mini Truck' },
-  { id: 'goods_transport_two_wheeler', label: '🛵 Two-Wheeler' },
-  { id: 'packers_movers', label: '📦 Packers & Movers' },
-  { id: 'electrical', label: '⚡ Electrical' },
-  { id: 'ac', label: '❄️ AC & Appliances' },
-  { id: 'plumbing', label: '💧 Plumbing' },
-  { id: 'carpentry', label: '🔨 Locks & Carpentry' },
-  { id: 'cleaning', label: '🌿 Cleaning' },
-];
-
 function matchesCategory(jobCategoryId, targetCategoryId) {
   if (!targetCategoryId || targetCategoryId === 'ALL') return true;
   if (jobCategoryId === targetCategoryId) return true;
@@ -479,10 +485,29 @@ function isOfferJobPastDated(job, todayStr) {
 }
 
 export function EmployeeJobsPage() {
-  const { user } = useAuth();
+  const { user, employee } = useAuth();
   const employeeRuntime = useContext(EmployeeRuntimeContext);
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+
+  const [technicianSkills, setTechnicianSkills] = useState([]);
+  const [onboardingProfile, setOnboardingProfile] = useState(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    Promise.all([
+      apiGetMySkills().catch(() => []),
+      apiGetOnboardingProfile().catch(() => null),
+    ]).then(([skillsData, profData]) => {
+      if (isMounted) {
+        if (skillsData && Array.isArray(skillsData)) setTechnicianSkills(skillsData);
+        if (profData) setOnboardingProfile(profData);
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const {
     activeJobs = [],
@@ -807,6 +832,59 @@ export function EmployeeJobsPage() {
     };
   }, [activeJobs, completedJobs, incomingOffers, todayStr]);
 
+  // 2b. Dynamic category tabs derived strictly from the technician's approved services and verified skills
+  const categories = useMemo(() => {
+    const list = [{ id: 'ALL', label: 'All Categories' }];
+    const seenIds = new Set(['ALL']);
+
+    const addCategory = (catMeta) => {
+      if (catMeta && catMeta.id && !seenIds.has(catMeta.id)) {
+        seenIds.add(catMeta.id);
+        list.push({
+          id: catMeta.id,
+          label: catMeta.label,
+        });
+      }
+    };
+
+    // 1. Technician's approved services from onboarding / employee profile
+    const profile = onboardingProfile || employee;
+    const approvedServices =
+      profile?.approved_services ||
+      (profile?.onboarding_data?.services || []).filter((s) => (s.status || '').toLowerCase() === 'approved') ||
+      (user?.onboarding_data?.services || []).filter((s) => (s.status || '').toLowerCase() === 'approved') ||
+      [];
+
+    approvedServices.forEach((svc) => {
+      const meta = getServiceCategoryMeta(
+        svc.category_name || svc.category || svc.name,
+        svc.name || svc.title
+      );
+      addCategory(meta);
+    });
+
+    // 2. Technician's verified skills
+    const skillsList = technicianSkills.length > 0 ? technicianSkills : (profile?.skills || []);
+    skillsList.forEach((sk) => {
+      const meta = getServiceCategoryMeta(
+        sk.category || sk.name || sk.skill_name,
+        sk.name || sk.skill_name
+      );
+      addCategory(meta);
+    });
+
+    // 3. Ensure any category present in active or incoming jobs is also reachable
+    (jobs || []).forEach((job) => {
+      const meta = getServiceCategoryMeta(
+        job.service_category || job.category_name || job.category,
+        job.service_title || job.issue_title || job.title
+      );
+      addCategory(meta);
+    });
+
+    return list;
+  }, [onboardingProfile, employee, user, technicianSkills, jobs]);
+
   // 3. Category counts — evaluated for the active tab jobs and current search
   const categoryCounts = useMemo(() => {
     const countsMap = { ALL: 0 };
@@ -1021,7 +1099,7 @@ export function EmployeeJobsPage() {
 
           {/* 2. Category Filter Chips */}
           <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none no-scrollbar scroll-smooth text-xs">
-            {CATEGORIES.map((cat) => {
+            {categories.map((cat) => {
               const isSelected = selectedCategory === cat.id;
               const catCount = categoryCounts[cat.id] || 0;
               return (

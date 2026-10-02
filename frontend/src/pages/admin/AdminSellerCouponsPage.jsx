@@ -268,7 +268,7 @@ export function AdminSellerCouponsPage() {
         </header>
 
         {/* Content Container */}
-        <div className="p-6 max-w-7xl w-full mx-auto space-y-6">
+        <div className="p-6 w-full space-y-6">
           {/* Filter Bar */}
           <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-xs flex flex-col md:flex-row gap-4 justify-between items-center">
             {/* Search */}

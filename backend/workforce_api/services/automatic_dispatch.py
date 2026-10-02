@@ -121,6 +121,7 @@ MAX_OFFER_WINDOW_MINUTES = 30
 RAPID_DISPATCH_SERVICE_CATEGORIES = {
     "goods_transport_truck",
     "goods_transport_two_wheeler",
+    "sevo_delivery_partner",
 }
 # The ladder, indexed by how many offers this job has already burned.
 # Widens as the job gets harder to place, rather than hammering the same
@@ -173,6 +174,7 @@ LOGISTICS_SERVICE_CATEGORIES = {
     "goods_transport_truck",
     "goods_transport_two_wheeler",
     "packers_movers",
+    "sevo_delivery_partner",
     # HS-E-06: was missing here -- Customer/backend/service_requests/
     # services/__init__.py's LOGISTICS_STOP_CATEGORIES (the multi-stop
     # trip editor's gate) includes this bare slug alongside the two
@@ -239,7 +241,10 @@ def check_vehicle_class_compatibility(emp, job) -> Tuple[bool, str]:
         return True, ""
 
     required_rank = _VEHICLE_CLASS_RANK[required_class]
-    vehicles = Vehicle.objects.filter(employee=emp, is_active=True)
+    if hasattr(emp, "prefetched_vehicles"):
+        vehicles = emp.prefetched_vehicles
+    else:
+        vehicles = Vehicle.objects.filter(employee=emp, is_active=True)
     for v in vehicles:
         if not v.is_document_current():
             continue
@@ -301,7 +306,10 @@ def check_vehicle_capacity_compatibility(emp, job) -> Tuple[bool, str]:
     if required_kg <= 0:
         return True, ""
 
-    vehicles = Vehicle.objects.filter(employee=emp, is_active=True)
+    if hasattr(emp, "prefetched_vehicles"):
+        vehicles = emp.prefetched_vehicles
+    else:
+        vehicles = Vehicle.objects.filter(employee=emp, is_active=True)
     for v in vehicles:
         if not v.is_document_current():
             continue
@@ -380,6 +388,8 @@ EXPLICIT_SERVICE_ALIASES = {
     "goods_transport": {"goods_transport", "goods & transport", "goods and transport", "goods transport", "truck", "two wheeler", "logistics", "goods_transport_truck", "goods_transport_two_wheeler"},
     "goods_transport_truck": {"goods_transport_truck", "truck", "mini truck", "goods & transport", "goods and transport", "goods transport", "logistics"},
     "goods_transport_two_wheeler": {"goods_transport_two_wheeler", "two_wheeler_delivery", "two wheeler delivery", "two wheeler", "bike", "scooter", "goods & transport", "goods and transport", "goods transport", "logistics"},
+    "sevo_delivery_partner": {"sevo_delivery_partner", "sevo delivery partner", "sevo delivery", "delivery partner", "sevo_delivery"},
+    "sevo delivery partner": {"sevo_delivery_partner", "sevo delivery partner", "sevo delivery", "delivery partner", "sevo_delivery"},
     "paintings": {"paintings", "painting", "interior painting", "exterior painting", "waterproofing", "wood & metal", "texture decor", "house painting", "commercial painting", "wall painting"},
     "painting": {"paintings", "painting", "interior painting", "exterior painting", "waterproofing", "wood & metal", "texture decor", "house painting", "commercial painting", "wall painting"},
     "interior painting": {"paintings", "painting", "interior painting", "wall painting"},
@@ -395,6 +405,8 @@ EXPLICIT_SERVICE_ALIASES = {
 def normalize_service_category(cat: str) -> str:
     """Normalizes service category into canonical lowercase slug."""
     raw = (cat or "").strip().lower().replace("-", "_").replace(" ", "_")
+    if raw in ("sevo_delivery_partner", "sevo_delivery", "sevo_delivery_partners", "sevo delivery partner", "sevo-delivery-partner"):
+        return "sevo_delivery_partner"
     if raw in ("truck", "mini_truck", "goods_transport_truck"):
         return "goods_transport_truck"
     if raw in ("two_wheeler", "2_wheeler", "two_wheeler_delivery", "goods_transport_two_wheeler"):
@@ -719,15 +731,11 @@ def check_candidate_eligibility(
     # GT-A-01/GT-A-02: for logistics jobs specifically, also require at
     # least one active Vehicle on file whose insurance/permit/PUC are all
     # current. This runs for ALL technicians (company or independent).
-    # The job's OWN category decides this too: callers retry eligibility with the
-    # booking's free-text issue_title (not a category) when the first pass fails, and
-    # that retry must not skip the vehicle gates and rescue an unsuitable driver.
-    _job_is_logistics = (
-        job is not None
-        and str(getattr(job, "service_category", "") or "").strip().lower() in LOGISTICS_SERVICE_CATEGORIES
-    )
-    if service_name_clean in LOGISTICS_SERVICE_CATEGORIES or _job_is_logistics:
-        vehicles = list(Vehicle.objects.filter(employee=emp, is_active=True))
+    if service_name_clean in LOGISTICS_SERVICE_CATEGORIES:
+        if hasattr(emp, "prefetched_vehicles"):
+            vehicles = emp.prefetched_vehicles
+        else:
+            vehicles = list(Vehicle.objects.filter(employee=emp, is_active=True))
         if not vehicles:
             gate_results["G3"] = False
             logger.debug(f"[9GATE_REJECT_GATE3_NO_VEHICLE] Employee #{emp.id} has no active vehicle on file for logistics job '{service_name}'.")
@@ -1188,7 +1196,16 @@ def get_eligible_candidates(
     )
 
     from accounts.platform import is_platform_company
-    if not job_obj.company_id or is_platform_company(job_obj.company_id):
+    is_platform_delivery = (
+        getattr(job_obj, "job_type", "") == "DELIVERY"
+        or getattr(job_obj, "service_category", "") in (
+            "sevo_delivery_partner",
+            "goods_transport_two_wheeler",
+            "goods_transport_truck",
+            "goods_transport",
+        )
+    )
+    if not job_obj.company_id or is_platform_company(job_obj.company_id) or is_platform_delivery:
         candidates_qs = candidates_qs.filter(Q(company_id=1) | Q(company__isnull=True) | Q(company_id__gt=1))
     else:
         candidates_qs = candidates_qs.filter(company_id=job_obj.company_id)
@@ -2582,6 +2599,7 @@ def get_available_riders_summary(order) -> Dict[str, Any]:
             "total_active_riders": 0,
             "online_riders_count": 0,
             "riders_in_radius": 0,
+            "eligible_count": 0,
             "riders": [],
         }
 
@@ -2594,12 +2612,50 @@ def get_available_riders_summary(order) -> Dict[str, Any]:
         is_active=True,
     ).select_related("user")
 
-    total_active = active_riders_qs.count()
+    active_riders_list = list(active_riders_qs[:50])
+    total_active = len(active_riders_list) if len(active_riders_list) < 50 else active_riders_qs.count()
     online_count = 0
     in_radius_count = 0
+    eligible_count = 0
     riders_list = []
 
-    for emp in active_riders_qs[:50]:
+    if active_riders_list:
+        from collections import defaultdict
+        emp_ids = [e.id for e in active_riders_list]
+        company_id = getattr(order, "company_id", None)
+        
+        preloaded_doc_reqs = list(WorkforceRequiredDocument.objects.filter(company_id=company_id, is_mandatory=True)) if company_id else []
+        preloaded_comp_reqs = list(WorkforceComplianceRequirement.objects.filter(company_id=company_id, is_mandatory=True)) if company_id else []
+
+        skills_map = defaultdict(list)
+        for s in WorkforceEmployeeSkill.objects.filter(employee_id__in=emp_ids, is_verified=True).select_related("skill"):
+            skills_map[s.employee_id].append(s)
+
+        docs_map = defaultdict(list)
+        for d in WorkforceEmployeeDocument.objects.filter(employee_id__in=emp_ids):
+            docs_map[d.employee_id].append(d)
+
+        comps_map = defaultdict(list)
+        for c in WorkforceEmployeeCompliance.objects.filter(employee_id__in=emp_ids).select_related("requirement"):
+            comps_map[c.employee_id].append(c)
+
+        scheds_map = defaultdict(list)
+        today_dow = timezone.now().weekday()
+        for sch in WorkforceEmployeeSchedule.objects.filter(employee_id__in=emp_ids, day_of_week=today_dow):
+            scheds_map[sch.employee_id].append(sch)
+
+        vehicles_map = defaultdict(list)
+        for v in Vehicle.objects.filter(employee_id__in=emp_ids, is_active=True):
+            vehicles_map[v.employee_id].append(v)
+
+        for emp in active_riders_list:
+            emp.prefetched_verified_skills = skills_map.get(emp.id, [])
+            emp.prefetched_employee_documents = docs_map.get(emp.id, [])
+            emp.prefetched_compliance_records = comps_map.get(emp.id, [])
+            emp.prefetched_today_schedules = scheds_map.get(emp.id, [])
+            emp.prefetched_vehicles = vehicles_map.get(emp.id, [])
+
+    for emp in active_riders_list:
         dist_km = None
         last_loc = getattr(emp.user, "last_known_location", None) or {} if emp.user else {}
         emp_lat = last_loc.get("latitude") if last_loc.get("latitude") is not None else last_loc.get("lat")
@@ -2618,11 +2674,23 @@ def get_available_riders_summary(order) -> Dict[str, Any]:
         if is_online:
             online_count += 1
 
+        is_eligible, reason, _ = check_candidate_eligibility(
+            emp,
+            "sevo_delivery_partner",
+            purpose="offer_reception",
+            preloaded_doc_reqs=preloaded_doc_reqs if active_riders_list else None,
+            preloaded_comp_reqs=preloaded_comp_reqs if active_riders_list else None,
+        )
+        if is_eligible and (dist_km is None or dist_km <= MAX_DISPATCH_RADIUS_KM):
+            eligible_count += 1
+
         riders_list.append({
             "employee_id": emp.id,
             "name": (emp.user.get_full_name() or emp.user.username) if emp.user else f"Employee #{emp.id}",
             "distance_km": dist_km,
             "is_online": is_online,
+            "is_eligible": is_eligible,
+            "eligibility_reason": reason if not is_eligible else "Eligible",
         })
 
     return {
@@ -2635,6 +2703,7 @@ def get_available_riders_summary(order) -> Dict[str, Any]:
         "total_active_riders": total_active,
         "online_riders_count": online_count,
         "riders_in_radius": in_radius_count,
+        "eligible_count": eligible_count,
         "riders": riders_list[:10],
     }
 

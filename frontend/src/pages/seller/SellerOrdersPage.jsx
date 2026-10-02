@@ -80,11 +80,10 @@ export function SellerOrdersPage() {
 
   // Transition & Action State
   const [actionLoading, setActionLoading] = useState(false);
-  const [cancellationModal, setCancellationModal] = useState({ isOpen: false, orderId: null, reason: '' });
   const [adminOverrideModal, setAdminOverrideModal] = useState({ isOpen: false, orderId: null, action: '', reason: '' });
   const [trackingJobId, setTrackingJobId] = useState(null);
 
-  // Available Riders Diagnostics & Retry Dispatch State
+  // Available Riders Diagnostics State (Read-only status for Sellers)
   const [availableRidersModal, setAvailableRidersModal] = useState({
     isOpen: false,
     orderId: null,
@@ -93,9 +92,9 @@ export function SellerOrdersPage() {
     data: null,
     error: null,
   });
-  const [retryLoadingId, setRetryLoadingId] = useState(null);
   const [storeLocationModal, setStoreLocationModal] = useState({
     isOpen: false,
+    isWarehouse: false,
     message: '',
   });
 
@@ -130,13 +129,21 @@ export function SellerOrdersPage() {
     }
   }, [token]);
 
+  // Track newly arrived orders for visual highlight
+  const [newOrderIds, setNewOrderIds] = useState(new Set());
+  const knownOrderIdsRef = useRef(null);
+  const isPollingRef = useRef(false);
+
   // Load Orders List
-  const loadOrders = useCallback(async () => {
+  const loadOrders = useCallback(async (isSilent = false) => {
     if (!token) return;
-    try {
+    if (isPollingRef.current && isSilent) return;
+    if (!isSilent) {
       setLoading(true);
       setError(null);
-
+    }
+    isPollingRef.current = true;
+    try {
       const params = new URLSearchParams({
         page: page.toString(),
         page_size: pageSize.toString(),
@@ -161,20 +168,85 @@ export function SellerOrdersPage() {
       }
 
       const data = await res.json();
-      setOrders(data.results || []);
+      const incomingList = data.results || [];
+
+      // Detect brand new incoming orders
+      if (knownOrderIdsRef.current !== null) {
+        const brandNew = incomingList.filter(o => !knownOrderIdsRef.current.has(o.id)).map(o => o.id);
+        if (brandNew.length > 0) {
+          setNewOrderIds(prev => new Set([...prev, ...brandNew]));
+          setTimeout(() => {
+            setNewOrderIds(prev => {
+              const next = new Set(prev);
+              brandNew.forEach(id => next.delete(id));
+              return next;
+            });
+          }, 8000);
+        }
+      }
+      knownOrderIdsRef.current = new Set(incomingList.map(o => o.id));
+      setOrders(incomingList);
       setTotalCount(data.count || 0);
     } catch (err) {
       console.error('Error fetching orders:', err);
-      setError(err.message || 'Error loading orders.');
+      if (!isSilent) {
+        setError(err.message || 'Error loading orders.');
+      }
     } finally {
-      setLoading(false);
+      isPollingRef.current = false;
+      if (!isSilent) {
+        setLoading(false);
+      }
     }
   }, [token, page, pageSize, statusFilter, fulfillmentFilter, debouncedSearch]);
 
   useEffect(() => {
-    loadOrders();
+    loadOrders(false);
     loadMetrics();
   }, [loadOrders, loadMetrics]);
+
+  // Background Auto-Refresh Polling (every 10s, pause when tab hidden or modal open)
+  useEffect(() => {
+    const pollInterval = 10000;
+    const intervalId = setInterval(() => {
+      if (document.visibilityState === 'visible' && !adminOverrideModal.isOpen && !isDrawerOpen && !isPackingSlipOpen) {
+        loadOrders(true);
+        loadMetrics();
+      }
+    }, pollInterval);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        loadOrders(true);
+        loadMetrics();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [loadOrders, loadMetrics, adminOverrideModal.isOpen, isDrawerOpen, isPackingSlipOpen]);
+
+  // Available Riders Auto-Refresh when Available Riders modal is open (every 6s)
+  useEffect(() => {
+    if (!availableRidersModal.isOpen || !availableRidersModal.orderId) return;
+    const intervalId = setInterval(async () => {
+      if (document.visibilityState !== 'visible') return;
+      try {
+        const res = await fetch(`/api/workforce/seller-hub/orders/${availableRidersModal.orderId}/available-riders/`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setAvailableRidersModal(prev => prev.isOpen ? { ...prev, data } : prev);
+        }
+      } catch (_) {}
+    }, 6000);
+
+    return () => clearInterval(intervalId);
+  }, [availableRidersModal.isOpen, availableRidersModal.orderId, token]);
 
   // Open Order Detail Drawer
   const openOrderDetail = async (orderId) => {
@@ -240,58 +312,7 @@ export function SellerOrdersPage() {
     }
   };
 
-  // Execute State Transition Action
-  const handleTransition = async (orderId, action, notes = '', cancellation_reason = '') => {
-    if (!orderId) return;
-    try {
-      setActionLoading(true);
-      const res = await fetch(`/api/workforce/seller-hub/orders/${orderId}/transition/`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          action,
-          notes,
-          cancellation_reason,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        if (data.code === 'WAREHOUSE_ASSIGNMENT_REQUIRED' || data.code === 'STORE_LOCATION_REQUIRED') {
-          setStoreLocationModal({
-            isOpen: true,
-            isWarehouse: data.code === 'WAREHOUSE_ASSIGNMENT_REQUIRED',
-            message: data.error || "Your store isn't assigned to a warehouse yet -- contact platform support.",
-          });
-          return;
-        }
-        alert(data.error || 'Failed to update order state.');
-        return;
-      }
-
-      // Refresh list & metrics
-      loadOrders();
-      loadMetrics();
-
-      if (selectedOrderId === orderId) {
-        setSelectedOrderDetail(data.order);
-      }
-
-      if (cancellationModal.isOpen) {
-        setCancellationModal({ isOpen: false, orderId: null, reason: '' });
-      }
-    } catch (err) {
-      console.error('Error executing transition:', err);
-      alert('Network error transitioning order.');
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  // Execute Platform Admin Manual Override
+  // Execute Platform Admin Manual Override (Superusers Only)
   const handleAdminOverride = async () => {
     const { orderId, action, reason } = adminOverrideModal;
     if (!orderId || !action) return;
@@ -333,7 +354,7 @@ export function SellerOrdersPage() {
     }
   };
 
-  // Open Available Riders Diagnostics Modal
+  // Open Available Riders Diagnostics Modal (Read-only for Seller)
   const openAvailableRiders = async (orderId, orderNumber) => {
     setAvailableRidersModal({
       isOpen: true,
@@ -355,91 +376,14 @@ export function SellerOrdersPage() {
     }
   };
 
-  // Trigger Vendor Retry Dispatch
-  const handleRetryDispatch = async (orderId) => {
-    try {
-      setRetryLoadingId(orderId);
-      const res = await fetch(`/api/workforce/seller-hub/orders/${orderId}/retry-dispatch/`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({}),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        if (data.code === 'WAREHOUSE_ASSIGNMENT_REQUIRED' || data.code === 'STORE_LOCATION_REQUIRED') {
-          setStoreLocationModal({
-            isOpen: true,
-            isWarehouse: data.code === 'WAREHOUSE_ASSIGNMENT_REQUIRED',
-            message: data.error || "Your store isn't assigned to a warehouse yet -- contact platform support.",
-          });
-          return;
-        }
-        alert(data.error || 'Failed to retry dispatch.');
-        return;
-      }
-      // Refresh list & metrics
-      loadOrders();
-      loadMetrics();
-      if (selectedOrderId === orderId && data.order) {
-        setSelectedOrderDetail(data.order);
-      }
-      if (availableRidersModal.isOpen && availableRidersModal.orderId === orderId) {
-        if (data.available_riders) {
-          setAvailableRidersModal((prev) => ({ ...prev, data: data.available_riders }));
-        } else {
-          openAvailableRiders(orderId, availableRidersModal.orderNumber);
-        }
-      }
-    } catch (err) {
-      console.error('Error retrying dispatch:', err);
-      alert('Network error while retrying dispatch.');
-    } finally {
-      setRetryLoadingId(null);
-    }
-  };
-
-  // Toggle Item Picking / Packing
-  const handleItemPickToggle = async (orderId, itemId, field, value, fulfilledQty) => {
-    try {
-      const payload = { item_id: itemId };
-      if (field === 'is_picked') payload.is_picked = value;
-      if (field === 'is_packed') payload.is_packed = value;
-      if (fulfilledQty !== undefined) payload.fulfilled_quantity = fulfilledQty;
-
-      const res = await fetch(`/api/workforce/seller-hub/orders/${orderId}/item-pick/`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        // Update local order detail item
-        setSelectedOrderDetail((prev) => {
-          if (!prev) return prev;
-          const updatedItems = prev.items.map((it) => (it.id === itemId ? { ...it, ...data.item } : it));
-          return { ...prev, items: updatedItems };
-        });
-      }
-    } catch (err) {
-      console.error('Error toggling item pick:', err);
-    }
-  };
-
   // Helper: Status Badge Styles
   const renderStatusBadge = (status) => {
     switch (status) {
       case 'NEW':
         return (
-          <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
-            <Clock className="w-3 h-3" />
-            <span>New Order</span>
+          <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-300">
+            <Clock className="w-3 h-3 text-amber-600" />
+            <span>Awaiting Warehouse Review</span>
           </span>
         );
       case 'ACCEPTED':
@@ -508,10 +452,10 @@ export function SellerOrdersPage() {
   };
 
   return (
-    <div className="flex min-h-screen bg-slate-100 font-sans text-slate-800">
+    <div className="flex h-screen bg-slate-100 font-sans text-slate-800 overflow-hidden">
       <Sidebar />
 
-      <main className="flex-1 min-w-0 flex flex-col">
+      <main className="flex-1 min-w-0 flex flex-col overflow-y-auto">
         {/* Top Header */}
         <header className="bg-white border-b border-slate-200 sticky top-0 z-10 px-8 py-5 flex items-center justify-between shadow-xs">
           <div className="flex items-center gap-3">
@@ -559,7 +503,7 @@ export function SellerOrdersPage() {
         </header>
 
         {/* Content Area */}
-        <div className="p-8 max-w-7xl w-full mx-auto space-y-6">
+        <div className="p-8 w-full space-y-6">
           {/* Top Metrics Cards */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
@@ -573,11 +517,11 @@ export function SellerOrdersPage() {
 
             <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
               <div className="flex items-center justify-between text-slate-400">
-                <span className="text-xs font-medium">Action Required (New)</span>
+                <span className="text-xs font-medium">New (Warehouse Review)</span>
                 <Package className="w-4 h-4 text-amber-500" />
               </div>
               <p className="text-2xl font-extrabold text-amber-600 font-mono mt-2">{metrics.pending_orders_count}</p>
-              <p className="text-[11px] text-slate-400 mt-0.5">Awaiting acceptance</p>
+              <p className="text-[11px] text-slate-400 mt-0.5">Awaiting warehouse acceptance</p>
             </div>
 
             <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
@@ -605,7 +549,7 @@ export function SellerOrdersPage() {
             <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-100 pb-3">
               {[
                 { id: 'ALL', label: 'All Orders' },
-                { id: 'NEW', label: 'New / Action Required' },
+                { id: 'NEW', label: 'New (Warehouse Review)' },
                 { id: 'IN_PREPARATION', label: 'In Preparation' },
                 { id: 'READY_FOR_PICKUP', label: 'Ready for Pickup' },
                 { id: 'COMPLETED', label: 'Completed' },
@@ -720,11 +664,24 @@ export function SellerOrdersPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-xs">
-                    {orders.map((ord) => (
-                      <tr key={ord.id} className="hover:bg-slate-50/60 transition-colors">
+                    {orders.map((ord) => {
+                      const isNew = newOrderIds.has(ord.id);
+                      return (
+                      <tr key={ord.id} className={`transition-all duration-300 ${
+                        isNew
+                          ? 'bg-emerald-50/80 hover:bg-emerald-100/60 ring-2 ring-emerald-400/40 ring-inset'
+                          : 'hover:bg-slate-50/60'
+                      }`}>
                         <td className="py-4 px-5 align-top">
                           <div className="flex flex-col">
-                            <span className="font-bold text-slate-900 font-mono text-sm">{ord.order_number}</span>
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-bold text-slate-900 font-mono text-sm">{ord.order_number}</span>
+                              {isNew && (
+                                <span className="px-1.5 py-0.2 bg-emerald-600 text-white text-[9px] font-black rounded-full animate-pulse uppercase tracking-wider">
+                                  NEW
+                                </span>
+                              )}
+                            </div>
                             <span className="text-[10px] font-mono text-slate-400 mt-0.5">
                               Src: {ord.source_order_id}
                             </span>
@@ -784,54 +741,45 @@ export function SellerOrdersPage() {
 
                         <td className="py-4 px-5 align-top text-right">
                           <div className="flex items-center justify-end gap-1.5 flex-wrap">
-                            {/* State Transition Quick Actions */}
+                            {/* Read-only Fulfillment Status Indicators for Seller Hub */}
                             {ord.status === 'NEW' && (
-                              <>
-                                <button
-                                  onClick={() => handleTransition(ord.id, 'accept')}
-                                  disabled={actionLoading}
-                                  className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold transition-colors shadow-xs"
-                                >
-                                  Accept
-                                </button>
-                                <button
-                                  onClick={() => setCancellationModal({ isOpen: true, orderId: ord.id, reason: '' })}
-                                  className="px-2 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-xs font-semibold transition-colors"
-                                >
-                                  Cancel
-                                </button>
-                              </>
+                              <span
+                                className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded bg-amber-50 text-amber-800 border border-amber-200"
+                                title="Fulfillment warehouse will verify physical stock and accept or dispatch this order"
+                              >
+                                <Clock className="w-3 h-3 text-amber-600" />
+                                <span>In Warehouse Review</span>
+                              </span>
                             )}
 
                             {ord.status === 'ACCEPTED' && (
-                              <button
-                                onClick={() => handleTransition(ord.id, 'start_picking')}
-                                disabled={actionLoading}
-                                className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-colors shadow-xs"
+                              <span
+                                className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded bg-blue-50 text-blue-700 border border-blue-200"
+                                title="Accepted by warehouse — staged for picking"
                               >
-                                Start Picking
-                              </button>
+                                <Check className="w-3 h-3 text-blue-600" />
+                                <span>Accepted</span>
+                              </span>
                             )}
 
                             {ord.status === 'PICKING' && (
-                              <button
-                                onClick={() => handleTransition(ord.id, 'mark_packed')}
-                                disabled={actionLoading}
-                                className="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold transition-colors shadow-xs"
+                              <span
+                                className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded bg-indigo-50 text-indigo-700 border border-indigo-200"
+                                title="Warehouse staff is picking items"
                               >
-                                Mark Packed
-                              </button>
+                                <Package className="w-3 h-3 text-indigo-600" />
+                                <span>Picking</span>
+                              </span>
                             )}
 
                             {ord.status === 'PACKED' && (
-                              <button
-                                onClick={() => handleTransition(ord.id, 'mark_ready')}
-                                disabled={actionLoading}
-                                className="px-2.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-semibold transition-colors shadow-xs flex items-center gap-1"
+                              <span
+                                className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded bg-purple-50 text-purple-700 border border-purple-200"
+                                title="Packed in warehouse — awaiting rider dispatch"
                               >
-                                <Truck className="w-3.5 h-3.5" />
-                                <span>Dispatch Rider</span>
-                              </button>
+                                <CheckSquare className="w-3 h-3 text-purple-600" />
+                                <span>Packed</span>
+                              </span>
                             )}
 
                             {['READY_FOR_PICKUP', 'ASSIGNED'].includes(ord.status) && (
@@ -842,28 +790,16 @@ export function SellerOrdersPage() {
                                     <span>{ord.handling_technician_name}</span>
                                   </span>
                                 ) : (
-                                  <>
-                                    <button
-                                      type="button"
-                                      onClick={() => openAvailableRiders(ord.id, ord.order_number)}
-                                      className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 transition-colors shadow-2xs"
-                                      title="Click to view eligible 2-wheeler riders & GPS status"
-                                    >
-                                      <Loader2 className="w-3 h-3 animate-spin text-amber-600" />
-                                      <span>Assigning Rider...</span>
-                                      <Info className="w-3 h-3 ml-0.5 text-amber-600 opacity-80" />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleRetryDispatch(ord.id)}
-                                      disabled={retryLoadingId === ord.id}
-                                      className="p-1.5 bg-amber-100 hover:bg-amber-200 text-amber-800 rounded-lg text-xs font-semibold transition-colors border border-amber-300 flex items-center gap-1 disabled:opacity-50"
-                                      title="Retry dispatch immediately for nearest available 2-wheeler riders"
-                                    >
-                                      <RefreshCw className={`w-3.5 h-3.5 ${retryLoadingId === ord.id ? 'animate-spin' : ''}`} />
-                                      <span className="hidden xl:inline text-[10px] font-bold">Retry</span>
-                                    </button>
-                                  </>
+                                  <button
+                                    type="button"
+                                    onClick={() => openAvailableRiders(ord.id, ord.order_number)}
+                                    className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 transition-colors shadow-2xs"
+                                    title="Click to view eligible delivery partners & GPS status"
+                                  >
+                                    <Loader2 className="w-3 h-3 animate-spin text-amber-600" />
+                                    <span>Assigning Delivery Partner...</span>
+                                    <Info className="w-3 h-3 ml-0.5 text-amber-600 opacity-80" />
+                                  </button>
                                 )}
                                 {ord.dispatch_job_id && (
                                   <button
@@ -922,7 +858,8 @@ export function SellerOrdersPage() {
                           </div>
                         </td>
                       </tr>
-                    ))}
+                    );
+                  })}
                   </tbody>
                 </table>
               </div>
@@ -997,31 +934,30 @@ export function SellerOrdersPage() {
                     </div>
                   </div>
 
-                  {/* Item Picking & Packing Checklist */}
+                    {/* Item Picking & Packing Checklist (Read-Only Status from Warehouse) */}
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
                       <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
                         <CheckSquare className="w-4 h-4 text-blue-600" />
                         <span>Item Picking Checklist ({selectedOrderDetail.items?.length || 0})</span>
                       </h3>
-                      <span className="text-[11px] text-slate-400">Click checkboxes to update picking status</span>
+                      <span className="text-[11px] text-slate-400">Managed & verified by Warehouse</span>
                     </div>
 
                     <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
                       {selectedOrderDetail.items?.map((item) => (
                         <div key={item.id} className="p-3.5 bg-white hover:bg-slate-50/60 transition-colors flex items-center justify-between gap-3">
                           <div className="flex items-center gap-3">
-                            <button
-                              onClick={() => handleItemPickToggle(selectedOrderDetail.id, item.id, 'is_picked', !item.is_picked, item.ordered_quantity)}
-                              className={`p-1.5 rounded-lg border transition-colors ${
+                            <span
+                              className={`p-1.5 rounded-lg border ${
                                 item.is_picked
                                   ? 'bg-emerald-50 border-emerald-300 text-emerald-600'
-                                  : 'bg-slate-50 border-slate-300 text-slate-400 hover:border-blue-400'
+                                  : 'bg-slate-50 border-slate-200 text-slate-400'
                               }`}
-                              title="Mark as Picked"
+                              title={item.is_picked ? "Picked in Warehouse" : "Awaiting Picking"}
                             >
                               {item.is_picked ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
-                            </button>
+                            </span>
 
                             <div>
                               <p className="font-bold text-xs text-slate-800">{item.product_title}</p>
@@ -1064,34 +1000,23 @@ export function SellerOrdersPage() {
                           </div>
                           <div>
                             <div className="text-xs font-bold text-slate-900">
-                              {selectedOrderDetail.handling_technician_name ? `Assigned Rider: ${selectedOrderDetail.handling_technician_name}` : '2-Wheeler Rider Dispatch'}
+                              {selectedOrderDetail.handling_technician_name ? `Assigned Partner: ${selectedOrderDetail.handling_technician_name}` : 'Sevo Delivery Partner Dispatch'}
                             </div>
                             <div className="text-[11px] text-slate-500">
-                              {selectedOrderDetail.handling_technician_phone ? `Contact: ${selectedOrderDetail.handling_technician_phone}` : 'Dispatching to nearest available 2-wheeler rider'}
+                              {selectedOrderDetail.handling_technician_phone ? `Contact: ${selectedOrderDetail.handling_technician_phone}` : 'Dispatching to nearest available Sevo Delivery Partner'}
                             </div>
                           </div>
                         </div>
                         <div className="flex items-center gap-1.5">
                           {!selectedOrderDetail.handling_technician_name && (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => openAvailableRiders(selectedOrderDetail.id, selectedOrderDetail.order_number)}
-                                className="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold flex items-center gap-1 shadow-2xs"
-                              >
-                                <Info className="w-3 h-3 text-blue-600" />
-                                <span>Riders Status</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleRetryDispatch(selectedOrderDetail.id)}
-                                disabled={retryLoadingId === selectedOrderDetail.id}
-                                className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-2xs transition-colors disabled:opacity-50"
-                              >
-                                <RefreshCw className={`w-3 h-3 ${retryLoadingId === selectedOrderDetail.id ? 'animate-spin' : ''}`} />
-                                <span>Retry Dispatch</span>
-                              </button>
-                            </>
+                            <button
+                              type="button"
+                              onClick={() => openAvailableRiders(selectedOrderDetail.id, selectedOrderDetail.order_number)}
+                              className="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold flex items-center gap-1 shadow-2xs"
+                            >
+                              <Info className="w-3 h-3 text-blue-600" />
+                              <span>Riders Status</span>
+                            </button>
                           )}
                           {selectedOrderDetail.dispatch_job_id && (
                             <button
@@ -1116,54 +1041,39 @@ export function SellerOrdersPage() {
                     </div>
                   )}
 
-                  {/* Workflow Action Buttons */}
-                  <div className="p-4 bg-blue-50/50 border border-blue-200 rounded-xl space-y-3">
-                    <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider block">
-                      Advance Fulfilment State
-                    </span>
-                    <div className="flex flex-wrap items-center gap-2">
-                      {selectedOrderDetail.status === 'NEW' && (
-                        <button
-                          onClick={() => handleTransition(selectedOrderDetail.id, 'accept')}
-                          disabled={actionLoading}
-                          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-xs transition-colors"
-                        >
-                          Accept Order & Reserve Stock
-                        </button>
-                      )}
+                  {/* Warehouse Fulfilment Status (Read-Only) */}
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                        Fulfilment Operations
+                      </span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                        Warehouse Fulfilled (FBS)
+                      </span>
+                    </div>
 
-                      {selectedOrderDetail.status === 'ACCEPTED' && (
-                        <button
-                          onClick={() => handleTransition(selectedOrderDetail.id, 'start_picking')}
-                          disabled={actionLoading}
-                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-xs transition-colors"
-                        >
-                          Start Picking Items
-                        </button>
-                      )}
+                    <div className="p-3 bg-white border border-slate-200 rounded-lg flex items-start gap-2.5 text-xs text-slate-700">
+                      <Store className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                      <div className="space-y-1">
+                        <span className="font-bold text-slate-900 block">
+                          {selectedOrderDetail.status === 'NEW' && 'Order Awaiting Warehouse Acceptance'}
+                          {selectedOrderDetail.status === 'ACCEPTED' && 'Order Accepted — Staged for Warehouse Picking'}
+                          {selectedOrderDetail.status === 'PICKING' && 'Warehouse Staff is Picking Items'}
+                          {selectedOrderDetail.status === 'PACKED' && 'Order Packed — Awaiting Rider Dispatch'}
+                          {selectedOrderDetail.status === 'READY_FOR_PICKUP' && 'Order Ready — Dispatching Nearest Sevo Delivery Partner'}
+                          {selectedOrderDetail.status === 'ASSIGNED' && 'Delivery Partner Assigned — En Route to Warehouse'}
+                          {selectedOrderDetail.status === 'HANDED_OVER' && 'Handed Over to Delivery Partner — Out for Delivery'}
+                          {selectedOrderDetail.status === 'DELIVERED' && 'Order Successfully Delivered to Customer'}
+                          {selectedOrderDetail.status === 'CANCELLED' && 'Order Cancelled'}
+                        </span>
+                        <p className="text-[11px] text-slate-500 leading-relaxed">
+                          Fulfillment lifecycle transitions (acceptance, picking, packing, QC and handover) are executed exclusively by warehouse operations to guarantee single-source physical stock integrity.
+                        </p>
+                      </div>
+                    </div>
 
-                      {selectedOrderDetail.status === 'PICKING' && (
-                        <button
-                          onClick={() => handleTransition(selectedOrderDetail.id, 'mark_packed')}
-                          disabled={actionLoading}
-                          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-xs transition-colors"
-                        >
-                          Mark Items Packed
-                        </button>
-                      )}
-
-                      {selectedOrderDetail.status === 'PACKED' && (
-                        <button
-                          onClick={() => handleTransition(selectedOrderDetail.id, 'mark_ready')}
-                          disabled={actionLoading}
-                          className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold shadow-xs transition-colors flex items-center gap-1.5"
-                        >
-                          <Truck className="w-3.5 h-3.5" />
-                          <span>Dispatch 2-Wheeler Rider</span>
-                        </button>
-                      )}
-
-                      {['READY_FOR_PICKUP', 'ASSIGNED', 'HANDED_OVER'].includes(selectedOrderDetail.status) && selectedOrderDetail.dispatch_job_id && (
+                    {['READY_FOR_PICKUP', 'ASSIGNED', 'HANDED_OVER'].includes(selectedOrderDetail.status) && selectedOrderDetail.dispatch_job_id && (
+                      <div className="pt-1">
                         <button
                           onClick={() => setTrackingJobId(selectedOrderDetail.dispatch_job_id)}
                           className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-xs transition-colors flex items-center gap-1.5"
@@ -1171,18 +1081,8 @@ export function SellerOrdersPage() {
                           <Navigation className="w-3.5 h-3.5" />
                           <span>Live Track Rider</span>
                         </button>
-                      )}
-
-                      {/* Cancel Button */}
-                      {!['DELIVERED', 'CANCELLED'].includes(selectedOrderDetail.status) && (
-                        <button
-                          onClick={() => setCancellationModal({ isOpen: true, orderId: selectedOrderDetail.id, reason: '' })}
-                          className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-semibold transition-colors"
-                        >
-                          Cancel Order
-                        </button>
-                      )}
-                    </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Platform Admin Manual Override Controls (Superusers / Platform Admins Only) */}
@@ -1298,51 +1198,7 @@ export function SellerOrdersPage() {
         </div>
       )}
 
-      {/* ── MODAL: CANCELLATION REASON ── */}
-      {cancellationModal.isOpen && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
-            <div className="flex items-center gap-3 text-rose-600">
-              <span className="p-2 bg-rose-50 rounded-xl border border-rose-200">
-                <AlertTriangle className="w-5 h-5" />
-              </span>
-              <div>
-                <h3 className="font-bold text-slate-900 text-sm">Cancel Fulfilment Order</h3>
-                <p className="text-[11px] text-slate-500">Reserved stock will be automatically released back to available balance.</p>
-              </div>
-            </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Cancellation Reason (Mandatory)
-              </label>
-              <textarea
-                rows={3}
-                placeholder="E.g. Item damaged in warehouse / Out of stock / Customer requested cancellation..."
-                value={cancellationModal.reason}
-                onChange={(e) => setCancellationModal((prev) => ({ ...prev, reason: e.target.value }))}
-                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-rose-500"
-              />
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <button
-                onClick={() => setCancellationModal({ isOpen: false, orderId: null, reason: '' })}
-                className="px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
-              >
-                Back
-              </button>
-              <button
-                onClick={() => handleTransition(cancellationModal.orderId, 'cancel', '', cancellationModal.reason)}
-                disabled={!cancellationModal.reason.trim() || actionLoading}
-                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-xs font-bold rounded-lg shadow-xs transition-colors"
-              >
-                Confirm Cancellation
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ── MODAL: PRINTABLE PACKING SLIP ── */}
       {isPackingSlipOpen && packingSlipData && (
@@ -1525,7 +1381,7 @@ export function SellerOrdersPage() {
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-slate-900">
-                    2-Wheeler Rider Availability
+                    Sevo Delivery Partner Availability
                   </h3>
                   <p className="text-[11px] text-slate-500 font-mono">
                     Order #{availableRidersModal.orderNumber}
@@ -1668,16 +1524,16 @@ export function SellerOrdersPage() {
                 {/* Action Footer */}
                 <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
                   <span className="text-[10px] text-slate-400">
-                    Auto-sweep runs continuously in the background
+                    Warehouse automated dispatcher sweeps continuously
                   </span>
                   <button
                     type="button"
-                    onClick={() => handleRetryDispatch(availableRidersModal.orderId)}
-                    disabled={retryLoadingId === availableRidersModal.orderId}
+                    onClick={() => openAvailableRiders(availableRidersModal.orderId, availableRidersModal.orderNumber)}
+                    disabled={availableRidersModal.loading}
                     className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-colors shadow-xs flex items-center gap-1.5 disabled:opacity-50"
                   >
-                    <RefreshCw className={`w-3.5 h-3.5 ${retryLoadingId === availableRidersModal.orderId ? 'animate-spin' : ''}`} />
-                    <span>Retry Dispatch Now</span>
+                    <RefreshCw className={`w-3.5 h-3.5 ${availableRidersModal.loading ? 'animate-spin' : ''}`} />
+                    <span>Refresh Rider Status</span>
                   </button>
                 </div>
               </div>

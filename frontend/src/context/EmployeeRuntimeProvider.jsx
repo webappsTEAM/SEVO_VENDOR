@@ -618,6 +618,30 @@ const getCompletedJobsCacheKey = (uid) => uid ? `calservice_workforce_cached_com
     onAuthFailure: handleRealtimeAuthFailure,
   });
 
+  // ── 8b. Robust Background Jobs Auto-Refresh Polling (every 6s) ───────────────
+  useEffect(() => {
+    if (!isAuthenticated || !isApprovedEmployee || !isOnline) return;
+
+    const pollInterval = 6000;
+    const intervalId = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        refreshActiveJobs({ silent: true });
+      }
+    }, pollInterval);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        refreshActiveJobs({ silent: true });
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [isAuthenticated, isApprovedEmployee, isOnline, refreshActiveJobs]);
+
   // ── 9. Fast Presence Toggle Controller (Correction 2) ──────────────────────
   const togglePresenceFast = useCallback(
     async (desiredState = null) => {
