@@ -7,7 +7,7 @@ Strictly isolates data by warehouse_id resolved server-side from the authenticat
 """
 import logging
 from decimal import Decimal
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone
 from rest_framework import permissions, status
 from rest_framework.response import Response
@@ -18,8 +18,10 @@ from .models import (
     Warehouse,
     WarehouseStaff,
     SellerOrder,
+    SellerOrderAuditLog,
     SellerProduct,
     SellerInventory,
+    SellerInventoryBatch,
     SellerInventoryMovement,
     WarehouseInboundRequest,
     WarehouseInboundRequestAuditLog,
@@ -31,10 +33,12 @@ from .serializers import (
     WarehouseSerializer,
     SellerOrderListSerializer,
     SellerOrderDetailSerializer,
+    SellerOrderStatusTransitionSerializer,
     WarehouseInboundRequestSerializer,
     WarehouseInboundUnitSerializer,
     WarehouseReturnSerializer,
 )
+from workforce_api.services.seller_order_outbox import record_seller_order_status_event
 
 logger = logging.getLogger(__name__)
 
@@ -193,7 +197,13 @@ class WarehousePortalOrdersListView(APIView):
 
         queryset = SellerOrder.objects.filter(
             warehouse_id=warehouse.id
-        ).select_related("company").prefetch_related("items", "items__product").order_by("-id")
+        ).select_related(
+            "company",
+            "handling_technician",
+            "handling_technician__user",
+            "dispatch_job",
+        ).prefetch_related("items", "items__product").order_by("-id")
+
 
         # Status filter
         status_filter = request.query_params.get("status", "").strip().upper()
@@ -276,6 +286,365 @@ class WarehousePortalOrderDetailView(APIView):
 
         serializer = SellerOrderDetailSerializer(order)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class WarehousePortalOrderStatusTransitionView(APIView):
+    """
+    POST /api/workforce/warehouse/orders/<int:order_id>/transition/ – Advance or Cancel order state from Warehouse Portal.
+    Executes atomic state changes and inventory adjustments with row-locking strictly scoped to the assigned warehouse facility.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, order_id):
+        warehouse, err_resp = _resolve_warehouse_for_request(request)
+        if err_resp:
+            return err_resp
+
+        user = request.user
+
+        serializer = SellerOrderStatusTransitionSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        action = serializer.validated_data["action"]
+        notes = serializer.validated_data.get("notes", "").strip()
+        cancellation_reason = serializer.validated_data.get("cancellation_reason", "").strip()
+        handover_ref = serializer.validated_data.get("handover_ref", "").strip()
+
+        # Block manual handover/deliver for non-superusers (enforce 2-step OTP checkpoint flow)
+        if action in ("handover", "deliver") and not getattr(user, "is_superuser", False):
+            return Response(
+                {
+                    "error": "Manual handover and delivery actions are disabled. Orders must be verified by the assigned delivery partner using Pickup and Delivery OTP verification checkpoints.",
+                    "code": "MANUAL_HANDOVER_DISABLED",
+                    "action": action,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Action to Target Status Mapping
+        ACTION_TARGET_STATUS = {
+            "accept": SellerOrder.Status.ACCEPTED,
+            "start_picking": SellerOrder.Status.PICKING,
+            "mark_packed": SellerOrder.Status.PACKED,
+            "mark_ready": SellerOrder.Status.READY_FOR_PICKUP,
+            "handover": SellerOrder.Status.HANDED_OVER,
+            "deliver": SellerOrder.Status.DELIVERED,
+            "cancel": SellerOrder.Status.CANCELLED,
+        }
+
+        target_status = ACTION_TARGET_STATUS.get(action)
+        if not target_status:
+            return Response({"error": f"Unknown transition action '{action}'."}, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            order = (
+                SellerOrder.objects.select_for_update()
+                .filter(pk=order_id, warehouse_id=warehouse.id)
+                .first()
+            )
+            if not order:
+                return Response(
+                    {"error": "Order not found or does not belong to your warehouse facility.", "code": "ORDER_NOT_FOUND"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            from_status = order.status
+
+            # Validate State Machine Transition
+            if not order.can_transition_to(target_status):
+                return Response(
+                    {
+                        "error": f"Invalid state transition from '{from_status}' to '{target_status}'.",
+                        "current_status": from_status,
+                        "allowed_transitions": order.ALLOWED_TRANSITIONS.get(from_status, []),
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            now = timezone.now()
+
+            # Handle status timestamps & state-specific logic
+            if target_status == SellerOrder.Status.ACCEPTED:
+                order.accepted_at = now
+            elif target_status == SellerOrder.Status.PICKING:
+                order.picking_at = now
+            elif target_status == SellerOrder.Status.PACKED:
+                order.packed_at = now
+            elif target_status == SellerOrder.Status.READY_FOR_PICKUP:
+                if warehouse.latitude is None or warehouse.longitude is None:
+                    return Response(
+                        {
+                            "error": "Warehouse facility coordinates are missing. Please configure warehouse latitude and longitude before dispatching rider.",
+                            "code": "WAREHOUSE_COORDINATES_MISSING",
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                pickup_lat = warehouse.latitude
+                pickup_lon = warehouse.longitude
+                pickup_addr = warehouse.address or f"Warehouse: {warehouse.name}"
+
+                order.ready_at = now
+
+                # Delivery Group handling: Wait for all active sibling sub-orders before creating 1 consolidated dispatch job
+                if order.delivery_group_id:
+                    group_orders = list(
+                        SellerOrder.objects.filter(
+                            delivery_group_id=order.delivery_group_id
+                        ).exclude(status=SellerOrder.Status.CANCELLED)
+                    )
+
+                    not_ready = [
+                        o for o in group_orders
+                        if o.id != order.id and o.status not in [
+                            SellerOrder.Status.READY_FOR_PICKUP,
+                            SellerOrder.Status.ASSIGNED,
+                            SellerOrder.Status.HANDED_OVER,
+                            SellerOrder.Status.DELIVERED,
+                        ]
+                    ]
+
+                    if not_ready:
+                        if not notes:
+                            notes = f"Order ready for pickup. Waiting for {len(not_ready)} sibling seller order(s) in delivery group before dispatching rider."
+                    else:
+                        existing_sr = None
+                        for o in group_orders:
+                            if o.dispatch_job:
+                                existing_sr = o.dispatch_job
+                                break
+
+                        if not existing_sr:
+                            from service_requests.models import ServiceRequest
+                            from workforce_api.services.automatic_dispatch import dispatch_job
+
+                            total_group_amount = sum((o.total_amount for o in group_orders), Decimal("0.00"))
+                            all_order_numbers = ", ".join(o.order_number for o in group_orders)
+                            all_sellers = ", ".join(sorted(set(getattr(o.company, "company_name", f"Seller #{o.company_id}") for o in group_orders if o.company_id)))
+
+                            sr = ServiceRequest.objects.create(
+                                company=order.company,
+                                service_category="sevo_delivery_partner",
+                                job_type="DELIVERY",
+                                request_kind=ServiceRequest.RequestKind.DIRECT,
+                                customer_name=order.customer_name,
+                                phone=order.customer_phone,
+                                address=pickup_addr,
+                                latitude=pickup_lat,
+                                longitude=pickup_lon,
+                                drop_address=order.delivery_address,
+                                drop_contact_name=order.customer_name,
+                                preferred_date=now.date(),
+                                preferred_time="Immediate",
+                                issue_title=f"Consolidated Delivery ({len(group_orders)} sub-orders): {all_order_numbers}",
+                                description=f"Consolidated Warehouse Delivery for {order.customer_name} from {all_sellers}. Orders: {all_order_numbers}. Total: ₹{total_group_amount}",
+                                total_amount=total_group_amount,
+                                status="new_request",
+                            )
+                            for o in group_orders:
+                                o.dispatch_job = sr
+                                o.save(update_fields=["dispatch_job", "updated_at"])
+                            order.dispatch_job = sr
+                            dispatch_job(sr)
+                        else:
+                            order.dispatch_job = existing_sr
+                            from workforce_api.services.automatic_dispatch import dispatch_job
+                            if existing_sr.status in ["unassigned", "redispatching", "new_request"]:
+                                dispatch_job(existing_sr)
+                else:
+                    # Single standalone order dispatch
+                    if not order.dispatch_job:
+                        from service_requests.models import ServiceRequest
+                        from workforce_api.services.automatic_dispatch import dispatch_job
+
+                        sr = ServiceRequest.objects.create(
+                            company=order.company,
+                            service_category="sevo_delivery_partner",
+                            job_type="DELIVERY",
+                            request_kind=ServiceRequest.RequestKind.DIRECT,
+                            customer_name=order.customer_name,
+                            phone=order.customer_phone,
+                            address=pickup_addr,
+                            latitude=pickup_lat,
+                            longitude=pickup_lon,
+                            drop_address=order.delivery_address,
+                            drop_contact_name=order.customer_name,
+                            preferred_date=now.date(),
+                            preferred_time="Immediate",
+                            issue_title=f"Marketplace Order Delivery #{order.order_number}",
+                            description=f"Delivery of Order #{order.order_number} to {order.customer_name}. Total: ₹{order.total_amount}",
+                            total_amount=order.total_amount,
+                            status="new_request",
+                        )
+                        order.dispatch_job = sr
+                        dispatch_job(sr)
+                    elif order.dispatch_job and order.dispatch_job.status in ["unassigned", "redispatching", "new_request"]:
+                        from workforce_api.services.automatic_dispatch import dispatch_job
+                        update_fields = []
+                        if order.dispatch_job.latitude != pickup_lat or order.dispatch_job.longitude != pickup_lon:
+                            order.dispatch_job.latitude = pickup_lat
+                            order.dispatch_job.longitude = pickup_lon
+                            update_fields.extend(["latitude", "longitude"])
+                        if order.dispatch_job.address != pickup_addr:
+                            order.dispatch_job.address = pickup_addr
+                            update_fields.append("address")
+                        if update_fields:
+                            order.dispatch_job.save(update_fields=list(set(update_fields)))
+                        dispatch_job(order.dispatch_job)
+
+            elif target_status == SellerOrder.Status.HANDED_OVER:
+                order.handed_over_at = now
+                if handover_ref:
+                    order.handover_ref = handover_ref
+                self._deduct_inventory_for_order(order, user, notes or f"Handover for order #{order.order_number}")
+            elif target_status == SellerOrder.Status.DELIVERED:
+                order.delivered_at = now
+                self._deduct_inventory_for_order(order, user, notes or f"Delivered order #{order.order_number}")
+            elif target_status == SellerOrder.Status.CANCELLED:
+                order.cancelled_at = now
+                order.cancellation_reason = cancellation_reason
+                order.cancelled_by = user
+                self._release_inventory_reservations(order, user, cancellation_reason)
+
+                # Delivery group check for remaining active orders
+                if order.delivery_group_id:
+                    remaining_active = list(
+                        SellerOrder.objects.filter(
+                            delivery_group_id=order.delivery_group_id
+                        ).exclude(pk=order.pk).exclude(status=SellerOrder.Status.CANCELLED)
+                    )
+
+                    if remaining_active and all(o.status in [SellerOrder.Status.READY_FOR_PICKUP, SellerOrder.Status.ASSIGNED] for o in remaining_active):
+                        has_sr = any(o.dispatch_job for o in remaining_active)
+                        if not has_sr:
+                            if warehouse.latitude is not None:
+                                from service_requests.models import ServiceRequest
+                                from workforce_api.services.automatic_dispatch import dispatch_job
+
+                                total_rem_amount = sum((o.total_amount for o in remaining_active), Decimal("0.00"))
+                                all_order_numbers = ", ".join(o.order_number for o in remaining_active)
+                                all_sellers = ", ".join(sorted(set(getattr(o.company, "company_name", f"Seller #{o.company_id}") for o in remaining_active if o.company_id)))
+
+                                sr = ServiceRequest.objects.create(
+                                    company=order.company,
+                                    service_category="sevo_delivery_partner",
+                                    job_type="DELIVERY",
+                                    request_kind=ServiceRequest.RequestKind.DIRECT,
+                                    customer_name=remaining_active[0].customer_name,
+                                    phone=remaining_active[0].customer_phone,
+                                    address=warehouse.address or f"Warehouse: {warehouse.name}",
+                                    latitude=warehouse.latitude,
+                                    longitude=warehouse.longitude,
+                                    drop_address=remaining_active[0].delivery_address,
+                                    drop_contact_name=remaining_active[0].customer_name,
+                                    preferred_date=now.date(),
+                                    preferred_time="Immediate",
+                                    issue_title=f"Consolidated Delivery ({len(remaining_active)} sub-orders): {all_order_numbers}",
+                                    description=f"Consolidated Delivery for {remaining_active[0].customer_name} from {all_sellers}. Orders: {all_order_numbers}. Total: ₹{total_rem_amount}",
+                                    total_amount=total_rem_amount,
+                                    status="new_request",
+                                )
+                                for o in remaining_active:
+                                    o.dispatch_job = sr
+                                    o.save(update_fields=["dispatch_job", "updated_at"])
+                                dispatch_job(sr)
+
+            order.status = target_status
+            if notes:
+                order.seller_notes = (order.seller_notes + f"\n[{now.strftime('%Y-%m-%d %H:%M')}] (Warehouse): " + notes).strip()
+
+            order.save()
+
+            # Create immutable audit log
+            SellerOrderAuditLog.objects.create(
+                order=order,
+                from_status=from_status,
+                to_status=target_status,
+                action=f"Warehouse {action.replace('_', ' ').title()}",
+                actor=user,
+                notes=cancellation_reason if target_status == SellerOrder.Status.CANCELLED else notes,
+            )
+
+            # Record outbox status event within the same transaction
+            record_seller_order_status_event(
+                order=order,
+                previous_status=from_status,
+                new_status=target_status,
+                event_type="seller_order.cancelled" if target_status == SellerOrder.Status.CANCELLED else "seller_order.status_updated",
+                actor=user,
+                cancellation_source="WAREHOUSE" if target_status == SellerOrder.Status.CANCELLED else None,
+            )
+
+        detail_serializer = SellerOrderDetailSerializer(order)
+        return Response(
+            {
+                "message": f"Order status updated to '{target_status}'.",
+                "order": detail_serializer.data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    def _deduct_inventory_for_order(self, order, user, reason):
+        if order.inventory_deducted:
+            return
+        for item in order.items.select_related("product"):
+            if not item.product:
+                continue
+            inv = SellerInventory.objects.select_for_update().filter(
+                company=order.company,
+                product=item.product,
+            ).first()
+
+            if not inv:
+                continue
+
+            qty_to_deduct = item.ordered_quantity
+            bal_before = inv.on_hand_qty
+            bal_after = max(Decimal("0.000"), inv.on_hand_qty - qty_to_deduct)
+            reserved_after = max(Decimal("0.000"), inv.reserved_qty - qty_to_deduct)
+
+            inv.on_hand_qty = bal_after
+            inv.reserved_qty = reserved_after
+            inv.save(update_fields=["on_hand_qty", "reserved_qty", "updated_at"])
+
+            # Deduct from batch if linked
+            if item.batch:
+                b = SellerInventoryBatch.objects.select_for_update().filter(pk=item.batch.pk).first()
+                if b:
+                    b.current_quantity = max(Decimal("0.000"), b.current_quantity - qty_to_deduct)
+                    b.update_dynamic_status(save=True)
+
+            # Record ORDER_DEDUCTED movement
+            SellerInventoryMovement.objects.create(
+                inventory=inv,
+                batch=item.batch,
+                movement_type=SellerInventoryMovement.MovementType.ORDER_DEDUCTED,
+                quantity_change=-qty_to_deduct,
+                balance_before=bal_before,
+                balance_after=bal_after,
+                reason=reason,
+                reference_id=order.source_order_id or order.order_number,
+                actor=user,
+            )
+        order.inventory_deducted = True
+        order.save(update_fields=["inventory_deducted"])
+
+    def _release_inventory_reservations(self, order, user, reason):
+        for item in order.items.select_related("product"):
+            if not item.product:
+                continue
+            inv = SellerInventory.objects.select_for_update().filter(
+                company=order.company,
+                product=item.product,
+            ).first()
+
+            if not inv:
+                continue
+
+            qty_to_release = item.ordered_quantity
+            inv.reserved_qty = max(Decimal("0.000"), inv.reserved_qty - qty_to_release)
+            inv.save(update_fields=["reserved_qty", "updated_at"])
 
 
 class WarehousePortalInboundRequestListView(APIView):

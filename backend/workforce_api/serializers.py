@@ -657,15 +657,19 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
     def get_clock_in_time(self, obj):
         emp = self._get_context_emp() or getattr(obj, "assigned_employee", None)
         if emp:
-            try:
-                emp_id = getattr(emp, "id", None) or getattr(emp, "pk", None)
-                if isinstance(emp_id, int):
+            emp_id = getattr(emp, "id", None) or getattr(emp, "pk", None)
+            if isinstance(emp_id, int):
+                clock_in_map = self.context.get("clock_in_map")
+                if clock_in_map is not None:
+                    return clock_in_map.get(emp_id)
+                try:
                     from time_tracking.models import TimeLog
                     open_log = TimeLog.objects.filter(employee_id=emp_id, clock_out__isnull=True).order_by("-id").first()
                     if open_log and open_log.clock_in:
                         return open_log.clock_in.isoformat()
-            except Exception:
-                pass
+                except Exception:
+                    pass
+
         if getattr(obj, "started_at", None):
             return obj.started_at.isoformat()
         if getattr(obj, "otp_verified_at", None):
@@ -952,7 +956,11 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
                 return full
             if getattr(cust, "name", None) and not str(cust.name).startswith("cust_"):
                 return cust.name
-            if hasattr(cust, "saved_addresses"):
+            if hasattr(cust, "_prefetched_objects_cache") and "saved_addresses" in cust._prefetched_objects_cache:
+                for addr in cust.saved_addresses.all():
+                    if getattr(addr, "receiver_name", None):
+                        return addr.receiver_name
+            elif hasattr(cust, "saved_addresses"):
                 try:
                     addr = cust.saved_addresses.filter(receiver_name__isnull=False).exclude(receiver_name="").first()
                     if addr and addr.receiver_name:
@@ -1015,13 +1023,18 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
     def get_address(self, obj):
         if obj.address:
             return obj.address
-        if obj.customer and hasattr(obj.customer, "saved_addresses"):
-            try:
-                addr = obj.customer.saved_addresses.first()
-                if addr and getattr(addr, "address_line1", None):
-                    return addr.formatted_address or addr.address_line1
-            except Exception:
-                pass
+        if obj.customer:
+            if hasattr(obj.customer, "_prefetched_objects_cache") and "saved_addresses" in obj.customer._prefetched_objects_cache:
+                for addr in obj.customer.saved_addresses.all():
+                    if getattr(addr, "address_line1", None):
+                        return addr.formatted_address or addr.address_line1
+            elif hasattr(obj.customer, "saved_addresses"):
+                try:
+                    addr = obj.customer.saved_addresses.first()
+                    if addr and getattr(addr, "address_line1", None):
+                        return addr.formatted_address or addr.address_line1
+                except Exception:
+                    pass
         return ""
 
     def get_service_title(self, obj):
@@ -1248,7 +1261,7 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
 
     def _get_active_quote(self, obj):
         quotes_map = self.context.get("quotes_map")
-        if quotes_map is not None and obj.id in quotes_map:
+        if quotes_map is not None:
             return quotes_map.get(obj.id)
         if not hasattr(obj, "_cached_active_quote"):
             from .models import WorkforceQuote
@@ -1270,6 +1283,21 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
                 )
             obj._cached_active_quote = q
         return obj._cached_active_quote
+
+    def _get_active_invoice(self, obj):
+        invoices_map = self.context.get("invoices_map")
+        if invoices_map is not None:
+            return invoices_map.get(obj.id)
+        if not hasattr(obj, "_cached_active_invoice"):
+            try:
+                from workforce_api.models import WorkforceInvoice
+                inv = WorkforceInvoice.objects.filter(job=obj).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
+                if not inv and getattr(obj, "parent_request_id", None):
+                    inv = WorkforceInvoice.objects.filter(job_id=obj.parent_request_id).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
+                obj._cached_active_invoice = inv
+            except Exception:
+                obj._cached_active_invoice = None
+        return obj._cached_active_invoice
 
     def get_is_estimation(self, obj):
         return self._is_estimation_job(obj)
@@ -1316,9 +1344,7 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
     def get_active_quote_advance_paid(self, obj):
         try:
             from workforce_api.models import WorkforceInvoice
-            inv = WorkforceInvoice.objects.filter(job=obj).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
-            if not inv and getattr(obj, "parent_request_id", None):
-                inv = WorkforceInvoice.objects.filter(job_id=obj.parent_request_id).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
+            inv = self._get_active_invoice(obj)
             if inv:
                 if inv.status == WorkforceInvoice.Status.PAID:
                     return True
@@ -1339,9 +1365,7 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
     def get_active_quote_is_fully_paid(self, obj):
         try:
             from workforce_api.models import WorkforceInvoice
-            inv = WorkforceInvoice.objects.filter(job=obj).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
-            if not inv and getattr(obj, "parent_request_id", None):
-                inv = WorkforceInvoice.objects.filter(job_id=obj.parent_request_id).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
+            inv = self._get_active_invoice(obj)
             if inv:
                 return inv.status == WorkforceInvoice.Status.PAID or float(inv.balance_due) <= 0.0
         except Exception:
@@ -1351,9 +1375,7 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
     def get_active_quote_balance_amount(self, obj):
         try:
             from workforce_api.models import WorkforceInvoice
-            inv = WorkforceInvoice.objects.filter(job=obj).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
-            if not inv and getattr(obj, "parent_request_id", None):
-                inv = WorkforceInvoice.objects.filter(job_id=obj.parent_request_id).exclude(status=WorkforceInvoice.Status.CANCELLED).first()
+            inv = self._get_active_invoice(obj)
             if inv:
                 bal = float(inv.balance_amount) if inv.balance_amount and float(inv.balance_amount) > 0 else (float(inv.total_amount) - float(inv.advance_amount or 0.0))
                 return round(bal, 2)
@@ -1383,8 +1405,12 @@ class WorkforceJobSerializer(serializers.ModelSerializer):
     def get_payment_otp(self, obj):
         try:
             from workforce_api.models import JobPayment, PaymentCollectionEvent
-            pmt = getattr(obj, "payment_record", None) or JobPayment.objects.filter(job=obj).first()
-            if pmt and pmt.payment_status == JobPayment.PaymentStatus.CASH_PENDING:
+            payments_map = self.context.get("payments_map")
+            if payments_map is not None:
+                pmt = payments_map.get(obj.id)
+            else:
+                pmt = getattr(obj, "payment_record", None) or JobPayment.objects.filter(job=obj).first()
+            if pmt and getattr(pmt, "payment_status", "") == JobPayment.PaymentStatus.CASH_PENDING:
                 last_event = PaymentCollectionEvent.objects.filter(job_payment=pmt, event_type="CASH_REPORTED").order_by("-created_at").first()
                 if last_event and last_event.metadata:
                     return last_event.metadata.get("otp")
@@ -2741,6 +2767,7 @@ class SellerProductListSerializer(serializers.ModelSerializer):
     images_count = serializers.SerializerMethodField()
     reviewed_by_name = serializers.SerializerMethodField()
     rejection_reason = serializers.CharField(source="admin_review_note", read_only=True)
+    effective_fssai_license_number = serializers.SerializerMethodField()
 
     class Meta:
         from .models import SellerProduct
@@ -2773,6 +2800,8 @@ class SellerProductListSerializer(serializers.ModelSerializer):
             "hsn_code",
             "storage_info",
             "expiry_info",
+            "fssai_license_number",
+            "effective_fssai_license_number",
             "status",
             "admin_review_note",
             "rejection_reason",
@@ -2803,6 +2832,15 @@ class SellerProductListSerializer(serializers.ModelSerializer):
         if not has_access:
             data.pop("procurement_price", None)
         return data
+
+    def get_effective_fssai_license_number(self, obj):
+        if getattr(obj, "fssai_license_number", ""):
+            return obj.fssai_license_number
+        vendor_store = getattr(obj.company, "vendor_store", None)
+        if not vendor_store:
+            from .models import VendorStore
+            vendor_store = VendorStore.objects.filter(company=obj.company).first()
+        return vendor_store.fssai_license_number if vendor_store else ""
 
     def get_category_path(self, obj):
         if not obj.category:
@@ -2854,6 +2892,7 @@ class SellerProductDetailSerializer(serializers.ModelSerializer):
     variant_siblings = serializers.SerializerMethodField()
     reviewed_by_name = serializers.SerializerMethodField()
     rejection_reason = serializers.CharField(source="admin_review_note", read_only=True)
+    effective_fssai_license_number = serializers.SerializerMethodField()
 
     class Meta:
         from .models import SellerProduct
@@ -2887,6 +2926,8 @@ class SellerProductDetailSerializer(serializers.ModelSerializer):
             "hsn_code",
             "storage_info",
             "expiry_info",
+            "fssai_license_number",
+            "effective_fssai_license_number",
             "status",
             "admin_review_note",
             "rejection_reason",
@@ -2938,6 +2979,15 @@ class SellerProductDetailSerializer(serializers.ModelSerializer):
             return None
         name = f"{getattr(obj.reviewed_by, 'first_name', '')} {getattr(obj.reviewed_by, 'last_name', '')}".strip()
         return name or getattr(obj.reviewed_by, "username", "Reviewer")
+
+    def get_effective_fssai_license_number(self, obj):
+        if getattr(obj, "fssai_license_number", ""):
+            return obj.fssai_license_number
+        vendor_store = getattr(obj.company, "vendor_store", None)
+        if not vendor_store:
+            from .models import VendorStore
+            vendor_store = VendorStore.objects.filter(company=obj.company).first()
+        return vendor_store.fssai_license_number if vendor_store else ""
 
     def get_variant_siblings(self, obj):
         if not obj.variant_group_id:
@@ -3055,6 +3105,7 @@ class SellerProductCreateUpdateSerializer(serializers.ModelSerializer):
             "hsn_code",
             "storage_info",
             "expiry_info",
+            "fssai_license_number",
             "status",
             "images",
             "specs",
@@ -3295,27 +3346,49 @@ class SellerInventoryListSerializer(serializers.ModelSerializer):
         ]
 
     def get_product_category_path(self, obj):
-        cat = obj.product.category
+        cat = getattr(getattr(obj, "product", None), "category", None)
         if not cat:
             return ""
         path = [cat.name]
-        curr = cat.parent
-        while curr:
+        curr = getattr(cat, "parent", None)
+        visited = {cat.id}
+        while curr and curr.id not in visited:
+            visited.add(curr.id)
             path.insert(0, curr.name)
-            curr = curr.parent
+            curr = getattr(curr, "parent", None)
         return " > ".join(path)
 
     def get_product_image(self, obj):
-        img = obj.product.images.filter(is_primary=True).first() or obj.product.images.first()
+        prod = getattr(obj, "product", None)
+        if not prod:
+            return None
+        if hasattr(prod, "_prefetched_objects_cache") and "images" in prod._prefetched_objects_cache:
+            images = prod._prefetched_objects_cache["images"]
+            for img in images:
+                if img.is_primary and img.image_url:
+                    return img.image_url
+            for img in images:
+                if img.image_url:
+                    return img.image_url
+            return None
+        img = prod.images.filter(is_primary=True).first() or prod.images.first()
         return img.image_url if img else None
 
     def get_batches_count(self, obj):
+        if hasattr(obj, "_prefetched_objects_cache") and "batches" in obj._prefetched_objects_cache:
+            return sum(1 for b in obj._prefetched_objects_cache["batches"] if b.current_quantity > 0)
         return obj.batches.filter(current_quantity__gt=0).count()
 
     def get_has_expiring_batches(self, obj):
         from django.utils import timezone
         thirty_days = timezone.now().date() + timezone.timedelta(days=30)
+        if hasattr(obj, "_prefetched_objects_cache") and "batches" in obj._prefetched_objects_cache:
+            return any(
+                b.current_quantity > 0 and b.expiry_date and b.expiry_date <= thirty_days
+                for b in obj._prefetched_objects_cache["batches"]
+            )
         return obj.batches.filter(current_quantity__gt=0, expiry_date__lte=thirty_days).exists()
+
 
 
 class SellerInventoryDetailSerializer(SellerInventoryListSerializer):
@@ -4499,33 +4572,38 @@ class WarehouseInboundRequestCreateSerializer(serializers.Serializer):
 # BASKET OFFERS (MULTI-PRODUCT COMBO BUNDLES) SERIALIZERS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-class SellerProductBasketItemSerializer(serializers.ModelSerializer):
+class SellerProductBasketItemOptionSerializer(serializers.ModelSerializer):
     product_id = serializers.IntegerField(source="product.id")
     product_title = serializers.CharField(source="product.title", read_only=True)
     product_sku = serializers.CharField(source="product.sku", read_only=True)
+    product_brand = serializers.CharField(source="product.brand", read_only=True)
     product_unit = serializers.CharField(source="product.unit", read_only=True)
+    product_pack_size = serializers.CharField(source="product.pack_size", read_only=True)
     product_mrp = serializers.DecimalField(source="product.mrp", max_digits=10, decimal_places=2, read_only=True)
     product_selling_price = serializers.DecimalField(source="product.selling_price", max_digits=10, decimal_places=2, read_only=True)
     product_procurement_price = serializers.DecimalField(source="product.procurement_price", max_digits=10, decimal_places=2, read_only=True)
     product_image = serializers.SerializerMethodField()
     available_qty = serializers.SerializerMethodField()
     on_hand_qty = serializers.SerializerMethodField()
-    is_approved = serializers.BooleanField(source="product.status == 'APPROVED'", read_only=True)
+    is_approved = serializers.SerializerMethodField()
 
     class Meta:
-        from .models import SellerProductBasketItem
-        model = SellerProductBasketItem
+        from .models import SellerProductBasketItemOption
+        model = SellerProductBasketItemOption
         fields = [
             "id",
             "product_id",
             "product_title",
             "product_sku",
+            "product_brand",
             "product_unit",
+            "product_pack_size",
             "product_mrp",
             "product_selling_price",
             "product_procurement_price",
             "product_image",
-            "quantity",
+            "is_default",
+            "display_order",
             "on_hand_qty",
             "available_qty",
             "is_approved",
@@ -4548,6 +4626,115 @@ class SellerProductBasketItemSerializer(serializers.ModelSerializer):
         if not inv:
             return 0
         return int(inv.on_hand_qty) if (inv.on_hand_qty % 1) == 0 else float(inv.on_hand_qty)
+
+    def get_is_approved(self, obj):
+        return obj.product.status == "APPROVED"
+
+
+class SellerProductBasketItemSerializer(serializers.ModelSerializer):
+    slot_title = serializers.CharField(required=False, allow_blank=True)
+    quantity = serializers.IntegerField(default=1)
+    display_order = serializers.IntegerField(default=0)
+    options = SellerProductBasketItemOptionSerializer(many=True, read_only=True)
+
+    # Backward compatibility fields pointing to the slot's default / primary product
+    product_id = serializers.SerializerMethodField()
+    product_title = serializers.SerializerMethodField()
+    product_sku = serializers.SerializerMethodField()
+    product_unit = serializers.SerializerMethodField()
+    product_mrp = serializers.SerializerMethodField()
+    product_selling_price = serializers.SerializerMethodField()
+    product_procurement_price = serializers.SerializerMethodField()
+    product_image = serializers.SerializerMethodField()
+    available_qty = serializers.SerializerMethodField()
+    on_hand_qty = serializers.SerializerMethodField()
+    is_approved = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models import SellerProductBasketItem
+        model = SellerProductBasketItem
+        fields = [
+            "id",
+            "slot_title",
+            "quantity",
+            "display_order",
+            "options",
+            "product_id",
+            "product_title",
+            "product_sku",
+            "product_unit",
+            "product_mrp",
+            "product_selling_price",
+            "product_procurement_price",
+            "product_image",
+            "on_hand_qty",
+            "available_qty",
+            "is_approved",
+        ]
+        read_only_fields = ["id"]
+
+    def _get_target_product(self, obj):
+        return obj.get_default_product()
+
+    def get_product_id(self, obj):
+        p = self._get_target_product(obj)
+        return p.id if p else None
+
+    def get_product_title(self, obj):
+        p = self._get_target_product(obj)
+        return p.title if p else (obj.slot_title or "")
+
+    def get_product_sku(self, obj):
+        p = self._get_target_product(obj)
+        return p.sku if p else ""
+
+    def get_product_unit(self, obj):
+        p = self._get_target_product(obj)
+        return p.unit if p else ""
+
+    def get_product_mrp(self, obj):
+        p = self._get_target_product(obj)
+        return str(p.mrp) if p and p.mrp is not None else "0.00"
+
+    def get_product_selling_price(self, obj):
+        p = self._get_target_product(obj)
+        return str(p.selling_price) if p and p.selling_price is not None else "0.00"
+
+    def get_product_procurement_price(self, obj):
+        p = self._get_target_product(obj)
+        return str(p.procurement_price) if p and p.procurement_price is not None else None
+
+    def get_product_image(self, obj):
+        p = self._get_target_product(obj)
+        if not p:
+            return ""
+        img = p.images.filter(is_primary=True).first() or p.images.first()
+        return img.image_url if img else ""
+
+    def get_available_qty(self, obj):
+        p = self._get_target_product(obj)
+        if not p:
+            return 0
+        inv = getattr(p, "inventory", None)
+        if not inv:
+            return 0
+        avail = inv.on_hand_qty - inv.reserved_qty
+        return max(0, int(avail) if (avail % 1) == 0 else float(avail))
+
+    def get_on_hand_qty(self, obj):
+        p = self._get_target_product(obj)
+        if not p:
+            return 0
+        inv = getattr(p, "inventory", None)
+        if not inv:
+            return 0
+        return int(inv.on_hand_qty) if (inv.on_hand_qty % 1) == 0 else float(inv.on_hand_qty)
+
+    def get_is_approved(self, obj):
+        p = self._get_target_product(obj)
+        return (p.status == "APPROVED") if p else False
+
+
 class SellerProductBasketSerializer(serializers.ModelSerializer):
     company_name = serializers.CharField(source="company.company_name", read_only=True)
     items = SellerProductBasketItemSerializer(many=True, read_only=True)

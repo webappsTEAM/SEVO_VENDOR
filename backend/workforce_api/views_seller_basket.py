@@ -20,6 +20,7 @@ from workforce_api.models import (
     SellerProduct,
     SellerProductBasket,
     SellerProductBasketItem,
+    SellerProductBasketItemOption,
     SellerInventory,
 )
 from workforce_api.serializers import (
@@ -41,8 +42,85 @@ def _get_seller_company(user):
     emp = getattr(user, "employee_profile", None)
     if emp and getattr(emp, "company", None):
         return emp.company
-    # 3. Superuser override if company_id query param passed
     return None
+
+
+def _parse_slots_payload(data):
+    """
+    Parses either `slots` list or legacy `items` list into normalized slot definitions:
+    [
+       {
+          "slot_title": str,
+          "quantity": int,
+          "product_ids": [int, ...],
+          "default_product_id": int
+       },
+       ...
+    ]
+    """
+    slots_input = data.get("slots")
+    if isinstance(slots_input, list) and len(slots_input) > 0:
+        parsed_slots = []
+        for s in slots_input:
+            if not isinstance(s, dict):
+                continue
+            title = str(s.get("slot_title") or s.get("title") or "").strip()
+            qty = max(1, int(s.get("quantity", 1)))
+            p_ids = []
+            for pid in s.get("product_ids", []):
+                try:
+                    p_ids.append(int(pid))
+                except (ValueError, TypeError):
+                    pass
+            # If product_id single field was passed:
+            if not p_ids and s.get("product_id"):
+                try:
+                    p_ids.append(int(s.get("product_id")))
+                except (ValueError, TypeError):
+                    pass
+
+            # Deduplicate preserving order
+            seen = set()
+            dedup_p_ids = [x for x in p_ids if not (x in seen or seen.add(x))]
+            if not dedup_p_ids:
+                continue
+
+            def_pid = s.get("default_product_id")
+            try:
+                def_pid = int(def_pid) if def_pid is not None else None
+            except (ValueError, TypeError):
+                def_pid = None
+            if def_pid not in dedup_p_ids:
+                def_pid = dedup_p_ids[0]
+
+            parsed_slots.append({
+                "slot_title": title,
+                "quantity": qty,
+                "product_ids": dedup_p_ids,
+                "default_product_id": def_pid,
+            })
+        return parsed_slots
+
+    items_input = data.get("items")
+    if isinstance(items_input, list) and len(items_input) > 0:
+        parsed_slots = []
+        for it in items_input:
+            if not isinstance(it, dict) or "product_id" not in it:
+                continue
+            try:
+                pid = int(it["product_id"])
+                qty = max(1, int(it.get("quantity", 1)))
+                parsed_slots.append({
+                    "slot_title": str(it.get("slot_title") or ""),
+                    "quantity": qty,
+                    "product_ids": [pid],
+                    "default_product_id": pid,
+                })
+            except (ValueError, TypeError):
+                continue
+        return parsed_slots
+
+    return []
 
 
 class SellerProductBasketCalculatePreviewView(APIView):
@@ -51,19 +129,11 @@ class SellerProductBasketCalculatePreviewView(APIView):
     Lightweight, server-side authoritative pricing & margin calculator preview.
     Does NOT write to database.
     Accepts:
-      - items: [{"product_id": int, "quantity": int}]
+      - slots: [{"slot_title": str, "quantity": int, "product_ids": [int], "default_product_id": int}]
+      - OR items: [{"product_id": int, "quantity": int}] (legacy)
       - pricing_mode: "MARGIN" | "FIXED_PRICE"
       - margin_percent: float/decimal (optional)
       - selling_price: float/decimal (optional)
-    Returns:
-      - total_mrp
-      - total_procurement_price
-      - selling_price
-      - margin_percent
-      - profit_amount (selling_price - total_procurement_price)
-      - savings_vs_mrp (total_mrp - selling_price)
-      - missing_procurement_products: list[str]
-      - items_detail: list of item stats
     """
     permission_classes = [permissions.IsAuthenticated]
 
@@ -74,11 +144,12 @@ class SellerProductBasketCalculatePreviewView(APIView):
         if is_admin and target_company_id:
             company = Company.objects.filter(id=target_company_id).first()
 
-        items_payload = request.data.get("items", [])
-        if not isinstance(items_payload, list) or len(items_payload) == 0:
+        slots = _parse_slots_payload(request.data)
+        if len(slots) == 0:
             return Response(
                 {
                     "item_count": 0,
+                    "slot_count": 0,
                     "total_mrp": "0.00",
                     "total_procurement_price": "0.00",
                     "selling_price": "0.00",
@@ -87,24 +158,16 @@ class SellerProductBasketCalculatePreviewView(APIView):
                     "savings_vs_mrp": "0.00",
                     "missing_procurement_products": [],
                     "items_detail": [],
+                    "slots_detail": [],
                 },
                 status=status.HTTP_200_OK,
             )
 
-        product_ids = []
-        qty_map = {}
-        for it in items_payload:
-            if isinstance(it, dict) and it.get("product_id"):
-                try:
-                    pid = int(it["product_id"])
-                    qty = max(1, int(it.get("quantity", 1)))
-                    product_ids.append(pid)
-                    qty_map[pid] = qty
-                except (ValueError, TypeError):
-                    continue
+        all_pids = set()
+        for s in slots:
+            all_pids.update(s["product_ids"])
 
-        # Fetch products from company (or all if admin)
-        qs = SellerProduct.objects.filter(id__in=product_ids).select_related("inventory", "company").prefetch_related("images")
+        qs = SellerProduct.objects.filter(id__in=list(all_pids)).select_related("inventory", "company").prefetch_related("images")
         if company:
             qs = qs.filter(company=company)
 
@@ -113,37 +176,79 @@ class SellerProductBasketCalculatePreviewView(APIView):
         total_mrp = Decimal("0.00")
         total_procurement_price = Decimal("0.00")
         missing_procurement = []
+        slots_detail = []
         items_detail = []
 
-        for pid in product_ids:
-            p = products.get(pid)
-            if not p:
-                continue
-            qty = Decimal(str(qty_map.get(pid, 1)))
-            mrp = p.mrp or Decimal("0.00")
-            total_mrp += mrp * qty
+        for slot_idx, slot in enumerate(slots):
+            slot_qty = Decimal(str(slot["quantity"]))
+            def_pid = slot["default_product_id"]
+            def_p = products.get(def_pid)
 
-            if p.procurement_price is None:
-                missing_procurement.append(p.title)
-            else:
-                total_procurement_price += p.procurement_price * qty
+            # Slot totals based on default option
+            if def_p:
+                total_mrp += (def_p.mrp or Decimal("0.00")) * slot_qty
+                if def_p.procurement_price is None:
+                    missing_procurement.append(def_p.title)
+                else:
+                    total_procurement_price += def_p.procurement_price * slot_qty
 
-            inv = getattr(p, "inventory", None)
-            avail_qty = max(Decimal("0.000"), (inv.on_hand_qty - inv.reserved_qty)) if inv else Decimal("0.000")
-            primary_img = p.images.filter(is_primary=True).first() or p.images.first()
+            options_detail = []
+            for pid in slot["product_ids"]:
+                p = products.get(pid)
+                if not p:
+                    continue
+                if p.procurement_price is None and p.title not in missing_procurement:
+                    missing_procurement.append(p.title)
 
-            items_detail.append({
-                "product_id": p.id,
-                "title": p.title,
-                "sku": p.sku,
-                "unit": p.unit,
-                "mrp": str(p.mrp),
-                "selling_price": str(p.selling_price),
-                "procurement_price": str(p.procurement_price) if p.procurement_price is not None else None,
-                "quantity": qty_map.get(pid, 1),
-                "available_qty": int(avail_qty) if (avail_qty % 1) == 0 else float(avail_qty),
-                "image_url": primary_img.image_url if primary_img else "",
-                "status": p.status,
+                inv = getattr(p, "inventory", None)
+                avail_qty = max(Decimal("0.000"), (inv.on_hand_qty - inv.reserved_qty)) if inv else Decimal("0.000")
+                primary_img = p.images.filter(is_primary=True).first() or p.images.first()
+
+                opt_info = {
+                    "product_id": p.id,
+                    "title": p.title,
+                    "brand": p.brand or "",
+                    "sku": p.sku,
+                    "unit": p.unit or "",
+                    "pack_size": str(p.pack_size or ""),
+                    "mrp": str(p.mrp),
+                    "selling_price": str(p.selling_price),
+                    "procurement_price": str(p.procurement_price) if p.procurement_price is not None else None,
+                    "is_default": (p.id == def_pid),
+                    "available_qty": int(avail_qty) if (avail_qty % 1) == 0 else float(avail_qty),
+                    "image_url": primary_img.image_url if primary_img else "",
+                    "status": p.status,
+                }
+                options_detail.append(opt_info)
+
+            # Legacy items_detail entry representing the slot
+            target_p = def_p or (products.get(slot["product_ids"][0]) if slot["product_ids"] else None)
+            if target_p:
+                inv = getattr(target_p, "inventory", None)
+                avail_qty = max(Decimal("0.000"), (inv.on_hand_qty - inv.reserved_qty)) if inv else Decimal("0.000")
+                primary_img = target_p.images.filter(is_primary=True).first() or target_p.images.first()
+                items_detail.append({
+                    "product_id": target_p.id,
+                    "slot_title": slot["slot_title"],
+                    "title": target_p.title,
+                    "sku": target_p.sku,
+                    "unit": target_p.unit,
+                    "mrp": str(target_p.mrp),
+                    "selling_price": str(target_p.selling_price),
+                    "procurement_price": str(target_p.procurement_price) if target_p.procurement_price is not None else None,
+                    "quantity": slot["quantity"],
+                    "available_qty": int(avail_qty) if (avail_qty % 1) == 0 else float(avail_qty),
+                    "image_url": primary_img.image_url if primary_img else "",
+                    "status": target_p.status,
+                    "options": options_detail,
+                })
+
+            slots_detail.append({
+                "slot_idx": slot_idx,
+                "slot_title": slot["slot_title"],
+                "quantity": slot["quantity"],
+                "default_product_id": def_pid,
+                "options": options_detail,
             })
 
         pricing_mode = str(request.data.get("pricing_mode", "MARGIN")).upper()
@@ -176,7 +281,8 @@ class SellerProductBasketCalculatePreviewView(APIView):
         savings_vs_mrp = max(Decimal("0.00"), total_mrp - computed_selling_price).quantize(Decimal("0.01"))
 
         return Response({
-            "item_count": len(items_detail),
+            "item_count": len(slots_detail),
+            "slot_count": len(slots_detail),
             "total_mrp": str(total_mrp),
             "total_procurement_price": str(total_procurement_price),
             "selling_price": str(computed_selling_price),
@@ -185,13 +291,14 @@ class SellerProductBasketCalculatePreviewView(APIView):
             "savings_vs_mrp": str(savings_vs_mrp),
             "missing_procurement_products": missing_procurement,
             "items_detail": items_detail,
+            "slots_detail": slots_detail,
         }, status=status.HTTP_200_OK)
 
 
 class SellerProductBasketListView(APIView):
     """
     GET /api/workforce/seller-hub/baskets/ - List baskets for caller seller.
-    POST /api/workforce/seller-hub/baskets/ - Create a new basket offer with items.
+    POST /api/workforce/seller-hub/baskets/ - Create a new basket offer with slots & options.
     """
     permission_classes = [permissions.IsAuthenticated]
 
@@ -207,6 +314,9 @@ class SellerProductBasketListView(APIView):
             company = Company.objects.filter(id=target_company_id).first()
 
         queryset = SellerProductBasket.objects.all().prefetch_related(
+            "items__options__product__images",
+            "items__options__product__inventory",
+            "items__options__product__company",
             "items__product__images",
             "items__product__inventory",
             "items__product__company",
@@ -226,7 +336,7 @@ class SellerProductBasketListView(APIView):
 
         baskets = list(queryset)
 
-        # Dynamic stock synchronization: If active basket has stock deficits, update/return out of stock
+        # Dynamic stock synchronization
         for b in baskets:
             if b.status == SellerProductBasket.Status.ACTIVE:
                 is_avail, _, _ = b.check_availability()
@@ -257,34 +367,22 @@ class SellerProductBasketListView(APIView):
         if not title:
             return Response({"error": "Basket title is required."}, status=status.HTTP_400_BAD_REQUEST)
 
-        items_payload = request.data.get("items", [])
-        if not isinstance(items_payload, list) or len(items_payload) < 3:
+        slots = _parse_slots_payload(request.data)
+        if len(slots) < 3:
             return Response(
-                {"error": "A basket offer must contain at least 3 distinct products.", "code": "MIN_ITEMS_REQUIRED"},
+                {"error": "A basket combo offer must contain at least 3 distinct slots / products.", "code": "MIN_ITEMS_REQUIRED"},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Parse and validate distinct products
-        product_qtys = {}
-        for it in items_payload:
-            if not isinstance(it, dict) or "product_id" not in it:
-                continue
-            try:
-                pid = int(it["product_id"])
-                qty = max(1, int(it.get("quantity", 1)))
-                product_qtys[pid] = qty
-            except (ValueError, TypeError):
-                continue
+        # Collect all product IDs
+        all_product_ids = set()
+        for s in slots:
+            all_product_ids.update(s["product_ids"])
 
-        if len(product_qtys) < 3:
-            return Response(
-                {"error": "A basket offer must contain at least 3 distinct products.", "code": "MIN_ITEMS_REQUIRED"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        prods = list(SellerProduct.objects.filter(id__in=list(all_product_ids)).select_related("inventory"))
+        prod_map = {p.id: p for p in prods}
 
-        # Fetch products and verify company scoping and approval
-        prods = list(SellerProduct.objects.filter(id__in=product_qtys.keys()).select_related("inventory"))
-        if len(prods) < len(product_qtys):
+        if len(prod_map) < len(all_product_ids):
             return Response(
                 {"error": "One or more selected products were not found in the catalog.", "code": "PRODUCT_NOT_FOUND"},
                 status=status.HTTP_400_BAD_REQUEST
@@ -339,12 +437,28 @@ class SellerProductBasketListView(APIView):
                 status=SellerProductBasket.Status.DRAFT,
             )
 
-            for pid, qty in product_qtys.items():
-                SellerProductBasketItem.objects.create(
+            for order_idx, slot in enumerate(slots):
+                def_pid = slot["default_product_id"]
+                def_prod = prod_map.get(def_pid)
+
+                b_item = SellerProductBasketItem.objects.create(
                     basket=basket,
-                    product_id=pid,
-                    quantity=qty,
+                    slot_title=slot["slot_title"],
+                    product=def_prod,
+                    quantity=slot["quantity"],
+                    display_order=order_idx,
                 )
+
+                for opt_idx, pid in enumerate(slot["product_ids"]):
+                    opt_prod = prod_map.get(pid)
+                    if not opt_prod:
+                        continue
+                    SellerProductBasketItemOption.objects.create(
+                        basket_item=b_item,
+                        product=opt_prod,
+                        is_default=(pid == def_pid),
+                        display_order=opt_idx,
+                    )
 
             # Authoritative server-side recalculation
             basket.recalculate_totals(save=True)
@@ -357,7 +471,12 @@ class SellerProductBasketListView(APIView):
                     basket.status = SellerProductBasket.Status.ACTIVE
                 basket.save(update_fields=["status", "updated_at"])
 
-        refreshed = SellerProductBasket.objects.prefetch_related("items__product__images", "items__product__inventory").get(id=basket.id)
+        refreshed = SellerProductBasket.objects.prefetch_related(
+            "items__options__product__images",
+            "items__options__product__inventory",
+            "items__product__images",
+            "items__product__inventory",
+        ).get(id=basket.id)
         serializer = SellerProductBasketSerializer(refreshed)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
@@ -365,7 +484,7 @@ class SellerProductBasketListView(APIView):
 class SellerProductBasketDetailView(APIView):
     """
     GET /api/workforce/seller-hub/baskets/<id>/ - Retrieve basket details.
-    PUT / PATCH /api/workforce/seller-hub/baskets/<id>/ - Update basket & items.
+    PUT / PATCH /api/workforce/seller-hub/baskets/<id>/ - Update basket & items/slots.
     DELETE /api/workforce/seller-hub/baskets/<id>/ - Delete basket.
     """
     permission_classes = [permissions.IsAuthenticated]
@@ -374,6 +493,9 @@ class SellerProductBasketDetailView(APIView):
         company = _get_seller_company(request.user)
         is_admin = request.user.is_superuser or getattr(request.user, "is_staff", False)
         qs = SellerProductBasket.objects.prefetch_related(
+            "items__options__product__images",
+            "items__options__product__inventory",
+            "items__options__product__company",
             "items__product__images",
             "items__product__inventory",
             "items__product__company",
@@ -427,31 +549,21 @@ class SellerProductBasketDetailView(APIView):
                 pass
 
         with transaction.atomic():
-            if "items" in data and isinstance(data["items"], list):
-                items_payload = data["items"]
-                if len(items_payload) < 3:
+            if ("slots" in data and isinstance(data["slots"], list)) or ("items" in data and isinstance(data["items"], list)):
+                slots = _parse_slots_payload(data)
+                if len(slots) < 3:
                     return Response(
-                        {"error": "A basket offer must contain at least 3 distinct products.", "code": "MIN_ITEMS_REQUIRED"},
+                        {"error": "A basket offer must contain at least 3 distinct slots / products.", "code": "MIN_ITEMS_REQUIRED"},
                         status=status.HTTP_400_BAD_REQUEST
                     )
 
-                product_qtys = {}
-                for it in items_payload:
-                    if isinstance(it, dict) and "product_id" in it:
-                        try:
-                            pid = int(it["product_id"])
-                            qty = max(1, int(it.get("quantity", 1)))
-                            product_qtys[pid] = qty
-                        except (ValueError, TypeError):
-                            continue
+                all_product_ids = set()
+                for s in slots:
+                    all_product_ids.update(s["product_ids"])
 
-                if len(product_qtys) < 3:
-                    return Response(
-                        {"error": "A basket offer must contain at least 3 distinct products.", "code": "MIN_ITEMS_REQUIRED"},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
+                prods = list(SellerProduct.objects.filter(id__in=list(all_product_ids)))
+                prod_map = {p.id: p for p in prods}
 
-                prods = list(SellerProduct.objects.filter(id__in=product_qtys.keys()))
                 for p in prods:
                     if p.company_id != basket.company_id:
                         return Response(
@@ -464,13 +576,30 @@ class SellerProductBasketDetailView(APIView):
                             status=status.HTTP_400_BAD_REQUEST
                         )
 
+                # Recreate slots and options
                 basket.items.all().delete()
-                for pid, qty in product_qtys.items():
-                    SellerProductBasketItem.objects.create(
+                for order_idx, slot in enumerate(slots):
+                    def_pid = slot["default_product_id"]
+                    def_prod = prod_map.get(def_pid)
+
+                    b_item = SellerProductBasketItem.objects.create(
                         basket=basket,
-                        product_id=pid,
-                        quantity=qty,
+                        slot_title=slot["slot_title"],
+                        product=def_prod,
+                        quantity=slot["quantity"],
+                        display_order=order_idx,
                     )
+
+                    for opt_idx, pid in enumerate(slot["product_ids"]):
+                        opt_prod = prod_map.get(pid)
+                        if not opt_prod:
+                            continue
+                        SellerProductBasketItemOption.objects.create(
+                            basket_item=b_item,
+                            product=opt_prod,
+                            is_default=(pid == def_pid),
+                            display_order=opt_idx,
+                        )
 
             basket.recalculate_totals(save=True)
 
@@ -488,7 +617,12 @@ class SellerProductBasketDetailView(APIView):
                     basket.status = st
                 basket.save(update_fields=["status", "updated_at"])
 
-        refreshed = SellerProductBasket.objects.prefetch_related("items__product__images", "items__product__inventory").get(id=basket.id)
+        refreshed = SellerProductBasket.objects.prefetch_related(
+            "items__options__product__images",
+            "items__options__product__inventory",
+            "items__product__images",
+            "items__product__inventory",
+        ).get(id=basket.id)
         serializer = SellerProductBasketSerializer(refreshed)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -536,7 +670,12 @@ class SellerProductBasketActivateView(APIView):
         basket.recalculate_totals(save=True)
         basket.save(update_fields=["status", "updated_at"])
 
-        refreshed = SellerProductBasket.objects.prefetch_related("items__product__images", "items__product__inventory").get(id=basket.id)
+        refreshed = SellerProductBasket.objects.prefetch_related(
+            "items__options__product__images",
+            "items__options__product__inventory",
+            "items__product__images",
+            "items__product__inventory",
+        ).get(id=basket.id)
         serializer = SellerProductBasketSerializer(refreshed)
         return Response({"message": "Basket activated successfully.", "basket": serializer.data}, status=status.HTTP_200_OK)
 

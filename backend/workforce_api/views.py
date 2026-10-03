@@ -3085,17 +3085,51 @@ def sync_payment_amount_due(pmt, job):
 def is_employee_authorized_for_job(emp, job) -> bool:
     """
     Validates tenant compatibility between an employee and a job:
-    - Solo technician (emp.company_id is None) can handle platform jobs (job.company_id in (None, 1)).
-    - Platform technician (emp.company_id == 1) can handle platform jobs (job.company_id in (None, 1)).
-    - Vendor technician (emp.company_id > 1) can only handle jobs belonging to their own company (job.company_id == emp.company_id).
+    - Direct company match (job.company_id == emp.company_id) or platform job match.
+    - Platform delivery fleet (emp.company_id in (None, 1)) for DELIVERY / sevo_delivery_partner jobs.
+    - Technician holding an active or valid WorkforceJobOffer for this job.
+    - Active VendorTechnicianRelationship between technician and job company.
     """
     if not emp or not job:
         return False
     job_cid = getattr(job, "company_id", None)
     emp_cid = getattr(emp, "company_id", None)
-    if emp_cid is None or emp_cid == 1:
-        return job_cid is None or job_cid == 1
-    return job_cid == emp_cid
+
+    # 1. Direct company match or platform job match
+    if job_cid == emp_cid:
+        return True
+    if (emp_cid is None or emp_cid == 1) and (job_cid is None or job_cid == 1):
+        return True
+
+    # 2. Platform delivery fleet can fulfill marketplace delivery orders
+    is_delivery_job = (
+        getattr(job, "job_type", "") == "DELIVERY"
+        or getattr(job, "service_category", "") in (
+            "sevo_delivery_partner",
+            "goods_transport_two_wheeler",
+            "goods_transport_truck",
+            "goods_transport",
+        )
+    )
+    if is_delivery_job and (emp_cid is None or emp_cid == 1):
+        return True
+
+    # 3. Technician holding an active/valid offer for this job
+    from workforce_api.models import WorkforceJobOffer
+    if WorkforceJobOffer.objects.filter(job=job, employee=emp).exclude(status__in=["REJECTED", "DECLINED", "EXPIRED", "CANCELLED"]).exists():
+        return True
+
+    # 4. Active VendorTechnicianRelationship
+    if job_cid:
+        from workforce_api.models import VendorTechnicianRelationship
+        if VendorTechnicianRelationship.objects.filter(
+            technician=emp,
+            vendor_id=job_cid,
+            status=VendorTechnicianRelationship.Status.ACTIVE,
+        ).exists():
+            return True
+
+    return False
 
 
 class WorkforceJobListView(APIView):
@@ -3402,6 +3436,29 @@ class WorkforceJobListView(APIView):
                     elif eid in ind_wallets:
                         wallets_map[eid] = (ind_wallets[eid], "INDIVIDUAL_WORKER")
 
+            # 10. Bulk resolve active clock-in time for assigned employees
+            clock_in_map = {}
+            if emp_ids:
+                try:
+                    from time_tracking.models import TimeLog
+                    open_logs = list(TimeLog.objects.filter(employee_id__in=emp_ids, clock_out__isnull=True).order_by("id"))
+                    for ol in open_logs:
+                        if ol.clock_in:
+                            clock_in_map[ol.employee_id] = ol.clock_in.isoformat()
+                except Exception:
+                    pass
+
+            # 11. Bulk resolve invoices to avoid per-row queries
+            invoices_map = {}
+            try:
+                from workforce_api.models import WorkforceInvoice
+                invoices = list(WorkforceInvoice.objects.filter(job_id__in=job_ids).exclude(status=WorkforceInvoice.Status.CANCELLED))
+                for inv in invoices:
+                    if inv.job_id not in invoices_map:
+                        invoices_map[inv.job_id] = inv
+            except Exception:
+                pass
+
         context = {
             "request": request,
             "emp_offers_map": emp_offers_map,
@@ -3415,9 +3472,13 @@ class WorkforceJobListView(APIView):
             "trip_stops_map": trip_stops_map,
             "emp_jobs_map": emp_jobs_map,
             "wallets_map": wallets_map,
+            "clock_in_map": clock_in_map if job_ids else {},
+            "invoices_map": invoices_map if job_ids else {},
         }
 
+
         serializer = WorkforceJobSerializer(jobs, many=True, context=context)
+
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
@@ -5268,6 +5329,14 @@ class WorkforceJobAcceptOfferView(APIView):
                 company=job_obj.company,
                 related_object_id=job_obj.id,
             )
+
+            # Synchronize linked SellerOrders to ASSIGNED
+            from workforce_api.models import SellerOrder
+            for so in job_obj.seller_orders.all():
+                if so.status in [SellerOrder.Status.READY_FOR_PICKUP, SellerOrder.Status.PACKED, SellerOrder.Status.NEW]:
+                    so.status = SellerOrder.Status.ASSIGNED
+                    so.handling_technician = emp_obj
+                    so.save(update_fields=["status", "handling_technician", "updated_at"])
 
             return Response({
                 "message": f"Job #{job_obj.id} accepted successfully.",
@@ -14655,6 +14724,7 @@ class VendorStoreProfileView(APIView):
             "logo_url": store.logo_url,
             "banner_url": store.banner_url,
             "fssai_license_number": store.fssai_license_number,
+            "gst_number": store.gst_number,
             "store_address": effective_addr,
             "latitude": str(effective_lat) if effective_lat is not None else None,
             "longitude": str(effective_lon) if effective_lon is not None else None,
@@ -14689,7 +14759,7 @@ class VendorStoreProfileView(APIView):
         data = request.data
         updatable_fields = [
             "store_name", "tagline", "description", "logo_url", "banner_url",
-            "fssai_license_number", "store_address", "is_accepting_orders",
+            "fssai_license_number", "gst_number", "store_address", "is_accepting_orders",
             "estimated_delivery_mins",
         ]
         for field in updatable_fields:

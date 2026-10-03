@@ -2784,32 +2784,42 @@ class SellerProductBatchListView(APIView):
 class SellerProductImageUploadView(APIView):
     """
     POST /api/workforce/seller-hub/products/upload-image/ – Secure image upload handler
+    Supports single or multiple file uploads via 'images' or 'image' form fields.
     """
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request):
-        image_file = request.FILES.get("image")
-        if not image_file:
+        image_files = request.FILES.getlist("images") or request.FILES.getlist("image")
+        if not image_files:
+            single = request.FILES.get("image")
+            if single:
+                image_files = [single]
+
+        if not image_files:
             return Response({"error": "No image file provided."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # File size check (< 5MB)
-        if image_file.size > 5 * 1024 * 1024:
-            return Response({"error": "Image file exceeds 5MB maximum limit."}, status=status.HTTP_400_BAD_REQUEST)
+        uploaded_urls = []
+        for image_file in image_files:
+            # File size check (< 5MB)
+            if image_file.size > 5 * 1024 * 1024:
+                return Response({"error": f"Image file '{image_file.name}' exceeds 5MB maximum limit."}, status=status.HTTP_400_BAD_REQUEST)
 
-        content_type = getattr(image_file, "content_type", "").lower()
-        if not any(content_type.startswith(p) for p in ("image/jpeg", "image/png", "image/webp", "image/gif")):
-            return Response({"error": "Invalid image format. Allowed formats: JPG, PNG, WEBP, GIF."}, status=status.HTTP_400_BAD_REQUEST)
+            content_type = getattr(image_file, "content_type", "").lower()
+            if not any(content_type.startswith(p) for p in ("image/jpeg", "image/png", "image/webp", "image/gif")):
+                return Response({"error": f"Invalid image format for '{image_file.name}'. Allowed formats: JPG, PNG, WEBP, GIF."}, status=status.HTTP_400_BAD_REQUEST)
 
-        ext = os.path.splitext(image_file.name)[1].lower() or ".jpg"
-        unique_name = f"seller_products/{uuid.uuid4().hex}{ext}"
-        saved_path = default_storage.save(unique_name, image_file)
-        image_url = default_storage.url(saved_path)
+            ext = os.path.splitext(image_file.name)[1].lower() or ".jpg"
+            unique_name = f"seller_products/{uuid.uuid4().hex}{ext}"
+            saved_path = default_storage.save(unique_name, image_file)
+            image_url = default_storage.url(saved_path)
+            uploaded_urls.append(image_url)
 
         return Response(
             {
-                "message": "Image uploaded successfully.",
-                "image_url": image_url,
+                "message": f"{len(uploaded_urls)} image(s) uploaded successfully.",
+                "image_url": uploaded_urls[0] if uploaded_urls else "",
+                "image_urls": uploaded_urls,
             },
             status=status.HTTP_201_CREATED
         )
@@ -3572,7 +3582,13 @@ class SellerOrderListView(APIView):
         company_id = _resolve_user_company_id(user)
         is_super = is_platform_reviewer(user)
 
-        queryset = SellerOrder.objects.select_related("company").prefetch_related("items", "items__product")
+        queryset = SellerOrder.objects.select_related(
+            "company",
+            "handling_technician",
+            "handling_technician__user",
+            "dispatch_job",
+        ).prefetch_related("items", "items__product")
+
 
         if not is_super:
             if not company_id:
@@ -3708,7 +3724,7 @@ class SellerOrderStatusTransitionView(APIView):
         if action in ("handover", "deliver") and not getattr(user, "is_superuser", False):
             return Response(
                 {
-                    "error": "Manual handover and delivery actions are disabled. Orders must be verified by the assigned 2-wheeler rider using Pickup and Delivery OTP verification checkpoints.",
+                    "error": "Manual handover and delivery actions are disabled. Orders must be verified by the assigned delivery partner using Pickup and Delivery OTP verification checkpoints.",
                     "code": "MANUAL_HANDOVER_DISABLED",
                     "action": action,
                 },
@@ -3819,7 +3835,7 @@ class SellerOrderStatusTransitionView(APIView):
 
                             sr = ServiceRequest.objects.create(
                                 company=order.company,
-                                service_category="goods_transport_two_wheeler",
+                                service_category="sevo_delivery_partner",
                                 job_type="DELIVERY",
                                 request_kind=ServiceRequest.RequestKind.DIRECT,
                                 customer_name=order.customer_name,
@@ -3854,7 +3870,7 @@ class SellerOrderStatusTransitionView(APIView):
 
                         sr = ServiceRequest.objects.create(
                             company=order.company,
-                            service_category="goods_transport_two_wheeler",
+                            service_category="sevo_delivery_partner",
                             job_type="DELIVERY",
                             request_kind=ServiceRequest.RequestKind.DIRECT,
                             customer_name=order.customer_name,
@@ -3926,7 +3942,7 @@ class SellerOrderStatusTransitionView(APIView):
 
                                 sr = ServiceRequest.objects.create(
                                     company=first_rem.company,
-                                    service_category="goods_transport_two_wheeler",
+                                    service_category="sevo_delivery_partner",
                                     job_type="DELIVERY",
                                     request_kind=ServiceRequest.RequestKind.DIRECT,
                                     customer_name=first_rem.customer_name,
@@ -4664,7 +4680,7 @@ class SellerOrderAdminOverrideView(APIView):
 class SellerOrderAvailableRidersView(APIView):
     """
     GET /api/workforce/seller-hub/orders/<int:pk>/available-riders/
-    Vendor-visible read-only eligibility diagnostics for 2-wheeler riders.
+    Vendor-visible read-only eligibility diagnostics for delivery partners.
     Runs the exact same candidate discovery and gate checks as get_eligible_candidates().
     """
     permission_classes = [permissions.IsAuthenticated]
@@ -4754,7 +4770,7 @@ class SellerOrderRetryDispatchView(APIView):
         if not order.dispatch_job:
             sr = ServiceRequest.objects.create(
                 company=order.company,
-                service_category="goods_transport_two_wheeler",
+                service_category="sevo_delivery_partner",
                 job_type="DELIVERY",
                 request_kind=ServiceRequest.RequestKind.DIRECT,
                 customer_name=order.customer_name,

@@ -136,10 +136,16 @@ export function SellerInventoryPage() {
     reason: 'Initial opening stock setup.',
   });
 
+  const isPollingRef = useRef(false);
+
   // ── Data Fetching ─────────────────────────────────────────────────────────
-  const fetchInventory = useCallback(async () => {
-    setLoading(true);
-    setError('');
+  const fetchInventory = useCallback(async (isSilent = false) => {
+    if (isPollingRef.current && isSilent) return;
+    if (!isSilent) {
+      setLoading(true);
+      setError('');
+    }
+    isPollingRef.current = true;
     try {
       let url = `/api/workforce/seller-hub/inventory/?status=${activeTab}`;
       if (searchQuery.trim()) {
@@ -186,9 +192,14 @@ export function SellerInventoryPage() {
         }
       }
     } catch (err) {
-      setError(err.message || 'Error fetching store inventory.');
+      if (!isSilent) {
+        setError(err.message || 'Error fetching store inventory.');
+      }
     } finally {
-      setLoading(false);
+      isPollingRef.current = false;
+      if (!isSilent) {
+        setLoading(false);
+      }
     }
   }, [token, activeTab, searchQuery, selectedCategory]);
 
@@ -250,8 +261,36 @@ export function SellerInventoryPage() {
   }, []);
 
   useEffect(() => {
-    fetchInventory();
+    fetchInventory(false);
   }, [fetchInventory]);
+
+  // Background Auto-Refresh Polling (every 15s, pause when tab hidden or modal open)
+  useEffect(() => {
+    const isModalOpen = stockInModalItem !== null || adjustModalItem !== null || damageModalItem !== null ||
+      expiredModalItem !== null || thresholdModalItem !== null || initModalOpen || basketBuilderOpen || showInventoryScanner;
+
+    const pollInterval = 15000;
+    const intervalId = setInterval(() => {
+      if (document.visibilityState === 'visible' && !isModalOpen) {
+        fetchInventory(true);
+        if (activeTab === 'BASKET_OFFERS') {
+          fetchBaskets();
+        }
+      }
+    }, pollInterval);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && !isModalOpen) {
+        fetchInventory(true);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [fetchInventory, fetchBaskets, activeTab, stockInModalItem, adjustModalItem, damageModalItem, expiredModalItem, thresholdModalItem, initModalOpen, basketBuilderOpen, showInventoryScanner]);
 
   useEffect(() => {
     fetchCategories();
@@ -564,10 +603,10 @@ export function SellerInventoryPage() {
   };
 
   return (
-    <div className="flex min-h-screen bg-slate-50/50 font-sans text-slate-800">
+    <div className="flex h-screen bg-slate-50/50 font-sans text-slate-800 overflow-hidden">
       <Sidebar />
 
-      <main className="flex-1 min-w-0 flex flex-col pb-16">
+      <main className="flex-1 min-w-0 flex flex-col pb-16 overflow-y-auto">
         {/* ── HEADER ──────────────────────────────────────────────────────── */}
         <header className="bg-white border-b border-slate-200 sticky top-0 z-20 px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-2xs">
           <div className="flex items-center gap-3">
@@ -624,7 +663,7 @@ export function SellerInventoryPage() {
         </header>
 
         {/* ── NOTIFICATIONS / ALERTS ───────────────────────────────────────── */}
-        <div className="px-6 max-w-7xl w-full mx-auto mt-4 space-y-3">
+        <div className="px-6 w-full mt-4 space-y-3">
           {error && (
             <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl flex items-center justify-between text-rose-700 text-xs shadow-2xs">
               <div className="flex items-center gap-2">
@@ -961,8 +1000,17 @@ export function SellerInventoryPage() {
                           </td>
 
                           {/* Reserved */}
-                          <td className="py-3.5 px-4 text-right font-mono text-slate-500">
-                            {reserved.toFixed(3)}
+                          <td className="py-3.5 px-4 text-right font-mono">
+                            {reserved > 0 ? (
+                              <span
+                                className="inline-flex items-center gap-1 font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-lg shadow-2xs"
+                                title={`${reserved.toFixed(3)} ${item.product_unit} reserved for pending customer orders`}
+                              >
+                                <span>{reserved.toFixed(3)}</span>
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 font-normal">0.000</span>
+                            )}
                           </td>
 
                           {/* Available */}
@@ -1657,8 +1705,8 @@ export function SellerInventoryPage() {
                   </p>
                 </div>
                 <div>
-                  <span className="text-[10px] text-slate-400 uppercase font-semibold">Reserved</span>
-                  <p className="text-lg font-black font-mono mt-0.5 text-slate-300">
+                  <span className="text-[10px] text-amber-400 uppercase font-semibold">Reserved</span>
+                  <p className="text-lg font-black font-mono mt-0.5 text-amber-400">
                     {parseFloat(selectedItem.reserved_qty).toFixed(3)}
                   </p>
                 </div>

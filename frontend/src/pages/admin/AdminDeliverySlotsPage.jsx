@@ -286,11 +286,11 @@ export function AdminDeliverySlotsPage() {
   };
 
   return (
-    <div className="flex min-h-screen bg-slate-50 text-slate-900">
+    <div className="flex h-screen bg-slate-50 text-slate-900 overflow-hidden">
       <Sidebar />
 
-      <main className="flex-1 min-w-0 flex flex-col pt-16 lg:pt-0">
-        <div className="p-6 md:p-8 max-w-7xl mx-auto w-full space-y-6">
+      <main className="flex-1 min-w-0 flex flex-col pt-16 lg:pt-0 overflow-y-auto">
+        <div className="p-6 md:p-8 w-full space-y-6">
 
           {/* Header Banner */}
           <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">

@@ -90,10 +90,14 @@ export function WarehouseInventoryPage() {
   const [labelsModalRequest, setLabelsModalRequest] = useState(null);
   const [labelsPaperSize, setLabelsPaperSize] = useState('a4');
 
+  const isPollingRef = useRef(false);
+
   // Fetch Requests
-  const fetchRequests = useCallback(async () => {
+  const fetchRequests = useCallback(async (isSilent = false) => {
+    if (isPollingRef.current && isSilent) return;
+    isPollingRef.current = true;
     try {
-      setError(null);
+      if (!isSilent) setError(null);
       const params = {};
       if (statusFilter !== 'ALL') {
         params.status = statusFilter;
@@ -107,17 +111,45 @@ export function WarehouseInventoryPage() {
       setRequests(data);
     } catch (err) {
       console.error('Failed to load inbound requests:', err);
-      setError(err.message || 'Failed to load inbound requests');
+      if (!isSilent) {
+        setError(err.message || 'Failed to load inbound requests');
+      }
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      isPollingRef.current = false;
+      if (!isSilent) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, [statusFilter, searchQuery]);
 
   useEffect(() => {
     setLoading(true);
-    fetchRequests();
+    fetchRequests(false);
   }, [fetchRequests]);
+
+  // Background Auto-Refresh Polling (every 15s, pause when tab hidden or modal open)
+  useEffect(() => {
+    const isModalActive = scanModalOpen || cameraModalOpen || shortfallModalOpen || showLabelsModal || selectedRequest !== null;
+    const pollInterval = 15000;
+    const intervalId = setInterval(() => {
+      if (document.visibilityState === 'visible' && !isModalActive) {
+        fetchRequests(true);
+      }
+    }, pollInterval);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && !isModalActive) {
+        fetchRequests(true);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [fetchRequests, scanModalOpen, cameraModalOpen, shortfallModalOpen, showLabelsModal, selectedRequest]);
 
   // Maintain focus on the physical barcode input whenever the scan modal is active
   useEffect(() => {
@@ -1181,238 +1213,267 @@ export function WarehouseInventoryPage() {
       )}
 
       {/* ════════════════════════════════════════════════════════════════════ */}
-      {/* PHASE Y: PHYSICAL SCAN-IN & UNIT VERIFICATION MODAL                  */}
+      {/* ════════════════════════════════════════════════════════════════════ */}
+      {/* PHASE Y: PHYSICAL SCAN-IN & UNIT VERIFICATION FULL-SCREEN VIEW        */}
       {/* ════════════════════════════════════════════════════════════════════ */}
       {scanModalOpen && scanModalRequest && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-fadeIn">
-          <div className="bg-white border border-slate-200 rounded-2xl max-w-2xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden text-slate-800">
-            {/* Modal Header */}
-            <div className="p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50/60">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-700 border border-indigo-200 flex items-center justify-center">
-                  <ScanLine className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                    <span>Physical Scan-In Verification</span>
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold">
-                      Req #{scanModalRequest.id}
-                    </span>
-                  </h3>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    Scan each individual unit's Code128 barcode before flipping the batch live
-                  </p>
-                </div>
+        <div className="fixed inset-0 z-50 bg-slate-100 flex flex-col overflow-hidden animate-fadeIn text-slate-800">
+          {/* Top Fullscreen Header */}
+          <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between shadow-xs shrink-0">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-700 border border-indigo-200 flex items-center justify-center shadow-xs">
+                <ScanLine className="w-5 h-5" />
               </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => handleOpenLabelsModal(scanModalRequest)}
-                  className="px-2.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 shadow-xs transition flex items-center gap-1.5"
-                >
-                  <Printer className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>Print Labels PDF</span>
-                </button>
-                <button onClick={handleCloseScanModal} className="text-slate-400 hover:text-slate-600 p-1">
-                  <X className="w-5 h-5" />
-                </button>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-extrabold text-slate-900 tracking-tight">
+                    Physical Scan-In Verification
+                  </h3>
+                  <span className="text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold">
+                    Inbound Req #{scanModalRequest.id}
+                  </span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full">
+                    Kiosk Mode
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Scan each physical unit's Code128 barcode before activating inventory for fulfillment
+                </p>
               </div>
             </div>
 
-            {/* Modal Scrollable Body */}
-            <div className="p-6 overflow-y-auto space-y-4 flex-1">
-              {/* Product Info & Live Progress Strip */}
-              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h4 className="font-bold text-slate-900 text-xs">{scanModalRequest.product_title}</h4>
-                    <div className="text-[11px] font-mono text-slate-500 mt-0.5">
-                      SKU: <span className="text-slate-700 font-bold">{scanModalRequest.product_sku}</span> • Merchant:{' '}
-                      <span className="text-indigo-700 font-bold">{scanModalRequest.company_name}</span>
+            <div className="flex items-center gap-2.5">
+              <button
+                onClick={() => handleOpenLabelsModal(scanModalRequest)}
+                className="px-3.5 py-2 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 shadow-xs transition flex items-center gap-1.5"
+              >
+                <Printer className="w-4 h-4 text-indigo-600" />
+                <span>Print Labels PDF</span>
+              </button>
+              <button
+                onClick={handleCloseScanModal}
+                className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-1.5"
+                title="Exit Full-Screen Verification View"
+              >
+                <X className="w-4 h-4" />
+                <span>Exit Fullscreen</span>
+              </button>
+            </div>
+          </header>
+
+          {/* Fullscreen Workspace Grid */}
+          <div className="flex-1 overflow-y-auto p-6 max-w-7xl w-full mx-auto">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+              {/* Left Column: Product Overview, Progress & Scanner Input (5 cols) */}
+              <div className="lg:col-span-5 space-y-4">
+                {/* Product Info Card */}
+                <div className="p-5 bg-white rounded-2xl border border-slate-200 shadow-xs space-y-4">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                        Inbound Item
+                      </span>
+                      <h4 className="font-extrabold text-slate-900 text-sm leading-snug">
+                        {scanModalRequest.product_title}
+                      </h4>
+                      <div className="text-xs font-mono text-slate-500 mt-1 space-x-2">
+                        <span>SKU: <strong className="text-slate-800">{scanModalRequest.product_sku}</strong></span>
+                        <span>•</span>
+                        <span>Merchant: <strong className="text-indigo-700">{scanModalRequest.company_name}</strong></span>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                        Batch Size
+                      </span>
+                      <div className="font-black text-amber-700 text-base font-mono mt-0.5">
+                        {scanModalRequest.requested_quantity} Units
+                      </div>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Total Requested</span>
-                    <div className="font-black text-amber-700 text-sm font-mono">
-                      {scanModalRequest.requested_quantity} Units
-                    </div>
-                  </div>
-                </div>
 
-                {/* Progress Bar */}
-                {(() => {
-                  const total = scanUnitsList.length || scanModalRequest.requested_quantity || 1;
-                  const received = scanUnitsList.filter((u) => u.status === 'RECEIVED').length;
-                  const percent = Math.round((received / total) * 100);
-                  const isDone = received >= total && total > 0;
+                  {/* Progress Bar & Counter Strip */}
+                  {(() => {
+                    const total = scanUnitsList.length || scanModalRequest.requested_quantity || 1;
+                    const received = scanUnitsList.filter((u) => u.status === 'RECEIVED').length;
+                    const percent = Math.round((received / total) * 100);
+                    const isDone = received >= total && total > 0;
 
-                  return (
-                    <div className="space-y-1.5 pt-1">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-bold text-slate-700 flex items-center gap-1.5">
-                          {isDone ? (
-                            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                          ) : (
-                            <ScanLine className="w-4 h-4 text-indigo-600" />
-                          )}
-                          <span>
-                            {isDone ? 'All Units Verified & Received' : 'Scanning Progress'}
+                    return (
+                      <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-bold text-slate-800 flex items-center gap-1.5">
+                            {isDone ? (
+                              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                            ) : (
+                              <ScanLine className="w-4 h-4 text-indigo-600" />
+                            )}
+                            <span>
+                              {isDone ? 'Batch Verification Complete' : 'Verification Progress'}
+                            </span>
                           </span>
-                        </span>
-                        <span className="font-mono font-black text-indigo-700 text-xs">
-                          {received} of {total} Units ({percent}%)
-                        </span>
+                          <span className="font-mono font-black text-indigo-700 text-xs">
+                            {received} of {total} Units ({percent}%)
+                          </span>
+                        </div>
+                        <div className="w-full bg-slate-200 rounded-full h-3 overflow-hidden border border-slate-300">
+                          <div
+                            className={`h-3 rounded-full transition-all duration-300 ${
+                              isDone ? 'bg-emerald-500' : 'bg-indigo-600'
+                            }`}
+                            style={{ width: `${percent}%` }}
+                          />
+                        </div>
                       </div>
-                      <div className="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden border border-slate-300">
-                        <div
-                          className={`h-2.5 rounded-full transition-all duration-300 ${
-                            isDone ? 'bg-emerald-500' : 'bg-indigo-600'
-                          }`}
-                          style={{ width: `${percent}%` }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })()}
-              </div>
-
-              {/* Success / Error Banners */}
-              {scanSuccess && (
-                <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-700 text-xs flex items-center gap-2.5 animate-fadeIn font-medium shadow-xs">
-                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
-                  <span>{scanSuccess}</span>
-                </div>
-              )}
-
-              {scanError && (
-                <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs flex items-center gap-2.5 animate-fadeIn font-medium shadow-xs">
-                  <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
-                  <span>{scanError}</span>
-                </div>
-              )}
-
-              {/* Barcode Scanner Input Controls */}
-              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                    <QrCode className="w-4 h-4 text-indigo-600" />
-                    <span>Scan Unit Barcode</span>
-                  </label>
-
-                  <button
-                    type="button"
-                    onClick={() => setCameraModalOpen(true)}
-                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs"
-                  >
-                    <Camera className="w-3.5 h-3.5" />
-                    <span>Open Camera Scanner</span>
-                  </button>
+                    );
+                  })()}
                 </div>
 
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    if (manualBarcodeInput.trim() && !scanningInProgress) {
-                      handleProcessScan(manualBarcodeInput);
-                    }
-                  }}
-                  className="flex gap-2"
-                >
-                  <input
-                    ref={barcodeInputRef}
-                    type="text"
-                    value={manualBarcodeInput}
-                    onChange={(e) => setManualBarcodeInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === 'Tab') {
-                        e.preventDefault();
-                        if (manualBarcodeInput.trim() && !scanningInProgress) {
-                          handleProcessScan(manualBarcodeInput);
-                        }
+                {/* Success / Error Banners */}
+                {scanSuccess && (
+                  <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-emerald-800 text-xs flex items-center gap-3 animate-fadeIn font-medium shadow-xs">
+                    <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-600" />
+                    <span>{scanSuccess}</span>
+                  </div>
+                )}
+
+                {scanError && (
+                  <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl text-rose-800 text-xs flex items-center gap-3 animate-fadeIn font-medium shadow-xs">
+                    <AlertTriangle className="w-5 h-5 shrink-0 text-rose-600" />
+                    <span>{scanError}</span>
+                  </div>
+                )}
+
+                {/* Barcode Scanner Input Controls */}
+                <div className="p-5 bg-white rounded-2xl border border-slate-200 shadow-xs space-y-4">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-800 flex items-center gap-2">
+                      <QrCode className="w-4 h-4 text-indigo-600" />
+                      <span>Barcode Scanner Input</span>
+                    </label>
+
+                    <button
+                      type="button"
+                      onClick={() => setCameraModalOpen(true)}
+                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs"
+                    >
+                      <Camera className="w-3.5 h-3.5" />
+                      <span>Open Camera Scanner</span>
+                    </button>
+                  </div>
+
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (manualBarcodeInput.trim() && !scanningInProgress) {
+                        handleProcessScan(manualBarcodeInput);
                       }
                     }}
-                    placeholder="Scan or type unit barcode (e.g. SEVO-INB-0001-001-A1B2C3)..."
-                    readOnly={scanningInProgress}
-                    autoComplete="off"
-                    autoCorrect="off"
-                    spellCheck={false}
-                    autoFocus
-                    className="flex-1 px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 font-mono placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
-                  />
-                  <button
-                    type="submit"
-                    disabled={scanningInProgress || !manualBarcodeInput.trim()}
-                    className="px-4 py-2 bg-slate-900 hover:bg-indigo-600 text-white rounded-xl text-xs font-bold transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-xs"
+                    className="space-y-3"
                   >
-                    {scanningInProgress ? (
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <Check className="w-3.5 h-3.5" />
-                    )}
-                    <span>Verify Scan</span>
-                  </button>
-                </form>
+                    <div className="relative">
+                      <input
+                        ref={barcodeInputRef}
+                        type="text"
+                        value={manualBarcodeInput}
+                        onChange={(e) => setManualBarcodeInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === 'Tab') {
+                            e.preventDefault();
+                            if (manualBarcodeInput.trim() && !scanningInProgress) {
+                              handleProcessScan(manualBarcodeInput);
+                            }
+                          }
+                        }}
+                        placeholder="Scan or type unit barcode (SEVO-INB-...)..."
+                        readOnly={scanningInProgress}
+                        autoComplete="off"
+                        autoCorrect="off"
+                        spellCheck={false}
+                        autoFocus
+                        className="w-full px-4 py-3 bg-slate-50 border border-slate-300 rounded-xl text-sm text-slate-900 font-mono placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 shadow-xs"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={scanningInProgress || !manualBarcodeInput.trim()}
+                      className="w-full py-2.5 bg-slate-900 hover:bg-indigo-600 text-white rounded-xl text-xs font-bold transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-xs"
+                    >
+                      {scanningInProgress ? (
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Check className="w-4 h-4" />
+                      )}
+                      <span>Verify Unit Barcode</span>
+                    </button>
+                  </form>
+                </div>
               </div>
 
-              {/* Units Table */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600">
-                    Generated Unit Serial Barcodes ({scanUnitsList.length})
-                  </h4>
-                  <span className="text-[11px] text-slate-500">
-                    {scanUnitsList.filter((u) => u.status === 'RECEIVED').length} verified of {scanUnitsList.length} total
+              {/* Right Column: Units Serial Barcode Table (7 cols) */}
+              <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden flex flex-col">
+                <div className="p-4 border-b border-slate-200 bg-slate-50/70 flex items-center justify-between">
+                  <div>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                      Unit Serial Barcodes ({scanUnitsList.length})
+                    </h4>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      {scanUnitsList.filter((u) => u.status === 'RECEIVED').length} verified of {scanUnitsList.length} total units
+                    </p>
+                  </div>
+                  <span className="text-[11px] font-mono bg-white px-2.5 py-1 rounded-lg border border-slate-200 font-bold text-slate-700">
+                    Live Table
                   </span>
                 </div>
 
                 {scanModalLoading ? (
-                  <div className="p-8 text-center text-slate-500">
-                    <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-1 text-indigo-600" />
-                    <span className="text-xs">Loading unit barcodes...</span>
+                  <div className="p-16 text-center text-slate-500 my-auto">
+                    <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-indigo-600" />
+                    <span className="text-xs font-semibold">Loading unit barcodes from database...</span>
                   </div>
                 ) : (
-                  <div className="border border-slate-200 rounded-xl overflow-hidden max-h-64 overflow-y-auto shadow-xs">
+                  <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
                     <table className="w-full text-left text-xs">
-                      <thead className="bg-slate-50 text-[10px] uppercase font-bold text-slate-600 sticky top-0 border-b border-slate-200">
+                      <thead className="bg-slate-50 text-[10px] uppercase font-bold text-slate-600 sticky top-0 border-b border-slate-200 z-10">
                         <tr>
-                          <th className="py-2.5 px-3">Unit #</th>
-                          <th className="py-2.5 px-3">Serial Barcode</th>
-                          <th className="py-2.5 px-3">Status</th>
-                          <th className="py-2.5 px-3">Verified At / By</th>
-                          <th className="py-2.5 px-3 text-right">Action</th>
+                          <th className="py-3 px-4">Unit #</th>
+                          <th className="py-3 px-4">Serial Barcode</th>
+                          <th className="py-3 px-4">Status</th>
+                          <th className="py-3 px-4">Verified At / By</th>
+                          <th className="py-3 px-4 text-right">Action</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-200 text-slate-700 font-medium font-mono text-[11px]">
+                      <tbody className="divide-y divide-slate-100 text-slate-700 font-medium font-mono text-[11px]">
                         {scanUnitsList.map((unit) => {
                           const isReceived = unit.status === 'RECEIVED';
 
                           return (
                             <tr
                               key={unit.id}
-                              className={isReceived ? 'bg-emerald-50/50' : 'hover:bg-slate-50/80 transition-colors'}
+                              className={isReceived ? 'bg-emerald-50/40 hover:bg-emerald-50/70 transition-colors' : 'hover:bg-slate-50/80 transition-colors'}
                             >
-                              <td className="py-2 px-3 font-bold text-slate-800">
+                              <td className="py-3 px-4 font-bold text-slate-800 font-sans">
                                 Unit {unit.unit_number}
                               </td>
-                              <td className="py-2 px-3">
-                                <span className="text-indigo-700 font-bold bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                              <td className="py-3 px-4">
+                                <span className="text-indigo-700 font-bold bg-indigo-50 px-2 py-1 rounded-lg border border-indigo-200 text-xs">
                                   {unit.barcode}
                                 </span>
                               </td>
-                              <td className="py-2 px-3">
+                              <td className="py-3 px-4 font-sans">
                                 {isReceived ? (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                                     <CheckCircle2 className="w-3 h-3" />
                                     <span>RECEIVED</span>
                                   </span>
                                 ) : (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
                                     <Clock className="w-3 h-3" />
                                     <span>PENDING</span>
                                   </span>
                                 )}
                               </td>
-                              <td className="py-2 px-3 text-[10px] text-slate-500 font-sans">
+                              <td className="py-3 px-4 text-[10px] text-slate-500 font-sans">
                                 {isReceived ? (
                                   <div>
                                     <span className="text-slate-800 font-medium">
@@ -1426,12 +1487,12 @@ export function WarehouseInventoryPage() {
                                   <span className="text-slate-400">—</span>
                                 )}
                               </td>
-                              <td className="py-2 px-3 text-right">
+                              <td className="py-3 px-4 text-right font-sans">
                                 {!isReceived && (
                                   <button
                                     onClick={() => handleProcessScan(unit.barcode)}
                                     disabled={scanningInProgress}
-                                    className="px-2 py-1 bg-white hover:bg-indigo-50 text-indigo-700 hover:text-indigo-800 rounded text-[10px] font-bold transition border border-slate-200 hover:border-indigo-300 shadow-xs"
+                                    className="px-2.5 py-1 bg-white hover:bg-indigo-50 text-indigo-700 hover:text-indigo-800 rounded-lg text-[11px] font-bold transition border border-slate-200 hover:border-indigo-300 shadow-xs"
                                   >
                                     Simulate Scan
                                   </button>
@@ -1446,43 +1507,45 @@ export function WarehouseInventoryPage() {
                 )}
               </div>
             </div>
-
-            {/* Modal Footer */}
-            <div className="p-4 border-t border-slate-200 bg-slate-50/60 flex items-center justify-between">
-              <div className="text-[11px] text-slate-600 font-medium">
-                {scanModalRequest.is_fully_received || scanModalRequest.status === 'COMPLETED' ? (
-                  <span className="text-emerald-700 font-bold flex items-center gap-1">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600" /> All units received • Live stock updated
-                  </span>
-                ) : scanModalRequest.status === 'SHORT_RECEIVED' ? (
-                  <span className="text-amber-700 font-bold flex items-center gap-1">
-                    <AlertTriangle className="w-4 h-4 text-amber-600" /> Shortfall reported • Waiting for merchant decision
-                  </span>
-                ) : (
-                  <span>Scanning in progress • Units verified one-by-one.</span>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2">
-                {scanModalRequest.status === 'ACCEPTED' && !scanModalRequest.is_fully_received && (
-                  <button
-                    onClick={() => handleOpenShortfallModal(scanModalRequest)}
-                    className="px-3 py-2 bg-white hover:bg-amber-50 text-amber-700 border border-slate-200 hover:border-amber-300 text-xs font-bold rounded-xl shadow-xs transition flex items-center gap-1.5"
-                  >
-                    <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-                    <span>Report Shortfall & Close</span>
-                  </button>
-                )}
-
-                <button
-                  onClick={handleCloseScanModal}
-                  className="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700 rounded-xl shadow-xs transition"
-                >
-                  Close Window
-                </button>
-              </div>
-            </div>
           </div>
+
+          {/* Sticky Fullscreen Footer Bar */}
+          <footer className="bg-white border-t border-slate-200 px-6 py-3.5 flex items-center justify-between shadow-xs shrink-0">
+            <div className="text-xs text-slate-600 font-medium flex items-center gap-2">
+              {scanModalRequest.is_fully_received || scanModalRequest.status === 'COMPLETED' ? (
+                <span className="text-emerald-700 font-bold flex items-center gap-1.5 bg-emerald-50 px-3 py-1 rounded-lg border border-emerald-200">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" /> All units verified & received • Live inventory updated
+                </span>
+              ) : scanModalRequest.status === 'SHORT_RECEIVED' ? (
+                <span className="text-amber-700 font-bold flex items-center gap-1.5 bg-amber-50 px-3 py-1 rounded-lg border border-amber-200">
+                  <AlertTriangle className="w-4 h-4 text-amber-600" /> Shortfall reported • Waiting for merchant decision
+                </span>
+              ) : (
+                <span className="text-slate-500">
+                  Physical scan-in in progress • Each barcode is verified against inbound manifest.
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2.5">
+              {scanModalRequest.status === 'ACCEPTED' && !scanModalRequest.is_fully_received && (
+                <button
+                  onClick={() => handleOpenShortfallModal(scanModalRequest)}
+                  className="px-3.5 py-2 bg-white hover:bg-amber-50 text-amber-700 border border-slate-200 hover:border-amber-300 text-xs font-bold rounded-xl shadow-xs transition flex items-center gap-1.5"
+                >
+                  <AlertTriangle className="w-4 h-4 text-amber-600" />
+                  <span>Report Shortfall & Close</span>
+                </button>
+              )}
+
+              <button
+                onClick={handleCloseScanModal}
+                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold shadow-xs transition"
+              >
+                Close Verification Kiosk
+              </button>
+            </div>
+          </footer>
         </div>
       )}
 

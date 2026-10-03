@@ -489,10 +489,10 @@ export function AdminSellerCategoriesPage() {
   }, [allCategories, editingCategory]);
 
   return (
-    <div className="flex min-h-screen bg-slate-100 font-sans text-slate-800">
+    <div className="flex h-screen bg-slate-100 font-sans text-slate-800 overflow-hidden">
       <Sidebar />
 
-      <main className="flex-1 min-w-0 flex flex-col">
+      <main className="flex-1 min-w-0 flex flex-col overflow-y-auto">
         {/* Header */}
         <header className="bg-white border-b border-slate-200 sticky top-0 z-10 px-8 py-5 flex items-center justify-between shadow-sm">
           <div className="flex items-center gap-3">
