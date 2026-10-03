@@ -22,6 +22,8 @@ class LoginView(APIView):
     authentication_classes = []
 
     def post(self, request):
+        if not hasattr(request.data, "get"):  # GT_BODY_OBJECT: a JSON array/string body crashed with a 500
+            return Response({"error": "Request body must be a JSON object.", "code": "INVALID_BODY"}, status=400)
         from django.db import DatabaseError, OperationalError
         identifier = ""
         lookup_type = "none"

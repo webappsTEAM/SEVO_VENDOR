@@ -22,7 +22,7 @@ import time
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 from workforce_api.services.automatic_dispatch import dispatch_pending_jobs, expire_and_reassign_offers
-from workforce_api.services.customer_webhook import process_pending_outbound_webhooks
+from workforce_api.services.customer_webhook import process_pending_outbound_webhooks, process_exhausted_outbound_webhooks
 
 logger = logging.getLogger("workforce.dispatch.worker")
 
@@ -144,6 +144,10 @@ class Command(BaseCommand):
             try:
                 # 1. Sweep pending/retrying customer webhook notifications
                 webhook_res = process_pending_outbound_webhooks(limit=25)
+                try:
+                    process_exhausted_outbound_webhooks(limit=10)   # GT_WEBHOOK_SLOWLANE
+                except Exception:
+                    logger.exception("exhausted-webhook slow lane failed")
                 # 2. Dispatch pending jobs and sweep expired offers
                 result = dispatch_pending_jobs(limit=limit)
                 pending_found = result.get("pending_jobs_found", 0)

@@ -1799,6 +1799,50 @@ def get_or_create_dispatch_state(job_id: int) -> WorkforceDispatchState:
         return WorkforceDispatchState.objects.get(job_id=job_id)
 
 
+# GT_DISPATCH_INVARIANT -- durable state for held / window-closed scheduled jobs
+def _record_scheduled_hold(job_id, scheduled_dt, window_open):
+    """A HELD scheduled job must own a durable WorkforceDispatchState. Before this, the hold returned early and no row
+    existed, so nothing recorded that Workforce had accepted the job and the later 'mark expired' UPDATE matched zero rows."""
+    DS = WorkforceDispatchState.DispatchStatus
+    msg = (f"Scheduled for {scheduled_dt.strftime('%Y-%m-%d %H:%M')}; dispatch window opens "
+           f"{window_open.strftime('%Y-%m-%d %H:%M')}.")
+    state, created = WorkforceDispatchState.objects.get_or_create(
+        job_id=job_id,
+        defaults=dict(dispatch_status=DS.RETRY_SCHEDULED, retry_at=window_open,
+                      unassigned_reason_code="SCHEDULED_HOLD", unassigned_reason_message=msg),
+    )
+    if not created and state.dispatch_status in (DS.NEVER_ATTEMPTED, DS.RETRY_SCHEDULED):
+        state.dispatch_status = DS.RETRY_SCHEDULED
+        state.retry_at = window_open
+        state.locked_at = None
+        state.unassigned_reason_code = "SCHEDULED_HOLD"
+        state.unassigned_reason_message = msg
+        state.save(update_fields=["dispatch_status", "retry_at", "locked_at", "unassigned_reason_code",
+                                  "unassigned_reason_message", "updated_at"])
+    return state
+
+
+def _record_window_expired(job_id, scheduled_dt, job_obj=None):
+    """Window closed with no vendor: record EXPIRED (creating the row if the job never had one) and put the booking in the
+    existing truthful 'unassigned' status instead of leaving it 'confirmed' forever."""
+    DS = WorkforceDispatchState.DispatchStatus
+    when = scheduled_dt.strftime('%Y-%m-%d %H:%M') if scheduled_dt else 'past date'
+    fields = dict(dispatch_status=DS.EXPIRED, retry_at=None, locked_at=None,
+                  unassigned_reason_code="SCHEDULE_WINDOW_EXPIRED",
+                  unassigned_reason_message=f"Scheduled slot was {when}. Offer window closed.")
+    state, created = WorkforceDispatchState.objects.get_or_create(job_id=job_id, defaults=fields)
+    if not created and state.dispatch_status not in (DS.ASSIGNED, DS.COMPLETED, DS.CANCELLED):
+        for k, v in fields.items():
+            setattr(state, k, v)
+        state.save(update_fields=list(fields) + ["updated_at"])
+    if job_obj is not None and getattr(job_obj, "status", None) in ("confirmed", "new_request", "reviewed", "requested", "pending", "searching"):
+        try:
+            apply_transition(job_obj, "unassigned")
+        except Exception:
+            logger.exception("[DISPATCH_WINDOW_EXPIRED] could not move Job #%s to unassigned", job_id)
+    return state
+
+
 def dispatch_job(
     job_id_or_obj,
     max_gps_age_seconds: int = MAX_GPS_AGE_SECONDS,
@@ -1885,6 +1929,7 @@ def _dispatch_job_two_phase(job_id, max_gps_age_seconds: int = MAX_GPS_AGE_SECON
                 f"[DISPATCH_SCHEDULED_HOLD] Job #{job_id} is scheduled for {scheduled_dt.isoformat()}. "
                 f"Dispatch window opens at {window_open.isoformat()}. Holding job."
             )
+            _record_scheduled_hold(job_id, scheduled_dt, window_open)
             return True, f"Scheduled job held: service is at {scheduled_dt.strftime('%Y-%m-%d %H:%M')}; dispatch window opens at {window_open.strftime('%H:%M')}."
 
         if getattr(win, "is_closed", False):
@@ -1892,13 +1937,7 @@ def _dispatch_job_two_phase(job_id, max_gps_age_seconds: int = MAX_GPS_AGE_SECON
                 f"[DISPATCH_SCHEDULE_WINDOW_CLOSED] Job #{job_id} scheduled offer window closed (service was at {scheduled_dt.isoformat() if scheduled_dt else 'past date'}). "
                 f"Refusing new offer dispatch."
             )
-            WorkforceDispatchState.objects.filter(job_id=job_id).update(
-                dispatch_status=WorkforceDispatchState.DispatchStatus.EXPIRED,
-                retry_at=None,
-                locked_at=None,
-                unassigned_reason_code="SCHEDULE_WINDOW_EXPIRED",
-                unassigned_reason_message=f"Scheduled slot was {scheduled_dt.strftime('%Y-%m-%d %H:%M') if scheduled_dt else 'past date'}. Offer window closed.",
-            )
+            _record_window_expired(job_id, scheduled_dt, job_obj)
             return False, f"Scheduled job offer window closed: service was at {scheduled_dt.strftime('%Y-%m-%d %H:%M') if scheduled_dt else 'past date'}."
 
         # Active unexpired offer check
@@ -2460,11 +2499,7 @@ def dispatch_pending_jobs(company_id=None, limit: int = 50) -> Dict[str, Any]:
         if getattr(win, "is_closed", False):
             # Window has closed; mark expired once so it's not repeatedly queried
             logger.info(f"[DISPATCH_PENDING_WINDOW_CLOSED] Job #{job.id} scheduled window closed. Marking expired.")
-            WorkforceDispatchState.objects.filter(job_id=job.id).update(
-                dispatch_status=WorkforceDispatchState.DispatchStatus.EXPIRED,
-                retry_at=None,
-                locked_at=None,
-            )
+            _record_window_expired(job.id, win.scheduled_dt, job)
             continue
 
         # Check retry backoff if in RETRY_SCHEDULED

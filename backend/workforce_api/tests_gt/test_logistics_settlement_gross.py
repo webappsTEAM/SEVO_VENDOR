@@ -57,3 +57,22 @@ class SettlementGrossTests(TestCase):
         # 584 - 10% commission = 525.60 net, plus the 85.00 toll refunded untouched.
         self.assertEqual(created[0]["signed_amount"], Decimal("610.60"))
         self.assertEqual(created[1]["signed_amount"], Decimal("-58.40"))
+
+
+class LaneFixedFareSettlementTests(SettlementGrossTests):
+    """GT_LANE_FARE: a lane-fixed booking settles on the same authoritative total the customer was quoted and paid
+    (lane fare 900 + loading 80 = 980); the stale prepaid row and the lane basis never change the gross."""
+    def test_lane_fixed_booking_settles_on_booking_total(self):
+        job = _job("980.00")
+        job.fare_breakdown = {"fare_basis": "lane_fixed", "lane_id": 1, "lane_fixed_fare": "900.00", "total": "980.00"}
+        created = self._created(job, due="980.00")
+        self.assertEqual(created[0]["gross_job_amount"], Decimal("980.00"))
+        self.assertEqual(created[0]["signed_amount"], Decimal("882.00"))    # 980 - 10%
+        self.assertEqual(created[1]["signed_amount"], Decimal("-98.00"))
+
+    def test_lane_fixed_with_toll_and_stale_payment_row(self):
+        job = _job("1065.00", extras=[{"status": "APPLIED", "amount": "85.00"}])
+        job.fare_breakdown = {"fare_basis": "lane_fixed"}
+        created = self._created(job, due="500.00")                          # stale prepaid row ignored
+        self.assertEqual(created[0]["gross_job_amount"], Decimal("980.00"))
+        self.assertEqual(created[0]["signed_amount"], Decimal("967.00"))    # 882 net + 85 toll refunded

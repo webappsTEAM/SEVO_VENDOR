@@ -31,6 +31,11 @@ logger = logging.getLogger("workforce_api.customer_webhook")
 _WEBHOOK_TIMEOUT_SECONDS = 4
 MAX_WEBHOOK_ATTEMPTS = 10
 WEBHOOK_RETRY_BACKOFF_SECONDS = [5, 15, 60, 180, 300, 600, 900, 1800]
+# GT_WEBHOOK_SLOWLANE: after MAX_WEBHOOK_ATTEMPTS the record used to be stranded FAILED forever (~1.6h of outage). The worker loop now also
+# calls process_exhausted_outbound_webhooks(): exhausted records are retried once an hour for SLOW_LANE_WINDOW_HOURS after creation.
+SLOW_LANE_INTERVAL_HOURS = 1
+SLOW_LANE_WINDOW_HOURS = 72
+SLOW_LANE_MAX_ATTEMPTS = 72
 
 
 def _compute_next_retry_at(attempt: int):
@@ -182,6 +187,29 @@ def notify_customer_app(event_type: str, service_request, **extra_payload) -> st
     except Exception as exc:
         logger.warning(f"[NOTIFY_CUSTOMER_FAIL] Could not enqueue durable webhook for '{event_type}': {exc}")
         return ""
+
+
+def process_exhausted_outbound_webhooks(limit: int = 10) -> dict:
+    """GT_WEBHOOK_SLOWLANE: hourly retry of FAILED webhooks whose fast retries are exhausted (bounded in time and attempts)."""
+    from datetime import timedelta as _slow_td
+    from workforce_api.models import WorkforceOutboundWebhook
+    now = timezone.now()
+    records = list(
+        WorkforceOutboundWebhook.objects.filter(
+            status=WorkforceOutboundWebhook.Status.FAILED,
+            attempts__gte=MAX_WEBHOOK_ATTEMPTS,
+            attempts__lt=MAX_WEBHOOK_ATTEMPTS + SLOW_LANE_MAX_ATTEMPTS,
+            last_attempt_at__lte=now - _slow_td(hours=SLOW_LANE_INTERVAL_HOURS),
+            created_at__gte=now - _slow_td(hours=SLOW_LANE_WINDOW_HOURS),
+        ).order_by("last_attempt_at", "id")[:limit]
+    )
+    delivered = failed = 0
+    for rec in records:
+        if send_outbound_webhook_record(rec):
+            delivered += 1
+        else:
+            failed += 1
+    return {"exhausted_found": len(records), "delivered": delivered, "still_failing": failed}
 
 
 def process_pending_outbound_webhooks(limit: int = 25) -> dict:

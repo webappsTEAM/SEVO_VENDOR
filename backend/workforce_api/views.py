@@ -3426,6 +3426,8 @@ class WorkforceJobTransitionView(APIView):
     permission_classes = [IsApprovedTechnician]
 
     def post(self, request, pk):
+        if not hasattr(request.data, "get"):  # GT_BODY_OBJECT: a JSON array/string body crashed with a 500
+            return Response({"error": "Request body must be a JSON object.", "code": "INVALID_BODY"}, status=400)
         job = ServiceRequest.objects.filter(pk=pk).first()
         if not job:
             return Response({"error": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
@@ -4669,27 +4671,33 @@ class WorkforceCustomerPaymentConfirmView(APIView):
 
                 if job.status == "proof_submitted" and is_fully_settled:
                     try:
-                        admin_user = None
-                        if job.company:
-                            admin_user = get_user_model().objects.filter(
-                                Q(role__in=["admin", "manager"]) | Q(is_staff=True),
-                                company=job.company,
-                            ).first()
-                        if admin_user:
-                            WorkforceNotification.objects.create(
-                                recipient=admin_user,
-                                title="Payment Confirmed but Job Did Not Close",
-                                message=(
-                                    f"Job #{job.id} ({job.request_id}) payment was confirmed PAID but the job "
-                                    f"could not be marked completed: {completion_blocked_reason} Wallet was NOT "
-                                    f"credited. Run `complete_stuck_paid_jobs --job {job.request_id}` once resolved."
-                                ),
-                                notification_type="JOB_COMPLETION_BLOCKED",
-                                company=job.company,
-                                related_object_id=str(job.id),
-                            )
-                    except Exception as notify_err:
-                        logger.warning(f"Could not notify admin of blocked completion for Job #{job.id}: {notify_err}")
+                        apply_transition(job, "completed", actor=request.user)  # GT_CONFIRM_COMPLETE
+                    except ValidationError as ve:
+                        completion_blocked_reason = str(ve)
+                        logger.warning("Could not complete job #%s after customer payment confirm: %s", job.id, ve)
+                        job.save(update_fields=["payment_status"])
+                        try:
+                            admin_user = None
+                            if job.company:
+                                admin_user = get_user_model().objects.filter(
+                                    Q(role__in=["admin", "manager"]) | Q(is_staff=True),
+                                    company=job.company,
+                                ).first()
+                            if admin_user:
+                                WorkforceNotification.objects.create(
+                                    recipient=admin_user,
+                                    title="Payment Confirmed but Job Did Not Close",
+                                    message=(
+                                        f"Job #{job.id} ({job.request_id}) payment was confirmed PAID but the job "
+                                        f"could not be marked completed: {completion_blocked_reason} Wallet was NOT "
+                                        f"credited. Run `complete_stuck_paid_jobs --job {job.request_id}` once resolved."
+                                    ),
+                                    notification_type="JOB_COMPLETION_BLOCKED",
+                                    company=job.company,
+                                    related_object_id=str(job.id),
+                                )
+                        except Exception as notify_err:
+                            logger.warning(f"Could not notify admin of blocked completion for Job #{job.id}: {notify_err}")
                     except Exception as e:
                         completion_blocked_reason = str(e)
                         logger.exception("Unexpected error completing job #%s after customer payment confirm: %s", job.id, e)
@@ -5980,6 +5988,8 @@ class WorkforceJobRejectOfferView(APIView):
     permission_classes = [IsApprovedTechnician]
 
     def post(self, request, pk):
+        if not hasattr(request.data, "get"):  # GT_BODY_OBJECT: a JSON array/string body crashed with a 500
+            return Response({"error": "Request body must be a JSON object.", "code": "INVALID_BODY"}, status=400)
         job = ServiceRequest.objects.filter(pk=pk).first()
         if not job:
             return Response({"error": "Job not found.", "code": "JOB_NOT_FOUND"}, status=status.HTTP_404_NOT_FOUND)
@@ -6146,6 +6156,32 @@ class WorkforceAutoDispatchTriggerView(APIView):
         return Response({"message": msg, "success": success, "status": job.status}, status=status.HTTP_200_OK)
 
 
+# GT_DISPATCH_INVARIANT
+def _gt_dispatch_phase(job):
+    """Truthful dispatch phase for the Customer app. Never raises: if the phase cannot be determined the Customer is told
+    UNKNOWN (it then shows PENDING, never DISPATCHED) instead of the whole dispatch call turning into a 500."""
+    try:
+        return _gt_dispatch_phase_inner(job)
+    except Exception:
+        logger.exception("GT dispatch phase could not be determined for job %s", getattr(job, "id", None))
+        return "UNKNOWN"
+
+
+def _gt_dispatch_phase_inner(job):
+    from workforce_api.services import automatic_dispatch as _ad
+    job.refresh_from_db()
+    if getattr(job, "assigned_employee_id", None):
+        return "ASSIGNED"
+    win = _ad.get_scheduled_dispatch_window(job)
+    if win.is_future:
+        return "HELD_SCHEDULED"
+    if getattr(win, "is_closed", False):
+        return "WINDOW_CLOSED"
+    if WorkforceJobOffer.objects.filter(job_id=job.id, status=WorkforceJobOffer.Status.OFFERED, expires_at__gt=timezone.now()).exists():
+        return "OFFER_ACTIVE"
+    return "AWAITING_ELIGIBLE_VENDOR"
+
+
 class WorkforceCrossServiceDispatchView(APIView):
     """
     Direct cross-service dispatch trigger invoked by Customer backend (WorkforceIntegrationService.dispatch_job).
@@ -6199,6 +6235,7 @@ class WorkforceCrossServiceDispatchView(APIView):
             "success": True,
             "accepted": True,
             "allocation_started": allocation_started,
+            "dispatch_phase": _gt_dispatch_phase(job),
             "workforce_job_id": str(job.id),
             "status": job.status,
             "message": msg,

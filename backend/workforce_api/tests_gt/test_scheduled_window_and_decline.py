@@ -353,10 +353,10 @@ class ScheduledWindowClosedExpirationTests(SimpleTestCase):
         self.tz = ZoneInfo("Asia/Kolkata")
         self.today = datetime.date(2026, 9, 19)
 
-    @patch("workforce_api.models.WorkforceDispatchState.objects.filter")
+    @patch("workforce_api.services.automatic_dispatch._record_window_expired")
     @patch("service_requests.models.ServiceRequest.objects.select_for_update")
     @patch("django.db.transaction.atomic")
-    def test_window_closed_marks_expired_and_refuses_dispatch(self, mock_atomic, mock_sfu, mock_dispatch_state_filter):
+    def test_window_closed_marks_expired_and_refuses_dispatch(self, mock_atomic, mock_sfu, mock_record_expired):
         """
         At 11:01 AM for an 11:00 AM job, the scheduled window is closed.
         Dispatch must refuse and mark dispatch state as EXPIRED.
@@ -385,13 +385,8 @@ class ScheduledWindowClosedExpirationTests(SimpleTestCase):
 
         self.assertFalse(ok)
         self.assertIn("offer window closed", reason)
-        mock_dispatch_state_filter.return_value.update.assert_called_with(
-            dispatch_status=WorkforceDispatchState.DispatchStatus.EXPIRED,
-            retry_at=None,
-            locked_at=None,
-            unassigned_reason_code="SCHEDULE_WINDOW_EXPIRED",
-            unassigned_reason_message="Scheduled slot was 2026-09-19 11:00. Offer window closed.",
-        )
+        mock_record_expired.assert_called_once()
+        self.assertEqual(mock_record_expired.call_args[0][0], 7001)
 
 
 class CandidateDiscoveryDeclineExclusionTests(SimpleTestCase):
